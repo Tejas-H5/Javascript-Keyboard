@@ -79,10 +79,6 @@
         </ul>
     </p>
     <div>
-        <button id="start-playing-button">Start playing (Sometimes audio doesnt work because browsers only allow audio in response to a user gesture, so u may have to click here first)</button>
-        <!-- <button id="save-wave-button">Save wave</button> -->
-    </div>
-    <div>
         <label for="keyboard-attack">Attack</label>
         <input type="range" min="1" max="100" value="1"  class="slider" id="keyboard-attack">
         <label for="keyboard-sustain-volume">Sustain-volume</label>
@@ -150,10 +146,6 @@
 
         //     saveText("samples.txt", samples.join(", "));
         // })
-
-        document.getElementById("start-playing-button").addEventListener("click", () => {
-            audioCtx.resume();
-        })
 
         const audioLoopDispatch = (message, args) => {
             const portMessage = { type: message, args: args };
@@ -335,10 +327,17 @@
             audioLoopDispatch("setOscillators", { value: oscillators });
         }
 
+        function resumeAudio(){
+            // the audio context can only be started in response to a user gesture.
+            audioCtx.resume();
+        }
+
         function pressKey(key) {
             if (!key || key.pressed) {
                 return;
             }
+
+            resumeAudio();
 
             key.domKey.classList.add('pressed');
             audioLoopDispatch("setSignal", { oscillatorIndex: key.index, value: true});
@@ -452,6 +451,8 @@
         }
 
         document.getElementById("play-button").addEventListener("click", () => {
+            resumeAudio();
+            
             startPlaying();
         });
         document.getElementById("stop-button").addEventListener("click", () => {
