@@ -356,9 +356,10 @@
         }
 
         document.addEventListener("keydown", (e) => {
-            console.log(e)
             const key = getKey(e.key.toLowerCase());
             if(!key) return;
+
+            e.preventDefault();
             pressKey(key);
 
             // learning functionality
@@ -368,9 +369,14 @@
         document.addEventListener("keyup", (e) => {
             const key = getKey(e.key.toLowerCase());
             if(!key) return;
+
+            e.preventDefault();
             releaseKey(key);
         })
 
+        document.addEventListener("blur", () => {
+            releaseAllKeys();
+        })
         
         function pressNote(note, transposition, press=true) {
             // TODO: determine the type of note in a non-hacky way. TBH this is probably fine for now
@@ -447,6 +453,12 @@
         document.getElementById("stop-button").addEventListener("click", () => {
             stopPlaying();
         })
+
+        function releaseAllKeys() {
+            for(const key of keysMap.values()) {
+                releaseKey(key);
+            }
+        }
 
         // TODO: better name
         function releasePressedKeysBasedOnDuration() {
