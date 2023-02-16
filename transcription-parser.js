@@ -128,7 +128,7 @@ function parseWord(text, ctx) {
 }
 
 function isValidSampleName(name) {
-    // syntax like snareHit tomHit hiHatHit
+    // syntax like >snareHit >tomHit >hiHatHit
     return name[0] === ">";
 }
 
