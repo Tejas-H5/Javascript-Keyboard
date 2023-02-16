@@ -4,7 +4,7 @@ This project aims to be a fully functional virtual keyboard, with the ability to
 
 ## How does it work?
 
-To explain it simply, each musical note has a frequency. The first musical note (or in my programmer brain the 0th musical note) (at least in whatever system I am using, western? I know next to nothing about this stuff) is a C0, which has a frequency of around 16.5hz. 
+To explain it simply, each musical note has a frequency. The first or 0th musical note is a C0, which has a frequency of around 16.5hz. 
 This means that if your computer's speaker membrane oscillated back and forth at a rate of 16.5 times a second, it would emit a C0 note. I will come back to this later.
 
 Each note after C0 (in half-steps) multiplies this frequency by the 12th root of two. Basically, if we wanted to get the frequency of a note that was `i` half-steps up from C0, we can get the frequency of that note with the formula `C0 * Math.pow(twelvethRootOfTwo, i)` (there are probably other systems of music as well, but they will be ignored since most songs I know use this one). 
