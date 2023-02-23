@@ -118,7 +118,7 @@ class DSPLoop extends AudioWorkletProcessor {
 
         // TODO: can be a function of osc.frequency
         let m2 = 0.02;
-        let m1 = 0.2;
+        let m1 = 0.05;
         let m0 = 1;
 
         return osc.gain * (

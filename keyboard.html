@@ -380,8 +380,8 @@
         document.addEventListener("blur", () => {
             releaseAllKeys();
         })
-        
-        function pressNote(note, transposition, press=true) {
+
+        function getKeyboardKeyFromNote(note, transposition) {
             // TODO: determine the type of note in a non-hacky way. TBH this is probably fine for now
             let key;
             if(note.letter[0] === ">") {
@@ -391,6 +391,11 @@
                 key = noteIndexKeysMap.get(noteIndex);
             }
 
+            return key;
+        }
+        
+        function pressNote(note, transposition, press=true) {
+            const key = getKeyboardKeyFromNote(note, transposition);
             if (!key) {
                 return;
             }
@@ -593,9 +598,9 @@ loop
 bpm=160
 loop
 skip 
+here
 
 >kickA . >kickA . >snareA . >hatB >hatA >hatB >hatA >kickB >hatB >snareA >kickA >hatB >hatA
-here
 >kickA . >kickA . >snareA . >hatB >hatA >hatB >hatA (>kickB >snareA) . >snareA . >hatB >hatA
 
 >kickA . >kickA . >snareA . >hatB >hatA >hatB >hatA >kickB >hatB >snareA >kickA >hatB >hatA
@@ -631,18 +636,6 @@ here
             processNextLearnOutput();
         });
 
-        function keyboardKeysFromNotes(notes) {
-            const keyboardKeys = [];
-            for(const note of notes.notes) {
-                const noteIndex = getNoteIndex(note.letter, note.number, note.isSharp) + transposition;
-                const key = noteIndexKeysMap.get(noteIndex);
-
-                keyboardKeys.push(key);
-            }
-
-            return keyboardKeys;
-        }
-
         function stopLearning() {
             setLearnKeysToPress([]);
         }
@@ -674,7 +667,19 @@ here
 
                 return processNextLearnOutput();
             } else if (obj.t === T_CHORD) {
-                setLearnKeysToPress(keyboardKeysFromNotes(obj));
+                const keyboardKeysInChord = [];
+                console.log(obj);
+                for(const note of obj.notes) {
+                    const key = getKeyboardKeyFromNote(note, transposition);
+                    if (!key) {
+                        // This key is not possible to hit. We should say something ?
+                        continue;
+                    }
+
+                    keyboardKeysInChord.push(key);
+                }
+
+                setLearnKeysToPress(keyboardKeysInChord);
             }
         }
 
@@ -702,7 +707,7 @@ here
                 key.domKey.classList.remove("highlight");
             }
 
-            keysLeftToPress = keys
+            keysLeftToPress = keys;
             keys.forEach((k) => {
                 k.domKey.classList.add("highlight");
             })
