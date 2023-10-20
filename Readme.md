@@ -1,4 +1,4 @@
-# Virtual Keyboard ( Check it out [here](https://el-tejaso.github.io/Javascript-Keyboard/keyboard.html) )
+# Virtual Keyboard ( Check it out [here](https://tejas-h5.github.io/Javascript-Keyboard/keyboard.html) )
 
 This project aims to be a fully functional virtual keyboard, with the ability to automate it's own playing, as well as the ability to teach people how to play it. It is basically a rework of my more or less failed Harmonic Table unity project (https://github.com/El-Tejaso/Harmonic-Table), but it is also quite different.
 
