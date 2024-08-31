@@ -1,5 +1,8 @@
 # Virtual Keyboard ( Check it out [here](https://el-tejaso.github.io/Javascript-Keyboard/keyboard.html) )
 
+I have since stopped working on the vanillaJS project, and I'm porting it to typescript. 
+Ideally, I want to turn this into some sort of rhythm game, but coming up with an intuitive design is proving difficult.
+
 This project aims to be a fully functional virtual keyboard, with the ability to automate it's own playing, as well as the ability to teach people how to play it. It is basically a rework of my more or less failed Harmonic Table unity project (https://github.com/El-Tejaso/Harmonic-Table), but it is also quite different.
 
 ## How does it work?

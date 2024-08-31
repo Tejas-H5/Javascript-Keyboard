@@ -1,0 +1,90 @@
+/** 
+* One liners used to position/layout elements and text. Try to name them as close to their css counterparts.
+* If there was at least one css file to copy into another project, it would be this one. 
+* This is why I may have added some other critical styling that is unrelated to layouts.
+*/
+
+/** flex positioning */
+
+.row { display: flex; flex-direction: row; }
+.col { display: flex; flex-direction: column; }
+
+.flex-1 {
+    flex: 1;
+
+    /** This right here is the secret sauce. Now the flex containers won't keep overflowing lmao */
+    min-width: 0;
+    min-height: 0;
+}
+
+.align-items-center { align-items: center; }
+.justify-content-center { justify-content: center; }
+.justify-content-end { justify-content: end; }
+.align-items-end { align-items: flex-end; }
+.align-items-start { align-items: flex-start; }
+.align-items-stretch { align-items: stretch; }
+
+/** positioning */
+
+.fixed { position: fixed; }
+.sticky { position: sticky; }
+.absolute { position: absolute; }
+.relative { position: relative; }
+.absolute-fill {
+    position: absolute;
+    top: 0; right: 0; left: 0; bottom: 0;
+    width: 100%;
+    height: 100%;
+}
+.border-box{ box-sizing: border-box; }
+
+/** displays */
+
+.inline-block { display: inline-block; }
+.inline { display: inline; }
+.flex{ display: flex; }
+.pointer-events-none { pointer-events: none; }
+.pointer-events-all { pointer-events: all; }
+
+/** text and text layouting */
+
+.text-align-center { text-align: center; }
+.text-align-right { text-align: right; }
+.text-align-left { text-align: left; }
+.pre-wrap { white-space: pre-wrap; }
+.nowrap { white-space: nowrap; }
+.pre { white-space: pre; }
+.handle-long-words {
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+.strikethrough {
+    text-decoration: line-through;
+    text-decoration-color: var(--fg-color);
+}
+
+/** common spacings */
+
+.gap-5 { gap: 5px; }
+
+.w-100 { width: 100%; }
+.h-100 { height: 100%; }
+
+/** overflow management */
+
+.overflow-x-auto { overflow-x: auto; }
+.overflow-y-auto { overflow-y: auto; }
+
+/** hover utils */
+
+.hover-parent .hover-target { display: none !important; }
+.hover-parent .hover-target-inverse { display: inherit !important; }
+.hover-parent:hover .hover-target { display: inherit !important; }
+.hover-parent:hover .hover-target-inverse { display: none !important; }
+
+/** error handling and debugging */
+.catastrophic---error > * { display: none !important; }
+.catastrophic---error::before {
+    content: "An error occured when updating this content. You've found a bug!";
+}
+.debug { border: 1px solid red; }

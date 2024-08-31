@@ -1,3 +1,9 @@
+// Sometimes when you use a hammer, everything looks like a nail.
+// The correct solution was to use a good UI, not a fking programming language lol.
+// I was coming off the high of making a programming lang entirely in javascript.
+// So it was failry simple to just copy paste that code than to make a good UI, so that makes sense, I guess.
+// But now I'm developing a custom SPA framework, so we'll do it properly.
+
 
 function isWhitespace(c) {
     return (
