@@ -1,4 +1,4 @@
-# Virtual Keyboard ( Check it out [here](https://el-tejaso.github.io/Javascript-Keyboard/keyboard.html) )
+# Virtual Keyboard ( Check it out [here](https://tejas-h5.github.io/Javascript-Keyboard/keyboard.html) )
 
 I have since stopped working on the vanillaJS project, and I'm porting it to typescript. 
 Ideally, I want to turn this into some sort of rhythm game, but coming up with an intuitive design is proving difficult.
