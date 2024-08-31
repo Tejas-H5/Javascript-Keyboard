@@ -76,8 +76,15 @@ type Key = {
 }
 
 function Keyboard(rg: RenderGroup) {
-    function KeyboardRow(rg: RenderGroup<{ keys: Key[]; }>) {
-        function KeyboardKey(rg: RenderGroup<{ key: Key }>) {
+    function KeyboardRow(rg: RenderGroup<{ 
+        keys: Key[]; 
+        keySize: number; 
+        startOffset: number;
+    }>) {
+        function KeyboardKey(rg: RenderGroup<{ 
+            key: Key; 
+            keySize: number; 
+        }>) {
             function handlePress() {
                 const s = getState(rg);
                 pressKey(s.key);
@@ -89,27 +96,35 @@ function Keyboard(rg: RenderGroup) {
                 releaseKey(s.key);
                 rerenderApp();
             }
-            return span({ class: "keyboard-key" }, [
-                div({}, rg.text(s => s.key.text)),
-                div({ class: "keyboard-key-note" }, rg.text(s => s.key.noteText)),
+            return span({ class: "keyboard-key relative" }, [
+                rg.style("width", s => s.keySize + "px"),
+                rg.style("height", s => s.keySize + "px"),
+                rg.style("fontSize", s => (s.keySize / 2) + "px"),
                 rg.on("mousedown", handlePress),
                 rg.on("mouseup", handleRelease),
                 rg.on("mouseleave", handleRelease),
                 // TODO: gradient of values here
                 rg.class('pressed', (s) => oscillators[s.key.index].signal > 0.1),
+                div({ style: "position: absolute; top:5px; left: 0; right:0;" }, rg.text(s => s.key.text)),
+                div({ class: "keyboard-key-note", style: "position: absolute; bottom:5px; left: 0; right:0;" }, [
+                    rg.style("fontSize", s => (s.keySize / 4) + "px"),
+                    rg.style("paddingRight", s => (s.keySize / 10) + "px"),
+                    rg.text(s => s.key.noteText),
+                ]),
             ]);
         }
 
-        return rg.list(
-            div({ class: "keyboard-key-row" }),
-            KeyboardKey,
-            (getNext, s) => {
+        return div({ class: "row", style: "gap: 5px; margin-top: 5px;" }, [
+            div({}, [
+                rg.style("width", s => (s.startOffset * s.keySize) + "px"),
+            ]),
+            rg.list(div({ class: "row" }), KeyboardKey, (getNext, s) => {
                 for (let i = 0; i < s.keys.length; i++) {
                     const key = getNext();
-                    key.render({ key: s.keys[i] });
+                    key.render({ key: s.keys[i], keySize: s.keySize });
                 }
-            }
-        );
+            })
+        ]);
     }
 
     function pressKey(k: Key) {
@@ -276,8 +291,35 @@ function Keyboard(rg: RenderGroup) {
     })
 
     return rg.list(div(), KeyboardRow, (getNext) => {
-        for (const row of keys) {
-            getNext().render({ keys: row });
+        const offsets = [
+            0,
+            0.5,
+            0.75,
+            1.25,
+            1.75,
+        ];
+
+        let maxOffset = 0;
+        for (let i = 0; i < keys.length; i++) {
+            const row = keys[i];
+            let computedOffset = offsets[i] + row.length + 1;
+            maxOffset = Math.max(maxOffset, computedOffset);
+        }
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const keySize = Math.min(
+            width / maxOffset,
+            height / (2 * keys.length)
+        )
+
+        for (let i = 0; i < keys.length; i++) {
+            const row = keys[i];
+            getNext().render({
+                keys: row,
+                keySize,
+                startOffset: offsets[i],
+            });
         }
     });
 }
@@ -313,26 +355,30 @@ function App(rg: RenderGroup) {
         }
     })
 
-    return div({}, [
-        div({}, [
-            newComponent(Description),
-            // TODO: fix
-            newSliderTemplateFn("Attack", settings.attack, (val) => {
-                settings.attack = val;
-                audioLoopDispatch({ playSettings: settings });
-            }),
-            newSliderTemplateFn("Decay", settings.decay, (val) => {
-                settings.decay = val;
-                audioLoopDispatch({ playSettings: settings });
-            }),
-            newSliderTemplateFn("Sustain Volume", settings.sustainVolume, (val) => {
-                settings.sustainVolume = val;
-                audioLoopDispatch({ playSettings: settings });
-            }),
-            newSliderTemplateFn("Sustain Time", settings.sustain, (val) => {
-                settings.sustain = val;
-                audioLoopDispatch({ playSettings: settings });
-            }),
+    return div({ 
+        class: "col absolute-fill",
+        style: "position: fixed",
+    }, [
+        div({ class: "flex-1" }),
+        // newComponent(Description),
+        // TODO: fix
+        // newSliderTemplateFn("Attack", settings.attack, (val) => {
+        //     settings.attack = val;
+        //     audioLoopDispatch({ playSettings: settings });
+        // }),
+        // newSliderTemplateFn("Decay", settings.decay, (val) => {
+        //     settings.decay = val;
+        //     audioLoopDispatch({ playSettings: settings });
+        // }),
+        // newSliderTemplateFn("Sustain Volume", settings.sustainVolume, (val) => {
+        //     settings.sustainVolume = val;
+        //     audioLoopDispatch({ playSettings: settings });
+        // }),
+        // newSliderTemplateFn("Sustain Time", settings.sustain, (val) => {
+        //     settings.sustain = val;
+        //     audioLoopDispatch({ playSettings: settings });
+        // }),
+        div({ class: "row justify-content-center" }, [
             rg.cNull(Keyboard),
         ])
     ])
@@ -376,4 +422,8 @@ function resumeAudio() {
     appendChild(root, app);
     rerenderApp();
 })();
+
+window.addEventListener("resize", () => {
+    rerenderApp();
+});
 

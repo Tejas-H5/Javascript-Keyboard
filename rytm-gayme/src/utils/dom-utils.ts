@@ -546,7 +546,7 @@ export function getState<T>(c: Component<T, any> | RenderGroup<T>): T {
     return s;
 }
 
-export function getRoot<T>(c: RenderGroup<T>): Insertable<any> {
+export function getRoot<T>(c: RenderGroup<T>): Insertable<ValidElement> {
     const root = c.instantiatedRoot;
     if (root === undefined) {
         throw new Error(`This render group does not have a root!`);

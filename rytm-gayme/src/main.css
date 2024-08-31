@@ -1,8 +1,7 @@
 :root {
     --foreground: black;
     --background: white;
-    --key-size: 75px;
-}
+}main.css
 
 .md {
     font-size: 36px;
@@ -22,16 +21,11 @@ body {
     font-family: monospace;
     outline: 1px solid var(--foreground);
     display: inline-block;
-    padding: 10px;
-    width: var(--key-size);
-    min-height: var(--key-size);
-    font-size: calc( var(--key-size) / 1.5 );
     text-align: center;
     user-select: none;
 }
 
 .keyboard-key-note {
-    font-size: calc( ( var(--key-size) ) / 4 );
     color: gray;
     text-align: right;
 }
@@ -39,8 +33,6 @@ body {
 .keyboard-key-row {
     display: flex;
     flex-flow: row;
-    gap: 5px;
-    margin-top: 5px;
 }
 
 textarea {
