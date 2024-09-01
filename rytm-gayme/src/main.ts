@@ -1,8 +1,8 @@
 import "src/css/layout.css";
-import { appendChild, Component, div, el, getState, newComponent, newInsertable, RenderGroup, setCssVars, span } from "src/utils/dom-utils";
+import { appendChild, Component, div, el, getState, newComponent, newComponent2, newInsertable, RenderGroup, setCssVars, span } from "src/utils/dom-utils";
+import { DspInfo, DspLoopEventNotification, DspLoopMessage, DSPPlaySettings } from "./dsp-loop";
 import dspLoopWorkerUrl from "./dsp-loop.ts?worker&url";
 import "./main.css";
-import { getSampleArray } from "./samples";
 
 // all util styles
 
@@ -44,46 +44,73 @@ function Description(rg: RenderGroup) {
     ]);
 }
 
+// at least one of these fields must be set
+type MusicNote = {
+    noteIndex?: number;
+    sample?: string;
+}
+
 const NOTE_LETTERS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 function getNoteLetter(index: number) {
     return NOTE_LETTERS[index % NOTE_LETTERS.length];
 }
+
+function getNoteIndex(noteLetter: string, noteNumber: number, isSharp: boolean) {
+    if (isSharp) {
+        noteLetter += "#";
+    }
+
+    const baseIndex = NOTE_LETTERS.indexOf(noteLetter);
+    if (baseIndex === -1) {
+        throw new Error("invalid note letter: " + noteLetter);
+    }
+    return baseIndex + noteNumber * 12
+}
+
 
 // TODO: rememmber what this even does
 function bpmToInterval(bpm: number, division: number) {
     return (60000 / bpm) / division;
 }
 
-// 0 is c0, 12 is c1, etc
-function getNote(index: number) {
-    const c0 = 16.35;
-    const twelvethRootOfTwo = 1.0594631;
 
-    return {
-        frequency: c0 * Math.pow(twelvethRootOfTwo, index),
-        number: Math.floor(index / 12),
-    }
+
+const C_0 = 16.35;;
+const TWELVTH_ROOT_OF_TWO = 1.0594631;
+
+function getNoteFrequency(index: number) {
+    return C_0 * Math.pow(TWELVTH_ROOT_OF_TWO, index);
 }
 
+function getNoteNumber(index: number) {
+    return Math.floor(index / 12);
+}
 
-type Key = {
+type InstrumentKey = {
     keyboardKey: string;
     text: string;
     noteText: string;
+    musicNote: MusicNote;
 
+    // this is the 'id'
     index: number;
     remainingDuration: number;
 }
 
+
+function unreachable(): never {
+    throw new Error("Unreachable!");
+}
+
 function Keyboard(rg: RenderGroup) {
-    function KeyboardRow(rg: RenderGroup<{ 
-        keys: Key[]; 
-        keySize: number; 
+    function KeyboardRow(rg: RenderGroup<{
+        keys: InstrumentKey[];
+        keySize: number;
         startOffset: number;
     }>) {
-        function KeyboardKey(rg: RenderGroup<{ 
-            key: Key; 
-            keySize: number; 
+        function KeyboardKey(rg: RenderGroup<{
+            key: InstrumentKey;
+            keySize: number;
         }>) {
             function handlePress() {
                 const s = getState(rg);
@@ -96,17 +123,37 @@ function Keyboard(rg: RenderGroup) {
                 releaseKey(s.key);
                 rerenderApp();
             }
-            return span({ class: "keyboard-key relative" }, [
+
+            let signal = 0;
+
+            rg.preRenderFn((s) => {
+                signal = getCurrentOscillatorGain(s.key.index);
+            });
+
+            return span({
+                class: " relative",
+                style: "font-family: monospace; outline: 1px solid var(--foreground);" +
+                    "display: inline-block; text-align: center; user-select: none;",
+            }, [
                 rg.style("width", s => s.keySize + "px"),
                 rg.style("height", s => s.keySize + "px"),
                 rg.style("fontSize", s => (s.keySize / 2) + "px"),
+                // TODO: opacity between 0 and 1 here
+                rg.style("backgroundColor", () => signal > 0.1 ? `rgba(0, 0, 0, ${signal})` : `rgba(255, 255, 255, ${signal})`),
+                rg.style("color", (s) => signal > 0.1 ? `var(--bg)` : `var(--fg)`),
                 rg.on("mousedown", handlePress),
                 rg.on("mouseup", handleRelease),
                 rg.on("mouseleave", handleRelease),
-                // TODO: gradient of values here
-                rg.class('pressed', (s) => oscillators[s.key.index].signal > 0.1),
-                div({ style: "position: absolute; top:5px; left: 0; right:0;" }, rg.text(s => s.key.text)),
-                div({ class: "keyboard-key-note", style: "position: absolute; bottom:5px; left: 0; right:0;" }, [
+                div({
+                    style: "position: absolute; top:5px; left: 0; right:0;"
+                }, [
+                    rg.text(s => s.key.text)
+                ]),
+                div({
+                    class: "text-mg",
+                    style: "position: absolute; bottom:5px; left: 0; right:0;" +
+                        "text-align: right;"
+                }, [
                     rg.style("fontSize", s => (s.keySize / 4) + "px"),
                     rg.style("paddingRight", s => (s.keySize / 10) + "px"),
                     rg.text(s => s.key.noteText),
@@ -127,17 +174,40 @@ function Keyboard(rg: RenderGroup) {
         ]);
     }
 
-    function pressKey(k: Key) {
+    function pressKey(k: InstrumentKey) {
         resumeAudio();
-        oscillators[k.index].signal = 1;
-        audioLoopDispatch({ setSignal: [k.index, 1] })
+
+        const block = getOrMakeInfoBlock(k.index);
+        block[1] = 1;
+
+        if (k.musicNote.sample) {
+            audioLoopDispatch({ playSample: [k.index, { sample: k.musicNote.sample }] })
+        } else if (k.musicNote.noteIndex) {
+            const frequency = getNoteFrequency(k.musicNote.noteIndex);
+            audioLoopDispatch({ setOscilatorSignal: [k.index, { frequency, signal: 1 }] })
+        } else {
+            unreachable();
+        }
     }
 
-    function releaseKey(k: Key) {
-        oscillators[k.index].signal = 0;
-        audioLoopDispatch({ setSignal: [k.index, 0] })
+    function releaseKey(k: InstrumentKey) {
+        if (k.musicNote.sample) {
+            // do nothing
+        } else if (k.musicNote.noteIndex) {
+            const frequency = getNoteFrequency(k.musicNote.noteIndex);
+            audioLoopDispatch({ setOscilatorSignal: [k.index, { frequency, signal: 0 }] })
+        }
     }
 
+    function findKey(note: MusicNote): InstrumentKey | undefined {
+        if (note.sample) {
+            return flatKeys.find(k => k.musicNote.sample === note.sample);
+        } else if (note.noteIndex) {
+            return flatKeys.find(k => k.musicNote.noteIndex === note.noteIndex);
+        } else {
+            throw new Error("music note was empty!");
+        }
+    }
 
     // TODO: better name
     function releasePressedKeysBasedOnDuration() {
@@ -162,27 +232,25 @@ function Keyboard(rg: RenderGroup) {
         releaseAllKeys();
     }
 
-    function newKey(k: string): Key {
+    function newKey(k: string): InstrumentKey {
         return {
             keyboardKey: k.toLowerCase(),
             text: k,
             noteText: "",
             index: -1,
+            musicNote: {},
             remainingDuration: 0
         };
     }
 
-    const keys: Key[][] = [];
-    const flatKeys: Key[] = [];
-    // NOTE: this is really a read/write-through cache - the data will actually be on 
-    // the DSP audio worker thread, and we need to set it there every time we make changes here.
-    const oscillators: Oscillator[] = [];
+    const keys: InstrumentKey[][] = [];
+    const flatKeys: InstrumentKey[] = [];
 
     // initialize keys
     {
         // drums row
         {
-            const drumKeys = "1234567890-=".split("").map(newKey);
+            const drumKeys = "1234567890-=".split("").map(k => newKey(k));
             const drumSlots = [
                 { name: "kickA", sample: "kick", },
                 { name: "kickB", sample: "kick", },
@@ -205,24 +273,17 @@ function Keyboard(rg: RenderGroup) {
             keys.push(drumKeys);
 
             for (const i in drumSlots) {
-                drumKeys[i].noteText = drumSlots[i].name;
-                const samples = getSampleArray(drumSlots[i].sample);
-
-                drumKeys[i].index = oscillators.length;
-                flatKeys.push(drumKeys[i]);
-                oscillators.push({
-                    t: 1,
-                    signal: 0,
-                    prevSignal: 0,
-                    samples: samples,
-                    sample: samples.length,
-                });
+                const key = drumKeys[i];
+                key.noteText = drumSlots[i].name;
+                key.musicNote.sample = drumSlots[i].sample;
+                key.index = flatKeys.length;
+                flatKeys.push(key);
             }
         }
 
         // piano rows
         {
-            const pianoKeys: Key[][] = [
+            const pianoKeys: InstrumentKey[][] = [
                 "qwertyuiop[]".split("").map(newKey),
                 [..."asdfghjkl;'".split("").map(newKey), newKey("enter")],
                 "zxcvbnm,./".split("").map(newKey),
@@ -230,34 +291,23 @@ function Keyboard(rg: RenderGroup) {
 
             keys.push(...pianoKeys);
 
-            let keyIndex = 0;
+            let noteIndexOffset = 0;
             for (const i in pianoKeys) {
                 for (const j in pianoKeys[i]) {
                     const key = pianoKeys[i][j];
 
-                    const noteIndex = 40 + keyIndex;
-                    const { frequency, number } = getNote(noteIndex);
+                    key.index = flatKeys.length;
+                    flatKeys.push(key);
+
+                    const noteIndex = 40 + noteIndexOffset;
+                    noteIndexOffset++;
+                    const number = getNoteNumber(noteIndex);
 
                     key.noteText = `${getNoteLetter(noteIndex)}${number}`;
-
-                    key.index = oscillators.length;
-                    flatKeys.push(key);
-                    oscillators.push({
-                        t: 0,
-                        signal: 0,
-                        prevSignal: 0,
-                        awakeTime: 0,
-                        phase: Math.random(),
-                        gain: 0,
-                        frequency: frequency,
-                    });
-
-                    keyIndex++;
+                    key.musicNote.noteIndex = noteIndex;
                 }
             }
         }
-
-        audioLoopDispatch({ oscillators });
     }
 
 
@@ -290,7 +340,7 @@ function Keyboard(rg: RenderGroup) {
         rerenderApp();
     })
 
-    return rg.list(div(), KeyboardRow, (getNext) => {
+    const root = rg.list(div(), KeyboardRow, (getNext) => {
         const offsets = [
             0,
             0.5,
@@ -322,6 +372,27 @@ function Keyboard(rg: RenderGroup) {
             });
         }
     });
+
+    return [root, {
+        pressNote(note: MusicNote) {
+            const key = findKey(note);
+            if (key) {
+                pressKey(key);
+            } else {
+                console.warn("the key for a note was not found: ", note);
+            }
+
+        },
+        releaseNote(note: MusicNote) {
+            const key = findKey(note);
+            if (key) {
+                releaseKey(key);
+            } else {
+                console.warn("the key for a note was not found: ", note);
+            }
+
+        },
+    }] as const;
 }
 
 function App(rg: RenderGroup) {
@@ -355,7 +426,28 @@ function App(rg: RenderGroup) {
         }
     })
 
-    return div({ 
+    const [keyboard, keyboardHandle] = newComponent2(Keyboard);
+
+    // TODO: automate playing some songs.
+    // let on = false;
+    // setInterval(() => {
+    //     if (on) {
+    //         keyboardHandle.pressNote({
+    //             noteIndex: getNoteIndex("A", 4, false)
+    //         });
+    //     } else {
+    //         keyboardHandle.releaseNote({
+    //             noteIndex: getNoteIndex("A", 4, false)
+    //         });
+    //     }
+    //     on = !on;
+    // }, 1000);
+
+    rg.postRenderFn(() => {
+        keyboard.render(null);
+    });
+
+    return div({
         class: "col absolute-fill",
         style: "position: fixed",
     }, [
@@ -379,7 +471,7 @@ function App(rg: RenderGroup) {
         //     audioLoopDispatch({ playSettings: settings });
         // }),
         div({ class: "row justify-content-center" }, [
-            rg.cNull(Keyboard),
+            keyboard,
         ])
     ])
 }
@@ -392,6 +484,33 @@ function rerenderApp() {
 }
 
 let dspPort: MessagePort | undefined;
+const dspInfo: DspInfo = { currentlyPlaying: [] };
+
+function getInfoBlock(id: number): [number, number] | undefined {
+    return dspInfo.currentlyPlaying.find(b => b[0] === id);
+}
+
+// This thing gets overwritten very frequently every second, but we probably want our ui to update instantly and not
+// within 1/10 of a second. this compromise is due to an inability to simply pull values from the dsp loop as needed - 
+// instead, the dsp loop has been configured to push it's relavant state very frequently. SMH.
+function getOrMakeInfoBlock(id: number): [number, number] {
+    const block = getInfoBlock(id);
+    if (block) return block;
+    const b: [number, number] = [id, 0];
+    dspInfo.currentlyPlaying.push(b);
+    return b;
+}
+
+function getCurrentOscillatorGain(id: number): number {
+    const block = getInfoBlock(id);
+    if (!block) {
+        return 0;
+    }
+    return block[1];
+}
+
+
+
 function audioLoopDispatch(message: DspLoopMessage) {
     if (!dspPort) {
         return;
@@ -405,7 +524,6 @@ function resumeAudio() {
     audioCtx.resume().catch(console.error);
 }
 
-
 // initialize the app.
 (async () => {
     // registers the DSP loop. we must communicate with this thread through a Port thinggy
@@ -415,7 +533,26 @@ function resumeAudio() {
         console.error("dsp process error:", e);
     }
     dspLoopNode.connect(audioCtx.destination);
+
     dspPort = dspLoopNode.port;
+
+    // I'm surprized this isn't a memory leak...
+    // but yeah this will literally create a new array and serialize it over
+    // some port several times a second just so we know what the current
+    // 'pressed' state of one of the notes is.
+    const frequency = 1000 / 20;
+    // const frequency = 1000 / 60; //  too much cpu heat 
+    setInterval(() => {
+        audioLoopDispatch(1337);
+    }, frequency);
+
+    dspPort.onmessage = ((e) => {
+        const data = e.data as DspLoopEventNotification;
+        if (data.currentlyPlaying) {
+            dspInfo.currentlyPlaying = data.currentlyPlaying;
+            rerenderApp();
+        }
+    });
 
     // Our code only works after the audio context has loaded.
     app = newComponent(App);
@@ -426,4 +563,3 @@ function resumeAudio() {
 window.addEventListener("resize", () => {
     rerenderApp();
 });
-

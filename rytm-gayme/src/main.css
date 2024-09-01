@@ -1,51 +1,24 @@
 :root {
-    --foreground: black;
-    --background: white;
-}main.css
-
-.md {
-    font-size: 36px;
+    --bg: #FFF;
+    --bg2: #CCC;
+    --mg: #888;
+    --fg2: #333;
+    --fg: #000;
 }
 
-.hidden {
-    display: none !important;
+.inverted {
+    color: var(--bg);
+    background: var(--fg);
 }
+
+.md { font-size: 36px; }
 
 body {
     font-family: monospace;
     font-size: 18px;
-    color: var(--foreground);
+    color: var(--fg);
+    background: var(--bg);
 }
 
-.keyboard-key {
-    font-family: monospace;
-    outline: 1px solid var(--foreground);
-    display: inline-block;
-    text-align: center;
-    user-select: none;
-}
 
-.keyboard-key-note {
-    color: gray;
-    text-align: right;
-}
-
-.keyboard-key-row {
-    display: flex;
-    flex-flow: row;
-}
-
-textarea {
-    width: 1000px;
-    height: 300px;
-}
-
-.keyboard-key.pressed {
-    background-color: var(--foreground);
-    color: var(--background);
-}
-
-.highlight {
-    background-color: rgb(255,255,0, 0.5);
-}
-
+.text-mg { color: var(--mg); }

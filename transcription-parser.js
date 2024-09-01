@@ -52,7 +52,7 @@ function advanceWhileWhitespace(text, pos) {
             pos += 2;
             while (pos < text.length && text[pos] !== "\n") {
                 pos++;
-            }
+            }pars
         }
 
         pos++;
