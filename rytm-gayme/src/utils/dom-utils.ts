@@ -1,10 +1,8 @@
 type ValidElement = HTMLElement | SVGElement;
-export type Insertable<T extends ValidElement = HTMLElement> = {
+export type Insertable<T extends ValidElement = any> = {
     el: T;
     _isHidden: boolean;
 };
-
-export type InsertableList = (Insertable<any> | undefined)[];
 
 /**
  * Attemps to replace all of the children under a component in such a way that
@@ -12,11 +10,11 @@ export type InsertableList = (Insertable<any> | undefined)[];
  *
  * This way, the code path where no data has changed can remain reasonably performant
  */
-export function replaceChildren(comp: Insertable<any>, children: InsertableList) {
+export function replaceChildren(comp: Insertable<any>, children: (Insertable | undefined)[]) {
     replaceChildrenEl(comp.el, children);
 };
 
-export function replaceChildrenEl(el: Element, children: InsertableList) {
+export function replaceChildrenEl(el: Element, children: (Insertable | undefined)[]) {
     let iReal = 0;
     for (let i = 0; i < children.length; i++) {
         const child = children[i];
@@ -626,7 +624,7 @@ export type RenderGroup<S = null> = {
     /** 
      * An internal variable used by {@link else} and {@link else_if}.
      */
-    lastPredicateResult: boolean;
+    ifStatementOpen: boolean;
     /**
      * Sets the current state of this render group, and 
      * then immediately calls {@link RenderGroup.renderWithCurrentState}.
@@ -682,7 +680,6 @@ export type RenderGroup<S = null> = {
      *
      */
     c<T, U extends ValidElement>(templateFn: TemplateFn<T, U>, renderFn: (c: Component<T, U>, s: S) => void): Component<T, U>;
-    cNull<U extends ValidElement>(templateFn: TemplateFn<null, U>): Component<null, U>;
     /**
      * Appends a function that will render an arbitrary insertable
      * however you want, and then returns the insertable.
@@ -701,7 +698,7 @@ export type RenderGroup<S = null> = {
         renderFn: (getNext: () => Component<T, U>, s: S, listRenderer: ListRenderer<R, T, U>) => void,
     ) => ListRenderer<R, T, U>;
     /** Sets a component visible based on a predicate, and only renders it if it is visible */
-    if: <U extends ValidElement> (predicate: (s: S) => boolean, templateFn: TemplateFn<S, U>) => Component<S, U>,
+    if: <U extends ValidElement> (predicate: (s: S) => any, templateFn: TemplateFn<S, U>) => Component<S, U>,
     /** 
      * Sets a component visible if the last predicate was _not_ true, but this one is. 
      * A predicate being _false_ is more than you might think though. Right now, it includes:
@@ -717,6 +714,7 @@ export type RenderGroup<S = null> = {
     else: <U extends ValidElement> (templateFn: TemplateFn<S, U>) => Component<S, U>,
     /** Same as `if` - will hide the component if T is undefined, but lets you do type narrowing */
     with: <U extends ValidElement, T> (predicate: (s: S) => T | undefined, templateFn: TemplateFn<T, U>) => Component<T, U>,
+    else_with: <U extends ValidElement, T> (predicate: (s: S) => T | undefined, templateFn: TemplateFn<T, U>) => Component<T, U>,
     /**
      * Returns functionality that will append an event to the parent component.
      * It's a declarative version of {@link on}.
@@ -757,7 +755,7 @@ export type RenderGroup<S = null> = {
      * You should only have one of thse per dom element. There are currently no checks in place to assert if this is the case or not.
      * NOTE: this solution will need some work
      */
-    children: <U extends ValidElement>(childArrayFn: (s: S) => InsertableList) => Functionality<U>;
+    children: <U extends ValidElement>(childArrayFn: (s: S) => (Insertable | undefined)[]) => Functionality<U>;
     /**
      * Appends a custom render function to this render group. Usefull for adding functionality to the render group
      * that has nothing to do with the DOM or the UI, or if you find it better to use an imperative approach to 
@@ -948,7 +946,6 @@ function newRenderGroup<S, Si extends S>(
     templateName: string = "unknown",
     skipErrorBoundary = false,
 ): RenderGroup<S> {
-    const wasLastPredicateFalse = () => !rg.lastPredicateResult;
     const preRenderFn: RenderFn<S>[] = [];
     const domRenderFn: RenderFn<S>[] = [];
     const postRenderFn: RenderFn<S>[] = [];
@@ -964,9 +961,9 @@ function newRenderGroup<S, Si extends S>(
         instantiatedRoot: undefined,
         instantiated: false,
         skipErrorBoundary,
-        lastPredicateResult: true,
+        ifStatementOpen: false,
         render(s) {
-            rg.lastPredicateResult = false;
+            rg.ifStatementOpen = false;
             rg.s = s;
             rg.renderWithCurrentState();
         },
@@ -989,46 +986,68 @@ function newRenderGroup<S, Si extends S>(
             pushRenderFn(rg, domRenderFn, (s) => setText(e, fn(s)), e);
             return e;
         },
-        with: (predicate, templateFn) => {
-            const c = newComponent(templateFn);
-            pushRenderFn(rg, domRenderFn, (s) => {
-                const val = predicate(s);
-                rg.lastPredicateResult = val !== undefined;
-                if (setVisible(c, rg.lastPredicateResult)) {
-                    c.render(val!);
-                }
-            }, c);
-
-            return c;
+        // Very big brain here
+        else: (templateFn) => {
+            return rg.else_if(() => true, templateFn);
         },
         if: (predicate, templateFn) => {
             const c = newComponent(templateFn);
 
             pushRenderFn(rg, domRenderFn, (s) => {
-                rg.lastPredicateResult = predicate(s);
-                if (setVisible(c, rg.lastPredicateResult)) {
+                rg.ifStatementOpen = true;
+                if (setVisible(c, rg.ifStatementOpen && predicate(s))) {
+                    rg.ifStatementOpen = false;
                     c.render(s);
                 }
             }, c);
 
             return c;
         },
-        // very big brain
         else_if: (predicate, templateFn) => {
-            const predicate2 = (s: S) => wasLastPredicateFalse() && predicate(s);
-            return rg.if(predicate2, templateFn);
+            const c = newComponent(templateFn);
+
+            pushRenderFn(rg, domRenderFn, (s) => {
+                if (setVisible(c, rg.ifStatementOpen && predicate(s))) {
+                    rg.ifStatementOpen = false;
+                    c.render(s);
+                }
+            }, c);
+
+            return c;
         },
-        else: (templateFn) => {
-            return rg.if(wasLastPredicateFalse, templateFn);
+        with: (predicate, templateFn) => {
+            const c = newComponent(templateFn);
+            pushRenderFn(rg, domRenderFn, (s) => {
+                rg.ifStatementOpen = true;
+                const val = predicate(s);
+                if (setVisible(c, val)) {
+                    rg.ifStatementOpen = false;
+                    c.render(val);
+                }
+            }, c);
+
+            return c;
+        },
+        else_with: (predicate, templateFn) => {
+            const c = newComponent(templateFn);
+            pushRenderFn(rg, domRenderFn, (s) => {
+                if (!rg.ifStatementOpen) {
+                    setVisible(c, false);
+                    return;
+                }
+
+                const val = predicate(s);
+                if (setVisible(c, val)) {
+                    rg.ifStatementOpen = false;
+                    c.render(val);
+                }
+            }, c);
+
+            return c;
         },
         c: (templateFn, renderFn) => {
             const component = newComponent(templateFn);
             pushRenderFn(rg, domRenderFn, () => renderFn(component, getState(rg)), component);
-            return component;
-        },
-        cNull: (templateFn) => {
-            const component = newComponent(templateFn);
-            pushRenderFn(rg, domRenderFn, () => component.render(null), component);
             return component;
         },
         inlineFn: (component, renderFn) => {
@@ -1054,7 +1073,7 @@ function newRenderGroup<S, Si extends S>(
                 listRenderer.render((getNext) => {
                     renderFn(getNext, s, listRenderer);
                 });
-                rg.lastPredicateResult = listRenderer.lastIdx !== 0;
+                rg.ifStatementOpen = listRenderer.lastIdx === 0;
             }, root);
             return listRenderer;
         },
@@ -1282,12 +1301,13 @@ let lastClass = 0;
 export function newStyleGenerator(appendUnder? : Element): StyleGenerator {
     if (!appendUnder) {
         // Sometimes you will need to append styles under something that isn't the body...
-        appendUnder = document.body;
+        appendUnder = document.head;
     }
 
     const root = el<HTMLStyleElement>("style", { type: "text/css" });
 
-    appendUnder.appendChild(root.el);
+    // These styles should not take precedence over user-specified css, and the util classes.
+    appendUnder.prepend(root.el);
 
     lastClass++;
 

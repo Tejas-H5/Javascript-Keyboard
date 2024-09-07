@@ -8,6 +8,7 @@
 
 .row { display: flex; flex-direction: row; }
 .col { display: flex; flex-direction: column; }
+.flex-wrap { display: flex; flex-flow: wrap; }
 
 .flex-1 {
     flex: 1;

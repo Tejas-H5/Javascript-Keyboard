@@ -1,8 +1,11 @@
 import "src/css/layout.css";
-import { appendChild, Component, div, el, getState, newComponent, newComponent2, newInsertable, RenderGroup, setCssVars, span } from "src/utils/dom-utils";
-import { DspInfo, DspLoopEventNotification, DspLoopMessage, DSPPlaySettings } from "./dsp-loop";
-import dspLoopWorkerUrl from "./dsp-loop.ts?worker&url";
+import { appendChild, Component, div, el, getState, newComponent, newInsertable, newStyleGenerator, RenderGroup, setCssVars, span } from "src/utils/dom-utils";
+import { getCurrentOscillatorGain, initDspLoopInterface, pressKey, releaseAllKeys, releaseKey } from "./dsp-loop-interface";
 import "./main.css";
+import { addNewLine as insertNewLineBelow, insertNewLineItemAfter, InstrumentKey, newGlobalState, SEQ_ITEM, SequencerLine, SequencerState, SequencerTrack, SequencerLineItem, setCurrentItemChord, setCurrentItemIdx, setCurrentLineIdx, setCurrentItemRest, setCurrentItemHold, deleteCurrentLineItem } from "./state";
+import { getNoteText, MusicNote } from "./utils/music-theory-utils";
+
+const sg = newStyleGenerator();
 
 // all util styles
 
@@ -26,80 +29,6 @@ function Slider(rg: RenderGroup<{
             })
         ]),
     ]);
-}
-
-function Description(rg: RenderGroup) {
-    return div({}, [
-        el("H1", {}, "Virtual Piano/Keyboard"),
-        "Have following features:",
-        el("ul", {}, [
-            el("li", {}, "Pressing keys on a keyboard should make sounds"),
-            el("li", {}, "Can program a sequence of keys to play automatically"),
-            el("li", {}, "Show what keys I should play"),
-        ]),
-        "Want following features:",
-        el("ul", {}, [
-            el("li", {}, "Should be able to have multiple modes, one piano mode and one drum-kit mode at least"),
-        ]),
-    ]);
-}
-
-// at least one of these fields must be set
-type MusicNote = {
-    noteIndex?: number;
-    sample?: string;
-}
-
-const NOTE_LETTERS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-function getNoteLetter(index: number) {
-    return NOTE_LETTERS[index % NOTE_LETTERS.length];
-}
-
-function getNoteIndex(noteLetter: string, noteNumber: number, isSharp: boolean) {
-    if (isSharp) {
-        noteLetter += "#";
-    }
-
-    const baseIndex = NOTE_LETTERS.indexOf(noteLetter);
-    if (baseIndex === -1) {
-        throw new Error("invalid note letter: " + noteLetter);
-    }
-    return baseIndex + noteNumber * 12
-}
-
-
-// TODO: rememmber what this even does
-function bpmToInterval(bpm: number, division: number) {
-    return (60000 / bpm) / division;
-}
-
-
-
-const C_0 = 16.35;;
-const TWELVTH_ROOT_OF_TWO = 1.0594631;
-
-function getNoteFrequency(index: number) {
-    return C_0 * Math.pow(TWELVTH_ROOT_OF_TWO, index);
-}
-
-function getNoteNumber(index: number) {
-    return Math.floor(index / 12);
-}
-
-type InstrumentKey = {
-    keyboardKey: string;
-    text: string;
-    noteText: string;
-    musicNote: MusicNote;
-
-    // this is the 'id'
-    index: number;
-    remainingDuration: number;
-}
-
-
-function unreachable(): never {
-    throw new Error("Unreachable!");
 }
 
 function Keyboard(rg: RenderGroup) {
@@ -174,173 +103,9 @@ function Keyboard(rg: RenderGroup) {
         ]);
     }
 
-    function pressKey(k: InstrumentKey) {
-        resumeAudio();
+    const root = div({ class: "" });
 
-        const block = getOrMakeInfoBlock(k.index);
-        block[1] = 1;
-
-        if (k.musicNote.sample) {
-            audioLoopDispatch({ playSample: [k.index, { sample: k.musicNote.sample }] })
-        } else if (k.musicNote.noteIndex) {
-            const frequency = getNoteFrequency(k.musicNote.noteIndex);
-            audioLoopDispatch({ setOscilatorSignal: [k.index, { frequency, signal: 1 }] })
-        } else {
-            unreachable();
-        }
-    }
-
-    function releaseKey(k: InstrumentKey) {
-        if (k.musicNote.sample) {
-            // do nothing
-        } else if (k.musicNote.noteIndex) {
-            const frequency = getNoteFrequency(k.musicNote.noteIndex);
-            audioLoopDispatch({ setOscilatorSignal: [k.index, { frequency, signal: 0 }] })
-        }
-    }
-
-    function findKey(note: MusicNote): InstrumentKey | undefined {
-        if (note.sample) {
-            return flatKeys.find(k => k.musicNote.sample === note.sample);
-        } else if (note.noteIndex) {
-            return flatKeys.find(k => k.musicNote.noteIndex === note.noteIndex);
-        } else {
-            throw new Error("music note was empty!");
-        }
-    }
-
-    // TODO: better name
-    function releasePressedKeysBasedOnDuration() {
-        for (const key of flatKeys) {
-            if (key.remainingDuration > 0) {
-                key.remainingDuration -= 1;
-            }
-
-            if (key.remainingDuration === 0) {
-                releaseKey(key);
-            }
-        }
-    }
-
-    function releaseAllKeys() {
-        for (const key of flatKeys) {
-            releaseKey(key);
-        }
-    }
-
-    function stopPlaying() {
-        releaseAllKeys();
-    }
-
-    function newKey(k: string): InstrumentKey {
-        return {
-            keyboardKey: k.toLowerCase(),
-            text: k,
-            noteText: "",
-            index: -1,
-            musicNote: {},
-            remainingDuration: 0
-        };
-    }
-
-    const keys: InstrumentKey[][] = [];
-    const flatKeys: InstrumentKey[] = [];
-
-    // initialize keys
-    {
-        // drums row
-        {
-            const drumKeys = "1234567890-=".split("").map(k => newKey(k));
-            const drumSlots = [
-                { name: "kickA", sample: "kick", },
-                { name: "kickB", sample: "kick", },
-                { name: "snareA", sample: "snare", },
-                { name: "snareB", sample: "snare", },
-                { name: "hatA", sample: "hatA", },
-                { name: "hatB", sample: "hatB", },
-                { name: "crashA", sample: "crashA", },
-                { name: "crashB", sample: "crashB", },
-                { name: "randA", sample: "randA", },
-                { name: "randB", sample: "randB", },
-                // TODO: add some more samples for these guys
-                { name: "snareC", sample: "snare", },
-                { name: "snareD", sample: "snare", },
-            ];
-            if (drumKeys.length !== drumSlots.length) {
-                console.warn("Mismatched drum slots!");
-            }
-
-            keys.push(drumKeys);
-
-            for (const i in drumSlots) {
-                const key = drumKeys[i];
-                key.noteText = drumSlots[i].name;
-                key.musicNote.sample = drumSlots[i].sample;
-                key.index = flatKeys.length;
-                flatKeys.push(key);
-            }
-        }
-
-        // piano rows
-        {
-            const pianoKeys: InstrumentKey[][] = [
-                "qwertyuiop[]".split("").map(newKey),
-                [..."asdfghjkl;'".split("").map(newKey), newKey("enter")],
-                "zxcvbnm,./".split("").map(newKey),
-            ];
-
-            keys.push(...pianoKeys);
-
-            let noteIndexOffset = 0;
-            for (const i in pianoKeys) {
-                for (const j in pianoKeys[i]) {
-                    const key = pianoKeys[i][j];
-
-                    key.index = flatKeys.length;
-                    flatKeys.push(key);
-
-                    const noteIndex = 40 + noteIndexOffset;
-                    noteIndexOffset++;
-                    const number = getNoteNumber(noteIndex);
-
-                    key.noteText = `${getNoteLetter(noteIndex)}${number}`;
-                    key.musicNote.noteIndex = noteIndex;
-                }
-            }
-        }
-    }
-
-
-    document.addEventListener("keydown", (e) => {
-        e.preventDefault();
-
-        const key = flatKeys.find(k => k.keyboardKey === e.key.toLowerCase());
-        if (!key) {
-            return;
-        }
-
-        pressKey(key);
-        rerenderApp();
-    })
-
-    document.addEventListener("keyup", (e) => {
-        e.preventDefault();
-
-        const key = flatKeys.find(k => k.keyboardKey === e.key.toLowerCase());
-        if (!key) {
-            return;
-        }
-
-        releaseKey(key);
-        rerenderApp();
-    })
-
-    document.addEventListener("blur", () => {
-        releaseAllKeys();
-        rerenderApp();
-    })
-
-    const root = rg.list(div(), KeyboardRow, (getNext) => {
+    return rg.list(root, KeyboardRow, (getNext, s) => {
         const offsets = [
             0,
             0.5,
@@ -350,21 +115,21 @@ function Keyboard(rg: RenderGroup) {
         ];
 
         let maxOffset = 0;
-        for (let i = 0; i < keys.length; i++) {
-            const row = keys[i];
+        for (let i = 0; i < globalState.keys.length; i++) {
+            const row = globalState.keys[i];
             let computedOffset = offsets[i] + row.length + 1;
             maxOffset = Math.max(maxOffset, computedOffset);
         }
 
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+        const width = root.el.clientWidth;
+        // const height = root.el.clientHeight;
         const keySize = Math.min(
             width / maxOffset,
-            height / (2 * keys.length)
+            // height / (2 * keys.length)
         )
 
-        for (let i = 0; i < keys.length; i++) {
-            const row = keys[i];
+        for (let i = 0; i < globalState.keys.length; i++) {
+            const row = globalState.keys[i];
             getNext().render({
                 keys: row,
                 keySize,
@@ -372,27 +137,204 @@ function Keyboard(rg: RenderGroup) {
             });
         }
     });
+}
 
-    return [root, {
-        pressNote(note: MusicNote) {
-            const key = findKey(note);
-            if (key) {
-                pressKey(key);
-            } else {
-                console.warn("the key for a note was not found: ", note);
+const cnButton = sg.makeClass("button", [
+    `{
+        all: unset; background-color: var(--bg); user-select: none; cursor: pointer; padding: 4px; text-align: center; 
+        border: 1px solid var(--fg); 
+     }`,
+    `:hover { background-color: var(--bg2);  } `,
+    `:active { background-color: var(--fg); color: var(--bg);  } `,
+]);
+
+function Button(rg: RenderGroup<{ text: string; onClick(): void; flex1?: boolean; }>) {
+    return el("BUTTON", { type: "button", class: cnButton }, [
+        rg.class("flex-1", s => !!s.flex1),
+        rg.text(s => s.text),
+        rg.on("click", s => s.onClick()),
+    ]);
+}
+
+const cnSequencerCell = sg.makeClass("sequencer-cell", [
+    `{ padding: 2px 10px }`
+]);
+
+
+function SequencerLineUI(rg: RenderGroup<{
+    lineIdx: number;
+    track: SequencerTrack;
+    state: SequencerState;
+    render(): void;
+}>) {
+
+    function handleHoverRow(lineIdx: number) {
+        const s = getState(rg);
+        s.state.currentHoveredLineIdx = lineIdx;
+        s.render();
+    }
+
+    function handleClickRow(lineIdx: number) {
+        const s = getState(rg);
+        s.state.currentSelectedLineIdx = lineIdx;
+        s.render();
+    }
+
+    function isLineSelected(state: SequencerState, row: number) {
+        return state.currentSelectedLineIdx === row;
+    }
+
+    function isLineHovered(state: SequencerState, row: number) {
+        return state.currentHoveredLineIdx === row;
+    }
+
+    let line: SequencerLine;
+    rg.preRenderFn((s) => {
+        line = s.track.lines[s.lineIdx];
+    });
+
+    return div({
+        class: "row",
+        style: "font-size: 20px; border: 1px solid var(--fg);"
+    }, [
+        rg.on("mouseenter", s => handleHoverRow(s.lineIdx)),
+        rg.on("mousedown", s => handleClickRow(s.lineIdx)),
+        rg.style("borderBottom", s => s.lineIdx === s.track.lines.length - 1 ? "1px solid var(--fg)" : "none"),
+        rg.style(
+            "backgroundColor",
+            s => isLineSelected(s.state, s.lineIdx) ? "var(--bg2)" :
+                isLineHovered(s.state, s.lineIdx) ? "var(--bg2)" : "",
+        ),
+        div({ class: cnSequencerCell }, rg.text((s) => "" + s.lineIdx)),
+        div({ class: "flex-1" }, [
+            rg.with(
+                s => line.comment,
+                rg => div({}, rg.text(s => s))
+            ),
+            rg.text(s => [
+                line.bpm === undefined ? "" : (line.bpm + " bpm"),
+                line.interval === undefined ? "" : ("1 / " + line.interval),
+            ].filter(s => !!s).join(" : ")),
+            () => {
+                function SequencerItemUI(rg: RenderGroup<{
+                    lineIdx: number;
+                    itemIdx: number;
+                    line: SequencerLine;
+                    state: SequencerState;
+                    render(): void;
+                }>) {
+                    function isLineItemSelected(state: SequencerState, row: number, col: number) {
+                        return state.currentSelectedLineIdx === row && state.currentSelectedItemIdx === col;
+                    }
+
+                    function isLineItemHovered(state: SequencerState, row: number, col: number) {
+                        return state.currentHoveredLineIdx === row && state.currentHoveredItemIdx === col;
+                    }
+
+                    let item: SequencerLineItem;
+                    rg.preRenderFn(s => item = s.line.items[s.itemIdx]);
+                    return span({ class: "inline-block", style: "padding: 4px; border: 1px solid var(--fg);" }, [
+                        rg.on("mouseenter", (s, e) => {
+                            e.stopImmediatePropagation();
+                            s.state.currentHoveredLineIdx = s.lineIdx;
+                            s.state.currentHoveredItemIdx = s.itemIdx;
+                            s.render();
+                        }),
+                        rg.style(
+                            "backgroundColor", 
+                            s => isLineItemSelected(s.state, s.lineIdx, s.itemIdx) ? "var(--mg)" :
+                                isLineItemHovered(s.state, s.lineIdx, s.itemIdx) ? "var(--mg)" :
+                                ""
+                        ),
+                        rg.text(s => {
+                            if (item.t === SEQ_ITEM.REST) {
+                                return ".";
+                            }
+
+                            if (item.t === SEQ_ITEM.HOLD) {
+                                return "_";
+                            }
+
+                            if (item.t === SEQ_ITEM.CHORD) {
+                                return item.notes.map(n => {
+                                    if (n.sample) return n.sample;
+                                    if (n.noteIndex) return getNoteText(n.noteIndex);
+                                    return "<???>";
+                                }).join(" ");
+                            }
+
+                            return "<????>";
+                        })
+                    ]);
+                }
+
+                const root =  div({ 
+                    class: "flex-wrap", 
+                    style: "padding: 10px; gap: 10px" 
+                });
+                return rg.list(root, SequencerItemUI, (getNext, s) => {
+                    for (let i = 0; i < line.items.length; i++) {
+                        getNext().render({ 
+                            lineIdx: s.lineIdx, itemIdx: i, line, state: s.state, render: s.render 
+                        });
+                    }
+                })
             }
+        ])
+    ]);
+}
 
-        },
-        releaseNote(note: MusicNote) {
-            const key = findKey(note);
-            if (key) {
-                releaseKey(key);
-            } else {
-                console.warn("the key for a note was not found: ", note);
+function SequencerTrackUI(rg: RenderGroup<{ track: number; state: SequencerState; render(): void; }>) {
+    return div({}, [
+        div({}, [
+            rg.text(s => "Track " + (s.track + 1)),
+        ]),
+        rg.list(div(), SequencerLineUI, (getNext, s) => {
+            const track = s.state.sequencerTracks[s.track];
+            for (let i = 0; i < track.lines.length; i++) {
+                getNext().render({ track, lineIdx: i, render: s.render, state: s.state });
             }
+        })
+    ]);
+}
 
-        },
-    }] as const;
+function Sequencer(rg: RenderGroup) {
+    function handleMouseLeave() {
+        const state = globalState.sequencer;
+        state.currentHoveredLineIdx = -1;
+        state.currentHoveredItemIdx = -1;
+        rg.renderWithCurrentState();
+    }
+
+    function handlePlay() {
+        // TODO: step through the sequence
+    }
+
+    return div({
+        class: "flex-1 col",
+        style: "padding: 10px",
+    }, [
+        div({ class: "row align-items-center", style: "padding:10px; gap: 10px;" }, [
+            "Sequencer",
+            // TODO: play btn, other action buttons
+            rg.c(Button, c => c.render({ text: "Play", onClick: handlePlay }))
+        ]),
+        rg.list(div({
+            class: "overflow-y-auto flex-1",
+        }, [
+            rg.on("mouseleave", handleMouseLeave),
+        ]), SequencerTrackUI, (getNext) => {
+            const { sequencerTracks } = globalState.sequencer;
+            for (let i = 0; i < sequencerTracks.length; i++) {
+                getNext().render({ track: i, state: globalState.sequencer, render: rg.renderWithCurrentState });
+            }
+        }),
+        // div({ class: "row" }, [
+        //     rg.c(Button, c => c.render({ text: "+ Notes", onClick: handleNewRowNotes, flex1: true })),
+        //     rg.c(Button, c => c.render({ text: "+ BPM", onClick: handleNewRowBpm, flex1: true })),
+        //     rg.c(Button, c => c.render({ text: "+ Subdivision", onClick: handleNewRowSubdivision, flex1: true })),
+        // ])
+    ]);
 }
 
 function App(rg: RenderGroup) {
@@ -411,22 +353,12 @@ function App(rg: RenderGroup) {
         }));
     }
 
-    const settings: DSPPlaySettings = {
-        attack: 0.01,
-        decay: 0.5,
-        sustainVolume: 0.5,
-        sustain: 0.25,
-    };
-
     let firstRender = false;
     rg.preRenderFn(() => {
         if (!firstRender) {
             firstRender = true;
-            audioLoopDispatch({ playSettings: settings });
         }
-    })
-
-    const [keyboard, keyboardHandle] = newComponent2(Keyboard);
+    });
 
     // TODO: automate playing some songs.
     // let on = false;
@@ -436,22 +368,132 @@ function App(rg: RenderGroup) {
     //             noteIndex: getNoteIndex("A", 4, false)
     //         });
     //     } else {
-    //         keyboardHandle.releaseNote({
+    //         keyboardHandle.releaseNote({main
     //             noteIndex: getNoteIndex("A", 4, false)
     //         });
     //     }
     //     on = !on;
     // }, 1000);
+    //
+    //
 
-    rg.postRenderFn(() => {
-        keyboard.render(null);
+    const currentlyPressedNotes: MusicNote[] = [];
+    function handleKeyDown(
+        key: string,
+        ctrlPressed: boolean,
+        shiftPressed: boolean,
+    ): boolean {
+        const sequencer = globalState.sequencer;
+
+        if (
+            key === "ArrowUp"
+            || key === "ArrowDown"
+        ) {
+            if (key === "ArrowUp") {
+                setCurrentLineIdx(sequencer, sequencer.currentSelectedLineIdx - 1);
+            } else if (key === "ArrowDown") {
+                setCurrentLineIdx(sequencer, sequencer.currentSelectedLineIdx + 1);
+            }
+            return true;
+        }
+
+        if (
+            key === "ArrowLeft"
+            || key === "ArrowRight"
+        ) {
+            if (key === "ArrowLeft") {
+                setCurrentItemIdx(sequencer, sequencer.currentSelectedItemIdx - 1);
+            } else if (key === "ArrowRight") {
+                setCurrentItemIdx(sequencer, sequencer.currentSelectedItemIdx + 1);
+            }
+            return true;
+        }
+
+        if (key === "Tab") {
+            insertNewLineItemAfter(sequencer);
+            return true;
+        }
+
+        if (key === "Enter" && shiftPressed) {
+            insertNewLineBelow(sequencer);
+            return true;
+        }
+
+        if (key === ">") {
+            setCurrentItemRest(sequencer);
+            return true;
+        }
+
+        if (key === "_") {
+            setCurrentItemHold(sequencer);
+            return true;
+        }
+
+        if (key === "Delete") {
+            deleteCurrentLineItem(sequencer);
+            return true;
+        }
+
+        const instrumentKey = globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
+        if (instrumentKey) {
+            pressKey(instrumentKey);
+            const note = instrumentKey.musicNote;
+            if (!currentlyPressedNotes.includes(note)) {
+                currentlyPressedNotes.push(note);
+            }
+            setCurrentItemChord(globalState.sequencer, currentlyPressedNotes);
+            return true;
+        }
+
+        return false;
+    }
+
+    document.addEventListener("keydown", (e) => {
+        if (e.repeat) {
+            return;
+        }
+
+        if (handleKeyDown(e.key, e.ctrlKey || e.metaKey, e.shiftKey)) {
+            e.preventDefault();
+            rerenderApp();
+        }
+    })
+
+    document.addEventListener("keyup", (e) => {
+        const key = globalState.flatKeys.find(k => k.keyboardKey === e.key.toLowerCase());
+        if (!key) {
+            return;
+        }
+
+        e.preventDefault();
+        releaseKey(key);
+        rerenderApp();
+        currentlyPressedNotes.splice(0, currentlyPressedNotes.length);
     });
 
+    document.addEventListener("blur", () => {
+        releaseAllKeys(globalState.flatKeys);
+        rerenderApp();
+    })
+
+    document.addEventListener("mousemove", () => {
+        globalState.sequencer.currentHoveredItemIdx = -1;
+        globalState.sequencer.currentHoveredLineIdx = -1;
+        rerenderApp();
+    });
+
+    window.addEventListener("resize", () => {
+        rerenderApp();
+    });
+
+
     return div({
-        class: "col absolute-fill",
+        class: "absolute-fill col",
         style: "position: fixed",
     }, [
-        div({ class: "flex-1" }),
+        div({ class: "col flex-1" }, [
+            rg.c(Sequencer, c => c.render(null))
+        ]),
         // newComponent(Description),
         // TODO: fix
         // newSliderTemplateFn("Attack", settings.attack, (val) => {
@@ -470,88 +512,25 @@ function App(rg: RenderGroup) {
         //     settings.sustain = val;
         //     audioLoopDispatch({ playSettings: settings });
         // }),
-        div({ class: "row justify-content-center" }, [
-            keyboard,
+        div({ class: "col justify-content-center flex-1" }, [
+            div({ class: "flex-1" }),
+            rg.c(Keyboard, c => c.render(null)),
         ])
     ])
 }
 
+const globalState = newGlobalState();
+
 const root = newInsertable(document.body);
 let app: Component<any, any> | undefined;
-const audioCtx = new AudioContext()
 function rerenderApp() {
     app?.render(null);
 }
 
-let dspPort: MessagePort | undefined;
-const dspInfo: DspInfo = { currentlyPlaying: [] };
-
-function getInfoBlock(id: number): [number, number] | undefined {
-    return dspInfo.currentlyPlaying.find(b => b[0] === id);
-}
-
-// This thing gets overwritten very frequently every second, but we probably want our ui to update instantly and not
-// within 1/10 of a second. this compromise is due to an inability to simply pull values from the dsp loop as needed - 
-// instead, the dsp loop has been configured to push it's relavant state very frequently. SMH.
-function getOrMakeInfoBlock(id: number): [number, number] {
-    const block = getInfoBlock(id);
-    if (block) return block;
-    const b: [number, number] = [id, 0];
-    dspInfo.currentlyPlaying.push(b);
-    return b;
-}
-
-function getCurrentOscillatorGain(id: number): number {
-    const block = getInfoBlock(id);
-    if (!block) {
-        return 0;
-    }
-    return block[1];
-}
-
-
-
-function audioLoopDispatch(message: DspLoopMessage) {
-    if (!dspPort) {
-        return;
-    }
-
-    dspPort.postMessage(message);
-}
-
-function resumeAudio() {
-    // the audio context can only be started in response to a user gesture.
-    audioCtx.resume().catch(console.error);
-}
-
 // initialize the app.
 (async () => {
-    // registers the DSP loop. we must communicate with this thread through a Port thinggy
-    await audioCtx.audioWorklet.addModule(dspLoopWorkerUrl);
-    const dspLoopNode = new AudioWorkletNode(audioCtx, "dsp-loop");
-    dspLoopNode.onprocessorerror = (e) => {
-        console.error("dsp process error:", e);
-    }
-    dspLoopNode.connect(audioCtx.destination);
-
-    dspPort = dspLoopNode.port;
-
-    // I'm surprized this isn't a memory leak...
-    // but yeah this will literally create a new array and serialize it over
-    // some port several times a second just so we know what the current
-    // 'pressed' state of one of the notes is.
-    const frequency = 1000 / 20;
-    // const frequency = 1000 / 60; //  too much cpu heat 
-    setInterval(() => {
-        audioLoopDispatch(1337);
-    }, frequency);
-
-    dspPort.onmessage = ((e) => {
-        const data = e.data as DspLoopEventNotification;
-        if (data.currentlyPlaying) {
-            dspInfo.currentlyPlaying = data.currentlyPlaying;
-            rerenderApp();
-        }
+    await initDspLoopInterface({
+        onCurrentPlayingChanged: rerenderApp
     });
 
     // Our code only works after the audio context has loaded.
@@ -559,7 +538,3 @@ function resumeAudio() {
     appendChild(root, app);
     rerenderApp();
 })();
-
-window.addEventListener("resize", () => {
-    rerenderApp();
-});

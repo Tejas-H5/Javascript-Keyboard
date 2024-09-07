@@ -1,3 +1,7 @@
+// NOTE: this file will be imported dynamically and registered as a module in the
+// web audio API to later be used by an audio worklet node. Don't put random shit in here,
+// put it in dsp-loop-interface.ts instead.
+
 import { getSampleArray } from "./samples";
 import { filterInPlace } from "./utils/array-utils";
 import { max, moveTowards } from "./utils/math-utils";
@@ -189,7 +193,7 @@ class DSPLoop extends AudioWorkletProcessor {
         // This discontinuity can be heard as a 'click' sound and is super hard to debug.
         // Another synth project of mine still has this bug. I didn't find it till now lmao
         this.playingOscillatorsContinuousCount = moveTowards(this.playingOscillatorsContinuousCount, count, 1000 / sampleRate)
-        return 5 * sample / max(1, this.playingOscillatorsContinuousCount);
+        return sample / max(1, this.playingOscillatorsContinuousCount);
     }
 
     process(
@@ -296,6 +300,7 @@ class DSPLoop extends AudioWorkletProcessor {
             const [ id, inputs ] = e.setOscilatorSignal;
             const osc = this.getPlayingOscillator(id);
             osc.inputs = inputs;
+            osc.state.awakeTime = 0;
         }
         if (e.playSample) {
             const [ id, inputs ] = e.playSample;
