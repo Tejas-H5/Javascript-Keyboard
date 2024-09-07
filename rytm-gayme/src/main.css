@@ -4,14 +4,17 @@
     --mg: #888;
     --fg2: #333;
     --fg: #000;
+
+    /* TODO: use rem relative units */
+    --normal: 18px;
+    --small: 14px;
+    --medium: 36px;
 }
 
 .inverted {
     color: var(--bg);
     background: var(--fg);
 }
-
-.md { font-size: 36px; }
 
 body {
     font-family: monospace;

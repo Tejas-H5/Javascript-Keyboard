@@ -16,10 +16,12 @@ export const SEQ_ITEM = {
     HOLD: 3,
 } as const;
 
-export type SequencerLineItem = {
+type ChordItem = {
     t: typeof SEQ_ITEM.CHORD; // press this chord, play these samples, wait 1 interval
     notes: MusicNote[];
-} | {
+};
+
+export type SequencerLineItem = ChordItem | {
     t: typeof SEQ_ITEM.REST  // release the last chord, wait 1 interval
     | typeof SEQ_ITEM.HOLD;   // keep holding down the las chord, wait 1 interval
 };
@@ -28,7 +30,7 @@ export type SequencerLine = {
     // These are also set for every following line as well.
     comment: string | undefined;
     bpm: number | undefined;
-    interval: number | undefined;
+    division: number | undefined;
 
     items: SequencerLineItem[];
 }
@@ -47,16 +49,21 @@ export function getCurrentTrack(state: SequencerState): SequencerTrack {
     return state.sequencerTracks[state.currentSelectedTrackIdx];
 }
 
+
+function newDefaultLine(): SequencerLine {
+    return {
+        bpm: 120,
+        comment: "",
+        division: 4,
+        items: [{ t: SEQ_ITEM.REST }],
+    };
+}
+
 export function getCurrentLine(state: SequencerState): SequencerLine {
     const track = getCurrentTrack(state);
 
     if (state.currentSelectedLineIdx === track.lines.length) {
-        track.lines.push({
-            bpm: 120,
-            comment: "The first line",
-            interval: 4,
-            items: [],
-        });
+        track.lines.push(newDefaultLine());
     }
 
     const line = track.lines[state.currentSelectedLineIdx];
@@ -92,6 +99,16 @@ export function setCurrentItemChord(state: SequencerState, notes: MusicNote[]) {
         t: SEQ_ITEM.CHORD,
         notes: sortNotes(deepCopyJSONSerializable(notes)),
     };
+}
+
+export function getKeyForMusicNoteIndex(state: GlobalState, idx: number): InstrumentKey | undefined {
+    return state.flatKeys.find(k => k.musicNote.noteIndex === idx);
+}
+
+export function getKeyForNote(state: GlobalState, note: MusicNote): InstrumentKey | undefined {
+    if (note.sample) return state.flatKeys.find(k => k.musicNote.sample === note.sample);
+    if (note.noteIndex) return getKeyForMusicNoteIndex(state, note.noteIndex);
+    return undefined;
 }
 
 function sortNotes(notes: MusicNote[]) {
@@ -147,6 +164,44 @@ export function deleteCurrentLine(state: SequencerState) {
     }
 }
 
+export function getLineDivision(track: SequencerTrack, lineIdx: number) {
+    for (let i = lineIdx; i >= 0; i--) {
+        const line = track.lines[i];
+        if (line.division) {
+            return line.division;
+        }
+    }
+
+    return 4;
+}
+
+export function getLastChord(track: SequencerTrack, lineIdx: number, itemIdx: number): ChordItem | undefined {
+    for (let l = lineIdx; l >= 0; l--) {
+        for (let i = itemIdx; i >= 0; i--) {
+            const line = track.lines[l];
+            const item = line.items[i];
+
+            if (item.t === SEQ_ITEM.CHORD) {
+                return item;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+export function getLineBpm(track: SequencerTrack, lineIdx: number) {
+    for (let i = lineIdx; i >= 0; i--) {
+        const line = track.lines[i];
+        if (line.bpm) {
+            return line.bpm;
+        }
+    }
+
+    return 120;
+}
+
+
 export function deleteCurrentLineItem(state: SequencerState) {
     const line = getCurrentLine(state);
     if (line.items.length === 1 && state.currentSelectedItemIdx === 0) {
@@ -163,12 +218,7 @@ export function deleteCurrentLineItem(state: SequencerState) {
 export function addNewLine(state: SequencerState) {
     const track = getCurrentTrack(state);
     const newTrackIdx = state.currentSelectedLineIdx + 1;
-    track.lines.splice(newTrackIdx, 0, {
-        comment: undefined,
-        bpm: undefined,
-        interval: undefined,
-        items: [newRestItem()],
-    });
+    track.lines.splice(newTrackIdx, 0, newDefaultLine());
     setCurrentLineIdx(state, newTrackIdx);
 }
 
@@ -176,9 +226,18 @@ export type SequencerState = {
     sequencerTracks: SequencerTrack[];
     currentSelectedTrackIdx: number;
     currentSelectedLineIdx: number;
-    currentHoveredLineIdx: number;
     currentSelectedItemIdx: number;
+    currentHoveredLineIdx: number;
     currentHoveredItemIdx: number;
+
+
+    lastPlayingTrackIdx: number;
+    lastPlayingLineIdx: number;
+    lastPlayingItemIdx: number;
+    currentPlayingTrackIdx: number;
+    currentPlayingLineIdx: number;
+    currentPlayingItemIdx: number;
+    playingToSelected: boolean;
 };
 
 export type GlobalState = {
@@ -272,6 +331,13 @@ export function newGlobalState(): GlobalState {
         currentSelectedTrackIdx: 0,
         currentSelectedLineIdx: 0,
         currentSelectedItemIdx: 0,
+        lastPlayingItemIdx: 0,
+        lastPlayingLineIdx: 0,
+        lastPlayingTrackIdx: 0,
+        currentPlayingItemIdx: 0,
+        currentPlayingLineIdx: 0,
+        currentPlayingTrackIdx: 0,
+        playingToSelected: true,
         currentHoveredLineIdx: -1,
         currentHoveredItemIdx: -1,
     };
@@ -282,15 +348,3 @@ export function newGlobalState(): GlobalState {
         sequencer,
     };
 }
-
-
-function findKey(state: GlobalState, note: MusicNote): InstrumentKey | undefined {
-    if (note.sample) {
-        return state.flatKeys.find(k => k.musicNote.sample === note.sample);
-    } else if (note.noteIndex) {
-        return state.flatKeys.find(k => k.musicNote.noteIndex === note.noteIndex);
-    } else {
-        throw new Error("music note was empty!");
-    }
-}
-

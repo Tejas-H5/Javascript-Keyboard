@@ -49,6 +49,8 @@ export function getCurrentOscillatorGain(id: number): number {
     return block[1];
 }
 
+export const currentPressedNoteIndexes = new Set<number>();
+
 export function pressKey(k: InstrumentKey) {
     resumeAudio();
 
@@ -57,6 +59,7 @@ export function pressKey(k: InstrumentKey) {
     if (k.musicNote.sample) {
         audioLoopDispatch({ playSample: [k.index, { sample: k.musicNote.sample }] })
     } else if (k.musicNote.noteIndex) {
+        currentPressedNoteIndexes.add(k.musicNote.noteIndex);
         const frequency = getNoteFrequency(k.musicNote.noteIndex);
         audioLoopDispatch({ setOscilatorSignal: [k.index, { frequency, signal: 1 }] })
     } else {
@@ -69,6 +72,7 @@ export function releaseKey(k: InstrumentKey) {
         // do nothing
     } else if (k.musicNote.noteIndex) {
         const frequency = getNoteFrequency(k.musicNote.noteIndex);
+        currentPressedNoteIndexes.delete(k.musicNote.noteIndex);
         audioLoopDispatch({ setOscilatorSignal: [k.index, { frequency, signal: 0 }] })
     }
 }
