@@ -6,6 +6,7 @@ import { getSampleArray } from "./samples";
 import { filterInPlace } from "./utils/array-utils";
 import { max, moveTowards } from "./utils/math-utils";
 
+
 const OSC_GAIN_AWAKE_THRESHOLD = 0.001;
 
 type PlayingOscillator = {
@@ -193,7 +194,7 @@ class DSPLoop extends AudioWorkletProcessor {
         // This discontinuity can be heard as a 'click' sound and is super hard to debug.
         // Another synth project of mine still has this bug. I didn't find it till now lmao
         this.playingOscillatorsContinuousCount = moveTowards(this.playingOscillatorsContinuousCount, count, 1000 / sampleRate)
-        return sample / max(1, this.playingOscillatorsContinuousCount);
+        return sample / Math.max(1, this.playingOscillatorsContinuousCount);
     }
 
     process(

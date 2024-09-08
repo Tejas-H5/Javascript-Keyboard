@@ -1,11 +1,12 @@
+import { Button } from "src/components/button";
 import "src/css/layout.css";
-import { appendChild, Component, div, el, getState, newComponent, newInsertable, newStyleGenerator, RenderGroup, setCssVars, span } from "src/utils/dom-utils";
+import { appendChild, Component, div, el, getState, isEditingTextSomewhereInDocument, newComponent, newInsertable, RenderGroup, setChildAtEl, setCssVars, setInputValue, span } from "src/utils/dom-utils";
 import { currentPressedNoteIndexes, getCurrentOscillatorGain, initDspLoopInterface, pressKey, releaseAllKeys, releaseKey } from "./dsp-loop-interface";
 import "./main.css";
-import { addNewLine as insertNewLineBelow, insertNewLineItemAfter, InstrumentKey, newGlobalState, SEQ_ITEM, SequencerLine, SequencerState, SequencerTrack, SequencerLineItem, setCurrentItemChord, setCurrentItemIdx, setCurrentLineIdx, setCurrentItemRest, setCurrentItemHold, deleteCurrentLineItem, getCurrentLine, getLineBpm, getLineDivision, getCurrentTrack, getLastChord, getKeyForNote, getKeyForMusicNoteIndex } from "./state";
-import { bpmToInterval, getNoteText, MusicNote } from "./utils/music-theory-utils";
-
-const sg = newStyleGenerator();
+import { Sequencer } from "./sequencer";
+import { deleteCurrentLineItemRange, getCurrentLine, getCurrentLineItem, getCurrentTrack, getItemSelectionRange, getKeyForMusicNoteIndex, getKeyForNote, getLineSelectionRange, hasItemRangeSelect, hasLineRangeSelect, indexOfNextLineItem, indexOfPrevLineItem, insertNewLineAfter, insertNewLineItemAfter, InstrumentKey, moveUpOrDownALine, newGlobalState, SEQ_ITEM, SequencerLine, SequencerLineItem, setCurrentItemChord, setCurrentItemHold, setCurrentItemIdx, setCurrentLineIdx, setIsRangeSelecting } from "./state";
+import { clamp } from "./utils/math-utils";
+import { bpmToInterval, MusicNote } from "./utils/music-theory-utils";
 
 // all util styles
 
@@ -89,7 +90,7 @@ function Keyboard(rg: RenderGroup) {
             ]);
         }
 
-        return div({ class: "row", style: "gap: 5px; margin-top: 5px;" }, [
+        return div({ class: "row", style: "gap: 5px;" }, [
             div({}, [
                 rg.style("width", s => (s.startOffset * s.keySize) + "px"),
             ]),
@@ -120,11 +121,12 @@ function Keyboard(rg: RenderGroup) {
             maxOffset = Math.max(maxOffset, computedOffset);
         }
 
-        const width = root.el.clientWidth;
-        // const height = root.el.clientHeight;
+        const parent = root.el.parentElement!;
+        const width = parent.clientWidth;
+        const height = parent.clientHeight;
         const keySize = Math.min(
             width / maxOffset,
-            // height / (2 * keys.length)
+            height / (globalState.keys.length),
         )
 
         for (let i = 0; i < globalState.keys.length; i++) {
@@ -138,237 +140,65 @@ function Keyboard(rg: RenderGroup) {
     });
 }
 
-const cnButton = sg.makeClass("button", [
-    `{
-        all: unset; background-color: var(--bg); user-select: none; cursor: pointer; padding: 4px; text-align: center; 
-        border: 1px solid var(--fg); 
-     }`,
-    `:hover { background-color: var(--bg2);  } `,
-    `:active { background-color: var(--fg); color: var(--bg);  } `,
-]);
-
-function Button(rg: RenderGroup<{ 
-    text: string; 
-    onClick(): void; 
-    flex1?: boolean; 
-    toggled?: boolean; 
-}>) {
-    return el("BUTTON", { type: "button", class: cnButton }, [
-        rg.class("flex-1", s => !!s.flex1),
-        rg.style("backgroundColor", s => s.toggled ? "var(--fg)" : ""),
-        rg.style("color", s => s.toggled ? "var(--bg)" : ""),
-        rg.on("click", s => s.onClick()),
-        rg.text(s => s.text),
-    ]);
-}
-
-const cnSequencerCell = sg.makeClass("sequencer-cell", [
-    `{ padding: 2px 10px }`
-]);
-
-
-function SequencerLineUI(rg: RenderGroup<{
-    lineIdx: number;
-    track: SequencerTrack;
-    state: SequencerState;
-    render(): void;
-}>) {
-
-    function handleHoverRow(lineIdx: number) {
-        const s = getState(rg);
-        s.state.currentHoveredLineIdx = lineIdx;
-        s.render();
-    }
-
-    function handleClickRow(lineIdx: number) {
-        const s = getState(rg);
-        s.state.currentSelectedLineIdx = lineIdx;
-        s.render();
-    }
-
-    function isLineSelected(state: SequencerState, row: number) {
-        return state.currentSelectedLineIdx === row;
-    }
-
-    function isLineHovered(state: SequencerState, row: number) {
-        return state.currentHoveredLineIdx === row;
-    }
-
-    let line: SequencerLine;
-    rg.preRenderFn((s) => {
-        line = s.track.lines[s.lineIdx];
-    });
-
-    return div({
-        class: "row",
-        style: "font-size: 20px; border: 1px solid var(--fg);"
-    }, [
-        rg.on("mouseenter", s => handleHoverRow(s.lineIdx)),
-        rg.on("mousedown", s => handleClickRow(s.lineIdx)),
-        rg.style("borderBottom", s => s.lineIdx === s.track.lines.length - 1 ? "1px solid var(--fg)" : "none"),
-        rg.style(
-            "backgroundColor",
-            s => isLineSelected(s.state, s.lineIdx) ? "var(--bg2)" :
-                isLineHovered(s.state, s.lineIdx) ? "var(--bg2)" : "",
-        ),
-        div({ class: cnSequencerCell }, rg.text((s) => "" + s.lineIdx)),
-        div({ class: "flex-1" }, [
-            div({ style: "font-size: var(--small)"}, [
-                rg.if(
-                    s => line.comment === undefined,
-                    rg => rg.c(Button, c => c.render({
-                        text: "Comment",
-                        onClick() {
-                            const s = getState(rg);
-                            if (line.comment === undefined) {
-                                line.comment = ""
-                                s.render();
-                            }
-                        },
-                    }))
-                ),
-                rg.c(Button, c => c.render({
-                    text: "BPM",
-                    toggled: !!line.bpm,
-                    onClick() {
-                        const s = getState(rg);
-                        if (line.bpm === undefined) {
-                            line.bpm = getLineBpm(s.track, s.lineIdx);
-                        } else {
-                            line.bpm = undefined;
-                        }
-                        s.render();
-                    },
-                })),
-                rg.c(Button, c => c.render({
-                    text: "Interval",
-                    toggled: !!line.division,
-                    onClick() {
-                        const s = getState(rg);
-                        if (line.division === undefined) {
-                            line.division = getLineDivision(s.track, s.lineIdx);
-                        } else {
-                            line.division = undefined;
-                        }
-                        s.render();
-                    },
-                })),
-                rg.with(
-                    s => line.comment,
-                    rg => div({ class: "text-align-center" }, rg.text(s => s))
-                ),
-                rg.text(s => [
-                    line.bpm === undefined ? "" : (line.bpm + " bpm"),
-                    line.division === undefined ? "" : ("1 / " + line.division),
-                ].filter(s => !!s).join(" : ")),
-            ]),
-            () => {
-                function SequencerItemUI(rg: RenderGroup<{
-                    lineIdx: number;
-                    itemIdx: number;
-                    line: SequencerLine;
-                    state: SequencerState;
-                    render(): void;
-                }>) {
-                    function isLineItemPlaying(state: SequencerState, row: number, col: number) {
-                        if (playingTimeout === 0) {
-                            return false;
-                        }
-
-                        return state.lastPlayingLineIdx === row 
-                                && state.lastPlayingItemIdx === col;
-                    }
-
-                    function isLineItemSelected(state: SequencerState, row: number, col: number) {
-                        return state.currentSelectedLineIdx === row
-                                && state.currentSelectedItemIdx === col;
-                    }
-
-                    function isLineItemHovered(state: SequencerState, row: number, col: number) {
-                        return state.currentHoveredLineIdx === row 
-                                && state.currentHoveredItemIdx === col;
-                    }
-
-                    let item: SequencerLineItem;
-                    rg.preRenderFn(s => item = s.line.items[s.itemIdx]);
-                    return span({ class: "inline-block", style: "padding: 4px; border: 1px solid var(--fg);" }, [
-                        rg.on("mouseenter", (s, e) => {
-                            e.stopImmediatePropagation();
-                            s.state.currentHoveredLineIdx = s.lineIdx;
-                            s.state.currentHoveredItemIdx = s.itemIdx;
-                            s.render();
-                        }),
-                        rg.style(
-                            "backgroundColor", 
-                            s => isLineItemPlaying(s.state, s.lineIdx, s.itemIdx) ? "#00F" :
-                                isLineItemSelected(s.state, s.lineIdx, s.itemIdx) ? "var(--mg)" :
-                                isLineItemHovered(s.state, s.lineIdx, s.itemIdx) ? "var(--mg)" :
-                                ""
-                        ),
-                        rg.style(
-                            "color",
-                            s => isLineItemPlaying(s.state, s.lineIdx, s.itemIdx) ? "#FFF" : ""
-                        ),
-                        rg.text(s => {
-                            if (item.t === SEQ_ITEM.REST) {
-                                return ".";
-                            }
-
-                            if (item.t === SEQ_ITEM.HOLD) {
-                                return "_";
-                            }
-
-                            if (item.t === SEQ_ITEM.CHORD) {
-                                return item.notes.map(n => {
-                                    if (n.sample) return n.sample;
-                                    if (n.noteIndex) return getNoteText(n.noteIndex);
-                                    return "<???>";
-                                }).join(" ");
-                            }
-
-                            return "<????>";
-                        })
-                    ]);
-                }
-
-                const root =  div({ 
-                    class: "flex-wrap", 
-                    style: "padding: 10px; gap: 10px" 
-                });
-                return rg.list(root, SequencerItemUI, (getNext, s) => {
-                    for (let i = 0; i < line.items.length; i++) {
-                        getNext().render({ 
-                            lineIdx: s.lineIdx, itemIdx: i, line, state: s.state, render: s.render 
-                        });
-                    }
-                })
-            }
-        ])
-    ]);
-}
-
 let playingTimeout = 0;
 let reachedLastNote = false;
-
 function stopPlaying() {
     clearTimeout(playingTimeout);
     releaseAllKeys(globalState.flatKeys);
+    globalState.sequencer.lastPlayingLineIdx = -1;
+    globalState.sequencer.lastPlayingItemIdx = -1;
     playingTimeout = 0;
+    reachedLastNote = false;
 }
 
-// right now we only have 1 track, more to come though
-function playLineToSelected() {
-    clearTimeout(playingTimeout);
-
-    stopPlaying();
-
+function playToSelection() {
     const sequencer = globalState.sequencer;
-    sequencer.currentPlayingLineIdx = globalState.sequencer.currentSelectedLineIdx;
-    sequencer.currentPlayingItemIdx = 0;
-    sequencer.currentPlayingTrackIdx = 0;
-    reachedLastNote = false;
 
-    releaseAllKeys(globalState.flatKeys);
+    if (hasLineRangeSelect(sequencer)) {
+        const [start, end] = getLineSelectionRange(sequencer);
+        const track = getCurrentTrack(sequencer);
+        const endLine = track.lines[end];
+
+        sequencer.currentPlayingLineIdx = start;
+        sequencer.currentPlayingEndLineIdx = end;
+        sequencer.currentPlayingItemIdx = 0;
+        sequencer.currentPlayingEndItemIdx = endLine.items.length - 1;
+
+        sequencer.currentPlayingTrackIdx = 0;
+    } else if (hasItemRangeSelect(sequencer)) {
+        const [start, end] = getItemSelectionRange(sequencer);
+        sequencer.currentPlayingLineIdx = sequencer.currentSelectedLineIdx;
+        sequencer.currentPlayingEndLineIdx = sequencer.currentSelectedLineIdx;
+        sequencer.currentPlayingItemIdx = start;
+        sequencer.currentPlayingEndItemIdx = end;
+    } else {
+        sequencer.currentPlayingLineIdx = sequencer.currentSelectedLineIdx;
+        sequencer.currentPlayingEndLineIdx = sequencer.currentSelectedLineIdx;
+        sequencer.currentPlayingItemIdx = 0;
+        sequencer.currentPlayingEndItemIdx = sequencer.currentSelectedItemIdx;
+
+        sequencer.currentPlayingTrackIdx = 0;
+    }
+
+
+    startPlaying();
+}
+
+function playAll() {
+    const sequencer = globalState.sequencer;
+
+    sequencer.currentPlayingLineIdx = 0;
+    sequencer.currentPlayingEndLineIdx = 9999999999;
+    sequencer.currentPlayingItemIdx = 0;
+    sequencer.currentPlayingEndItemIdx = 9999999999;
+    
+    sequencer.currentPlayingTrackIdx = 0;
+
+    startPlaying();
+}
+
+function startPlaying() {
+    stopPlaying();
 
     function recursiveTimeout() {
         // JavaScript we have `defer` at home meme
@@ -437,8 +267,8 @@ function playLineToSelected() {
             // keep the keys that were pressed last. in other words, do nothing
         }
 
-        const bpm = getLineBpm(track, sequencer.currentPlayingLineIdx);
-        const division = getLineDivision(track, sequencer.currentPlayingLineIdx);
+        const bpm = line.bpm;
+        const division = line.division;
         const time = bpmToInterval(bpm, division);
 
         // the playback visuals need to be for the note we just played, not the incremented note.
@@ -455,9 +285,8 @@ function playLineToSelected() {
         if (
             !track.lines[sequencer.currentPlayingLineIdx]
             || (
-                sequencer.playingToSelected
-                && sequencer.lastPlayingLineIdx === globalState.sequencer.currentSelectedLineIdx 
-                && sequencer.lastPlayingItemIdx === globalState.sequencer.currentSelectedItemIdx
+                sequencer.lastPlayingLineIdx === globalState.sequencer.currentPlayingEndLineIdx
+                && sequencer.lastPlayingItemIdx === globalState.sequencer.currentPlayingEndItemIdx
             )
         ) {
             reachedLastNote = true;
@@ -471,57 +300,109 @@ function playLineToSelected() {
     recursiveTimeout();
 }
 
-function SequencerTrackUI(rg: RenderGroup<{ track: number; state: SequencerState; render(): void; }>) {
-    return div({}, [
-        div({}, [
-            rg.text(s => "Track " + (s.track + 1)),
+
+let loadSaveSidebarOpen = false;
+let loadSaveCurrentSelection = "";
+
+function moveLoadSaveSelection(amount: number) {
+    const keys = Object.keys(allSavedSongs);
+    const idx = keys.indexOf(loadSaveCurrentSelection);
+    if (idx === -1) {
+        loadSaveCurrentSelection = keys[0];
+        return;
+    }
+
+    const newIdx = clamp(idx + amount, 0, keys.length - 1);
+    loadSaveCurrentSelection = keys[newIdx];
+}
+
+function getCurrentSelectedSequenceName() {
+    return loadSaveCurrentSelection;
+}
+
+function loadCurrentSelectedSequence() {
+    const key = getCurrentSelectedSequenceName();
+    if (!allSavedSongs[key]) {
+        return;
+    }
+
+    globalState.sequencer.sequencerTracks = JSON.parse(allSavedSongs[key]);
+}
+
+function LoadSavePanel(rg: RenderGroup) {
+    function Item(rg: RenderGroup<{ name: string; }>) {
+        return div({}, [
+            rg.text(s => s.name),
+            rg.style("backgroundColor", s => s.name === getCurrentSelectedSequenceName() ? "var(--bg2)" : ""),
+            rg.on("click", s => {
+                setInputValue(input, s.name);
+                rerenderApp();
+            })
+        ]);
+    }
+
+    const input = el<HTMLInputElement>("INPUT", { style: "width: 100%", placeholder: "enter name here" }, [
+        rg.on("input", () => {
+            loadSaveCurrentSelection = input.el.value;
+            rerenderApp();
+        })
+    ]);
+
+    rg.preRenderFn(() => {
+        setInputValue(input, getCurrentSelectedSequenceName());
+    });
+
+    return div({ style: "width: 33vw" }, [
+        div({ class: "row", style: "gap: 10px" }, [
+            // dont want to accidentally load over my work. smh.
+            rg.if(
+                s => (getCurrentSelectedSequenceName() in allSavedSongs),
+                rg => rg.c(Button, c => c.render({
+                    text: "Load",
+                    onClick() {
+                        loadCurrentSelectedSequence();
+                        rerenderApp();
+                    }
+                })),
+            ),
+            input,
+            rg.if(
+                s => !!getCurrentSelectedSequenceName(),
+                rg => rg.c(Button, c => c.render({
+                    text: "Save",
+                    onClick() {
+                        const key = getCurrentSelectedSequenceName();
+                        allSavedSongs[key] = JSON.stringify(globalState.sequencer.sequencerTracks);
+                        save();
+                        rerenderApp();
+                    }
+                })),
+            )
         ]),
-        rg.list(div(), SequencerLineUI, (getNext, s) => {
-            const track = s.state.sequencerTracks[s.track];
-            for (let i = 0; i < track.lines.length; i++) {
-                getNext().render({ track, lineIdx: i, render: s.render, state: s.state });
+        rg.list(div(), Item, (getNext) => {
+            for (const key in allSavedSongs) {
+                getNext().render({ name: key });
             }
         })
     ]);
 }
 
-function Sequencer(rg: RenderGroup) {
-    function handleMouseLeave() {
-        const state = globalState.sequencer;
-        state.currentHoveredLineIdx = -1;
-        state.currentHoveredItemIdx = -1;
-        rg.renderWithCurrentState();
-    }
+// TODO: polish. right now it's only good for local dev
+let saveStateTimeout = 0;
+function saveStateDebounced() {
+    clearTimeout(saveStateTimeout);
+    saveStateTimeout = setTimeout(() => {
+        save();
+    }, 100);
+}
 
-    function handlePlay() {
-        // TODO: step through the sequence
-    }
+let copiedItems: SequencerLineItem[] = [];
+let copiedLines: SequencerLine[] = [];
 
-    return div({
-        class: "flex-1 col",
-        style: "padding: 10px",
-    }, [
-        div({ class: "row align-items-center", style: "padding:10px; gap: 10px;" }, [
-            "Sequencer",
-            // TODO: play btn, other action buttons
-            rg.c(Button, c => c.render({ text: "Play", onClick: handlePlay }))
-        ]),
-        rg.list(div({
-            class: "overflow-y-auto flex-1",
-        }, [
-            rg.on("mouseleave", handleMouseLeave),
-        ]), SequencerTrackUI, (getNext) => {
-            const { sequencerTracks } = globalState.sequencer;
-            for (let i = 0; i < sequencerTracks.length; i++) {
-                getNext().render({ track: i, state: globalState.sequencer, render: rg.renderWithCurrentState });
-            }
-        }),
-        // div({ class: "row" }, [
-        //     rg.c(Button, c => c.render({ text: "+ Notes", onClick: handleNewRowNotes, flex1: true })),
-        //     rg.c(Button, c => c.render({ text: "+ BPM", onClick: handleNewRowBpm, flex1: true })),
-        //     rg.c(Button, c => c.render({ text: "+ Subdivision", onClick: handleNewRowSubdivision, flex1: true })),
-        // ])
-    ]);
+function save() {
+    const currentTracks = JSON.stringify(globalState.sequencer.sequencerTracks);
+    allSavedSongs["autosaved"] = currentTracks;
+    localStorage.setItem("allSavedSongs", JSON.stringify(allSavedSongs));
 }
 
 function App(rg: RenderGroup) {
@@ -569,85 +450,214 @@ function App(rg: RenderGroup) {
         shiftPressed: boolean,
         repeat: boolean
     ): boolean {
+        if (isEditingTextSomewhereInDocument()) {
+            return false;
+        }
+
+        if (key === "I" && ctrlPressed && shiftPressed) {
+            // allow inspecting the element
+            return false;
+        }
+
+        if (key === "R" && ctrlPressed) {
+            // allow refreshing page
+            return false;
+        }
+
         const sequencer = globalState.sequencer;
 
-        if (
-            key === "ArrowUp"
-            || key === "ArrowDown"
-        ) {
-            if (key === "ArrowUp") {
-                setCurrentLineIdx(sequencer, sequencer.currentSelectedLineIdx - 1);
-            } else if (key === "ArrowDown") {
-                setCurrentLineIdx(sequencer, sequencer.currentSelectedLineIdx + 1);
-            }
+        if (key === "Shift" && !repeat && !ctrlPressed) {
+            setIsRangeSelecting(sequencer, true);
             return true;
         }
 
-        if (
-            key === "ArrowLeft"
-            || key === "ArrowRight"
-        ) {
-            if (key === "ArrowLeft") {
-                setCurrentItemIdx(sequencer, sequencer.currentSelectedItemIdx - 1);
-            } else if (key === "ArrowRight") {
-                setCurrentItemIdx(sequencer, sequencer.currentSelectedItemIdx + 1);
-            }
+        let vAxis = 0;
+        if (key === "ArrowUp") {
+            vAxis = -1;
+        } else if (key === "ArrowDown") {
+            vAxis = 1;
+        }
+
+        if (key === "S" && ctrlPressed && shiftPressed) {
+            loadSaveSidebarOpen = !loadSaveSidebarOpen;
             return true;
+        }
+
+        if (loadSaveSidebarOpen) {
+            if (vAxis !== 0) {
+                moveLoadSaveSelection(vAxis);
+                return true;
+            }
+
+            if (key === "Enter") {
+                loadCurrentSelectedSequence();
+                playAll();
+                return true;
+            }
+
+            if (key === "Escape") {
+                loadSaveSidebarOpen = false;
+                stopPlaying();
+                return true;
+            }
+
+            if (key === "Delete") {
+                const name = getCurrentSelectedSequenceName();
+                if (name in allSavedSongs) {
+                    // TODO: real UI
+                    if (confirm("You sure you want to delete " + name)) {
+                        delete allSavedSongs[name];
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        } 
+
+        if (vAxis !== 0) {
+            // doesn't handle wrapping correctly.
+            // setCurrentLineIdx(sequencer, sequencer.currentSelectedLineIdx + vAxis);
+            moveUpOrDownALine(sequencer, vAxis);
+            return true;
+        }
+
+        const line = getCurrentLine(sequencer);
+        if (ctrlPressed) {
+            if (key === "ArrowLeft") {
+                let idx = indexOfPrevLineItem(sequencer, i => i.t === SEQ_ITEM.CHORD);
+                if (idx === -1) { idx = 0; }
+                setCurrentItemIdx(sequencer, idx);
+                return true;
+            } else if (key === "ArrowRight") {
+                let idx = indexOfNextLineItem(sequencer, i => i.t === SEQ_ITEM.CHORD);
+                if (idx === -1) { idx = line.items.length - 1; }
+                setCurrentItemIdx(sequencer, idx);
+                return true;
+            }
+        }
+
+        if (key === "ArrowLeft") {
+            setCurrentItemIdx(sequencer, sequencer.currentSelectedItemIdx - 1);
+            return true;
+        } else if (key === "ArrowRight") {
+            setCurrentItemIdx(sequencer, sequencer.currentSelectedItemIdx + 1);
+            return true;
+        }
+
+        if (key === "Delete") {
+            deleteCurrentLineItemRange(sequencer);
+            return true;
+        }
+
+        if (repeat) {
+            return false;
         }
 
         if (key === "Tab") {
             insertNewLineItemAfter(sequencer);
+            saveStateDebounced();
+            return true;
+        }
+
+        if (key === "_") {
+            insertNewLineItemAfter(sequencer);
+            setCurrentItemHold(sequencer);
+            saveStateDebounced();
             return true;
         }
 
         if (key === "Enter" && shiftPressed) {
-            insertNewLineBelow(sequencer);
+            insertNewLineAfter(sequencer);
+            saveStateDebounced();
             return true;
         }
 
         if (key === "Home") {
-            sequencer.currentSelectedItemIdx = 0;
+            setCurrentItemIdx(sequencer, 0);
             return true;
         }
 
         if (key === "End") {
             const line = getCurrentLine(sequencer);
-            sequencer.currentSelectedItemIdx = line.items.length - 1;
+            setCurrentItemIdx(sequencer, line.items.length - 1);
             return true;
         }
 
-        if (key === ">") {
-            setCurrentItemRest(sequencer);
+        if ((key === "C" || key === "c") && ctrlPressed) {
+            if (hasLineRangeSelect(sequencer)) {
+                const track = getCurrentTrack(sequencer);
+                const [start, end] = getLineSelectionRange(sequencer);
+                copiedLines = track.lines.slice(start, end + 1);
+                copiedItems = [];
+            } else if (hasItemRangeSelect(sequencer)) {
+                const line = getCurrentLine(sequencer);
+                const [start, end] = getItemSelectionRange(sequencer);
+                copiedItems = line.items.slice(start, end + 1);
+                copiedLines = [];
+            } else {
+                const item = getCurrentLineItem(sequencer);
+                copiedItems = [item];
+                copiedLines = [];
+            }
+
             return true;
         }
 
-        if (key === "_") {
-            setCurrentItemHold(sequencer);
-            return true;
-        }
-
-        if (key === "Delete") {
-            deleteCurrentLineItem(sequencer);
-            return true;
-        }
-
-        // if (key === "Space") { of course this doesn't work...
-        if (key === " ") {
-            playLineToSelected();
-            return true;
-        }
-
-        if (!repeat) {
-            const instrumentKey = globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
-            if (instrumentKey) {
-                pressKey(instrumentKey);
-                const note = instrumentKey.musicNote;
-                if (!currentlyPressedNotes.includes(note)) {
-                    currentlyPressedNotes.push(note);
+        if ((key === "V" || key === 'v') && ctrlPressed) {
+            if (copiedLines.length > 0) {
+                for (const line of copiedLines) {
+                    insertNewLineAfter(sequencer, line);
                 }
-                setCurrentItemChord(globalState.sequencer, currentlyPressedNotes);
+                return true;
+            } else if (copiedItems.length > 0) {
+                for (const item of copiedItems) {
+                    insertNewLineItemAfter(sequencer, item);
+                }
+                return true;
+            } 
+        }
+
+        if (key === "Escape") {
+            if (playingTimeout) {
+                stopPlaying();
                 return true;
             }
+
+            if (sequencer.currentSelectedLineStartIdx !== sequencer.currentSelectedLineEndIdx) {
+                sequencer.currentSelectedLineStartIdx = -1;
+                sequencer.currentSelectedLineEndIdx = -1;
+                return true;
+            }
+
+            if (sequencer.currentSelectedItemStartIdx !== -1) {
+                sequencer.currentSelectedItemStartIdx = -1;
+                sequencer.currentSelectedItemEndIdx = -1;
+                return true;
+            }
+        }
+
+        const instrumentKey = globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
+        if (instrumentKey) {
+            pressKey(instrumentKey);
+            const note = instrumentKey.musicNote;
+            if (!currentlyPressedNotes.includes(note)) {
+                currentlyPressedNotes.push(note);
+            }
+            setCurrentItemChord(globalState.sequencer, currentlyPressedNotes);
+
+            saveStateDebounced();
+
+            return true;
+        }
+
+        if (key === " ") {
+            if (shiftPressed) {
+                playAll();
+            } else {
+                playToSelection();
+            }
+            return true;
         }
 
         return false;
@@ -660,16 +670,31 @@ function App(rg: RenderGroup) {
         }
     })
 
-    document.addEventListener("keyup", (e) => {
-        const key = globalState.flatKeys.find(k => k.keyboardKey === e.key.toLowerCase());
-        if (!key) {
-            return;
+    function handleKeyUp(
+        key: string,
+        ctrlPressed: boolean,
+        shiftPressed: boolean,
+    ): boolean {
+        if (key === "Shift") {
+            setIsRangeSelecting(globalState.sequencer, false);
+            return true;
         }
 
-        e.preventDefault();
-        releaseKey(key);
-        rerenderApp();
-        currentlyPressedNotes.splice(0, currentlyPressedNotes.length);
+        const instrumentKey = globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
+        if (instrumentKey) {
+            releaseKey(instrumentKey);
+            currentlyPressedNotes.splice(0, currentlyPressedNotes.length);
+            return true;
+        }
+
+        return false;
+    }
+
+    document.addEventListener("keyup", (e) => {
+        if (handleKeyUp(e.key, e.ctrlKey || e.metaKey, e.shiftKey)) {
+            e.preventDefault();
+            rerenderApp();
+        }
     });
 
     document.addEventListener("blur", () => {
@@ -689,38 +714,60 @@ function App(rg: RenderGroup) {
 
 
     return div({
-        class: "absolute-fill col",
+        class: "absolute-fill row",
         style: "position: fixed",
     }, [
         div({ class: "col flex-1" }, [
-            rg.c(Sequencer, c => c.render(null))
+            div({ class: "col flex-1" }, [
+                div({ class: "row align-items-center b" }, [
+                    div({ class: "flex-1" }),
+                    rg.c(Button, c => c.render({
+                        text: (loadSaveSidebarOpen ? ">" : "<") + "Load/Save",
+                        onClick() {
+                            loadSaveSidebarOpen = !loadSaveSidebarOpen;
+                            rerenderApp();
+                            rerenderApp();
+                        }
+                    }))
+                ]),
+                div({ class: "row", style: "gap: 5px" }, [
+                    span({ class: "b" }, "Sequencer"),
+                    rg.if(
+                        s => copiedLines.length > 0,
+                        rg => span({  }, [
+                            rg.text(s => copiedLines.length + " lines copied")
+                        ])
+                    ),
+                    rg.if(
+                        s => copiedItems.length > 0,
+                        rg => span({  }, [
+                            rg.text(s => copiedItems.length + " items copied")
+                        ])
+                    ),
+                ]),
+                rg.c(Sequencer, c => c.render({ state: globalState.sequencer }))
+            ]),
+            div({ class: "row justify-content-center flex-1" }, [
+                rg.c(Keyboard, c => c.render(null)),
+            ]),
         ]),
-        // newComponent(Description),
-        // TODO: fix
-        // newSliderTemplateFn("Attack", settings.attack, (val) => {
-        //     settings.attack = val;
-        //     audioLoopDispatch({ playSettings: settings });
-        // }),
-        // newSliderTemplateFn("Decay", settings.decay, (val) => {
-        //     settings.decay = val;
-        //     audioLoopDispatch({ playSettings: settings });
-        // }),
-        // newSliderTemplateFn("Sustain Volume", settings.sustainVolume, (val) => {
-        //     settings.sustainVolume = val;
-        //     audioLoopDispatch({ playSettings: settings });
-        // }),
-        // newSliderTemplateFn("Sustain Time", settings.sustain, (val) => {
-        //     settings.sustain = val;
-        //     audioLoopDispatch({ playSettings: settings });
-        // }),
-        div({ class: "col justify-content-center flex-1" }, [
-            div({ class: "flex-1" }),
-            rg.c(Keyboard, c => c.render(null)),
-        ])
+        rg.if(
+            s => loadSaveSidebarOpen,
+            rg => div({ class: "col" }, [
+                rg.c(LoadSavePanel, c => c.render(null))
+            ])
+        )
     ])
 }
 
 const globalState = newGlobalState();
+let allSavedSongs: Record<string, string> = {};
+
+const existinSavedSongs = localStorage.getItem("allSavedSongs");
+if (existinSavedSongs) {
+    allSavedSongs = JSON.parse(existinSavedSongs);
+    globalState.sequencer.sequencerTracks = JSON.parse(allSavedSongs.autosaved);
+}
 
 const root = newInsertable(document.body);
 let app: Component<any, any> | undefined;

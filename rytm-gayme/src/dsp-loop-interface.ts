@@ -9,7 +9,7 @@ function unreachable() {
 
 const playSettings: DSPPlaySettings = {
     attack: 0.01,
-    decay: 0.5,
+    decay: 0.3,
     sustainVolume: 0.5,
     sustain: 0.25,
 };
