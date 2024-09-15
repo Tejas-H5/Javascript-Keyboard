@@ -18,15 +18,23 @@ export const SEQ_ITEM = {
     HOLD: 3,
 } as const;
 
-type ChordItem = {
+type BaseSequencerLineItem = {
+    // for animation purposes
+    _scheduledStart: number;
+    _scheduledEnd: number;
+}
+
+export type ChordItem = BaseSequencerLineItem & {
     t: typeof SEQ_ITEM.CHORD; // press this chord, play these samples, wait 1 interval
     notes: MusicNote[];
 };
 
-export type SequencerLineItem = ChordItem | {
+type HoldOrBreakItem = BaseSequencerLineItem & {
     t: typeof SEQ_ITEM.REST  // release the last chord, wait 1 interval
     | typeof SEQ_ITEM.HOLD;   // keep holding down the las chord, wait 1 interval
-};
+}
+
+export type SequencerLineItem = ChordItem | HoldOrBreakItem;
 
 // NOTE: state with _ is computed or non-JSON serializable, and should be stripped
 // before saving the state as JSON
@@ -48,18 +56,32 @@ export type SequencerTrack = {
     lines: SequencerLine[];
 }
 
+
 export function getCurrentTrack(state: SequencerState): SequencerTrack {
-    if (state.currentSelectedTrackIdx === state.sequencerTracks.length) {
-        state.sequencerTracks.push({
-            lines: [],
-        });
+    if (state.currentSelectedTrackIdx === state.tracks.length) {
+        state.tracks.push({ lines: [], });
     }
 
-    return state.sequencerTracks[state.currentSelectedTrackIdx];
+    return state.tracks[state.currentSelectedTrackIdx];
+}
+
+// NOTE: contains cyclic references, so it shouldn't be serialized.
+export type ScheduledKeyPress = {
+    time: number;
+    // Used to know which keyboard key is being played by the DSP.
+    keyId: number;
+    // Used to know which sequencer item is being played by the DSP.
+    trackIdx: number;
+    lineIdx: number;
+    itemIdx: number;
+
+    pressed: boolean;
+    noteIndex?: number;
+    sample?: string;
 }
 
 export type SequencerState = {
-    sequencerTracks: SequencerTrack[];
+    tracks: SequencerTrack[];
 
     currentSelectedTrackIdx: number;
 
@@ -77,27 +99,36 @@ export type SequencerState = {
     currentHoveredLineIdx: number;
     currentHoveredItemIdx: number;
 
-    lastPlayingTrackIdx: number;
-    lastPlayingLineIdx: number;
-    lastPlayingItemIdx: number;
-    currentPlayingTrackIdx: number;
-    currentPlayingLineIdx: number;
-    currentPlayingEndLineIdx: number;
+
+    // NOTE: currentPlayingTrackIdx doesn't make sense really - 
+    // when I eventually add more of them, each track must be played in parallel, not in sequence.
+    // Most likely I would use this to isolate a specific track.
+    startPlayingTrackIdx: number;
+    startPlayingLineIdx: number;
+    startPlayingEndLineIdx: number;
+    startPlayingEndItemIdx: number;
+    isPlaying: boolean;
+    startPlayingTime: number;
+    playingDuration: number;
     currentPlayingItemIdx: number;
-    currentPlayingEndItemIdx: number;
+    currentPlayingSpeed: number;
+
+    settings: {
+        showKeysInsteadOfABCDEFG: boolean;
+    };
 
     // DOM elements tracking which thing is selected or playing.
     _currentPlayingEl: Insertable<HTMLElement> | null;
     _currentSelectedEl: Insertable<HTMLElement> | null;
+    _scheduledKeyPresses: ScheduledKeyPress[];
 };
-
 
 function newDefaultLine(): SequencerLine {
     return {
         bpm: 120,
         comment: "",
         division: 4,
-        items: [{ t: SEQ_ITEM.REST }],
+        items: [{ t: SEQ_ITEM.REST, _scheduledStart: 0, _scheduledEnd: 0 }],
         _itemPositions: [],
     };
 }
@@ -231,7 +262,13 @@ export function setCurrentItemChord(state: SequencerState, notes: MusicNote[]) {
     line.items[state.currentSelectedItemIdx] = {
         t: SEQ_ITEM.CHORD,
         notes: sortNotes(deepCopyJSONSerializable(notes)),
+        _scheduledStart: 0,
+        _scheduledEnd: 0,
     };
+}
+
+export function resetSequencer(state: GlobalState) {
+    state.sequencer = newSequencerState();
 }
 
 export function getKeyForMusicNoteIndex(state: GlobalState, idx: number): InstrumentKey | undefined {
@@ -266,16 +303,27 @@ function sortNotes(notes: MusicNote[]) {
 
 export function setCurrentItemHold(state: SequencerState) {
     const line = getCurrentLine(state);
-    line.items[state.currentSelectedItemIdx] = { t: SEQ_ITEM.HOLD };
+    line.items[state.currentSelectedItemIdx] = {
+        t: SEQ_ITEM.HOLD, 
+        _scheduledStart: 0,
+        _scheduledEnd: 0,
+    };
 }
 
 export function setCurrentItemRest(state: SequencerState) {
     const line = getCurrentLine(state);
-    line.items[state.currentSelectedItemIdx] = { t: SEQ_ITEM.REST };
+    line.items[state.currentSelectedItemIdx] = {
+        t: SEQ_ITEM.REST, _scheduledStart: 0,
+        _scheduledEnd: 0,
+    };
 }
 
 function newRestItem(): SequencerLineItem {
-    return { t: SEQ_ITEM.REST };
+    return {
+        t: SEQ_ITEM.REST, 
+        _scheduledStart: 0,
+        _scheduledEnd: 0,
+    };
 }
 
 export function insertNewLineItemAfter(state: SequencerState, item?: SequencerLineItem) {
@@ -429,6 +477,52 @@ export function moveUpOrDownALine(state: SequencerState, direction: number) {
     setCurrentLineIdx(state, state.currentSelectedLineIdx + direction);
 }
 
+export function getCurrentPlayingTime(state: SequencerState): number {
+    if (!state.isPlaying) {
+        return -10;
+    }
+
+    return Date.now() - state.startPlayingTime;
+}
+
+export function newSequencerState(): SequencerState {
+    const sequencer: SequencerState = {
+        tracks: [],
+        currentSelectedTrackIdx: 0,
+        currentSelectedLineIdx: 0,
+        currentSelectedLineStartIdx: -1,
+        currentSelectedLineEndIdx: -1,
+        currentSelectedItemIdx: 0,
+        currentSelectedItemStartIdx: -1,
+        currentSelectedItemEndIdx: -1,
+        isRangeSelecting: false,
+        currentPlayingItemIdx: 0,
+        startPlayingTrackIdx: 0,
+        startPlayingLineIdx: 0,
+        startPlayingEndLineIdx: 0,
+        isPlaying: false,
+        startPlayingTime: 0,
+        playingDuration: 0,
+        startPlayingEndItemIdx: 0,
+        currentPlayingSpeed: 1,
+        currentHoveredLineIdx: -1,
+        currentHoveredItemIdx: -1,
+
+        settings: {
+            showKeysInsteadOfABCDEFG: false,
+        },
+
+        _currentPlayingEl: null,
+        _currentSelectedEl: null,
+        _scheduledKeyPresses: [],
+    };
+
+    // TODO: move out the lazy init code to an explicit init
+    getCurrentLine(sequencer);
+    return sequencer
+}
+
+
 export function newGlobalState(): GlobalState {
     const keys: InstrumentKey[][] = [];
     const flatKeys: InstrumentKey[] = [];
@@ -463,7 +557,6 @@ export function newGlobalState(): GlobalState {
                 const key = drumKeys[i];
                 key.noteText = drumSlots[i].name;
                 key.musicNote.sample = drumSlots[i].sample;
-                key.index = flatKeys.length;
                 flatKeys.push(key);
             }
         }
@@ -483,7 +576,6 @@ export function newGlobalState(): GlobalState {
                 for (const j in pianoKeys[i]) {
                     const key = pianoKeys[i][j];
 
-                    key.index = flatKeys.length;
                     flatKeys.push(key);
 
                     const noteIndex = 40 + noteIndexOffset;
@@ -494,36 +586,16 @@ export function newGlobalState(): GlobalState {
                 }
             }
         }
+
+        // re-index the things
+        for (let i = 0; i < flatKeys.length; i++) {
+            flatKeys[i].index = i;
+        }
     }
-
-    const sequencer: SequencerState = {
-        sequencerTracks: [],
-        currentSelectedTrackIdx: 0,
-        currentSelectedLineIdx: 0,
-        currentSelectedLineStartIdx: -1,
-        currentSelectedLineEndIdx: -1,
-        currentSelectedItemIdx: 0,
-        currentSelectedItemStartIdx: -1,
-        currentSelectedItemEndIdx: -1,
-        isRangeSelecting: false,
-        lastPlayingItemIdx: -1,
-        lastPlayingLineIdx: -1,
-        lastPlayingTrackIdx: -1,
-        currentPlayingItemIdx: 0,
-        currentPlayingEndItemIdx: 0,
-        currentPlayingLineIdx: 0,
-        currentPlayingEndLineIdx: 0,
-        currentPlayingTrackIdx: 0,
-        currentHoveredLineIdx: -1,
-        currentHoveredItemIdx: -1,
-
-        _currentPlayingEl: null,
-        _currentSelectedEl: null,
-    };
 
     return {
         keys,
         flatKeys,
-        sequencer,
+        sequencer: newSequencerState(),
     };
 }

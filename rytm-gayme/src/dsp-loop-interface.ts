@@ -1,5 +1,5 @@
-import { DspInfo, DspLoopEventNotification, DspLoopMessage, DSPPlaySettings } from "./dsp-loop";
-import { InstrumentKey } from "./state";
+import { DspInfo, DspLoopMessage, DSPPlaySettings } from "./dsp-loop";
+import { InstrumentKey, ScheduledKeyPress } from "./state";
 import { getNoteFrequency } from "./utils/music-theory-utils";
 import dspLoopWorkerUrl from "./dsp-loop.ts?worker&url";
 
@@ -9,7 +9,7 @@ function unreachable() {
 
 const playSettings: DSPPlaySettings = {
     attack: 0.01,
-    decay: 0.3,
+    decay: 0.5,
     sustainVolume: 0.5,
     sustain: 0.25,
 };
@@ -20,7 +20,14 @@ export function updatePlaySettings(fn: (s: DSPPlaySettings) => void) {
 }
 
 let dspPort: MessagePort | undefined;
-const dspInfo: DspInfo = { currentlyPlaying: [] };
+const dspInfo: DspInfo = { 
+    currentlyPlaying: [],
+    scheduledPlaybackTime: 0,
+};
+
+export function getDspInfo() {
+    return dspInfo;
+}
 
 export function getInfoBlock(id: number): [number, number] | undefined {
     return dspInfo.currentlyPlaying.find(b => b[0] === id);
@@ -60,8 +67,7 @@ export function pressKey(k: InstrumentKey) {
         audioLoopDispatch({ playSample: [k.index, { sample: k.musicNote.sample }] })
     } else if (k.musicNote.noteIndex) {
         currentPressedNoteIndexes.add(k.musicNote.noteIndex);
-        const frequency = getNoteFrequency(k.musicNote.noteIndex);
-        audioLoopDispatch({ setOscilatorSignal: [k.index, { frequency, signal: 1 }] })
+        audioLoopDispatch({ setOscilatorSignal: [k.index, { noteIndex: k.musicNote.noteIndex, signal: 1 }] })
     } else {
         unreachable();
     }
@@ -71,10 +77,14 @@ export function releaseKey(k: InstrumentKey) {
     if (k.musicNote.sample) {
         // do nothing
     } else if (k.musicNote.noteIndex) {
-        const frequency = getNoteFrequency(k.musicNote.noteIndex);
         currentPressedNoteIndexes.delete(k.musicNote.noteIndex);
-        audioLoopDispatch({ setOscilatorSignal: [k.index, { frequency, signal: 0 }] })
+        audioLoopDispatch({ setOscilatorSignal: [k.index, { noteIndex: k.musicNote.noteIndex, signal: 0 }] })
     }
+}
+
+export function schedulePlayback(presses: ScheduledKeyPress[]) {
+    resumeAudio();
+    audioLoopDispatch({ scheduleKeys: presses });
 }
 
 // TODO: this shouldn't require any inputs. the dsp knows what keys are currently held.
@@ -128,13 +138,12 @@ function resumeAudio() {
     audioCtx.resume().catch(console.error);
 }
 
-
 const audioCtx = new AudioContext()
 
 export async function initDspLoopInterface({
-    onCurrentPlayingChanged
+    render
 }: {
-    onCurrentPlayingChanged(): void;
+    render(): void;
 }) {
     // registers the DSP loop. we must communicate with this thread through a Port thinggy
     await audioCtx.audioWorklet.addModule(dspLoopWorkerUrl);
@@ -152,6 +161,7 @@ export async function initDspLoopInterface({
     // 'pressed' state of one of the notes is.
     const frequency = 1000 / 20;
     // const frequency = 1000 / 60; //  too much cpu heat 
+    // TODO: just linearly animate the current 'opacity' of a key so we can reduce poll rate even further.
     setInterval(() => {
         audioLoopDispatch(1337);
     }, frequency);
@@ -160,12 +170,24 @@ export async function initDspLoopInterface({
     updatePlaySettings(() => { });
 
     dspPort.onmessage = ((e) => {
-        const data = e.data as DspLoopEventNotification;
-        if (data.currentlyPlaying) {
-            if (areDifferent(dspInfo.currentlyPlaying, data.currentlyPlaying)) {
-                dspInfo.currentlyPlaying = data.currentlyPlaying;
-                onCurrentPlayingChanged();
-            }
+        const data = e.data as Partial<DspInfo>;
+
+        let rerender = false;
+        if (
+            data.currentlyPlaying
+            && areDifferent(dspInfo.currentlyPlaying, data.currentlyPlaying)
+        ) {
+            dspInfo.currentlyPlaying = data.currentlyPlaying;
+            rerender = true;
+        }
+
+        if (data.scheduledPlaybackTime) {
+            dspInfo.scheduledPlaybackTime = data.scheduledPlaybackTime;
+            rerender = true;
+        }
+
+        if (rerender) {
+            render();
         }
     });
 }

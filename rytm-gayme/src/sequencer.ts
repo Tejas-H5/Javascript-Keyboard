@@ -1,12 +1,114 @@
 import { Button } from "./components/button";
-import { SEQ_ITEM, SequencerLine, SequencerLineItem, SequencerState, SequencerTrack, getCurrentLine, getItemSelectionRange, setCurrentLineIdx } from "./state";
+import { GlobalState, SEQ_ITEM, SequencerLine, SequencerLineItem, SequencerState, SequencerTrack, getCurrentLine, getCurrentPlayingTime, getItemSelectionRange, getKeyForNote, setCurrentLineIdx } from "./state";
 import { div, getState, RenderGroup, scrollIntoView, span } from "./utils/dom-utils";
 import { getNoteText } from "./utils/music-theory-utils";
+
+
+function SequencerItemUI(rg: RenderGroup<{
+    lineIdx: number;
+    itemIdx: number;
+    track: SequencerTrack;
+    line: SequencerLine;
+    state: SequencerState;
+    globalState: GlobalState;
+    render(): void;
+}>) {
+    function isLineItemPlaying(
+        state: SequencerState, 
+        item: SequencerLineItem
+    ) {
+        const currentTime = getCurrentPlayingTime(state);
+        if (currentTime < 0) {
+            return false;
+        }
+
+        return item._scheduledStart <= currentTime && currentTime <= item._scheduledEnd;
+    }
+
+    function isLineItemSelected(state: SequencerState, line: number, item: number): boolean {
+        if (state.currentSelectedLineIdx !== line) {
+            return false
+        }
+
+        if (state.currentSelectedItemIdx === item) {
+            return true;
+        }
+
+        // range selection
+        if (state.currentSelectedItemStartIdx !== -1) {
+            const [min, max] = getItemSelectionRange(state);
+            if (min <= item && item <= max) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function isLineItemHovered(state: SequencerState, row: number, col: number) {
+        return state.currentHoveredLineIdx === row
+            && state.currentHoveredItemIdx === col;
+    }
+
+    let item: SequencerLineItem;
+    let isPlaying = false;
+    let isSelected = false;
+    rg.preRenderFn(s => {
+        item = s.line.items[s.itemIdx];
+
+        isPlaying = isLineItemPlaying(s.state, item);
+        if (isPlaying) {
+            s.state._currentPlayingEl = root;
+        }
+
+        isSelected = isLineItemSelected(s.state, s.lineIdx, s.itemIdx);
+        if (isSelected) {
+            s.state._currentSelectedEl = root;
+        }
+    });
+
+    const root = span({ class: "inline-block relative", style: "padding: 4px; border: 1px solid var(--fg);" }, [
+        rg.on("mousemove", (s, e) => {
+            e.stopImmediatePropagation();
+
+            if (
+                s.state.currentHoveredLineIdx !== s.lineIdx
+                || s.state.currentHoveredItemIdx !== s.itemIdx
+            ) {
+                s.state.currentHoveredLineIdx = s.lineIdx;
+                s.state.currentHoveredItemIdx = s.itemIdx;
+                s.render();
+            }
+        }),
+        rg.on("click", (s) => {
+            setCurrentLineIdx(s.state, s.lineIdx, s.itemIdx);
+            s.render();
+        }),
+        rg.style(
+            "backgroundColor",
+            s => isPlaying ? "#00F" :
+                isSelected ? "var(--mg)" :
+                    isLineItemHovered(s.state, s.lineIdx, s.itemIdx) ? "var(--mg)" :
+                        ""
+        ),
+        rg.style(
+            "color",
+            s => isLineItemPlaying(s.state, item) ? "#FFF" : ""
+        ),
+        rg.text(s => {
+            return getItemSequencerText(s.globalState, item, s.state.settings.showKeysInsteadOfABCDEFG);
+        }),
+    ]);
+
+    return root;
+}
+
 
 function SequencerLineUI(rg: RenderGroup<{
     lineIdx: number;
     track: SequencerTrack;
     state: SequencerState;
+    globalState: GlobalState;
     render(): void;
 }>) {
 
@@ -36,131 +138,6 @@ function SequencerLineUI(rg: RenderGroup<{
     });
 
     const itemsListRoot = (() => {
-        function SequencerItemUI(rg: RenderGroup<{
-            lineIdx: number;
-            itemIdx: number;
-            line: SequencerLine;
-            state: SequencerState;
-            render(): void;
-        }>) {
-            function isLineItemPlaying(state: SequencerState, lineIdx: number, itemIdx: number) {
-                if (state.lastPlayingLineIdx !== lineIdx) {
-                    return false;
-                }
-
-                const idx = state.lastPlayingItemIdx;
-                const item = line.items[idx];
-                let minIdx = idx;
-                let maxIdx = idx;
-                if (item.t === SEQ_ITEM.HOLD) {
-                    while (minIdx > 0) {
-                        const isHold = line.items[minIdx - 1].t === SEQ_ITEM.HOLD;
-                        const isChord = line.items[minIdx - 1].t === SEQ_ITEM.CHORD;
-                        if (isHold) {
-                            minIdx--;
-                            continue;
-                        }
-
-                        if (isChord) {
-                            minIdx--;
-                            break;
-                        }
-
-                        break;
-                    }
-                }
-
-                return minIdx <= itemIdx && itemIdx <= maxIdx;
-            }
-
-            function isLineItemSelected(state: SequencerState, line: number, item: number): boolean {
-                if (state.currentSelectedLineIdx !== line) {
-                    return false
-                }
-
-                if (state.currentSelectedItemIdx === item) {
-                    return true;
-                }
-
-                // range selection
-                if (state.currentSelectedItemStartIdx !== -1) {
-                    const [min, max] = getItemSelectionRange(state);
-                    if (min <= item && item <= max) {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            function isLineItemHovered(state: SequencerState, row: number, col: number) {
-                return state.currentHoveredLineIdx === row
-                    && state.currentHoveredItemIdx === col;
-            }
-
-
-            let item: SequencerLineItem;
-            let isPlaying = false;
-            let isSelected = false;
-            rg.preRenderFn(s => {
-                item = s.line.items[s.itemIdx];
-                isPlaying = isLineItemPlaying(s.state, s.lineIdx, s.itemIdx);
-                if (isPlaying) {
-                    s.state._currentPlayingEl = root;
-                }
-
-                isSelected = isLineItemSelected(s.state, s.lineIdx, s.itemIdx);
-                if (isSelected) {
-                    s.state._currentSelectedEl = root;
-                }
-            });
-
-            const root = span({ class: "inline-block", style: "padding: 4px; border: 1px solid var(--fg);" }, [
-                rg.on("mousemove", (s, e) => {
-                    e.stopImmediatePropagation();
-                    s.state.currentHoveredLineIdx = s.lineIdx;
-                    s.state.currentHoveredItemIdx = s.itemIdx;
-                    s.render();
-                }),
-                rg.on("click", (s) => {
-                    setCurrentLineIdx(s.state, s.lineIdx, s.itemIdx);
-                    s.render();
-                }),
-                rg.style(
-                    "backgroundColor",
-                    s => isPlaying ? "#00F" :
-                        isSelected ? "var(--mg)" :
-                            isLineItemHovered(s.state, s.lineIdx, s.itemIdx) ? "var(--mg)" :
-                                ""
-                ),
-                rg.style(
-                    "color",
-                    s => isLineItemPlaying(s.state, s.lineIdx, s.itemIdx) ? "#FFF" : ""
-                ),
-                rg.text(s => {
-                    if (item.t === SEQ_ITEM.REST) {
-                        return ".";
-                    }
-
-                    if (item.t === SEQ_ITEM.HOLD) {
-                        return "_";
-                    }
-
-                    if (item.t === SEQ_ITEM.CHORD) {
-                        return item.notes.map(n => {
-                            if (n.sample) return n.sample;
-                            if (n.noteIndex) return getNoteText(n.noteIndex);
-                            return "<???>";
-                        }).join(" ");
-                    }
-
-                    return "<????>";
-                })
-            ]);
-
-            return root;
-        }
-
         const root = div({
             class: "flex-wrap",
             style: "padding: 10px; gap: 10px"
@@ -169,8 +146,10 @@ function SequencerLineUI(rg: RenderGroup<{
         return rg.list(root, SequencerItemUI, (getNext, s) => {
             for (let i = 0; i < line.items.length; i++) {
                 getNext().render({
+                    globalState: s.globalState,
                     lineIdx: s.lineIdx,
                     itemIdx: i,
+                    track: s.track,
                     line,
                     state: s.state,
                     render: s.render
@@ -231,30 +210,67 @@ function SequencerLineUI(rg: RenderGroup<{
     ]);
 }
 
-function SequencerTrackUI(rg: RenderGroup<{ track: number; state: SequencerState; render(): void; }>) {
+function SequencerTrackUI(rg: RenderGroup<{ 
+    track: number; 
+    state: SequencerState; 
+    globalState: GlobalState;
+    render(): void; 
+}>) {
     return div({}, [
         div({}, [
             rg.text(s => "Track " + (s.track + 1)),
         ]),
         rg.list(div(), SequencerLineUI, (getNext, s) => {
-            const track = s.state.sequencerTracks[s.track];
+            const track = s.state.tracks[s.track];
             for (let i = 0; i < track.lines.length; i++) {
-                getNext().render({ track, lineIdx: i, render: s.render, state: s.state });
+                getNext().render({ 
+                    track, 
+                    lineIdx: i, 
+                    render: s.render, 
+                    state: s.state,
+                    globalState: s.globalState
+                });
             }
         })
     ]);
 }
 
-export function Sequencer(rg: RenderGroup<{ state: SequencerState }>) {
+export function getItemSequencerText(globalState: GlobalState, item: SequencerLineItem, useKeyboardKey: boolean): string {
+    if (item.t === SEQ_ITEM.REST) {
+        return ".";
+    }
+
+    if (item.t === SEQ_ITEM.HOLD) {
+        return "_";
+    }
+
+    if (item.t === SEQ_ITEM.CHORD) {
+        return item.notes.map(n => {
+            if (n.sample) return n.sample;
+            if (n.noteIndex) {
+                if (useKeyboardKey) {
+                    const key = getKeyForNote(globalState, n);
+                    return key?.text || "<??>";
+                } else {
+                    return getNoteText(n.noteIndex);
+                }
+            }
+            return "<???>";
+        }).join(" ");
+    }
+
+    return "<????>";
+}
+
+export function Sequencer(rg: RenderGroup<{ 
+    state: SequencerState; 
+    globalState: GlobalState; 
+}>) {
     function handleMouseLeave() {
         const state = getState(rg).state;
         state.currentHoveredLineIdx = -1;
         state.currentHoveredItemIdx = -1;
         rg.renderWithCurrentState();
-    }
-
-    function handlePlay() {
-        // TODO: step through the sequence
     }
 
     rg.preRenderFn(s => {
@@ -267,7 +283,7 @@ export function Sequencer(rg: RenderGroup<{ state: SequencerState }>) {
         if (scrollEl) {
             scrollIntoView(scrollRoot.el, scrollEl, 0.5);
         }
-    })
+    });
 
     const scrollRoot = div({
         class: "overflow-y-auto flex-1",
@@ -280,9 +296,14 @@ export function Sequencer(rg: RenderGroup<{ state: SequencerState }>) {
         style: "padding: 10px",
     }, [
         rg.list(scrollRoot, SequencerTrackUI, (getNext, s) => {
-            const { sequencerTracks } = s.state;
+            const { tracks: sequencerTracks } = s.state;
             for (let i = 0; i < sequencerTracks.length; i++) {
-                getNext().render({ track: i, state: s.state, render: rg.renderWithCurrentState });
+                getNext().render({ 
+                    track: i, 
+                    state: s.state, 
+                    render: rg.renderWithCurrentState,
+                    globalState: s.globalState,
+                });
             }
         }),
     ]);

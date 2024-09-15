@@ -1,10 +1,10 @@
 import { Button } from "src/components/button";
 import "src/css/layout.css";
-import { appendChild, Component, div, el, getState, isEditingTextSomewhereInDocument, newComponent, newInsertable, RenderGroup, setChildAtEl, setCssVars, setInputValue, span } from "src/utils/dom-utils";
-import { currentPressedNoteIndexes, getCurrentOscillatorGain, initDspLoopInterface, pressKey, releaseAllKeys, releaseKey } from "./dsp-loop-interface";
+import { appendChild, Component, div, el, getState, isEditingTextSomewhereInDocument, newComponent, newInsertable, RenderGroup, setCssVars, setInputValue, span } from "src/utils/dom-utils";
+import { getCurrentOscillatorGain, getDspInfo, initDspLoopInterface, pressKey, releaseAllKeys, releaseKey, schedulePlayback } from "./dsp-loop-interface";
 import "./main.css";
-import { Sequencer } from "./sequencer";
-import { deleteCurrentLineItemRange, getCurrentLine, getCurrentLineItem, getCurrentTrack, getItemSelectionRange, getKeyForMusicNoteIndex, getKeyForNote, getLineSelectionRange, hasItemRangeSelect, hasLineRangeSelect, indexOfNextLineItem, indexOfPrevLineItem, insertNewLineAfter, insertNewLineItemAfter, InstrumentKey, moveUpOrDownALine, newGlobalState, SEQ_ITEM, SequencerLine, SequencerLineItem, setCurrentItemChord, setCurrentItemHold, setCurrentItemIdx, setCurrentLineIdx, setIsRangeSelecting } from "./state";
+import { getItemSequencerText, Sequencer } from "./sequencer";
+import { ChordItem, deleteCurrentLineItemRange, getCurrentLine, getCurrentLineItem, getCurrentPlayingTime, getCurrentTrack, getItemSelectionRange, getKeyForNote, getLineSelectionRange, hasItemRangeSelect, hasLineRangeSelect, indexOfNextLineItem, indexOfPrevLineItem, insertNewLineAfter, insertNewLineItemAfter, InstrumentKey, moveUpOrDownALine, newGlobalState, resetSequencer, ScheduledKeyPress, SEQ_ITEM, SequencerLine, SequencerLineItem, setCurrentItemChord, setCurrentItemHold, setCurrentItemIdx, setIsRangeSelecting } from "./state";
 import { clamp } from "./utils/math-utils";
 import { bpmToInterval, MusicNote } from "./utils/music-theory-utils";
 
@@ -38,10 +38,48 @@ function Keyboard(rg: RenderGroup) {
         keySize: number;
         startOffset: number;
     }>) {
+        rg.skipErrorBoundary = true;
+
         function KeyboardKey(rg: RenderGroup<{
             key: InstrumentKey;
             keySize: number;
         }>) {
+            rg.skipErrorBoundary = true;
+
+            function ApproachSquare(rg: RenderGroup<{
+                currentTime: number;
+                keyTime: number;
+            }>) {
+                rg.skipErrorBoundary = true;
+
+                const keyMarkedColor = `rgba(0, 0, 255)`;
+
+                let t = 0;
+                let scale = 0;
+                rg.preRenderFn(s => {
+                    t = s.keyTime;
+                    scale = 250 * Math.max(0, t)
+                });
+
+                return div({}, [
+                    div({
+                        class: "absolute",
+                        style: `top: 0; left: 0; bottom: 0; right: 0; background-color: ${keyMarkedColor};`
+                    }, [
+                        rg.style("opacity", s => "" + t / 10),
+                    ]),
+                    div({
+                        class: "absolute",
+                        style: "border: 5px solid var(--fg); opacity: 1;"
+                    }, [
+                        rg.style("top", s => -scale + "px"),
+                        rg.style("left", s => -scale + "px"),
+                        rg.style("bottom", s => -scale + "px"),
+                        rg.style("right", s => -scale + "px"),
+                    ]),
+                ]);
+            }
+
             function handlePress() {
                 const s = getState(rg);
                 pressKey(s.key);
@@ -87,6 +125,44 @@ function Keyboard(rg: RenderGroup) {
                     rg.style("paddingRight", s => (s.keySize / 10) + "px"),
                     rg.text(s => s.key.noteText),
                 ]),
+                rg.list(div(), ApproachSquare, (getNext, s) => {
+                    // need to iterate over all the notes within the approach window, 
+                    // could need multiple approach squares for this key.
+                    const sequencer = globalState.sequencer;
+                    if (!sequencer.isPlaying) {
+                        return;
+                    }
+
+                    const currentTime = getCurrentPlayingTime(sequencer);
+
+                    const scheduledKeyPresses = sequencer._scheduledKeyPresses;
+                    for (let i = 0; i < scheduledKeyPresses.length; i++) {
+                        const scheduledPress = scheduledKeyPresses[i];
+                        if (scheduledPress.keyId !== s.key.index) {
+                            continue;
+                        }
+                        if (!scheduledPress.pressed) {
+                            continue;
+                        }
+
+                        const APPROACH_WINDOW = 500;
+                        const PERSIST_WINDOW = 200;
+
+                        const relativeTime = currentTime - scheduledPress.time;
+                        if (relativeTime < -APPROACH_WINDOW) {
+                            continue;
+                        }
+
+                        if (relativeTime > PERSIST_WINDOW) {
+                            continue;
+                        }
+
+                        getNext().render({
+                            currentTime, 
+                            keyTime: -relativeTime / APPROACH_WINDOW,
+                        });
+                    }
+                }),
             ]);
         }
 
@@ -131,7 +207,8 @@ function Keyboard(rg: RenderGroup) {
 
         for (let i = 0; i < globalState.keys.length; i++) {
             const row = globalState.keys[i];
-            getNext().render({
+            const c = getNext();
+            c.render({
                 keys: row,
                 keySize,
                 startOffset: offsets[i],
@@ -145,54 +222,63 @@ let reachedLastNote = false;
 function stopPlaying() {
     clearTimeout(playingTimeout);
     releaseAllKeys(globalState.flatKeys);
-    globalState.sequencer.lastPlayingLineIdx = -1;
-    globalState.sequencer.lastPlayingItemIdx = -1;
+
     playingTimeout = 0;
     reachedLastNote = false;
+
+    const sequencer = globalState.sequencer;
+    sequencer._scheduledKeyPresses = [];
+    schedulePlayback([]);
+    sequencer.startPlayingTime = 0;
+    sequencer.isPlaying = false;
 }
 
-function playToSelection() {
+function playToSelection(speed: number) {
     const sequencer = globalState.sequencer;
+
+    sequencer.currentPlayingSpeed = speed;
 
     if (hasLineRangeSelect(sequencer)) {
         const [start, end] = getLineSelectionRange(sequencer);
         const track = getCurrentTrack(sequencer);
         const endLine = track.lines[end];
 
-        sequencer.currentPlayingLineIdx = start;
-        sequencer.currentPlayingEndLineIdx = end;
+        sequencer.startPlayingLineIdx = start;
+        sequencer.startPlayingEndLineIdx = end;
         sequencer.currentPlayingItemIdx = 0;
-        sequencer.currentPlayingEndItemIdx = endLine.items.length - 1;
+        sequencer.startPlayingEndItemIdx = endLine.items.length - 1;
 
-        sequencer.currentPlayingTrackIdx = 0;
+        sequencer.startPlayingTrackIdx = 0;
     } else if (hasItemRangeSelect(sequencer)) {
         const [start, end] = getItemSelectionRange(sequencer);
-        sequencer.currentPlayingLineIdx = sequencer.currentSelectedLineIdx;
-        sequencer.currentPlayingEndLineIdx = sequencer.currentSelectedLineIdx;
+        sequencer.startPlayingLineIdx = sequencer.currentSelectedLineIdx;
+        sequencer.startPlayingEndLineIdx = sequencer.currentSelectedLineIdx;
         sequencer.currentPlayingItemIdx = start;
-        sequencer.currentPlayingEndItemIdx = end;
+        sequencer.startPlayingEndItemIdx = end;
     } else {
-        sequencer.currentPlayingLineIdx = sequencer.currentSelectedLineIdx;
-        sequencer.currentPlayingEndLineIdx = sequencer.currentSelectedLineIdx;
+        sequencer.startPlayingLineIdx = sequencer.currentSelectedLineIdx;
+        sequencer.startPlayingEndLineIdx = sequencer.currentSelectedLineIdx;
         sequencer.currentPlayingItemIdx = 0;
-        sequencer.currentPlayingEndItemIdx = sequencer.currentSelectedItemIdx;
+        sequencer.startPlayingEndItemIdx = sequencer.currentSelectedItemIdx;
 
-        sequencer.currentPlayingTrackIdx = 0;
+        sequencer.startPlayingTrackIdx = 0;
     }
 
 
     startPlaying();
 }
 
-function playAll() {
+function playAll(speed: number) {
     const sequencer = globalState.sequencer;
 
-    sequencer.currentPlayingLineIdx = 0;
-    sequencer.currentPlayingEndLineIdx = 9999999999;
+    sequencer.currentPlayingSpeed = speed;
+
+    sequencer.startPlayingLineIdx = 0;
+    sequencer.startPlayingEndLineIdx = 9999999999;
     sequencer.currentPlayingItemIdx = 0;
-    sequencer.currentPlayingEndItemIdx = 9999999999;
+    sequencer.startPlayingEndItemIdx = 9999999999;
     
-    sequencer.currentPlayingTrackIdx = 0;
+    sequencer.startPlayingTrackIdx = 0;
 
     startPlaying();
 }
@@ -200,106 +286,137 @@ function playAll() {
 function startPlaying() {
     stopPlaying();
 
-    function recursiveTimeout() {
-        // JavaScript we have `defer` at home meme
-        setTimeout(rerenderApp, 1);
+    // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
+    const sequencer = globalState.sequencer;
+    sequencer.startPlayingTime = Date.now();
+    sequencer.isPlaying = true;
 
-        if (reachedLastNote) {
-            stopPlaying();
-            return;
-        }
-
-        const sequencer = globalState.sequencer;
-        const track = sequencer.sequencerTracks[sequencer.currentPlayingTrackIdx];
-        // some of these conditions being checked elsewhere, but need to do this here again 
-        // to avoid race conditions r.e. deleting stuff while we're playing
-        if (!track) {
-            stopPlaying();
-            return;
-        }
-
-        const line = track.lines[sequencer.currentPlayingLineIdx];
-        if (!line) {
-            stopPlaying();
-            return;
-        }
-
-        const item = line.items[sequencer.currentPlayingItemIdx];
-        if (!item) {
-            stopPlaying();
-            return;
-        }
-
-        if (item.t === SEQ_ITEM.CHORD) {
-            // release keys we've pressed that aren't in this chord
-            for (const pressedNoteIdx of currentPressedNoteIndexes) {
-                const pressedKey = getKeyForMusicNoteIndex(globalState, pressedNoteIdx)
-                if (
-                    pressedKey
-                    && !item.notes.find(itemNote => itemNote.noteIndex === pressedNoteIdx)
-                ) {
-                    releaseKey(pressedKey);
+    // clear scheduled times
+    {
+        for (const track of sequencer.tracks) {
+            for (const line of track.lines) {
+                for (const item of line.items) {
+                    item._scheduledStart = -1;
+                    item._scheduledEnd = -1;
                 }
             }
+        }
+    }
+    
+    const track = getCurrentTrack(sequencer);
+    const scheduledKeyPresses: ScheduledKeyPress[] = [];
+    const end = Math.min(sequencer.startPlayingEndLineIdx, track.lines.length - 1);
+    let itemIdx = sequencer.currentPlayingItemIdx;
+    let nextTime = 500;
+    const currentPressed: [ChordItem, InstrumentKey][] = [];
 
-            // press keys in this chord we're not already pressing
-            for (const n of item.notes) {
-                const key = getKeyForNote(globalState, n);
-                if (!key) {
-                    console.warn("Couldn't find key for note!", n);
-                    continue;
-                }
-
-                if (n.sample) {
-                    pressKey(key);
-                    continue;
-                }
-
-                // don't want to re-pulse the note. but want the option to be able to do that, so I've
-                // not set this at the  the dsp level
-                if (n.noteIndex && !currentPressedNoteIndexes.has(n.noteIndex)) {
-                    pressKey(key);
-                }
+    const scheduleReleaseOfCurrentlyPressed = (currentTime: number, trackIdx: number, lineIdx: number, itemIdx: number) => {
+        // release everything we've pressed
+        for (const [chordItem, key] of currentPressed) {
+            const note = key.musicNote;
+            if (note.sample) {
+                // release is invalid for samples.
+                continue;
             }
-        } else if (item.t === SEQ_ITEM.REST) {
-            releaseAllKeys(globalState.flatKeys);
-        } else if (item.t === SEQ_ITEM.HOLD) {
-            // keep the keys that were pressed last. in other words, do nothing
+
+            chordItem._scheduledEnd = currentTime;
+            scheduledKeyPresses.push({
+                time: currentTime,
+                keyId: key.index,
+                trackIdx,
+                lineIdx,
+                itemIdx,
+                noteIndex: note.noteIndex,
+                sample: note.sample,
+                pressed: false,
+            });
         }
 
-        const bpm = line.bpm;
-        const division = line.division;
-        const time = bpmToInterval(bpm, division);
-
-        // the playback visuals need to be for the note we just played, not the incremented note.
-        sequencer.lastPlayingItemIdx = sequencer.currentPlayingItemIdx;
-        sequencer.lastPlayingLineIdx = sequencer.currentPlayingLineIdx;
-        sequencer.lastPlayingTrackIdx = sequencer.currentPlayingTrackIdx;
-
-        sequencer.currentPlayingItemIdx++;
-        if (line.items.length === sequencer.currentPlayingItemIdx) {
-            sequencer.currentPlayingItemIdx = 0;
-            sequencer.currentPlayingLineIdx++;
-        }
-
-        if (
-            !track.lines[sequencer.currentPlayingLineIdx]
-            || (
-                sequencer.lastPlayingLineIdx === globalState.sequencer.currentPlayingEndLineIdx
-                && sequencer.lastPlayingItemIdx === globalState.sequencer.currentPlayingEndItemIdx
-            )
-        ) {
-            reachedLastNote = true;
-        }
-
-        playingTimeout = setTimeout(() => {
-            recursiveTimeout();
-        }, time);
+        currentPressed.splice(0, currentPressed.length);
     }
 
-    recursiveTimeout();
-}
+    outer: for (
+        let lineIdx = sequencer.startPlayingLineIdx; 
+        lineIdx <= end; 
+        lineIdx++
+    ) {
+        const line = track.lines[lineIdx];
 
+
+        for(let i = itemIdx; i < line.items.length; i++) {
+            if (lineIdx === end && (i - 1) === sequencer.startPlayingEndItemIdx) {
+                // playback should finish about here!
+                break outer;
+            }
+
+            const item = line.items[i];
+
+            const bpm = line.bpm;
+            const division = line.division;
+            const time = bpmToInterval(bpm, division) / sequencer.currentPlayingSpeed;
+
+            const currentTime = nextTime;
+            nextTime += time;
+
+            item._scheduledStart = currentTime;
+            item._scheduledEnd = nextTime;
+
+            if (item.t === SEQ_ITEM.CHORD) {
+                // press everything we've not already pressed
+                for (const n of item.notes) {
+                    const key = getKeyForNote(globalState, n);
+                    if (!key) {
+                        // don't schedule stuff we can't press on the keyboard
+                        continue;
+                    }
+
+                    if (currentPressed.find(v => v[1].index === key.index)) {
+                        // already held down.
+                        continue;
+                    }
+
+                    scheduledKeyPresses.push({
+                        time: currentTime,
+                        trackIdx: sequencer.startPlayingTrackIdx, 
+                        lineIdx,
+                        itemIdx: i,
+                        noteIndex: n.noteIndex,
+                        sample: n.sample,
+                        keyId: key.index,
+                        pressed: true,
+                    });
+                    currentPressed.push([item, key]);
+                }
+                continue;
+            }
+
+            if (item.t === SEQ_ITEM.HOLD) {
+                // keep everything we've pressed held down. in other words, do nothing
+                continue;
+            }
+
+            if (item.t === SEQ_ITEM.REST) {
+                // release everything we've pressed
+                scheduleReleaseOfCurrentlyPressed(
+                    currentTime, 
+                    sequencer.startPlayingTrackIdx, 
+                    lineIdx,
+                    i,
+                );
+                continue;
+            }
+        }
+
+        itemIdx = 0;
+    }
+
+    scheduleReleaseOfCurrentlyPressed(nextTime, -1, -1, -1,);
+    sequencer.playingDuration = nextTime + 1000;
+
+    sequencer._scheduledKeyPresses = scheduledKeyPresses;
+    schedulePlayback(scheduledKeyPresses);
+    console.log(scheduledKeyPresses);
+}
 
 let loadSaveSidebarOpen = false;
 let loadSaveCurrentSelection = "";
@@ -326,7 +443,7 @@ function loadCurrentSelectedSequence() {
         return;
     }
 
-    globalState.sequencer.sequencerTracks = JSON.parse(allSavedSongs[key]);
+    globalState.sequencer.tracks = JSON.parse(allSavedSongs[key]);
 }
 
 function LoadSavePanel(rg: RenderGroup) {
@@ -372,7 +489,7 @@ function LoadSavePanel(rg: RenderGroup) {
                     text: "Save",
                     onClick() {
                         const key = getCurrentSelectedSequenceName();
-                        allSavedSongs[key] = JSON.stringify(globalState.sequencer.sequencerTracks);
+                        allSavedSongs[key] = JSON.stringify(globalState.sequencer.tracks);
                         save();
                         rerenderApp();
                     }
@@ -400,7 +517,7 @@ let copiedItems: SequencerLineItem[] = [];
 let copiedLines: SequencerLine[] = [];
 
 function save() {
-    const currentTracks = JSON.stringify(globalState.sequencer.sequencerTracks);
+    const currentTracks = JSON.stringify(globalState.sequencer.tracks);
     allSavedSongs["autosaved"] = currentTracks;
     localStorage.setItem("allSavedSongs", JSON.stringify(allSavedSongs));
 }
@@ -412,6 +529,14 @@ function App(rg: RenderGroup) {
         "--key-size": "75px",
     });
 
+    rg.preRenderFn(() => {
+        const sequencer = globalState.sequencer;
+        const currentTime = getCurrentPlayingTime(sequencer);
+        if (currentTime > sequencer.playingDuration) {
+            stopPlaying();
+        }
+    });
+
     function newSliderTemplateFn(name: string, initialValue: number, fn: (val: number) => void) {
         return rg.c(Slider, (c, s) => c.render({
             label: name,
@@ -420,28 +545,6 @@ function App(rg: RenderGroup) {
             onChange(val) { fn(val); rerenderApp(); },
         }));
     }
-
-    let firstRender = false;
-    rg.preRenderFn(() => {
-        if (!firstRender) {
-            firstRender = true;
-        }
-    });
-
-    // TODO: automate playing some songs.
-    // let on = false;
-    // setInterval(() => {
-    //     if (on) {
-    //         keyboardHandle.pressNote({
-    //             noteIndex: getNoteIndex("A", 4, false)
-    //         });
-    //     } else {
-    //         keyboardHandle.releaseNote({main
-    //             noteIndex: getNoteIndex("A", 4, false)
-    //         });
-    //     }
-    //     on = !on;
-    // }, 1000);
 
     const currentlyPressedNotes: MusicNote[] = [];
     function handleKeyDown(
@@ -483,6 +586,11 @@ function App(rg: RenderGroup) {
             return true;
         }
 
+        if (key === "K" && ctrlPressed && shiftPressed) {
+            sequencer.settings.showKeysInsteadOfABCDEFG = !sequencer.settings.showKeysInsteadOfABCDEFG;
+            return true;
+        }
+
         if (loadSaveSidebarOpen) {
             if (vAxis !== 0) {
                 moveLoadSaveSelection(vAxis);
@@ -491,7 +599,7 @@ function App(rg: RenderGroup) {
 
             if (key === "Enter") {
                 loadCurrentSelectedSequence();
-                playAll();
+                playAll(1);
                 return true;
             }
 
@@ -555,12 +663,14 @@ function App(rg: RenderGroup) {
         }
 
         if (key === "Tab") {
+            setIsRangeSelecting(sequencer, false);
             insertNewLineItemAfter(sequencer);
             saveStateDebounced();
             return true;
         }
 
         if (key === "_") {
+            setIsRangeSelecting(sequencer, false);
             insertNewLineItemAfter(sequencer);
             setCurrentItemHold(sequencer);
             saveStateDebounced();
@@ -652,10 +762,11 @@ function App(rg: RenderGroup) {
         }
 
         if (key === " ") {
+            const speed = ctrlPressed ? 0.5 : 1;
             if (shiftPressed) {
-                playAll();
-            } else {
-                playToSelection();
+                playAll(speed);
+            }  else {
+                playToSelection(speed);
             }
             return true;
         }
@@ -703,15 +814,33 @@ function App(rg: RenderGroup) {
     })
 
     document.addEventListener("mousemove", () => {
-        globalState.sequencer.currentHoveredItemIdx = -1;
-        globalState.sequencer.currentHoveredLineIdx = -1;
-        rerenderApp();
+        if (
+            globalState.sequencer.currentHoveredItemIdx !== -1
+            || globalState.sequencer.currentHoveredLineIdx !== -1
+        ) {
+            globalState.sequencer.currentHoveredItemIdx = -1;
+            globalState.sequencer.currentHoveredLineIdx = -1;
+            rerenderApp();
+        }
     });
 
     window.addEventListener("resize", () => {
         rerenderApp();
     });
 
+
+    function clearSequencer() {
+        if (confirm("Are you sure you want to clear your progress?")) {
+            resetSequencer(globalState);
+            rerenderApp();
+        }
+    }
+
+    function toggleLoadSaveSiderbar() {
+        loadSaveSidebarOpen = !loadSaveSidebarOpen;
+        rerenderApp();
+        rerenderApp();
+    }
 
     return div({
         class: "absolute-fill row",
@@ -723,30 +852,30 @@ function App(rg: RenderGroup) {
                     div({ class: "flex-1" }),
                     rg.c(Button, c => c.render({
                         text: (loadSaveSidebarOpen ? ">" : "<") + "Load/Save",
-                        onClick() {
-                            loadSaveSidebarOpen = !loadSaveSidebarOpen;
-                            rerenderApp();
-                            rerenderApp();
-                        }
+                        onClick: toggleLoadSaveSiderbar
                     }))
                 ]),
                 div({ class: "row", style: "gap: 5px" }, [
                     span({ class: "b" }, "Sequencer"),
                     rg.if(
                         s => copiedLines.length > 0,
-                        rg => span({  }, [
-                            rg.text(s => copiedLines.length + " lines copied")
-                        ])
+                        rg => rg.text(s => copiedLines.length + " lines copied")
                     ),
                     rg.if(
                         s => copiedItems.length > 0,
-                        rg => span({  }, [
-                            rg.text(s => copiedItems.length + " items copied")
-                        ])
+                        rg => rg.text(s => copiedItems.length + " items copied")
                     ),
+                    div({ class: "flex-1" }),
+                    rg.c(Button, c => c.render({
+                        text: "Clear All",
+                        onClick: clearSequencer
+                    }))
                 ]),
-                rg.c(Sequencer, c => c.render({ state: globalState.sequencer }))
+                rg.c(Sequencer, c => c.render({ state: globalState.sequencer, globalState }))
             ]),
+            // div({ class: "row justify-content-center flex-1" }, [
+            //     rg.c(Teleprompter, c => c.render(null)),
+            // ]),
             div({ class: "row justify-content-center flex-1" }, [
                 rg.c(Keyboard, c => c.render(null)),
             ]),
@@ -766,7 +895,7 @@ let allSavedSongs: Record<string, string> = {};
 const existinSavedSongs = localStorage.getItem("allSavedSongs");
 if (existinSavedSongs) {
     allSavedSongs = JSON.parse(existinSavedSongs);
-    globalState.sequencer.sequencerTracks = JSON.parse(allSavedSongs.autosaved);
+    globalState.sequencer.tracks = JSON.parse(allSavedSongs.autosaved);
 }
 
 const root = newInsertable(document.body);
@@ -778,11 +907,35 @@ function rerenderApp() {
 // initialize the app.
 (async () => {
     await initDspLoopInterface({
-        onCurrentPlayingChanged: rerenderApp
+        render: () => {
+            rerenderApp();
+
+            const dspInfo = getDspInfo();
+            const sequencer = globalState.sequencer;
+
+            // resync the current time with the DSP time. 
+            // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
+            if (sequencer.isPlaying) {
+                const currentEstimatedScheduledTime = getCurrentPlayingTime(sequencer);
+                const difference = dspInfo.scheduledPlaybackTime - currentEstimatedScheduledTime;
+                sequencer.startPlayingTime -= difference;
+            }
+        }
     });
 
     // Our code only works after the audio context has loaded.
     app = newComponent(App);
     appendChild(root, app);
+
+    // render to the dom at 60 fps (!)
+    // (based??)
+    setInterval(() => {
+        if (!app) {
+            return;
+        }
+
+        app.renderWithCurrentState();
+    }, 1000 / 60);
+
     rerenderApp();
 })();

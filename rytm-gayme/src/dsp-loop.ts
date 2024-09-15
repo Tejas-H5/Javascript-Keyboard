@@ -2,22 +2,27 @@
 // web audio API to later be used by an audio worklet node. Don't put random shit in here,
 // put it in dsp-loop-interface.ts instead.
 
+import { setCurrentOscillatorGain } from "./dsp-loop-interface";
 import { getSampleArray } from "./samples";
+import { ScheduledKeyPress, SEQ_ITEM } from "./state";
 import { filterInPlace } from "./utils/array-utils";
 import { max, moveTowards } from "./utils/math-utils";
+import { getNoteFrequency } from "./utils/music-theory-utils";
 
 
 const OSC_GAIN_AWAKE_THRESHOLD = 0.001;
 
 type PlayingOscillator = {
     state: {
+        _lastNoteIndex: number;
+        _frequency: number;
         prevSignal: number;
         awakeTime: number;
         phase: number;
         gain: number;
     };
     inputs: {
-        frequency: number;
+        noteIndex: number;
         signal: number;
     },
 };
@@ -39,16 +44,14 @@ export type DspLoopMessage = 1337 | {
     playSettings?: Partial<DSPPlaySettings>;
     setOscilatorSignal?: [number, PlayingOscillator["inputs"]];
     playSample?: [number, PlayingSampleFile["inputs"]];
+    scheduleKeys?: ScheduledKeyPress[] | null;
 };
 
 
 export type DspInfo = {
+    // [keyId, signal strength]
     currentlyPlaying: [number, number][];
-}
-
-// local machine btw 💀💀💀
-export type DspLoopEventNotification = {
-    currentlyPlaying?: DspInfo["currentlyPlaying"];
+    scheduledPlaybackTime: number;
 }
 
 function updateOscillator(osc: PlayingOscillator, s: DSPPlaySettings) {
@@ -61,8 +64,13 @@ function updateOscillator(osc: PlayingOscillator, s: DSPPlaySettings) {
 
     const { inputs, state } = osc;
 
+    if (state._lastNoteIndex !== inputs.noteIndex) {
+        state._lastNoteIndex = inputs.noteIndex;
+        state._frequency = getNoteFrequency(inputs.noteIndex);
+    }
+
     // frequency rotations per second
-    state.phase += inputs.frequency / sampleRate;
+    state.phase += state._frequency / sampleRate;
     state.phase %= 3.0;
 
     if (inputs.signal || state.gain > OSC_GAIN_AWAKE_THRESHOLD) {
@@ -107,14 +115,13 @@ function getOscillatorValue(osc: PlayingOscillator) {
     let s1 = Math.sin(state.phase * Math.PI * 2.0 * 2);
     let s2 = Math.sin(state.phase * Math.PI * 2.0 * 3);
 
+    // The numbers seem small, but they make a pretty big difference actually.
     // TODO: can be a function of osc.frequency
     let m2 = 0.02;
     let m1 = 0.05;
     let m0 = 1;
 
     return state.gain * (
-        sm2 * m2 +
-        sm1 * m1 +
         s0 * m0 +
         s1 * m1 +
         s2 * m2
@@ -152,7 +159,20 @@ class DSPLoop extends AudioWorkletProcessor {
     };
     playingOscillators: [number, PlayingOscillator][] = [];
     playingSamples: [number, PlayingSampleFile][] = [];
-    playingOscillatorsContinuousCount = 0;
+    trackPlayback: {
+        playingTracks: [number, number][];
+        shouldSendUiUpdateSignals: boolean;
+        scheduleKeys?: ScheduledKeyPress[];
+        scheduledPlaybackTime: number;
+        scheduledPlaybackCurrentIdx: number;
+    } = {
+        playingTracks: [],
+        shouldSendUiUpdateSignals: false,
+        scheduleKeys: undefined,
+        scheduledPlaybackTime: 0,
+        scheduledPlaybackCurrentIdx: 0,
+    };
+
 
     constructor() {
         super();
@@ -165,6 +185,57 @@ class DSPLoop extends AudioWorkletProcessor {
     processSample() {
         let sample = 0;
         let count = 0;
+
+        const trackPlayback = this.trackPlayback;
+
+        // update automated scheduled inputs, if applicable
+        if (
+            trackPlayback.scheduleKeys &&
+            trackPlayback.scheduledPlaybackCurrentIdx < trackPlayback.scheduleKeys.length
+        ) {
+            // run playback if we can
+            const dt = 1000 / sampleRate;
+            trackPlayback.scheduledPlaybackTime += dt;
+
+            let safetyCounter = 0;
+            while (
+                trackPlayback.scheduledPlaybackCurrentIdx < trackPlayback.scheduleKeys.length
+                && trackPlayback.scheduleKeys[trackPlayback.scheduledPlaybackCurrentIdx].time < trackPlayback.scheduledPlaybackTime
+            ) {
+                if (safetyCounter++ >= 1000) {
+                    throw new Error("safety counter was hit!");
+                }
+
+                const nextItem = trackPlayback.scheduleKeys[trackPlayback.scheduledPlaybackCurrentIdx];
+                trackPlayback.playingTracks[nextItem.trackIdx] = [nextItem.lineIdx, nextItem.itemIdx];
+                trackPlayback.scheduledPlaybackCurrentIdx++;
+
+                if (nextItem.noteIndex) {
+                    const osc = this.getPlayingOscillator(nextItem.keyId);
+                    osc.inputs = {
+                        noteIndex: nextItem.noteIndex,
+                        signal: nextItem.pressed ? 1 : 0,
+                    }
+                    osc.state.awakeTime = 0;
+                }
+
+                if (nextItem.sample) {
+                    const osc = this.getPlayingSample(nextItem.keyId);
+                    osc.inputs = {
+                        sample: nextItem.sample,
+                    };
+                    osc.state.sampleIdx = 0;
+                }
+
+                if (nextItem.pressed) {
+                    trackPlayback.shouldSendUiUpdateSignals = true;
+                }
+            }
+
+            if (trackPlayback.scheduledPlaybackCurrentIdx >= trackPlayback.scheduleKeys.length) {
+                this.stopPlayingScheduledKeys();
+            }
+        }
 
         // update oscilators
         {
@@ -190,11 +261,7 @@ class DSPLoop extends AudioWorkletProcessor {
             }
         }
 
-        // This number must not suddenly change, else our signal will have a discontinuity.
-        // This discontinuity can be heard as a 'click' sound and is super hard to debug.
-        // Another synth project of mine still has this bug. I didn't find it till now lmao
-        this.playingOscillatorsContinuousCount = moveTowards(this.playingOscillatorsContinuousCount, count, 1000 / sampleRate)
-        return sample / Math.max(1, this.playingOscillatorsContinuousCount);
+        return sample;
     }
 
     process(
@@ -230,7 +297,22 @@ class DSPLoop extends AudioWorkletProcessor {
             });
         }
 
+        // if we pressed keys, we should send a message about this back to the main thread,
+        // so that the UI will update accordingly. It's not so important for when we release things though.
+        if (this.trackPlayback.shouldSendUiUpdateSignals) {
+            this.trackPlayback.shouldSendUiUpdateSignals = false;
+            this.sendCurrentPlayingMessageBack(
+                this.trackPlayback.shouldSendUiUpdateSignals,
+            );
+        }
+
         return true;
+    }
+
+    releaseAllOscillators() {
+        for (const osc of this.playingOscillators) {
+            osc[1].inputs.signal = 0;
+        }
     }
 
     getPlayingSample(id: number): PlayingSampleFile {
@@ -255,20 +337,23 @@ class DSPLoop extends AudioWorkletProcessor {
         }
 
         const newOsc: PlayingOscillator = {
-            state: { prevSignal: 0, awakeTime: 0, phase: 0, gain: 0, },
-            inputs: { frequency: 0, signal: 0, },
+            state: { _lastNoteIndex: -1, _frequency: 0, prevSignal: 0, awakeTime: 0, phase: 0, gain: 0, },
+            inputs: { noteIndex: 0, signal: 0, },
         };
         this.playingOscillators.push([id, newOsc]);
         return newOsc;
     }
 
-    sendMessageBack(data: DspLoopEventNotification) {
+    // This is expensive, so don't call too often
+    sendMessageBack(data: Partial<DspInfo>) {
         this.port.postMessage(data);
     }
 
+    // This is expensive, so don't call too often
+    sendCurrentPlayingMessageBack(signals = true) {
+        const payload: Partial<DspInfo> = {};
 
-    onMessage(e: DspLoopMessage) {
-        if (e === 1337) {
+        if (signals) {
             // this is the only way for the main thread to know this info :sad:
             const currentPlaybackSignals: [number, number][] = [];
             for (const [key, osc] of this.playingOscillators) {
@@ -278,8 +363,25 @@ class DSPLoop extends AudioWorkletProcessor {
                 currentPlaybackSignals.push([key, 1 - (osc.state.sampleIdx / osc.state.sampleArray.length)]);
             }
 
-            this.sendMessageBack({ currentlyPlaying: currentPlaybackSignals });
+            payload.currentlyPlaying = currentPlaybackSignals;
+        }
 
+        payload.scheduledPlaybackTime = this.trackPlayback.scheduledPlaybackTime;
+
+        this.sendMessageBack(payload);
+    }
+
+    stopPlayingScheduledKeys() {
+        const trackPlayback = this.trackPlayback;
+        trackPlayback.scheduleKeys = undefined;
+        trackPlayback.scheduledPlaybackTime = -1;
+        trackPlayback.scheduledPlaybackCurrentIdx = -1;
+        trackPlayback.playingTracks = [];
+    }
+
+    onMessage(e: DspLoopMessage) {
+        if (e === 1337) {
+            this.sendCurrentPlayingMessageBack();
             return;
         }
 
@@ -297,17 +399,43 @@ class DSPLoop extends AudioWorkletProcessor {
                 }
             }
         }
+
         if (e.setOscilatorSignal) {
             const [ id, inputs ] = e.setOscilatorSignal;
             const osc = this.getPlayingOscillator(id);
             osc.inputs = inputs;
             osc.state.awakeTime = 0;
         }
+
         if (e.playSample) {
             const [ id, inputs ] = e.playSample;
             const osc = this.getPlayingSample(id);
             osc.inputs = inputs;
             osc.state.sampleIdx = 0;
+        }
+
+        if (e.scheduleKeys !== undefined) {
+            const trackPlayback = this.trackPlayback;
+            if (e.scheduleKeys === null) {
+                this.stopPlayingScheduledKeys();
+            } else {
+                trackPlayback.scheduleKeys = e.scheduleKeys;
+                trackPlayback.scheduledPlaybackTime = 0;
+                trackPlayback.scheduledPlaybackCurrentIdx = 0;
+            }
+        }
+    }
+}
+
+function normalize(output: Float64Array) {
+    let maxSample = 0;
+    for (let i = 0; i < output.length; i++) {
+        maxSample = max(maxSample, output[i]);
+    }
+
+    if (maxSample > 1) {
+        for (let i = 0; i < output.length; i++) {
+            output[i] = output[i] / maxSample;
         }
     }
 }
