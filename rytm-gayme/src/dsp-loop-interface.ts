@@ -1,7 +1,7 @@
-import { DspInfo, DspLoopMessage, DSPPlaySettings } from "./dsp-loop";
+import { newFunctionUrl } from "src/utils/web-workers";
+import { DspInfo, DspLoopMessage, DSPPlaySettings, registerDspLoopClass } from "./dsp-loop";
 import { InstrumentKey, ScheduledKeyPress } from "./state";
-import { getNoteFrequency } from "./utils/music-theory-utils";
-import dspLoopWorkerUrl from "./dsp-loop.ts?worker&url";
+import { getAllSamples } from "./samples";
 
 function unreachable() {
     throw new Error("Unreachable code in dsp interface!");
@@ -146,16 +146,19 @@ export async function initDspLoopInterface({
     render(): void;
 }) {
     // registers the DSP loop. we must communicate with this thread through a Port thinggy
-    await audioCtx.audioWorklet.addModule(dspLoopWorkerUrl);
+    const url = newFunctionUrl([], registerDspLoopClass, {
+        includeEsBuildPolyfills: true
+    });
+    await audioCtx.audioWorklet.addModule(url);
+    // URL.revokeObjectURL(url);
     const dspLoopNode = new AudioWorkletNode(audioCtx, "dsp-loop");
     dspLoopNode.onprocessorerror = (e) => {
         console.error("dsp process error:", e);
     }
     dspLoopNode.connect(audioCtx.destination);
-
     dspPort = dspLoopNode.port;
 
-    // I'm surprized this isn't a memory leak...
+    // TODO: check if memory leak
     // but yeah this will literally create a new array and serialize it over
     // some port several times a second just so we know what the current
     // 'pressed' state of one of the notes is.
@@ -168,6 +171,7 @@ export async function initDspLoopInterface({
 
     // sync initial settings.
     updatePlaySettings(() => { });
+    audioLoopDispatch({ setAllSamples: getAllSamples() });
 
     dspPort.onmessage = ((e) => {
         const data = e.data as Partial<DspInfo>;

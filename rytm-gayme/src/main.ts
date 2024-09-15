@@ -3,7 +3,7 @@ import "src/css/layout.css";
 import { appendChild, Component, div, el, getState, isEditingTextSomewhereInDocument, newComponent, newInsertable, RenderGroup, setCssVars, setInputValue, span } from "src/utils/dom-utils";
 import { getCurrentOscillatorGain, getDspInfo, initDspLoopInterface, pressKey, releaseAllKeys, releaseKey, schedulePlayback } from "./dsp-loop-interface";
 import "./main.css";
-import { getItemSequencerText, Sequencer } from "./sequencer";
+import { Sequencer } from "./sequencer";
 import { ChordItem, deleteCurrentLineItemRange, getCurrentLine, getCurrentLineItem, getCurrentPlayingTime, getCurrentTrack, getItemSelectionRange, getKeyForNote, getLineSelectionRange, hasItemRangeSelect, hasLineRangeSelect, indexOfNextLineItem, indexOfPrevLineItem, insertNewLineAfter, insertNewLineItemAfter, InstrumentKey, moveUpOrDownALine, newGlobalState, resetSequencer, ScheduledKeyPress, SEQ_ITEM, SequencerLine, SequencerLineItem, setCurrentItemChord, setCurrentItemHold, setCurrentItemIdx, setIsRangeSelecting } from "./state";
 import { clamp } from "./utils/math-utils";
 import { bpmToInterval, MusicNote } from "./utils/music-theory-utils";
