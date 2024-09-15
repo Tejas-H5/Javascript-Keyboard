@@ -1,6 +1,7 @@
-import { getNoteText, MusicNote } from "src/utils/music-theory-utils";
-import { mag } from "./utils/math-utils";
+import { bpmToInterval, getNoteText, MusicNote, noteEquals } from "src/utils/music-theory-utils";
+import { within } from "./utils/math-utils";
 import { Insertable } from "./utils/dom-utils";
+import { filterInPlace } from "./utils/array-utils";
 
 export type InstrumentKey = {
     keyboardKey: string;
@@ -12,57 +13,28 @@ export type InstrumentKey = {
     index: number;
     remainingDuration: number;
 }
-export const SEQ_ITEM = {
-    CHORD: 1,
-    REST: 2,
-    HOLD: 3,
-} as const;
 
-type BaseSequencerLineItem = {
-    // for animation purposes
+type BaseTimelineItem = {
+    // for animation purposes, computed from other things just before we play the stuff.
     _scheduledStart: number;
     _scheduledEnd: number;
-}
-
-export type ChordItem = BaseSequencerLineItem & {
-    t: typeof SEQ_ITEM.CHORD; // press this chord, play these samples, wait 1 interval
-    notes: MusicNote[];
+    time: number;
 };
 
-type HoldOrBreakItem = BaseSequencerLineItem & {
-    t: typeof SEQ_ITEM.REST  // release the last chord, wait 1 interval
-    | typeof SEQ_ITEM.HOLD;   // keep holding down the las chord, wait 1 interval
+export type TimelineItem = (
+    ChordItem
+    | BpmChange
+);
+
+export type ChordItem = BaseTimelineItem & {
+    t: "chord",
+    notes: MusicNote[];
+    duration: number;
 }
 
-export type SequencerLineItem = ChordItem | HoldOrBreakItem;
-
-// NOTE: state with _ is computed or non-JSON serializable, and should be stripped
-// before saving the state as JSON
-
-export type SequencerLine = {
-    // These are also set for every following line as well.
-    comment: string | undefined;
+export type BpmChange = BaseTimelineItem & {
+    t: "bpm",
     bpm: number;
-    division: number;
-
-    items: SequencerLineItem[];
-
-    // The single UI component that is rendering this that is currently focused will update this array.
-    // if present, we'll use it to determine which notes are above/below each other on the same line. 
-    _itemPositions: [number, number][];
-}
-
-export type SequencerTrack = {
-    lines: SequencerLine[];
-}
-
-
-export function getCurrentTrack(state: SequencerState): SequencerTrack {
-    if (state.currentSelectedTrackIdx === state.tracks.length) {
-        state.tracks.push({ lines: [], });
-    }
-
-    return state.tracks[state.currentSelectedTrackIdx];
 }
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
@@ -70,10 +42,6 @@ export type ScheduledKeyPress = {
     time: number;
     // Used to know which keyboard key is being played by the DSP.
     keyId: number;
-    // Used to know which sequencer item is being played by the DSP.
-    trackIdx: number;
-    lineIdx: number;
-    itemIdx: number;
 
     pressed: boolean;
     noteIndex?: number;
@@ -81,74 +49,32 @@ export type ScheduledKeyPress = {
 }
 
 export type SequencerState = {
-    tracks: SequencerTrack[];
+    timeline: TimelineItem[];
 
-    currentSelectedTrackIdx: number;
-
-    currentSelectedLineIdx: number;
-    // NOTE: can't range-select lines and items at the same time.
-    currentSelectedLineStartIdx: number;
-    currentSelectedLineEndIdx: number;
-
-    currentSelectedItemIdx: number;
-    currentSelectedItemStartIdx: number;   
-    currentSelectedItemEndIdx: number;   
-
+    cursorStartTime: number;
+    cursorEndTime: number;
     isRangeSelecting: boolean;
+    currentBeatSnapDivisor: number;
+    _currentBpm: number;
+    _currentBpmTime: number;
 
-    currentHoveredLineIdx: number;
-    currentHoveredItemIdx: number;
+    currentHoveredTimelineItemIdx: number;
 
-
-    // NOTE: currentPlayingTrackIdx doesn't make sense really - 
-    // when I eventually add more of them, each track must be played in parallel, not in sequence.
-    // Most likely I would use this to isolate a specific track.
-    startPlayingTrackIdx: number;
-    startPlayingLineIdx: number;
-    startPlayingEndLineIdx: number;
-    startPlayingEndItemIdx: number;
     isPlaying: boolean;
     startPlayingTime: number;
+    // used to know when to automatically stop playback, if needed.
     playingDuration: number;
-    currentPlayingItemIdx: number;
-    currentPlayingSpeed: number;
 
     settings: {
         showKeysInsteadOfABCDEFG: boolean;
     };
 
-    // DOM elements tracking which thing is selected or playing.
+    // DOM elements tracking which thing is selected or playing, for purposes of scrolling.
+    // Might be redundantnow.
     _currentPlayingEl: Insertable<HTMLElement> | null;
     _currentSelectedEl: Insertable<HTMLElement> | null;
     _scheduledKeyPresses: ScheduledKeyPress[];
 };
-
-function newDefaultLine(): SequencerLine {
-    return {
-        bpm: 120,
-        comment: "",
-        division: 4,
-        items: [{ t: SEQ_ITEM.REST, _scheduledStart: 0, _scheduledEnd: 0 }],
-        _itemPositions: [],
-    };
-}
-
-export function getCurrentLine(state: SequencerState): SequencerLine {
-    const track = getCurrentTrack(state);
-
-    if (state.currentSelectedLineIdx === track.lines.length) {
-        track.lines.push(newDefaultLine());
-    }
-
-    const line = track.lines[state.currentSelectedLineIdx];
-    return line;
-}
-
-export function getCurrentLineItem(state: SequencerState): SequencerLineItem {
-    const line = getCurrentLine(state);
-    const item = line.items[state.currentSelectedItemIdx];
-    return item;
-}
 
 export function deepCopyJSONSerializable<T>(thing: T) {
     return JSON.parse(JSON.stringify(thing)) as T;
@@ -158,113 +84,179 @@ function clamp(val: number, min: number, max: number) {
     return Math.min(max, Math.max(min, val));
 }
 
-export function setCurrentLineIdx(state: SequencerState, idx: number, itemIdx?: number) {
-    const track = getCurrentTrack(state);
-
-    idx = clamp(idx, 0, track.lines.length - 1);
-
-    if (state.currentSelectedLineIdx === idx) {
-        return;
-    }
-
-    state.currentSelectedLineIdx = idx;
-    state.currentSelectedItemStartIdx = -1;
-    state.currentSelectedItemEndIdx = -1;
-
-    setCurrentItemIdx(state, itemIdx ?? state.currentSelectedItemIdx);
-}
-
-export function hasLineRangeSelect(state: SequencerState) {
-    return state.currentSelectedLineStartIdx !== state.currentSelectedLineEndIdx;
-}
-export function hasItemRangeSelect(state: SequencerState) {
-    return state.currentSelectedItemStartIdx !== state.currentSelectedItemEndIdx;
-}
-
 export function setIsRangeSelecting(state: SequencerState, value: boolean) {
     state.isRangeSelecting = value;
-    if (value) {
-        state.currentSelectedItemStartIdx = state.currentSelectedItemIdx;
-        state.currentSelectedItemEndIdx = state.currentSelectedItemIdx;
-        state.currentSelectedLineStartIdx = state.currentSelectedLineIdx;
-        state.currentSelectedLineEndIdx = state.currentSelectedLineIdx;
+}
+
+const CURSOR_ITEM_TOLERANCE_MS = 5;
+
+export function getCurrentItemIdx(state: SequencerState, startTime: number) {
+    for (let i = 0; i < state.timeline.length; i++) {
+        const item = state.timeline[i];
+        if (within(item.time, startTime, CURSOR_ITEM_TOLERANCE_MS)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+export function getNextItemIndex(state: SequencerState, startTime: number) {
+    for (let i = 0; i < state.timeline.length; i++) {
+        const item = state.timeline[i];
+        if (
+            item.time >= startTime
+            || within(item.time, startTime, CURSOR_ITEM_TOLERANCE_MS)
+        ) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+export function getPrevItemIndex(state: SequencerState, startTime: number) {
+    for (let i = state.timeline.length - 1; i >= 0; i--) {
+        const item = state.timeline[i];
+        if (
+            item.time <= startTime
+            || within(item.time, startTime, CURSOR_ITEM_TOLERANCE_MS)
+        ) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+export function sortSequencerTimeline(state: SequencerState) {
+    state.timeline.sort((a, b) => a.time - b.time);
+}
+
+export function recomputeState(state: GlobalState) {
+    { // recompute sequencer state
+        const sequencer = state.sequencer;
+        sequencer._currentBpm = 120;
+        sequencer._currentBpmTime = 0;
+        const idx = findPrevItemIndex(sequencer, sequencer.cursorStartTime, i => i.t === "bpm");
+        const item = sequencer.timeline[idx];
+        if (item && item.t === "bpm") {
+            sequencer._currentBpm = item.bpm;
+            sequencer._currentBpmTime = item.time;
+        }
+
+        // make sure it's sorted at all times
+        for (let i = 1; i < sequencer.timeline.length; i++) {
+            if (sequencer.timeline[i-1].time > sequencer.timeline[i].time) {
+                sortSequencerTimeline(sequencer);
+                break;
+            }
+        }
+    }
+}
+
+
+export function findNextItemIndex(state: SequencerState, startTime: number, predicate: (item: TimelineItem) => boolean): number {
+    let idx = getNextItemIndex(state, startTime);
+    if (idx === -1) {
+        return -1;
+    }
+
+    for (let i = idx + 1; i < state.timeline.length; i++) {
+        if (predicate(state.timeline[i])) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+export function moveCursor(state: SequencerState, time: number) {
+    state.cursorStartTime = time;
+    if (!state.isRangeSelecting) {
+        state.cursorEndTime = time;
+    }
+}
+
+export function findPrevItemIndex(state: SequencerState, startTime: number, predicate: (item: TimelineItem) => boolean): number {
+    let idx = getPrevItemIndex(state, startTime);
+    if (idx === -1) {
+        return -1;
+    }
+
+    for (let i = idx - 1; i >= 0; i--) {
+        if (predicate(state.timeline[i])) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+export function getSelectionRangeTime(state: SequencerState): [number, number] {
+    const minTime = Math.min(state.cursorStartTime, state.cursorEndTime);
+    const maxTime = Math.max(state.cursorStartTime, state.cursorEndTime);
+    return [minTime, maxTime];
+}
+
+export function getSelectionRange(state: SequencerState): [number, number] {
+    const [minTime, maxTime] = getSelectionRangeTime(state);
+    let min = getNextItemIndex(state, minTime);
+    let max = getPrevItemIndex(state, maxTime);
+
+
+    if (min === -1) {
+        min = max;
+    }
+
+    if (max === -1) {
+        max = min;
+    }
+
+    if (min === -1 || max === -1) {
+        return [-1, -1];
+    }
+
+    // we need to make sure that the item after the min selection time is actually 
+    // within the bounds of the max time. 
+    const minItem = state.timeline[min]
+    if (minItem.time > maxTime) {
+        return [-1, -1];
+    }
+
+    return [min, max];
+}
+
+export function getCurrentItem(state: SequencerState): TimelineItem | null {
+    const [start, end] = getSelectionRange(state);
+    if (start === -1 || end === -1) {
+        // NOTE: not sure if needed, but makes sense when I wrote it
+        return null;
+    }
+
+    const idx = getCurrentItemIdx(state, state.cursorStartTime);
+    if (idx === -1) {
+        return null;
+    }
+
+    return state.timeline[idx];
+}
+
+export function hasChordItem(item: ChordItem, note: MusicNote): boolean {
+    return !!item.notes.find(n => noteEquals(n, note));
+}
+
+export function setChordItem(chord: ChordItem, note: MusicNote, onOrOff: boolean) {
+    if (onOrOff === hasChordItem(chord, note)) {
+        return 
+    }
+
+    if (onOrOff) {
+        chord.notes.push(deepCopyJSONSerializable(note));
+        sortNotes(chord.notes);
     } else {
-        // TODO: refine
-        if (!hasLineRangeSelect(state)) {
-            clearRangeSelectLine(state);
-        }
-
-        if (!hasItemRangeSelect(state)) {
-            clearRangeSelectItem(state);
-        }
+        filterInPlace(chord.notes, n => !noteEquals(n, note));
     }
-}
-
-export function clearRangeSelectItem(state: SequencerState) {
-    state.currentSelectedItemStartIdx = -1;
-    state.currentSelectedItemEndIdx = -1;
-}
-
-export function clearRangeSelectLine(state: SequencerState) {
-    state.currentSelectedLineStartIdx = -1;
-    state.currentSelectedLineEndIdx = -1;
-}
-
-export function clearRangeSelect(state: SequencerState) {
-    clearRangeSelectLine(state);
-    clearRangeSelectItem(state);
-}
-
-export function indexOfNextLineItem(state: SequencerState, predicate: (item: SequencerLineItem) => boolean): number {
-    const line = getCurrentLine(state);
-    for (let i = state.currentSelectedItemIdx + 1; i < line.items.length; i++) {
-        if (predicate(line.items[i])) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-export function indexOfPrevLineItem(state: SequencerState, predicate: (item: SequencerLineItem) => boolean): number {
-    const line = getCurrentLine(state);
-    for (let i = state.currentSelectedItemIdx - 1; i >= 0; i--) {
-        if (predicate(line.items[i])) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-export function setCurrentItemIdx(state: SequencerState, idx: number) {
-    const line = getCurrentLine(state);
-    idx = clamp(idx, 0, line.items.length - 1);
-
-    state.currentSelectedItemIdx = idx;
-    if (state.isRangeSelecting) {
-        state.currentSelectedItemEndIdx = idx;
-    }
-}
-
-export function getItemSelectionRange(state: SequencerState): [number, number] {
-    const min = Math.min(state.currentSelectedItemStartIdx, state.currentSelectedItemEndIdx);
-    const max = Math.max(state.currentSelectedItemStartIdx, state.currentSelectedItemEndIdx);
-    return [min, max];
-}
-
-export function getLineSelectionRange(state: SequencerState) {
-    const min = Math.min(state.currentSelectedLineStartIdx, state.currentSelectedLineEndIdx);
-    const max = Math.max(state.currentSelectedLineStartIdx, state.currentSelectedLineEndIdx);
-    return [min, max];
-}
-
-export function setCurrentItemChord(state: SequencerState, notes: MusicNote[]) {
-    const line = getCurrentLine(state);
-    line.items[state.currentSelectedItemIdx] = {
-        t: SEQ_ITEM.CHORD,
-        notes: sortNotes(deepCopyJSONSerializable(notes)),
-        _scheduledStart: 0,
-        _scheduledEnd: 0,
-    };
 }
 
 export function resetSequencer(state: GlobalState) {
@@ -301,124 +293,29 @@ function sortNotes(notes: MusicNote[]) {
     });
 }
 
-export function setCurrentItemHold(state: SequencerState) {
-    const line = getCurrentLine(state);
-    line.items[state.currentSelectedItemIdx] = {
-        t: SEQ_ITEM.HOLD, 
+export function extendChordToTime(chord: ChordItem, absoluteTime: number) {
+    chord.duration = absoluteTime - chord.time;
+}
+
+export function deleteRange(state: SequencerState, start: number, end: number) {
+    state.timeline.splice(start, end - start + 1);
+}
+
+export function newChordItem(state: SequencerState): ChordItem {
+    const item: ChordItem = {
+        t: "chord",
         _scheduledStart: 0,
         _scheduledEnd: 0,
-    };
-}
-
-export function setCurrentItemRest(state: SequencerState) {
-    const line = getCurrentLine(state);
-    line.items[state.currentSelectedItemIdx] = {
-        t: SEQ_ITEM.REST, _scheduledStart: 0,
-        _scheduledEnd: 0,
-    };
-}
-
-function newRestItem(): SequencerLineItem {
-    return {
-        t: SEQ_ITEM.REST, 
-        _scheduledStart: 0,
-        _scheduledEnd: 0,
-    };
-}
-
-export function insertNewLineItemAfter(state: SequencerState, item?: SequencerLineItem) {
-    const line = getCurrentLine(state);
-    const newLineItemIdx = state.currentSelectedItemIdx + 1;
-
-    if (!item) {
-        item = newRestItem();
-    } else {
-        item = deepCopyJSONSerializable(item);
+        time: state.cursorStartTime,
+        notes: [],
+        duration: 0,
     }
 
-    line.items.splice(newLineItemIdx, 0, item);
+    state.timeline.push(item);
+    sortSequencerTimeline(state);
 
-    setCurrentItemIdx(state, newLineItemIdx);
+    return item;
 }
-
-// TODO: selection, range select
-export function deleteCurrentLine(state: SequencerState) {
-    const track = getCurrentTrack(state);
-    if (track.lines.length === 1) {
-        return;
-    }
-
-    setIsRangeSelecting(state, false);
-    track.lines.splice(state.currentSelectedLineIdx, 1);
-    if (track.lines.length === state.currentSelectedLineIdx) {
-        state.currentSelectedLineIdx--;
-    }
-}
-
-export function getLastChord(track: SequencerTrack, lineIdx: number, itemIdx: number): ChordItem | undefined {
-    for (let l = lineIdx; l >= 0; l--) {
-        for (let i = itemIdx; i >= 0; i--) {
-            const line = track.lines[l];
-            const item = line.items[i];
-
-            if (item.t === SEQ_ITEM.CHORD) {
-                return item;
-            }
-        }
-    }
-
-    return undefined;
-}
-
-export function deleteCurrentLineItemRange(state: SequencerState) {
-    const line = getCurrentLine(state);
-    const track = getCurrentTrack(state);
-
-    if (hasLineRangeSelect(state)) {
-        const [min, max] = getLineSelectionRange(state);
-        track.lines.splice(min, max - min + 1);
-        clearRangeSelectLine(state);
-    } else if (hasItemRangeSelect(state)) {
-        const [min, max] = getItemSelectionRange(state);
-        line.items.splice(min, max - min + 1);
-        clearRangeSelectItem(state);
-
-    } else {
-        line.items.splice(state.currentSelectedItemIdx, 1);
-    };
-
-    if (line.items.length === 0) {
-        deleteCurrentLine(state);
-        if (state.currentSelectedLineIdx >= track.lines.length) {
-            state.currentSelectedLineIdx = track.lines.length - 1;
-        }
-    }
-
-    if (state.currentSelectedItemIdx >= line.items.length) {
-        state.currentSelectedItemIdx = line.items.length - 1;
-    }
-}
-
-export function insertNewLineAfter(state: SequencerState, newLine?: SequencerLine) {
-    const track = getCurrentTrack(state);
-    const newLineIndex = state.currentSelectedLineIdx + 1;
-
-    if (!newLine) {
-        newLine = newDefaultLine();
-    } else {
-        newLine = deepCopyJSONSerializable(newLine);
-    }
-
-    const currentLine = track.lines[state.currentSelectedLineIdx];
-    if (currentLine) {
-        newLine.bpm = currentLine.bpm;
-        newLine.division = currentLine.division;
-    }
-
-    track.lines.splice(newLineIndex, 0, newLine);
-    setCurrentLineIdx(state, newLineIndex);
-}
-
 
 export type GlobalState = {
     keys: InstrumentKey[][];
@@ -439,44 +336,6 @@ function newKey(k: string): InstrumentKey {
 
 export const SEQUENCER_ROW_COLS = 8;
 
-export function moveUpOrDownALine(state: SequencerState, direction: number) {
-    if (direction !== 1 && direction !== -1) {
-        return;
-    }
-
-    const line = getCurrentLine(state);
-
-    // if we've calculated _itemPositions via UI, we can run additional logic to move within the same line based on 
-    // how the line has wrapped the elements.
-    if (line.items.length === line._itemPositions.length) {
-        const initIdx = state.currentSelectedItemIdx;
-        const [initX, initY] = line._itemPositions[initIdx];
-        let minDistanceIdx = -1;
-        let minDistance = 99999999999999;
-
-        for (let i = initIdx; i >= 0 && i < line.items.length; i += direction) {
-            const [x, y] = line._itemPositions[i];
-            if (Math.abs(y - initY) < 1) {
-                // ignore everything on the same row
-                continue;
-            }
-            
-            const dist = mag(x - initX, y - initY);
-            if (dist < minDistance) {
-                minDistance = dist;
-                minDistanceIdx = i;
-            }
-        }
-
-        if (minDistanceIdx !== -1) {
-            setCurrentItemIdx(state, minDistanceIdx);
-            return;
-        }
-    }
-
-    setCurrentLineIdx(state, state.currentSelectedLineIdx + direction);
-}
-
 export function getCurrentPlayingTime(state: SequencerState): number {
     if (!state.isPlaying) {
         return -10;
@@ -485,28 +344,54 @@ export function getCurrentPlayingTime(state: SequencerState): number {
     return Date.now() - state.startPlayingTime;
 }
 
+
+export function isItemPlaying(state: SequencerState, item: TimelineItem): boolean {
+    if (item.t !== "chord") {
+        return false;
+    }
+
+    const currentTime = getCurrentPlayingTime(state);
+    if (currentTime < 0) {
+        return false;
+    }
+
+    return item._scheduledStart <= currentTime && currentTime <= item._scheduledEnd;
+}
+
+
+export function getAdjacentTimelinePosition(
+    time: number, 
+    bpmTime: number, 
+    bpm: number, 
+    divisor: number, 
+    amount: number,
+) {
+    const delta = time - bpmTime;
+    const spacing = bpmToInterval(bpm, divisor);
+    const deltaGridsnapped = Math.round(delta / spacing) * spacing;
+    if (!within(time, deltaGridsnapped, CURSOR_ITEM_TOLERANCE_MS)) {
+        // If we aren't on a gridsnapped point, we should consume one 'jump' 
+        // moving to a gridsnapped point before we move to the next point
+        if (time < deltaGridsnapped) {
+            amount--;
+        } else if (time > deltaGridsnapped) {
+            amount++;
+        }
+    }
+
+    return deltaGridsnapped + spacing * amount;
+}
 export function newSequencerState(): SequencerState {
     const sequencer: SequencerState = {
-        tracks: [],
-        currentSelectedTrackIdx: 0,
-        currentSelectedLineIdx: 0,
-        currentSelectedLineStartIdx: -1,
-        currentSelectedLineEndIdx: -1,
-        currentSelectedItemIdx: 0,
-        currentSelectedItemStartIdx: -1,
-        currentSelectedItemEndIdx: -1,
+        timeline: [],
+        cursorStartTime: 0,
+        cursorEndTime: 0,
         isRangeSelecting: false,
-        currentPlayingItemIdx: 0,
-        startPlayingTrackIdx: 0,
-        startPlayingLineIdx: 0,
-        startPlayingEndLineIdx: 0,
+        currentBeatSnapDivisor: 4, 
         isPlaying: false,
         startPlayingTime: 0,
         playingDuration: 0,
-        startPlayingEndItemIdx: 0,
-        currentPlayingSpeed: 1,
-        currentHoveredLineIdx: -1,
-        currentHoveredItemIdx: -1,
+        currentHoveredTimelineItemIdx: -1,
 
         settings: {
             showKeysInsteadOfABCDEFG: false,
@@ -515,10 +400,10 @@ export function newSequencerState(): SequencerState {
         _currentPlayingEl: null,
         _currentSelectedEl: null,
         _scheduledKeyPresses: [],
+        _currentBpm: 120,
+        _currentBpmTime: 0,
     };
 
-    // TODO: move out the lazy init code to an explicit init
-    getCurrentLine(sequencer);
     return sequencer
 }
 

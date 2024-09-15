@@ -153,13 +153,11 @@ export function registerDspLoopClass() {
         playingOscillators: [number, PlayingOscillator][] = [];
         playingSamples: [number, PlayingSampleFile][] = [];
         trackPlayback: {
-            playingTracks: [number, number][];
             shouldSendUiUpdateSignals: boolean;
             scheduleKeys?: ScheduledKeyPress[];
             scheduledPlaybackTime: number;
             scheduledPlaybackCurrentIdx: number;
         } = {
-                playingTracks: [],
                 shouldSendUiUpdateSignals: false,
                 scheduleKeys: undefined,
                 scheduledPlaybackTime: 0,
@@ -205,7 +203,6 @@ export function registerDspLoopClass() {
                     }
 
                     const nextItem = trackPlayback.scheduleKeys[trackPlayback.scheduledPlaybackCurrentIdx];
-                    trackPlayback.playingTracks[nextItem.trackIdx] = [nextItem.lineIdx, nextItem.itemIdx];
                     trackPlayback.scheduledPlaybackCurrentIdx++;
 
                     if (nextItem.noteIndex) {
@@ -376,7 +373,6 @@ export function registerDspLoopClass() {
             trackPlayback.scheduleKeys = undefined;
             trackPlayback.scheduledPlaybackTime = -1;
             trackPlayback.scheduledPlaybackCurrentIdx = -1;
-            trackPlayback.playingTracks = [];
         }
 
         onMessage(e: DspLoopMessage) {

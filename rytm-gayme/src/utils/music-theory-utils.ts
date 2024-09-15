@@ -1,4 +1,3 @@
-
 // at least one of these fields must be set
 export type MusicNote = {
     noteIndex?: number;

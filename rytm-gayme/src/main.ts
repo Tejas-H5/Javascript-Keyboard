@@ -4,9 +4,10 @@ import { appendChild, Component, div, el, getState, isEditingTextSomewhereInDocu
 import { getCurrentOscillatorGain, getDspInfo, initDspLoopInterface, pressKey, releaseAllKeys, releaseKey, schedulePlayback } from "./dsp-loop-interface";
 import "./main.css";
 import { Sequencer } from "./sequencer";
-import { ChordItem, deleteCurrentLineItemRange, getCurrentLine, getCurrentLineItem, getCurrentPlayingTime, getCurrentTrack, getItemSelectionRange, getKeyForNote, getLineSelectionRange, hasItemRangeSelect, hasLineRangeSelect, indexOfNextLineItem, indexOfPrevLineItem, insertNewLineAfter, insertNewLineItemAfter, InstrumentKey, moveUpOrDownALine, newGlobalState, resetSequencer, ScheduledKeyPress, SEQ_ITEM, SequencerLine, SequencerLineItem, setCurrentItemChord, setCurrentItemHold, setCurrentItemIdx, setIsRangeSelecting } from "./state";
-import { clamp } from "./utils/math-utils";
+import { ChordItem, deepCopyJSONSerializable, getCurrentPlayingTime, getKeyForNote,  getPrevItemIndex,  getSelectionRange,  InstrumentKey, newGlobalState, resetSequencer, ScheduledKeyPress, setIsRangeSelecting, sortSequencerTimeline, TimelineItem, findPrevItemIndex, moveCursor, findNextItemIndex, recomputeState, getAdjacentTimelinePosition, getCurrentItem, getCurrentItemIdx, newChordItem, setChordItem, hasChordItem, deleteRange } from "./state";
+import { clamp, sqrMag } from "./utils/math-utils";
 import { bpmToInterval, MusicNote, noteEquals } from "./utils/music-theory-utils";
+import { unreachable } from "./utils/asserts";
 
 // all util styles
 
@@ -237,209 +238,74 @@ function stopPlaying() {
 function playToSelection(speed: number) {
     const sequencer = globalState.sequencer;
 
-    sequencer.currentPlayingSpeed = speed;
+    const [start, end] = getSelectionRange(sequencer);
+    if (start !== -1 && end !== -1) {
+        startPlaying(start, end, speed);
+        return;
+    } 
 
-    if (hasLineRangeSelect(sequencer)) {
-        const [start, end] = getLineSelectionRange(sequencer);
-        const track = getCurrentTrack(sequencer);
-        const endLine = track.lines[end];
+    const idx = getPrevItemIndex(sequencer, sequencer.cursorStartTime);
 
-        sequencer.startPlayingLineIdx = start;
-        sequencer.startPlayingEndLineIdx = end;
-        sequencer.currentPlayingItemIdx = 0;
-        sequencer.startPlayingEndItemIdx = endLine.items.length - 1;
-
-        sequencer.startPlayingTrackIdx = 0;
-    } else if (hasItemRangeSelect(sequencer)) {
-        const [start, end] = getItemSelectionRange(sequencer);
-        sequencer.startPlayingLineIdx = sequencer.currentSelectedLineIdx;
-        sequencer.startPlayingEndLineIdx = sequencer.currentSelectedLineIdx;
-        sequencer.currentPlayingItemIdx = start;
-        sequencer.startPlayingEndItemIdx = end;
-    } else {
-        sequencer.startPlayingLineIdx = sequencer.currentSelectedLineIdx;
-        sequencer.startPlayingEndLineIdx = sequencer.currentSelectedLineIdx;
-        sequencer.currentPlayingItemIdx = 0;
-        sequencer.startPlayingEndItemIdx = sequencer.currentSelectedItemIdx;
-
-        sequencer.startPlayingTrackIdx = 0;
-    }
-
-
-    startPlaying();
+    // TODO: play starting closer to the cursor's start instead of the very stat
+    startPlaying(0, idx, speed);
 }
 
 function playAll(speed: number) {
     const sequencer = globalState.sequencer;
-
-    sequencer.currentPlayingSpeed = speed;
-
-    sequencer.startPlayingLineIdx = 0;
-    sequencer.startPlayingEndLineIdx = 9999999999;
-    sequencer.currentPlayingItemIdx = 0;
-    sequencer.startPlayingEndItemIdx = 9999999999;
-    
-    sequencer.startPlayingTrackIdx = 0;
-
-    startPlaying();
+    startPlaying(0, sequencer.timeline.length - 1, speed);
 }
 
-function startPlaying() {
+function startPlaying(startIdx: number, endIdx: number, speed: number) {
     stopPlaying();
 
-    // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
     const sequencer = globalState.sequencer;
     sequencer.startPlayingTime = Date.now();
     sequencer.isPlaying = true;
-
-    // clear scheduled times
-    {
-        for (const track of sequencer.tracks) {
-            for (const line of track.lines) {
-                for (const item of line.items) {
-                    item._scheduledStart = -1;
-                    item._scheduledEnd = -1;
-                }
-            }
-        }
+    for (const item of sequencer.timeline) {
+        item._scheduledStart = -1;
+        item._scheduledEnd = -1;
     }
+
+    // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
     
-    const track = getCurrentTrack(sequencer);
     const scheduledKeyPresses: ScheduledKeyPress[] = [];
-    const end = Math.min(sequencer.startPlayingEndLineIdx, track.lines.length - 1);
-    let itemIdx = sequencer.currentPlayingItemIdx;
-    let nextTime = 500;
-    const currentPressed: [ChordItem, InstrumentKey][] = [];
-
-    const scheduleReleaseOfCurrentlyPressed = (currentTime: number, trackIdx: number, lineIdx: number, itemIdx: number) => {
-        // release everything we've pressed
-        for (const [chordItem, key] of currentPressed) {
-            const note = key.musicNote;
-            if (note.sample) {
-                // release is invalid for samples.
-                continue;
-            }
-
-            chordItem._scheduledEnd = currentTime;
-            scheduledKeyPresses.push({
-                time: currentTime,
-                keyId: key.index,
-                trackIdx,
-                lineIdx,
-                itemIdx,
-                noteIndex: note.noteIndex,
-                sample: note.sample,
-                pressed: false,
-            });
+    for (let i = startIdx; i < sequencer.timeline.length && i <= endIdx; i++) {
+        const item = sequencer.timeline[i];
+        if (item.t === "bpm") {
+            // this bpm thing doesn't do anything to the playback - it's purely for the UI
+            continue;
         }
 
-        currentPressed.splice(0, currentPressed.length);
-    }
-
-    outer: for (
-        let lineIdx = sequencer.startPlayingLineIdx; 
-        lineIdx <= end; 
-        lineIdx++
-    ) {
-        const line = track.lines[lineIdx];
-
-
-        for(let i = itemIdx; i < line.items.length; i++) {
-            if (lineIdx === end && (i - 1) === sequencer.startPlayingEndItemIdx) {
-                // playback should finish about here!
-                break outer;
-            }
-
-            const item = line.items[i];
-
-            const bpm = line.bpm;
-            const division = line.division;
-            const time = bpmToInterval(bpm, division) / sequencer.currentPlayingSpeed;
-
-            const currentTime = nextTime;
-            nextTime += time;
-
-            item._scheduledStart = currentTime;
-            item._scheduledEnd = nextTime;
-
-            if (item.t === SEQ_ITEM.CHORD) {
-                // release everything not in the item.t.
-                for (let i = 0; i < currentPressed.length; i++) {
-                    const [pressedItem, key] = currentPressed[i];
-                    if (item.notes.find(n => noteEquals(n, key.musicNote))) {
-                        // note wants to be held, so dont need to pop it. do transfer it's ownership to this item though
-                        currentPressed[i][0] = item;
-                        continue;
-                    }
-
-                    pressedItem._scheduledEnd = currentTime;
-                    scheduledKeyPresses.push({
-                        time: currentTime,
-                        keyId: key.index,
-                        trackIdx: sequencer.startPlayingTrackIdx,
-                        lineIdx,
-                        itemIdx,
-                        noteIndex: key.musicNote.noteIndex,
-                        sample: key.musicNote.sample,
-                        pressed: false,
-                    });
-
-                    currentPressed[i] = currentPressed[currentPressed.length - 1];
-                    currentPressed.pop();
-                    i--;
+        if (item.t === "chord") {
+            for (const n of item.notes) {
+                const key = getKeyForNote(globalState, n);
+                if (!key) {
+                    continue;
                 }
 
-                // press everything we've not already pressed
-                for (const n of item.notes) {
-                    const key = getKeyForNote(globalState, n);
-                    if (!key) {
-                        // don't schedule stuff we can't press on the keyboard
-                        continue;
-                    }
+                scheduledKeyPresses.push({
+                    time: item.time,
+                    keyId: key.index,
+                    pressed: true,
+                    noteIndex: n.noteIndex,
+                    sample: n.sample,
+                });
 
-                    if (currentPressed.find(v => v[1].index === key.index)) {
-                        // already held down.
-                        continue;
-                    }
-
-                    scheduledKeyPresses.push({
-                        time: currentTime,
-                        trackIdx: sequencer.startPlayingTrackIdx, 
-                        lineIdx,
-                        itemIdx: i,
-                        noteIndex: n.noteIndex,
-                        sample: n.sample,
-                        keyId: key.index,
-                        pressed: true,
-                    });
-                    currentPressed.push([item, key]);
-                }
-                continue;
+                scheduledKeyPresses.push({
+                    time: item.time + item.duration,
+                    keyId: key.index,
+                    pressed: false,
+                    noteIndex: n.noteIndex,
+                    sample: n.sample,
+                });
             }
-
-            if (item.t === SEQ_ITEM.HOLD) {
-                // keep everything we've pressed held down. in other words, do nothing
-                continue;
-            }
-
-            if (item.t === SEQ_ITEM.REST) {
-                // release everything we've pressed
-                scheduleReleaseOfCurrentlyPressed(
-                    currentTime, 
-                    sequencer.startPlayingTrackIdx, 
-                    lineIdx,
-                    i,
-                );
-                continue;
-            }
+            continue;
         }
 
-        itemIdx = 0;
+        unreachable(item);
     }
 
-    scheduleReleaseOfCurrentlyPressed(nextTime, -1, -1, -1,);
-    sequencer.playingDuration = nextTime + 1000;
-
+    scheduledKeyPresses.sort((a, b) => a.time - b.time);
     sequencer._scheduledKeyPresses = scheduledKeyPresses;
     schedulePlayback(scheduledKeyPresses);
 }
@@ -469,7 +335,7 @@ function loadCurrentSelectedSequence() {
         return;
     }
 
-    globalState.sequencer.tracks = JSON.parse(allSavedSongs[key]);
+    globalState.sequencer.timeline = JSON.parse(allSavedSongs[key]);
 }
 
 function LoadSavePanel(rg: RenderGroup) {
@@ -515,7 +381,7 @@ function LoadSavePanel(rg: RenderGroup) {
                     text: "Save",
                     onClick() {
                         const key = getCurrentSelectedSequenceName();
-                        allSavedSongs[key] = JSON.stringify(globalState.sequencer.tracks);
+                        allSavedSongs[key] = JSON.stringify(globalState.sequencer.timeline);
                         save();
                         rerenderApp();
                     }
@@ -539,11 +405,11 @@ function saveStateDebounced() {
     }, 100);
 }
 
-let copiedItems: SequencerLineItem[] = [];
-let copiedLines: SequencerLine[] = [];
+let copiedItemsStartOffsetMs = 0;
+let copiedItems: TimelineItem[] = [];
 
 function save() {
-    const currentTracks = JSON.stringify(globalState.sequencer.tracks);
+    const currentTracks = JSON.stringify(globalState.sequencer.timeline);
     allSavedSongs["autosaved"] = currentTracks;
     localStorage.setItem("allSavedSongs", JSON.stringify(allSavedSongs));
 }
@@ -586,6 +452,8 @@ function App(rg: RenderGroup) {
     });
 
     rg.preRenderFn(() => {
+        recomputeState(globalState);
+
         const sequencer = globalState.sequencer;
         const currentTime = getCurrentPlayingTime(sequencer);
         if (currentTime > sequencer.playingDuration) {
@@ -602,7 +470,6 @@ function App(rg: RenderGroup) {
         }));
     }
 
-    const currentlyPressedNotes: MusicNote[] = [];
     function handleKeyDown(
         key: string,
         ctrlPressed: boolean,
@@ -682,104 +549,74 @@ function App(rg: RenderGroup) {
         if (vAxis !== 0) {
             // doesn't handle wrapping correctly.
             // setCurrentLineIdx(sequencer, sequencer.currentSelectedLineIdx + vAxis);
-            moveUpOrDownALine(sequencer, vAxis);
+            // TODO: move thread selection thread up/down 
             return true;
         }
 
-        const line = getCurrentLine(sequencer);
         if (ctrlPressed) {
             if (key === "ArrowLeft") {
-                let idx = indexOfPrevLineItem(sequencer, i => i.t === SEQ_ITEM.CHORD);
+                let idx = findPrevItemIndex(sequencer, sequencer.cursorStartTime, i => true);
                 if (idx === -1) { idx = 0; }
-                setCurrentItemIdx(sequencer, idx);
+                const item = sequencer.timeline[idx];
+                moveCursor(sequencer, item.time);
                 return true;
             } else if (key === "ArrowRight") {
-                let idx = indexOfNextLineItem(sequencer, i => i.t === SEQ_ITEM.CHORD);
-                if (idx === -1) { idx = line.items.length - 1; }
-                setCurrentItemIdx(sequencer, idx);
-                return true;
+                let idx = findNextItemIndex(sequencer, sequencer.cursorStartTime, i => true);
+                if (idx === -1) { idx = 0; }
+                const item = sequencer.timeline[idx];
+                moveCursor(sequencer, item.time);
             }
         }
 
-        if (key === "ArrowLeft") {
-            setCurrentItemIdx(sequencer, sequencer.currentSelectedItemIdx - 1);
-            return true;
-        } else if (key === "ArrowRight") {
-            setCurrentItemIdx(sequencer, sequencer.currentSelectedItemIdx + 1);
+        // need to move by the current beat snap.
+        if (key === "Arrowleft" || key === "ArrowRight") {
+            let amount = key === "Arrowleft" ? -1 : 1;
+            const movePos = getAdjacentTimelinePosition(
+                sequencer.cursorStartTime,
+                sequencer._currentBpmTime,
+                sequencer._currentBpm,
+                sequencer.currentBeatSnapDivisor,
+                amount,
+            );
+            moveCursor(sequencer, movePos);
             return true;
         }
 
         if (key === "Delete") {
-            deleteCurrentLineItemRange(sequencer);
-            return true;
+            const [start, end] = getSelectionRange(sequencer);
+            if (start !== -1 && end !== -1) {
+                deleteRange(sequencer, start, end);
+                return true;
+            }
+
+
+            const idx = getCurrentItemIdx(sequencer, sequencer.cursorStartTime);
+            if (idx !== -1) {
+                deleteRange(sequencer, idx, idx);
+                return true;
+            }
         }
 
         if (repeat) {
             return false;
         }
 
-        if (key === "Tab") {
-            setIsRangeSelecting(sequencer, false);
-            insertNewLineItemAfter(sequencer);
-            saveStateDebounced();
-            return true;
-        }
-
-        if (key === "_") {
-            setIsRangeSelecting(sequencer, false);
-            insertNewLineItemAfter(sequencer);
-            setCurrentItemHold(sequencer);
-            saveStateDebounced();
-            return true;
-        }
-
-        if (key === "Enter" && shiftPressed) {
-            insertNewLineAfter(sequencer);
-            saveStateDebounced();
-            return true;
-        }
-
-        if (key === "Home") {
-            setCurrentItemIdx(sequencer, 0);
-            return true;
-        }
-
-        if (key === "End") {
-            const line = getCurrentLine(sequencer);
-            setCurrentItemIdx(sequencer, line.items.length - 1);
-            return true;
-        }
-
         if ((key === "C" || key === "c") && ctrlPressed) {
-            if (hasLineRangeSelect(sequencer)) {
-                const track = getCurrentTrack(sequencer);
-                const [start, end] = getLineSelectionRange(sequencer);
-                copiedLines = track.lines.slice(start, end + 1);
-                copiedItems = [];
-            } else if (hasItemRangeSelect(sequencer)) {
-                const line = getCurrentLine(sequencer);
-                const [start, end] = getItemSelectionRange(sequencer);
-                copiedItems = line.items.slice(start, end + 1);
-                copiedLines = [];
-            } else {
-                const item = getCurrentLineItem(sequencer);
-                copiedItems = [item];
-                copiedLines = [];
+            const [start, end] = getSelectionRange(sequencer);
+            if (start !== -1 && end !== -1) {
+                copiedItems = sequencer.timeline.slice(start, end + 1);
+                copiedItemsStartOffsetMs = copiedItems[0].time - sequencer.cursorStartTime;
+                return true;
             }
-
-            return true;
         }
 
         if ((key === "V" || key === 'v') && ctrlPressed) {
-            if (copiedLines.length > 0) {
-                for (const line of copiedLines) {
-                    insertNewLineAfter(sequencer, line);
-                }
-                return true;
-            } else if (copiedItems.length > 0) {
+            if (copiedItems.length > 0) {
                 for (const item of copiedItems) {
-                    insertNewLineItemAfter(sequencer, item);
+                    const newItem = deepCopyJSONSerializable(item);
+                    sequencer.timeline.push(newItem);
                 }
+                sortSequencerTimeline(sequencer);
                 return true;
             } 
         }
@@ -790,28 +627,26 @@ function App(rg: RenderGroup) {
                 return true;
             }
 
-            if (sequencer.currentSelectedLineStartIdx !== sequencer.currentSelectedLineEndIdx) {
-                sequencer.currentSelectedLineStartIdx = -1;
-                sequencer.currentSelectedLineEndIdx = -1;
-                return true;
-            }
-
-            if (sequencer.currentSelectedItemStartIdx !== -1) {
-                sequencer.currentSelectedItemStartIdx = -1;
-                sequencer.currentSelectedItemEndIdx = -1;
+            if (sequencer.isRangeSelecting) {
+                setIsRangeSelecting(sequencer, false);
+                sequencer.cursorEndTime = sequencer.cursorStartTime;
                 return true;
             }
         }
 
         const instrumentKey = globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
         if (instrumentKey) {
+            // TODO: If we're in edit mode, really we should be playing what we currently have. 
             pressKey(instrumentKey);
-            const note = instrumentKey.musicNote;
-            if (!currentlyPressedNotes.includes(note)) {
-                currentlyPressedNotes.push(note);
-            }
-            setCurrentItemChord(globalState.sequencer, currentlyPressedNotes);
 
+            const note = instrumentKey.musicNote;
+            let item = getCurrentItem(sequencer);
+            if (!item || item.t !== "chord") {
+                item = newChordItem(sequencer);
+            }
+
+            // Toggle the presence of this specific note in the chord.
+            setChordItem(item, note, !hasChordItem(item, note));
             saveStateDebounced();
 
             return true;
@@ -850,7 +685,6 @@ function App(rg: RenderGroup) {
         const instrumentKey = globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
         if (instrumentKey) {
             releaseKey(instrumentKey);
-            currentlyPressedNotes.splice(0, currentlyPressedNotes.length);
             return true;
         }
 
@@ -870,12 +704,8 @@ function App(rg: RenderGroup) {
     })
 
     document.addEventListener("mousemove", () => {
-        if (
-            globalState.sequencer.currentHoveredItemIdx !== -1
-            || globalState.sequencer.currentHoveredLineIdx !== -1
-        ) {
-            globalState.sequencer.currentHoveredItemIdx = -1;
-            globalState.sequencer.currentHoveredLineIdx = -1;
+        if (globalState.sequencer.currentHoveredTimelineItemIdx !== -1) {
+            globalState.sequencer.currentHoveredTimelineItemIdx = -1;
             rerenderApp();
         }
     });
@@ -933,10 +763,6 @@ function App(rg: RenderGroup) {
             div({ class: "row", style: "gap: 5px" }, [
                 span({ class: "b" }, "Sequencer"),
                 rg.if(
-                    () => copiedLines.length > 0,
-                    rg => rg.text(() => copiedLines.length + " lines copied")
-                ),
-                rg.if(
                     () => copiedItems.length > 0,
                     rg => rg.text(() => copiedItems.length + " items copied")
                 ),
@@ -969,7 +795,7 @@ let allSavedSongs: Record<string, string> = {};
 const existinSavedSongs = localStorage.getItem("allSavedSongs");
 if (existinSavedSongs) {
     allSavedSongs = JSON.parse(existinSavedSongs);
-    globalState.sequencer.tracks = JSON.parse(allSavedSongs.autosaved);
+    globalState.sequencer.timeline = JSON.parse(allSavedSongs.autosaved);
 }
 
 const root = newInsertable(document.body);

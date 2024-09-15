@@ -1,100 +1,48 @@
 import { Button } from "./components/button";
-import { getCurrentPlayingTime, getItemSelectionRange, getKeyForNote, GlobalState, SEQ_ITEM, SequencerLine, SequencerLineItem, SequencerState, SequencerTrack, setCurrentLineIdx } from "./state";
+import { getKeyForNote, getSelectionRangeTime, GlobalState, isItemPlaying, SequencerState, TimelineItem } from "./state";
+import { unreachable } from "./utils/asserts";
 import { div, getState, RenderGroup, scrollIntoView, span } from "./utils/dom-utils";
 import { getNoteText } from "./utils/music-theory-utils";
 
 
 function SequencerItemUI(rg: RenderGroup<{
-    lineIdx: number;
-    itemIdx: number;
-    track: SequencerTrack;
-    line: SequencerLine;
     state: SequencerState;
     globalState: GlobalState;
+    idx: number;
     render(): void;
 }>) {
-    function isLineItemPlaying(
-        state: SequencerState, 
-        item: SequencerLineItem
-    ) {
-        const currentTime = getCurrentPlayingTime(state);
-        if (currentTime < 0) {
-            return false;
-        }
 
-        return item._scheduledStart <= currentTime && currentTime <= item._scheduledEnd;
-    }
-
-    function isLineItemSelected(state: SequencerState, line: number, item: number): boolean {
-        if (state.currentSelectedLineIdx !== line) {
-            return false
-        }
-
-        if (state.currentSelectedItemIdx === item) {
-            return true;
-        }
-
-        // range selection
-        if (state.currentSelectedItemStartIdx !== -1) {
-            const [min, max] = getItemSelectionRange(state);
-            if (min <= item && item <= max) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    function isLineItemHovered(state: SequencerState, row: number, col: number) {
-        return state.currentHoveredLineIdx === row
-            && state.currentHoveredItemIdx === col;
-    }
-
-    let item: SequencerLineItem;
+    let item: TimelineItem;
     let isPlaying = false;
     let isSelected = false;
-    rg.preRenderFn(s => {
-        item = s.line.items[s.itemIdx];
 
-        isPlaying = isLineItemPlaying(s.state, item);
+    rg.preRenderFn(s => {
+        item = s.state.timeline[s.idx];
+        isPlaying = isItemPlaying(s.state, item);
         if (isPlaying) {
             s.state._currentPlayingEl = root;
         }
 
-        isSelected = isLineItemSelected(s.state, s.lineIdx, s.itemIdx);
+        const [minTime, maxTime] = getSelectionRangeTime(s.state);
+        isSelected = minTime <= item.time && item.time <= maxTime;
         if (isSelected) {
             s.state._currentSelectedEl = root;
         }
     });
 
-    const root = span({ class: "inline-block relative", style: "padding: 4px; border: 1px solid var(--fg);" }, [
-        rg.on("mousemove", (s, e) => {
-            e.stopImmediatePropagation();
+    function isLineItemHovered(state: SequencerState, idx: number) {
+        return state.currentHoveredTimelineItemIdx === idx;
+    }
 
-            if (
-                s.state.currentHoveredLineIdx !== s.lineIdx
-                || s.state.currentHoveredItemIdx !== s.itemIdx
-            ) {
-                s.state.currentHoveredLineIdx = s.lineIdx;
-                s.state.currentHoveredItemIdx = s.itemIdx;
-                s.render();
-            }
-        }),
-        rg.on("click", (s) => {
-            setCurrentLineIdx(s.state, s.lineIdx, s.itemIdx);
-            s.render();
-        }),
+    const root = span({ class: "inline-block relative", style: "padding: 4px; border: 1px solid var(--fg); overflow: overflow;" }, [
         rg.style(
             "backgroundColor",
             s => isPlaying ? "#00F" :
                 isSelected ? "var(--mg)" :
-                    isLineItemHovered(s.state, s.lineIdx, s.itemIdx) ? "var(--mg)" :
+                    isLineItemHovered(s.state, s.idx) ? "var(--mg)" :
                         ""
         ),
-        rg.style(
-            "color",
-            s => isLineItemPlaying(s.state, item) ? "#FFF" : ""
-        ),
+        rg.style("color", s => isPlaying ? "#FFF" : ""), 
         rg.text(s => {
             return getItemSequencerText(s.globalState, item, s.state.settings.showKeysInsteadOfABCDEFG);
         }),
@@ -103,148 +51,8 @@ function SequencerItemUI(rg: RenderGroup<{
     return root;
 }
 
-
-function SequencerLineUI(rg: RenderGroup<{
-    lineIdx: number;
-    track: SequencerTrack;
-    state: SequencerState;
-    globalState: GlobalState;
-    render(): void;
-}>) {
-
-    function handleHoverRow(lineIdx: number) {
-        const s = getState(rg);
-        s.state.currentHoveredLineIdx = lineIdx;
-        s.render();
-    }
-
-    function handleClickRow(lineIdx: number) {
-        const s = getState(rg);
-        setCurrentLineIdx(s.state, lineIdx);
-        s.render();
-    }
-
-    function isLineSelected(state: SequencerState, row: number) {
-        return state.currentSelectedLineIdx === row;
-    }
-
-    function isLineHovered(state: SequencerState, row: number) {
-        return state.currentHoveredLineIdx === row;
-    }
-
-    let line: SequencerLine;
-    rg.preRenderFn((s) => {
-        line = s.track.lines[s.lineIdx];
-    });
-
-    const itemsListRoot = (() => {
-        const root = div({
-            class: "flex-wrap",
-            style: "padding: 10px; gap: 10px"
-        });
-
-        return rg.list(root, SequencerItemUI, (getNext, s) => {
-            for (let i = 0; i < line.items.length; i++) {
-                getNext().render({
-                    globalState: s.globalState,
-                    lineIdx: s.lineIdx,
-                    itemIdx: i,
-                    track: s.track,
-                    line,
-                    state: s.state,
-                    render: s.render
-                });
-            }
-        })
-    })();
-
-    rg.postRenderFn((s) => {
-        if (!line._itemPositions) {
-            line._itemPositions = [];
-        }
-        // need to store list item positions to handle navigation with wrapping correctly later.
-        // TODO: monitor for performance regressions
-        line._itemPositions.splice(0, line._itemPositions.length);
-        for (const c of itemsListRoot.components) {
-            const rect = c.el.getBoundingClientRect();
-            line._itemPositions.push([rect.left, rect.top]); 
-        }
-    })
-
-    return div({
-        style: "font-size: 20px; border: 1px solid var(--fg);"
-    }, [
-        rg.on("mouseenter", s => handleHoverRow(s.lineIdx)),
-        rg.on("mousedown", s => handleClickRow(s.lineIdx)),
-        rg.style("borderBottom", s => s.lineIdx === s.track.lines.length - 1 ? "1px solid var(--fg)" : "none"),
-        rg.style(
-            "backgroundColor",
-            s => isLineSelected(s.state, s.lineIdx) ? "var(--bg2)" :
-                isLineHovered(s.state, s.lineIdx) ? "var(--bg2)" : "",
-        ),
-        div({class: "row" }, [
-            div({ style: "width: 20px; border-right: 1px solid var(--fg)" }, [
-                // TODO: range selection styles
-            ]),
-            div({ style: "width: 10px;" }),
-            div({ class: "col align-items-stretch", style: "font-size: var(--normal)" }, [
-                div({}, [
-                    rg.c(BpmInput, (c, s) => c.render({
-                        value: line.bpm,
-                        onChange(value) {
-                            line.bpm = value;
-                            s.render();
-                        }
-                    })),
-                    rg.c(DivisionInput, (c, s) => c.render({
-                        value: line.division,
-                        onChange(value) {
-                            line.division = value;
-                            s.render();
-                        }
-                    })),
-                ]),
-            ]),
-            itemsListRoot
-        ])
-    ]);
-}
-
-function SequencerTrackUI(rg: RenderGroup<{ 
-    track: number; 
-    state: SequencerState; 
-    globalState: GlobalState;
-    render(): void; 
-}>) {
-    return div({}, [
-        div({}, [
-            rg.text(s => "Track " + (s.track + 1)),
-        ]),
-        rg.list(div(), SequencerLineUI, (getNext, s) => {
-            const track = s.state.tracks[s.track];
-            for (let i = 0; i < track.lines.length; i++) {
-                getNext().render({ 
-                    track, 
-                    lineIdx: i, 
-                    render: s.render, 
-                    state: s.state,
-                    globalState: s.globalState
-                });
-            }
-        })
-    ]);
-}
-
-export function getItemSequencerText(globalState: GlobalState, item: SequencerLineItem, useKeyboardKey: boolean): string {
-    if (item.t === SEQ_ITEM.REST) {
-        return ".";
-    }
-
-    if (item.t === SEQ_ITEM.HOLD) {
-        return "_";
-    }
-
-    if (item.t === SEQ_ITEM.CHORD) {
+export function getItemSequencerText(globalState: GlobalState, item: TimelineItem, useKeyboardKey: boolean): string {
+    if (item.t === "chord") {
         return item.notes.map(n => {
             if (n.sample) return n.sample;
             if (n.noteIndex) {
@@ -259,7 +67,11 @@ export function getItemSequencerText(globalState: GlobalState, item: SequencerLi
         }).join(" ");
     }
 
-    return "<????>";
+    if (item.t === "bpm") {
+        return "bpm=" + item.bpm;
+    }
+
+    return unreachable(item);
 }
 
 export function Sequencer(rg: RenderGroup<{ 
@@ -268,8 +80,7 @@ export function Sequencer(rg: RenderGroup<{
 }>) {
     function handleMouseLeave() {
         const state = getState(rg).state;
-        state.currentHoveredLineIdx = -1;
-        state.currentHoveredItemIdx = -1;
+        state.currentHoveredTimelineItemIdx = -1;
         rg.renderWithCurrentState();
     }
 
@@ -295,14 +106,13 @@ export function Sequencer(rg: RenderGroup<{
         class: "flex-1 col",
         style: "padding: 10px",
     }, [
-        rg.list(scrollRoot, SequencerTrackUI, (getNext, s) => {
-            const { tracks: sequencerTracks } = s.state;
-            for (let i = 0; i < sequencerTracks.length; i++) {
+        rg.list(scrollRoot, SequencerItemUI, (getNext, s) => {
+            for (let i = 0; i < s.state.timeline.length; i++) {
                 getNext().render({ 
-                    track: i, 
                     state: s.state, 
                     render: rg.renderWithCurrentState,
                     globalState: s.globalState,
+                    idx: i,
                 });
             }
         }),
