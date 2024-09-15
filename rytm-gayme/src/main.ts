@@ -66,16 +66,16 @@ function Keyboard(rg: RenderGroup) {
                         class: "absolute",
                         style: `top: 0; left: 0; bottom: 0; right: 0; background-color: ${keyMarkedColor};`
                     }, [
-                        rg.style("opacity", s => "" + t / 10),
+                        rg.style("opacity", () => "" + t / 10),
                     ]),
                     div({
                         class: "absolute",
                         style: "border: 5px solid var(--fg); opacity: 1;"
                     }, [
-                        rg.style("top", s => -scale + "px"),
-                        rg.style("left", s => -scale + "px"),
-                        rg.style("bottom", s => -scale + "px"),
-                        rg.style("right", s => -scale + "px"),
+                        rg.style("top", () => -scale + "px"),
+                        rg.style("left", () => -scale + "px"),
+                        rg.style("bottom", () => -scale + "px"),
+                        rg.style("right", () => -scale + "px"),
                     ]),
                 ]);
             }
@@ -107,7 +107,7 @@ function Keyboard(rg: RenderGroup) {
                 rg.style("height", s => s.keySize + "px"),
                 rg.style("fontSize", s => (s.keySize / 2) + "px"),
                 rg.style("backgroundColor", () => signal > 0.1 ? `rgba(0, 0, 0, ${signal})` : `rgba(255, 255, 255, ${signal})`),
-                rg.style("color", (s) => signal > 0.1 ? `var(--bg)` : `var(--fg)`),
+                rg.style("color", () => signal > 0.1 ? `var(--bg)` : `var(--fg)`),
                 rg.on("mousedown", handlePress),
                 rg.on("mouseup", handleRelease),
                 rg.on("mouseleave", handleRelease),
@@ -181,7 +181,7 @@ function Keyboard(rg: RenderGroup) {
 
     const root = div({ class: "" });
 
-    return rg.list(root, KeyboardRow, (getNext, s) => {
+    return rg.list(root, KeyboardRow, (getNext) => {
         const offsets = [
             0,
             0.5,
@@ -473,7 +473,7 @@ function LoadSavePanel(rg: RenderGroup) {
         div({ class: "row", style: "gap: 10px" }, [
             // dont want to accidentally load over my work. smh.
             rg.if(
-                s => (getCurrentSelectedSequenceName() in allSavedSongs),
+                () => (getCurrentSelectedSequenceName() in allSavedSongs),
                 rg => rg.c(Button, c => c.render({
                     text: "Load",
                     onClick() {
@@ -484,7 +484,7 @@ function LoadSavePanel(rg: RenderGroup) {
             ),
             input,
             rg.if(
-                s => !!getCurrentSelectedSequenceName(),
+                () => !!getCurrentSelectedSequenceName(),
                 rg => rg.c(Button, c => c.render({
                     text: "Save",
                     onClick() {
@@ -538,7 +538,7 @@ function App(rg: RenderGroup) {
     });
 
     function newSliderTemplateFn(name: string, initialValue: number, fn: (val: number) => void) {
-        return rg.c(Slider, (c, s) => c.render({
+        return rg.c(Slider, (c) => c.render({
             label: name,
             min: 0.01, max: 1, step: 0.01,
             value: initialValue,
@@ -858,12 +858,12 @@ function App(rg: RenderGroup) {
                 div({ class: "row", style: "gap: 5px" }, [
                     span({ class: "b" }, "Sequencer"),
                     rg.if(
-                        s => copiedLines.length > 0,
-                        rg => rg.text(s => copiedLines.length + " lines copied")
+                        () => copiedLines.length > 0,
+                        rg => rg.text(() => copiedLines.length + " lines copied")
                     ),
                     rg.if(
-                        s => copiedItems.length > 0,
-                        rg => rg.text(s => copiedItems.length + " items copied")
+                        () => copiedItems.length > 0,
+                        rg => rg.text(() => copiedItems.length + " items copied")
                     ),
                     div({ class: "flex-1" }),
                     rg.c(Button, c => c.render({
@@ -881,7 +881,7 @@ function App(rg: RenderGroup) {
             ]),
         ]),
         rg.if(
-            s => loadSaveSidebarOpen,
+            () => loadSaveSidebarOpen,
             rg => div({ class: "col" }, [
                 rg.c(LoadSavePanel, c => c.render(null))
             ])

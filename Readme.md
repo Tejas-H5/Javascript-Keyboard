@@ -1,4 +1,4 @@
-# Virtual Keyboard ( Check it out [here](https://tejas-h5.github.io/Javascript-Keyboard/keyboard.html) )
+# Virtual Keyboard ( Check it out [here](https://tejas-h5.github.io/Javascript-Keyboard/) )
 
 This was originally a VanillaJS project that I've now ported to typescript. 
 Right now, it is a virtual keyboard piano instrument, but I eventually plan on turning this into a rhythm game.
