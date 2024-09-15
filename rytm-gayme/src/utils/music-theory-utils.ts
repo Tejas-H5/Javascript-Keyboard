@@ -5,6 +5,11 @@ export type MusicNote = {
     sample?: string;
 }
 
+export function noteEquals(a: MusicNote, b: MusicNote): boolean {
+    return (!!a.sample && a.sample === b.sample) ||
+        (!!a.noteIndex && a.noteIndex === b.noteIndex);
+}
+
 export const C_0 = 16.35;;
 export const TWELVTH_ROOT_OF_TWO = 1.0594631;
 

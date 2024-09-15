@@ -1,5 +1,5 @@
 import { Button } from "./components/button";
-import { GlobalState, SEQ_ITEM, SequencerLine, SequencerLineItem, SequencerState, SequencerTrack, getCurrentLine, getCurrentPlayingTime, getItemSelectionRange, getKeyForNote, setCurrentLineIdx } from "./state";
+import { getCurrentPlayingTime, getItemSelectionRange, getKeyForNote, GlobalState, SEQ_ITEM, SequencerLine, SequencerLineItem, SequencerState, SequencerTrack, setCurrentLineIdx } from "./state";
 import { div, getState, RenderGroup, scrollIntoView, span } from "./utils/dom-utils";
 import { getNoteText } from "./utils/music-theory-utils";
 

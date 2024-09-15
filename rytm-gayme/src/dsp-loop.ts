@@ -416,7 +416,7 @@ export function registerDspLoopClass() {
 
             if (e.scheduleKeys !== undefined) {
                 const trackPlayback = this.trackPlayback;
-                if (e.scheduleKeys === null) {
+                if (e.scheduleKeys === null || e.scheduleKeys.length === 0) {
                     this.stopPlayingScheduledKeys();
                 } else {
                     trackPlayback.scheduleKeys = e.scheduleKeys;

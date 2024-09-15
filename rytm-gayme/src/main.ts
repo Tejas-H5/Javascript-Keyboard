@@ -6,7 +6,7 @@ import "./main.css";
 import { Sequencer } from "./sequencer";
 import { ChordItem, deleteCurrentLineItemRange, getCurrentLine, getCurrentLineItem, getCurrentPlayingTime, getCurrentTrack, getItemSelectionRange, getKeyForNote, getLineSelectionRange, hasItemRangeSelect, hasLineRangeSelect, indexOfNextLineItem, indexOfPrevLineItem, insertNewLineAfter, insertNewLineItemAfter, InstrumentKey, moveUpOrDownALine, newGlobalState, resetSequencer, ScheduledKeyPress, SEQ_ITEM, SequencerLine, SequencerLineItem, setCurrentItemChord, setCurrentItemHold, setCurrentItemIdx, setIsRangeSelecting } from "./state";
 import { clamp } from "./utils/math-utils";
-import { bpmToInterval, MusicNote } from "./utils/music-theory-utils";
+import { bpmToInterval, MusicNote, noteEquals } from "./utils/music-theory-utils";
 
 // all util styles
 
@@ -66,17 +66,18 @@ function Keyboard(rg: RenderGroup) {
                         class: "absolute",
                         style: `top: 0; left: 0; bottom: 0; right: 0; background-color: ${keyMarkedColor};`
                     }, [
-                        rg.style("opacity", () => "" + t / 10),
+                        rg.style("opacity", () => "" + t),
                     ]),
-                    div({
-                        class: "absolute",
-                        style: "border: 5px solid var(--fg); opacity: 1;"
-                    }, [
-                        rg.style("top", () => -scale + "px"),
-                        rg.style("left", () => -scale + "px"),
-                        rg.style("bottom", () => -scale + "px"),
-                        rg.style("right", () => -scale + "px"),
-                    ]),
+                    // This osu! style border kinda whack ngl.
+                    // div({
+                    //     class: "absolute",
+                    //     style: "border: 5px solid var(--fg); opacity: 1;"
+                    // }, [
+                    //     rg.style("top", () => -scale + "px"),
+                    //     rg.style("left", () => -scale + "px"),
+                    //     rg.style("bottom", () => -scale + "px"),
+                    //     rg.style("right", () => -scale + "px"),
+                    // ]),
                 ]);
             }
 
@@ -362,6 +363,32 @@ function startPlaying() {
             item._scheduledEnd = nextTime;
 
             if (item.t === SEQ_ITEM.CHORD) {
+                // release everything not in the item.t.
+                for (let i = 0; i < currentPressed.length; i++) {
+                    const [pressedItem, key] = currentPressed[i];
+                    if (item.notes.find(n => noteEquals(n, key.musicNote))) {
+                        // note wants to be held, so dont need to pop it. do transfer it's ownership to this item though
+                        currentPressed[i][0] = item;
+                        continue;
+                    }
+
+                    pressedItem._scheduledEnd = currentTime;
+                    scheduledKeyPresses.push({
+                        time: currentTime,
+                        keyId: key.index,
+                        trackIdx: sequencer.startPlayingTrackIdx,
+                        lineIdx,
+                        itemIdx,
+                        noteIndex: key.musicNote.noteIndex,
+                        sample: key.musicNote.sample,
+                        pressed: false,
+                    });
+
+                    currentPressed[i] = currentPressed[currentPressed.length - 1];
+                    currentPressed.pop();
+                    i--;
+                }
+
                 // press everything we've not already pressed
                 for (const n of item.notes) {
                     const key = getKeyForNote(globalState, n);
@@ -415,7 +442,6 @@ function startPlaying() {
 
     sequencer._scheduledKeyPresses = scheduledKeyPresses;
     schedulePlayback(scheduledKeyPresses);
-    console.log(scheduledKeyPresses);
 }
 
 let loadSaveSidebarOpen = false;
@@ -520,6 +546,36 @@ function save() {
     const currentTracks = JSON.stringify(globalState.sequencer.tracks);
     allSavedSongs["autosaved"] = currentTracks;
     localStorage.setItem("allSavedSongs", JSON.stringify(allSavedSongs));
+}
+
+function HelpInfo(rg: RenderGroup<{ onClose(): void; }>) {
+    return div({ style: "padding: 10px" }, [
+        el("H3", {}, [
+            "Help"
+        ]),
+        div({}, [
+            "This website can be downloaded to your PC and ran offline!",
+            "This website/rhythm game is currently a work in progress. I'm not quite sure how it will end up.",
+        ]),
+        el("H3", {}, [
+            "Sequencer controls"
+        ]),
+        div({}, [
+            el("UL", {}, [
+                el("LI", {}, "Hold down multiple keys to input a chord."),
+                el("LI", {}, "Press TAB to add a '.'. This is a REST - it releases all the keys that are currently held."),
+                el("LI", {}, "Type an underscore character '_' to add a '_'. This is a hold - it keeps those keys held down for one more unit."),
+                el("LI", {}, "The '120' and the 1 / 4 are the BPM and interval. Change these to edit the speed and granualrity of the notes"),
+                el("LI", {}, "Arrow keys to move around, shift to select stuff, ctrl+c, ctrl+v to copy-paste notes (not to clipboard, just in this program)"),
+                el("LI", {}, "Shift + Enter to make a new line. Lines play one after another. You would create new lines for organisation of measures, and because different lines can have different bpms."),
+                el("LI", {}, "[Space] to play from the start of the current line to the currently selected note. Shift+Space plays from the very start to the very end, and Ctrl+Space plays at half speed."),
+            ])
+        ]),
+        rg.c(Button, (c, s) => c.render({
+            text: "Yep, I understand perfectly. makes sense to me!",
+            onClick: () => s.onClose(),
+        })),
+    ]);
 }
 
 function App(rg: RenderGroup) {
@@ -729,7 +785,7 @@ function App(rg: RenderGroup) {
         }
 
         if (key === "Escape") {
-            if (playingTimeout) {
+            if (sequencer.isPlaying) {
                 stopPlaying();
                 return true;
             }
@@ -836,8 +892,15 @@ function App(rg: RenderGroup) {
         }
     }
 
+    let helpOpen = false;
+    function toggleHelp() {
+        helpOpen = !helpOpen;
+        rerenderApp();
+    }
+
     function toggleLoadSaveSiderbar() {
         loadSaveSidebarOpen = !loadSaveSidebarOpen;
+        // needs it twice for some reason...
         rerenderApp();
         rerenderApp();
     }
@@ -847,32 +910,43 @@ function App(rg: RenderGroup) {
         style: "position: fixed",
     }, [
         div({ class: "col flex-1" }, [
-            div({ class: "col flex-1" }, [
-                div({ class: "row align-items-center b" }, [
-                    div({ class: "flex-1" }),
-                    rg.c(Button, c => c.render({
-                        text: (loadSaveSidebarOpen ? ">" : "<") + "Load/Save",
-                        onClick: toggleLoadSaveSiderbar
-                    }))
-                ]),
-                div({ class: "row", style: "gap: 5px" }, [
-                    span({ class: "b" }, "Sequencer"),
-                    rg.if(
-                        () => copiedLines.length > 0,
-                        rg => rg.text(() => copiedLines.length + " lines copied")
-                    ),
-                    rg.if(
-                        () => copiedItems.length > 0,
-                        rg => rg.text(() => copiedItems.length + " items copied")
-                    ),
-                    div({ class: "flex-1" }),
-                    rg.c(Button, c => c.render({
-                        text: "Clear All",
-                        onClick: clearSequencer
-                    }))
-                ]),
-                rg.c(Sequencer, c => c.render({ state: globalState.sequencer, globalState }))
+            div({ class: "row align-items-center b" }, [
+                div({ class: "flex-1" }),
+                rg.c(Button, c => c.render({
+                    text: "Help?",
+                    onClick: toggleHelp
+                })),
+                rg.c(Button, c => c.render({
+                    text: (loadSaveSidebarOpen ? ">" : "<") + "Load/Save",
+                    onClick: toggleLoadSaveSiderbar
+                }))
             ]),
+            rg.if(
+                () => helpOpen,
+                rg => rg.c(HelpInfo, c => c.render({
+                    onClose() {
+                        helpOpen = false;
+                        rerenderApp();
+                    }
+                })),
+            ),
+            div({ class: "row", style: "gap: 5px" }, [
+                span({ class: "b" }, "Sequencer"),
+                rg.if(
+                    () => copiedLines.length > 0,
+                    rg => rg.text(() => copiedLines.length + " lines copied")
+                ),
+                rg.if(
+                    () => copiedItems.length > 0,
+                    rg => rg.text(() => copiedItems.length + " items copied")
+                ),
+                div({ class: "flex-1" }),
+                rg.c(Button, c => c.render({
+                    text: "Clear All",
+                    onClick: clearSequencer
+                }))
+            ]),
+            rg.c(Sequencer, c => c.render({ state: globalState.sequencer, globalState })),
             // div({ class: "row justify-content-center flex-1" }, [
             //     rg.c(Teleprompter, c => c.render(null)),
             // ]),
@@ -913,9 +987,11 @@ function rerenderApp() {
             const dspInfo = getDspInfo();
             const sequencer = globalState.sequencer;
 
-            // resync the current time with the DSP time. 
-            // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
-            if (sequencer.isPlaying) {
+            if (dspInfo.scheduledPlaybackTime === -1) {
+                stopPlaying();
+            } else if (sequencer.isPlaying) {
+                // resync the current time with the DSP time. 
+                // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
                 const currentEstimatedScheduledTime = getCurrentPlayingTime(sequencer);
                 const difference = dspInfo.scheduledPlaybackTime - currentEstimatedScheduledTime;
                 sequencer.startPlayingTime -= difference;
