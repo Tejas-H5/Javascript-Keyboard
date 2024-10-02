@@ -4,9 +4,50 @@ export type MusicNote = {
     sample?: string;
 }
 
+export function getNoteHashKey(note: MusicNote): string {
+    if (note.noteIndex) {
+        return "" + note.noteIndex;
+    }
+
+    if (note.sample) {
+        return note.sample;
+    }
+    
+    return "";
+}
+
+
+export function compareMusicNotes(a: MusicNote, b: MusicNote): number {
+    if (a.noteIndex && b.noteIndex) {
+        return a.noteIndex - b.noteIndex;
+    }
+
+    if (a.sample && b.sample) {
+        return a.sample.localeCompare(b.sample);
+    }
+
+    if (a.sample && b.noteIndex) {
+        return 1;
+    }
+    if (b.sample && a.noteIndex) {
+        return -1;
+    }
+    return 0;
+}
+
 export function noteEquals(a: MusicNote, b: MusicNote): boolean {
     return (!!a.sample && a.sample === b.sample) ||
         (!!a.noteIndex && a.noteIndex === b.noteIndex);
+}
+
+export function rebaseBeats(beats: number, divisor: number, newDivisor: number): number {
+	const inBase1 = beats / divisor;
+	return Math.floor(inBase1 * newDivisor);
+}
+
+export function getTime(bpm: number, division: number, beats: number) {
+    const spacing = bpmToInterval(bpm, division);
+    return spacing * beats;
 }
 
 export const C_0 = 16.35;;

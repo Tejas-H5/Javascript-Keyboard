@@ -37,3 +37,11 @@ export function mag(x: number, y: number): number {
 export function within(a: number, b: number, tolerance: number) {
     return Math.abs(a - b) < tolerance;
 }
+
+export function lessThan(a: number, b: number, tolerance: number) {
+    return a < b - tolerance;
+}
+
+export function greaterThan(a: number, b: number, tolerance: number) {
+    return a > b + tolerance;
+}

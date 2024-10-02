@@ -1,13 +1,54 @@
 import { Button } from "src/components/button";
 import "src/css/layout.css";
-import { appendChild, Component, div, el, getState, isEditingTextSomewhereInDocument, newComponent, newInsertable, RenderGroup, setCssVars, setInputValue, span } from "src/utils/dom-utils";
-import { getCurrentOscillatorGain, getDspInfo, initDspLoopInterface, pressKey, releaseAllKeys, releaseKey, schedulePlayback } from "./dsp-loop-interface";
+import {
+    appendChild,
+    Component,
+    div,
+    el,
+    getState,
+    isEditingTextSomewhereInDocument,
+    newComponent,
+    newInsertable,
+    RenderGroup,
+    setCssVars,
+    setInputValue,
+    span
+} from "src/utils/dom-utils";
+import {
+    getCurrentOscillatorGain,
+    getDspInfo,
+    initDspLoopInterface,
+    pressKey,
+    releaseAllKeys,
+    releaseKey,
+    schedulePlayback
+} from "./dsp-loop-interface";
 import "./main.css";
 import { Sequencer } from "./sequencer";
-import { ChordItem, deepCopyJSONSerializable, getCurrentPlayingTime, getKeyForNote,  getPrevItemIndex,  getSelectionRange,  InstrumentKey, newGlobalState, resetSequencer, ScheduledKeyPress, setIsRangeSelecting, sortSequencerTimeline, TimelineItem, findPrevItemIndex, moveCursor, findNextItemIndex, recomputeState, getAdjacentTimelinePosition, getCurrentItem, getCurrentItemIdx, newChordItem, setChordItem, hasChordItem, deleteRange } from "./state";
-import { clamp, sqrMag } from "./utils/math-utils";
-import { bpmToInterval, MusicNote, noteEquals } from "./utils/music-theory-utils";
-import { unreachable } from "./utils/asserts";
+import {
+    deepCopyJSONSerializable,
+    deleteRange,
+    getCurrentPlayingTime,
+    getCursorStartBeats,
+    getItemIdxAtBeat,
+    getItemStartBeats,
+    getPrevItemIndex,
+    getSelectionRange,
+    InstrumentKey,
+    mutateSequencerTimeline,
+    newGlobalState,
+    recomputeState,
+    resetCursorEndToCursorStart,
+    resetSequencer,
+    setCursorBeats,
+    setCursorDivisor,
+    setIsRangeSelecting,
+    setTimelineNoteAtPosition,
+    TIMELINE_ITEM_NOTE,
+    timelineHasNoteAtPosition,
+    TimelineItem
+} from "./state";
+import { clamp } from "./utils/math-utils";
 
 // all util styles
 
@@ -160,7 +201,7 @@ function Keyboard(rg: RenderGroup) {
                         }
 
                         getNext().render({
-                            currentTime, 
+                            currentTime,
                             keyTime: -relativeTime / APPROACH_WINDOW,
                         });
                     }
@@ -242,9 +283,9 @@ function playToSelection(speed: number) {
     if (start !== -1 && end !== -1) {
         startPlaying(start, end, speed);
         return;
-    } 
+    }
 
-    const idx = getPrevItemIndex(sequencer, sequencer.cursorStartTime);
+    const idx = getPrevItemIndex(sequencer.timeline, getCursorStartBeats(sequencer));
 
     // TODO: play starting closer to the cursor's start instead of the very stat
     startPlaying(0, idx, speed);
@@ -256,27 +297,29 @@ function playAll(speed: number) {
 }
 
 function startPlaying(startIdx: number, endIdx: number, speed: number) {
+    // TODO: fix/rework. this was written before the beats refactor
+    /*
     stopPlaying();
 
     const sequencer = globalState.sequencer;
     sequencer.startPlayingTime = Date.now();
     sequencer.isPlaying = true;
     for (const item of sequencer.timeline) {
-        item._scheduledStart = -1;
-        item._scheduledEnd = -1;
+        item._scheduledStartTime = -1;
+        item._endTime = -1;
     }
 
     // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
-    
+
     const scheduledKeyPresses: ScheduledKeyPress[] = [];
     for (let i = startIdx; i < sequencer.timeline.length && i <= endIdx; i++) {
         const item = sequencer.timeline[i];
-        if (item.t === "bpm") {
+        if (item.t === TIMELINE_ITEM_BPM) {
             // this bpm thing doesn't do anything to the playback - it's purely for the UI
             continue;
         }
 
-        if (item.t === "chord") {
+        if (item.t === TIMELINE_ITEM_CHORD) {
             for (const n of item.notes) {
                 const key = getKeyForNote(globalState, n);
                 if (!key) {
@@ -284,7 +327,7 @@ function startPlaying(startIdx: number, endIdx: number, speed: number) {
                 }
 
                 scheduledKeyPresses.push({
-                    time: item.time,
+                    time: item._scheduledStartTime,
                     keyId: key.index,
                     pressed: true,
                     noteIndex: n.noteIndex,
@@ -292,7 +335,7 @@ function startPlaying(startIdx: number, endIdx: number, speed: number) {
                 });
 
                 scheduledKeyPresses.push({
-                    time: item.time + item.duration,
+                    time: item._endTime,
                     keyId: key.index,
                     pressed: false,
                     noteIndex: n.noteIndex,
@@ -308,6 +351,7 @@ function startPlaying(startIdx: number, endIdx: number, speed: number) {
     scheduledKeyPresses.sort((a, b) => a.time - b.time);
     sequencer._scheduledKeyPresses = scheduledKeyPresses;
     schedulePlayback(scheduledKeyPresses);
+    */
 }
 
 let loadSaveSidebarOpen = false;
@@ -335,7 +379,10 @@ function loadCurrentSelectedSequence() {
         return;
     }
 
-    globalState.sequencer.timeline = JSON.parse(allSavedSongs[key]);
+    mutateSequencerTimeline(globalState.sequencer, tl => {
+        tl.splice(0, tl.length);
+        tl.push(...JSON.parse(allSavedSongs[key]));
+    });
 }
 
 function LoadSavePanel(rg: RenderGroup) {
@@ -405,7 +452,7 @@ function saveStateDebounced() {
     }, 100);
 }
 
-let copiedItemsStartOffsetMs = 0;
+let copiedItemsStartOffsetBeats = 0;
 let copiedItems: TimelineItem[] = [];
 
 function save() {
@@ -544,7 +591,7 @@ function App(rg: RenderGroup) {
             }
 
             return false;
-        } 
+        }
 
         if (vAxis !== 0) {
             // doesn't handle wrapping correctly.
@@ -555,30 +602,49 @@ function App(rg: RenderGroup) {
 
         if (ctrlPressed) {
             if (key === "ArrowLeft") {
-                let idx = findPrevItemIndex(sequencer, sequencer.cursorStartTime, i => true);
-                if (idx === -1) { idx = 0; }
-                const item = sequencer.timeline[idx];
-                moveCursor(sequencer, item.time);
+                setCursorBeats(sequencer, -1);
                 return true;
             } else if (key === "ArrowRight") {
-                let idx = findNextItemIndex(sequencer, sequencer.cursorStartTime, i => true);
-                if (idx === -1) { idx = 0; }
-                const item = sequencer.timeline[idx];
-                moveCursor(sequencer, item.time);
+                setCursorBeats(sequencer, 1);
+            }
+        }
+
+        if (shiftPressed && (
+            key === "!" || key === "1"
+            || key === "@" || key === "2"
+            || key === "#" || key === "3"
+        )) {
+
+            const cycleThroughDivisors = (divisors: number[]) => {
+                for (let i = 0; i < divisors.length; i++) {
+                    const curr = divisors[i];
+                    const next = divisors[(i + 1) % divisors.length];
+                    let cursorDivisor = sequencer.cursorDivisor;
+                    if (cursorDivisor === curr) {
+                        setCursorDivisor(sequencer, next);
+                        return;
+                    }
+                }
+
+                setCursorDivisor(sequencer, divisors[0]);
+            }
+
+            if (key === "!" || key === "1") {
+                setCursorDivisor(sequencer, 1);
+            } else if (key === "@" || key === "2") {
+                cycleThroughDivisors([2, 4, 8, 16]);
+            } else if (key === "#" || key === "3") {
+                cycleThroughDivisors([3, 6, 9, 12, 15]);
+            } else if (key === "$" || key === "4") {
+                cycleThroughDivisors([4, 7, 10, 11, 13, 14,]);
             }
         }
 
         // need to move by the current beat snap.
-        if (key === "Arrowleft" || key === "ArrowRight") {
-            let amount = key === "Arrowleft" ? -1 : 1;
-            const movePos = getAdjacentTimelinePosition(
-                sequencer.cursorStartTime,
-                sequencer._currentBpmTime,
-                sequencer._currentBpm,
-                sequencer.currentBeatSnapDivisor,
-                amount,
-            );
-            moveCursor(sequencer, movePos);
+        if (key === "ArrowLeft" || key === "ArrowRight") {
+            let amount = key === "ArrowLeft" ? -1 : 1;
+            const cursorBeats = sequencer.cursorStart;
+            setCursorBeats(sequencer, cursorBeats + amount);
             return true;
         }
 
@@ -589,8 +655,7 @@ function App(rg: RenderGroup) {
                 return true;
             }
 
-
-            const idx = getCurrentItemIdx(sequencer, sequencer.cursorStartTime);
+            const idx = getItemIdxAtBeat(sequencer, getCursorStartBeats(sequencer));
             if (idx !== -1) {
                 deleteRange(sequencer, idx, idx);
                 return true;
@@ -605,20 +670,21 @@ function App(rg: RenderGroup) {
             const [start, end] = getSelectionRange(sequencer);
             if (start !== -1 && end !== -1) {
                 copiedItems = sequencer.timeline.slice(start, end + 1);
-                copiedItemsStartOffsetMs = copiedItems[0].time - sequencer.cursorStartTime;
+                copiedItemsStartOffsetBeats = getItemStartBeats(copiedItems[0]) - getCursorStartBeats(sequencer);
                 return true;
             }
         }
 
         if ((key === "V" || key === 'v') && ctrlPressed) {
             if (copiedItems.length > 0) {
-                for (const item of copiedItems) {
-                    const newItem = deepCopyJSONSerializable(item);
-                    sequencer.timeline.push(newItem);
-                }
-                sortSequencerTimeline(sequencer);
+                mutateSequencerTimeline(sequencer, tl => {
+                    for (const item of copiedItems) {
+                        const newItem = deepCopyJSONSerializable(item);
+                        tl.push(newItem);
+                    }
+                });
                 return true;
-            } 
+            }
         }
 
         if (key === "Escape") {
@@ -629,25 +695,40 @@ function App(rg: RenderGroup) {
 
             if (sequencer.isRangeSelecting) {
                 setIsRangeSelecting(sequencer, false);
-                sequencer.cursorEndTime = sequencer.cursorStartTime;
+                resetCursorEndToCursorStart(sequencer);
                 return true;
             }
         }
 
         const instrumentKey = globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
         if (instrumentKey) {
-            // TODO: If we're in edit mode, really we should be playing what we currently have. 
-            pressKey(instrumentKey);
+            // TODO: Just do one or the other based on if we're in 'edit' mode or play mode ?
 
-            const note = instrumentKey.musicNote;
-            let item = getCurrentItem(sequencer);
-            if (!item || item.t !== "chord") {
-                item = newChordItem(sequencer);
+            // play the instrument
+            {
+                pressKey(instrumentKey);
             }
 
-            // Toggle the presence of this specific note in the chord.
-            setChordItem(item, note, !hasChordItem(item, note));
-            saveStateDebounced();
+            // insert notes into the sequencer
+            {
+                mutateSequencerTimeline(sequencer, tl => {
+                    const pos = sequencer.cursorStart;
+                    const divisor = sequencer.cursorDivisor;
+                    const note = instrumentKey.musicNote;
+
+                    const hasNote = timelineHasNoteAtPosition(tl, pos, divisor, note);
+                    setTimelineNoteAtPosition(
+                        tl,
+                        pos,
+                        divisor,
+                        note,
+                        1,
+                        !hasNote
+                    );
+                });
+
+                saveStateDebounced();
+            }
 
             return true;
         }
@@ -656,7 +737,7 @@ function App(rg: RenderGroup) {
             const speed = ctrlPressed ? 0.5 : 1;
             if (shiftPressed) {
                 playAll(speed);
-            }  else {
+            } else {
                 playToSelection(speed);
             }
             return true;
@@ -772,7 +853,11 @@ function App(rg: RenderGroup) {
                     onClick: clearSequencer
                 }))
             ]),
-            rg.c(Sequencer, c => c.render({ state: globalState.sequencer, globalState })),
+            rg.c(Sequencer, c => c.render({
+                state: globalState.sequencer,
+                globalState,
+                render: rerenderApp
+            })),
             // div({ class: "row justify-content-center flex-1" }, [
             //     rg.c(Teleprompter, c => c.render(null)),
             // ]),
@@ -795,7 +880,10 @@ let allSavedSongs: Record<string, string> = {};
 const existinSavedSongs = localStorage.getItem("allSavedSongs");
 if (existinSavedSongs) {
     allSavedSongs = JSON.parse(existinSavedSongs);
-    globalState.sequencer.timeline = JSON.parse(allSavedSongs.autosaved);
+    mutateSequencerTimeline(globalState.sequencer, tl => {
+        tl.splice(0, tl.length);
+        tl.push(...JSON.parse(allSavedSongs.autosaved));
+    });
 }
 
 const root = newInsertable(document.body);
@@ -836,7 +924,10 @@ function rerenderApp() {
             return;
         }
 
-        app.renderWithCurrentState();
+        // if (globalState.sequencer.isPlaying) 
+        {
+            app.renderWithCurrentState();
+        }
     }, 1000 / 60);
 
     rerenderApp();
