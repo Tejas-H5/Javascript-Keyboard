@@ -45,3 +45,11 @@ export function lessThan(a: number, b: number, tolerance: number) {
 export function greaterThan(a: number, b: number, tolerance: number) {
     return a > b + tolerance;
 }
+
+export function lessThanOrEqualTo(a: number, b: number, tolerance: number) {
+    return a < b + tolerance;
+}
+
+export function greaterThanOrEqualTo(a: number, b: number, tolerance: number) {
+    return a > b - tolerance;
+}

@@ -1,7 +1,7 @@
 import { compareMusicNotes, getNoteHashKey, getNoteText, MusicNote, noteEquals, rebaseBeats } from "src/utils/music-theory-utils";
 import { filterInPlace } from "./utils/array-utils";
 import { Insertable } from "./utils/dom-utils";
-import { greaterThan, lessThan, within } from "./utils/math-utils";
+import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "./utils/math-utils";
 
 export type InstrumentKey = {
     keyboardKey: string;
@@ -440,6 +440,7 @@ export function setTimelineNoteAtPosition(
             && greaterThan(itemEnd, rangeEndBeats, CURSOR_ITEM_TOLERANCE_BEATS)
         ) {
             // postprocessing will take care of these too...
+
             notesToAdd.push({
                 type: TIMELINE_ITEM_NOTE,
                 note: item.note,
@@ -464,8 +465,8 @@ export function setTimelineNoteAtPosition(
 
         // delete notes completely within the bounds
         if (
-            lessThan(itemEnd, rangeEndBeats, CURSOR_ITEM_TOLERANCE_BEATS)
-            && greaterThan(itemStart, rangeStartBeats, CURSOR_ITEM_TOLERANCE_BEATS)
+            lessThanOrEqualTo(itemEnd, rangeEndBeats, CURSOR_ITEM_TOLERANCE_BEATS)
+            && greaterThanOrEqualTo(itemStart, rangeStartBeats, CURSOR_ITEM_TOLERANCE_BEATS)
         ) {
             return false;
         }
