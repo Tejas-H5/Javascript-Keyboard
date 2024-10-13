@@ -9,6 +9,9 @@
     --normal: 18px;
     --small: 14px;
     --medium: 36px;
+
+    /** Application specific styling here */
+    --playback: #00F;
 }
 
 .inverted {

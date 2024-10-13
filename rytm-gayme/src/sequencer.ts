@@ -1,22 +1,30 @@
 import { Button } from "./components/button";
 import {
     CommandItem,
+    equalBeats,
+    getBeatsForTime,
+    getCursorEndBeats,
     getCursorStartBeats,
     getItemLengthBeats,
     getItemStartBeats,
-    getKeyForNote,
     getNextItemIndex,
     getPrevItemIndex,
-    GlobalState,
+    isItemUnderCursor,
     NoteItem,
     SequencerState,
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_NOTE,
     TimelineItem
+} from "./sequencer-state";
+import {
+    getCurrentPlayingTime,
+    getKeyForNote,
+    GlobalState,
+    isItemBeingPlayed,
 } from "./state";
 import { unreachable } from "./utils/asserts";
-import { div, getState, RenderGroup, scrollIntoView, } from "./utils/dom-utils";
-import { lerp } from "./utils/math-utils";
+import { div, getState, RenderGroup, scrollIntoView } from "./utils/dom-utils";
+import { inverseLerp, lerp } from "./utils/math-utils";
 import { compareMusicNotes, getNoteHashKey, getNoteText, MusicNote } from "./utils/music-theory-utils";
 
 
@@ -39,7 +47,9 @@ export function getMusicNoteText(
 
 export function getItemSequencerText(globalState: GlobalState, item: TimelineItem, useKeyboardKey: boolean): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
-        return getMusicNoteText(globalState, item.note, useKeyboardKey);
+        const key = getKeyForNote(globalState, item.note);
+        const keyText = key ? key.text.toUpperCase() : "<no key!>";
+        return keyText + "/" + getMusicNoteText(globalState, item.note, useKeyboardKey);
     }
 
     if (item.type === TIMELINE_ITEM_BPM) {
@@ -114,12 +124,24 @@ function getSequencerThreads(
 }
 
 
+const NUM_EXTENT_DIVISIONS = 32;
+
+export function getSequencerLeftExtent(sequencer: SequencerState): number {
+    const cursorStart = getCursorStartBeats(sequencer);
+    return cursorStart - NUM_EXTENT_DIVISIONS / 2 / sequencer.cursorDivisor;
+}
+
+export function getSequencerRightExtent(sequencer: SequencerState): number {
+    const cursorStart = getCursorStartBeats(sequencer);
+    return cursorStart + NUM_EXTENT_DIVISIONS / 2 / sequencer.cursorDivisor;
+}
+
+
 export function Sequencer(rg: RenderGroup<{
     state: SequencerState;
     globalState: GlobalState;
     render(): void;
 }>) {
-    const NUM_DIVISIONS = 32;
 
     function handleMouseLeave() {
         const state = getState(rg).state;
@@ -128,6 +150,7 @@ export function Sequencer(rg: RenderGroup<{
     }
 
     let lastCursorStartBeats = -1,
+        lastCursorEndBeats = -1,
         lastCursorStartDivisor = -1,
         lastUpdatedTime = -1,
         invalidateCache = false;
@@ -146,8 +169,8 @@ export function Sequencer(rg: RenderGroup<{
     };
 
     rg.preRenderFn(s => {
-        s.state._currentSelectedEl = null;
-        s.state._currentPlayingEl = null;
+        s.globalState._currentSelectedEl = null;
+        s.globalState._currentPlayingEl = null;
 
         // Compute animation factors every frame without memoization
         {
@@ -158,8 +181,10 @@ export function Sequencer(rg: RenderGroup<{
                 s.state.cursorDivisor,
                 lerpFactor,
             );
-            internalState.leftExtent = currentCursorAnimated - NUM_DIVISIONS / 2 / divisorAnimated;
-            internalState.rightExtent = currentCursorAnimated + NUM_DIVISIONS / 2 / divisorAnimated;
+            const leftExtent = getSequencerLeftExtent(s.state);
+            internalState.leftExtent = lerp(internalState.leftExtent, leftExtent, lerpFactor);
+            const rightExtent = getSequencerRightExtent(s.state);
+            internalState.rightExtent = lerp(internalState.rightExtent, rightExtent, lerpFactor);
 
             internalState.leftExtentIdx = getPrevItemIndex(s.state.timeline, internalState.leftExtent);
             if (internalState.leftExtentIdx === -1) {
@@ -174,15 +199,18 @@ export function Sequencer(rg: RenderGroup<{
 
         // Recompute the non-overlapping items in the sequencer timeline as needed
         const cursorStartBeats = getCursorStartBeats(s.state);
+        const cursorEndBeats = getCursorEndBeats(s.state);
         const divisor = s.state.cursorDivisor;
         if (
             lastCursorStartBeats !== cursorStartBeats
+            || lastCursorEndBeats !== cursorEndBeats
             || lastCursorStartDivisor !== divisor
             || lastUpdatedTime !== s.state._timelineLastUpdated
             || invalidateCache
         ) {
             lastUpdatedTime = s.state._timelineLastUpdated;
             lastCursorStartBeats = cursorStartBeats;
+            lastCursorEndBeats = cursorEndBeats;
             lastCursorStartDivisor = divisor;
             invalidateCache = false;
 
@@ -209,7 +237,7 @@ export function Sequencer(rg: RenderGroup<{
     });
 
     rg.postRenderFn(s => {
-        const scrollEl = s.state._currentPlayingEl || s.state._currentSelectedEl;
+        const scrollEl = s.globalState._currentPlayingEl || s.globalState._currentSelectedEl;
         if (scrollEl) {
             scrollIntoView(scrollRoot.el, scrollEl, 0.5);
         }
@@ -222,7 +250,7 @@ export function Sequencer(rg: RenderGroup<{
     ]);
 
     return div({
-        class: "flex-1 col overflow-y-auto",
+        class: "flex-1 col",
         style: "padding: 10px",
     }, [
         div({ class: "row" }, [
@@ -231,14 +259,33 @@ export function Sequencer(rg: RenderGroup<{
             rg.text(() => Math.floor(internalState.rightExtent) + "ms"),
         ]),
         div({
-            class: "relative",
-            style: "height: 100px;"
+            class: "relative flex-1 overflow-y-auto",
         }, [
-            // Cursor start vertical line
-            div({
-                class: "absolute",
-                style: "width: 3px; background-color: var(--fg); top: 0; bottom: 0; right: 50%;"
+            // Playback vertical line
+            rg.c(SequencerVerticalLine, (c, s) => {
+                const currentTime = getCurrentPlayingTime(s.globalState);
+                const beats = getBeatsForTime(s.state, currentTime);
+                c.render({
+                    internalState,
+                    beats,
+                    color: "var(--playback)"
+                });
             }),
+            // Cursor start vertical line
+            rg.c(SequencerVerticalLine, c => c.render({
+                internalState,
+                beats: lastCursorStartBeats,
+                color: "var(--fg)"
+            })),
+            // cursor end vertical line
+            rg.if(
+                () => !equalBeats(lastCursorStartBeats, lastCursorEndBeats),
+                rg => rg.c(SequencerVerticalLine, c => c.render({
+                    internalState,
+                    beats: lastCursorEndBeats,
+                    color: "var(--mg)"
+                })),
+            ),
             () => {
                 const root = div({
                     style: "border-top: 1px solid var(--fg); border-bottom: 1px solid var(--fg);"
@@ -272,8 +319,8 @@ export function Sequencer(rg: RenderGroup<{
             rg.text(s => timelinePosToString(s.state.cursorStart, s.state.cursorDivisor)),
         ]),
         rg.list(div({ class: "row" }), GridLine, (getNext, s) => {
-            for (let i = 0; i < NUM_DIVISIONS; i++) {
-                const gridLineAmount = i - NUM_DIVISIONS / 2;
+            for (let i = 0; i < NUM_EXTENT_DIVISIONS; i++) {
+                const gridLineAmount = i - NUM_EXTENT_DIVISIONS / 2;
                 // const timestamp = getTime(s.state._currentBpm, s.state.cursorDivisor, s.state.cursorStartBeats + gridLineAmount)
                 getNext().render({
                     // text: timestamp + "ms"
@@ -284,6 +331,34 @@ export function Sequencer(rg: RenderGroup<{
         })
     ]);
 }
+
+function SequencerVerticalLine(rg: RenderGroup<{
+    internalState: SequencerUIInternalState;
+    beats: number;
+    color: string;
+}>) {
+    let absolutePercent = 0;
+
+    rg.preRenderFn((s) => {
+        absolutePercent = inverseLerp(
+            s.internalState.leftExtent, 
+            s.internalState.rightExtent, 
+            s.beats,
+        ) * 100;
+    });
+
+    return rg.if(
+        () => absolutePercent >= 0 && absolutePercent <= 100,
+        rg => div({
+            class: "absolute",
+            style: "width: 3px; top: 0; bottom: 0;"
+        }, [
+            rg.style("left", () => absolutePercent + "%"),
+            rg.style("backgroundColor", s => s.color),
+        ])
+    );
+}
+
 
 function SequencerNotesUI(rg: RenderGroup<{
     state: SequencerState;
@@ -322,17 +397,19 @@ function SequencerThreadItemUI(rg: RenderGroup<{
     let extentSize = 0;
     let leftPercent = 0;
     let width = 0;
+    let isUnderCursor = false;
+    let isBeingPlayed = false;
 
     rg.preRenderFn(s => {
         text = getItemSequencerText(
             s.globalState,
             s.item,
-            s.state.settings.showKeysInsteadOfABCDEFG,
+            s.globalState.settings.showKeysInsteadOfABCDEFG,
         );
 
-        const durationText = s.item.type === TIMELINE_ITEM_NOTE ? (":" + s.item.len.toFixed(2)) : "";
-
-        text = timelinePosToString(s.item.start, s.item.divisor) + ":" + durationText + " " + text;
+        // debug code
+        // const durationText = s.item.type === TIMELINE_ITEM_NOTE ? (":" + s.item.len.toFixed(2)) : "";
+        // text = timelinePosToString(s.item.start, s.item.divisor) + ":" + durationText + " " + text;
 
         const left = s.internalState.leftExtent;
         const right = s.internalState.rightExtent;
@@ -345,14 +422,23 @@ function SequencerThreadItemUI(rg: RenderGroup<{
         } else {
             width = MIN_WIDTH_PERCENT;
         }
+
+        if (s.item.type === TIMELINE_ITEM_NOTE) {
+            const sequencer = s.state;
+            const cursorStart = getCursorStartBeats(sequencer);
+
+            isUnderCursor = isItemUnderCursor(s.item, cursorStart);
+            isBeingPlayed = isItemBeingPlayed(s.globalState, s.item);
+        }
     });
 
     return div({
         class: "nowrap",
-        style: "position: absolute; overflow-x: clip; padding: 3px 10px; border: 1px solid var(--fg); box-sizing: border-box;",
+        style: "position: absolute; overflow-x: clip; padding: 3px 10px; border: 1px solid var(--fg); box-sizing: border-box; top: 0;",
     }, [
         rg.style("left", () => leftPercent + "%"),
         rg.style("width", () => width + "%"),
+        rg.style("backgroundColor", () => isBeingPlayed ? "var(--playback)" : isUnderCursor ? "var(--mg)" : ""),
         rg.text(() => text),
     ]);
 }

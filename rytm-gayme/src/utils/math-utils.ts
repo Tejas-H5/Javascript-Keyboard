@@ -20,6 +20,10 @@ export function lerp(a: number, b: number, t: number) {
     return a + (b - a) * t;
 }
 
+export function inverseLerp(start: number, end: number, value: number) {
+    return (value - start) / (end - start);
+}
+
 export function clamp(val: number, min: number, max: number) {
     if (val < min) return min;
     if (val > max) return max;

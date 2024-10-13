@@ -1,29 +1,40 @@
 import { newFunctionUrl } from "src/utils/web-workers";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, registerDspLoopClass } from "./dsp-loop";
-import { InstrumentKey, ScheduledKeyPress } from "./state";
+import { InstrumentKey } from "./state";
 import { getAllSamples } from "./samples";
 
-function unreachable() {
-    throw new Error("Unreachable code in dsp interface!");
+// NOTE: contains cyclic references, so it shouldn't be serialized.
+export type ScheduledKeyPress = {
+    time: number;
+    // Used to know which keyboard key is being played by the DSP.
+    keyId: number;
+
+    pressed: boolean;
+    noteIndex?: number;
+    sample?: string;
 }
 
+const audioCtx = new AudioContext()
 const playSettings: DSPPlaySettings = {
     attack: 0.01,
     decay: 0.5,
     sustainVolume: 0.5,
     sustain: 0.25,
 };
-
-export function updatePlaySettings(fn: (s: DSPPlaySettings) => void) {
-    fn(playSettings);
-    audioLoopDispatch({ playSettings });
-}
-
 let dspPort: MessagePort | undefined;
 const dspInfo: DspInfo = { 
     currentlyPlaying: [],
     scheduledPlaybackTime: 0,
 };
+
+function unreachable() {
+    throw new Error("Unreachable code in dsp interface!");
+}
+
+export function updatePlaySettings(fn: (s: DSPPlaySettings) => void) {
+    fn(playSettings);
+    audioLoopDispatch({ playSettings });
+}
 
 export function getDspInfo() {
     return dspInfo;
@@ -83,6 +94,7 @@ export function releaseKey(k: InstrumentKey) {
 }
 
 export function schedulePlayback(presses: ScheduledKeyPress[]) {
+    console.log("scheduling playback", presses);
     resumeAudio();
     audioLoopDispatch({ scheduleKeys: presses });
 }
@@ -137,8 +149,6 @@ function resumeAudio() {
     // the audio context can only be started in response to a user gesture.
     audioCtx.resume().catch(console.error);
 }
-
-const audioCtx = new AudioContext()
 
 export async function initDspLoopInterface({
     render

@@ -45,9 +45,14 @@ export function rebaseBeats(beats: number, divisor: number, newDivisor: number):
 	return Math.floor(inBase1 * newDivisor);
 }
 
-export function getTime(bpm: number, division: number, beats: number) {
-    const spacing = bpmToInterval(bpm, division);
-    return spacing * beats;
+export function beatsToMs(beats: number, bpm: number) {
+    const bpms = bpm / 60 / 1000;
+    return beats / bpms;
+}
+
+export function msToBeats(ms: number, bpm: number): number {
+    const bpms = bpm / 60 / 1000;
+    return ms * bpms;
 }
 
 export const C_0 = 16.35;;
@@ -59,10 +64,6 @@ export function getNoteFrequency(index: number) {
 
 export function getNoteNumber(index: number) {
     return Math.floor(index / 12);
-}
-
-export function bpmToInterval(bpm: number, division: number) {
-    return (60000 / bpm) / division;
 }
 
 export const NOTE_LETTERS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];

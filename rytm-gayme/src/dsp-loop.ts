@@ -1,8 +1,60 @@
 // NOTE: this file will be imported dynamically and registered as a module in the
 // web audio API to later be used by an audio worklet node. Don't put random shit in here,
 // put it in dsp-loop-interface.ts instead.
+// It seems like it's OK to import types though.
 
-import { ScheduledKeyPress } from "./state";
+import { ScheduledKeyPress } from "./dsp-loop-interface";
+
+export type DSPPlaySettings = {
+    attack: number;
+    decay: number;
+    sustain: number;
+    sustainVolume: number;
+}
+
+type PlayingOscillator = {
+    state: {
+        _lastNoteIndex: number;
+        _frequency: number;
+        prevSignal: number;
+        awakeTime: number;
+        phase: number;
+        gain: number;
+    };
+    inputs: {
+        noteIndex: number;
+        signal: number;
+    },
+};
+
+type PlayingSampleFile = {
+    state: {
+        prevSampleFile: string;
+        sampleArray: number[];
+        sampleIdx: number;
+    };
+    inputs: {
+        // we don't want to transmit the massive array of samples across the wire every single time.
+        sample: string;
+    }
+};
+
+export type DspLoopMessage = 1337 | {
+    playSettings?: Partial<DSPPlaySettings>;
+    setOscilatorSignal?: [number, PlayingOscillator["inputs"]];
+    playSample?: [number, PlayingSampleFile["inputs"]];
+    scheduleKeys?: ScheduledKeyPress[] | null;
+    // This samples record is so massive that my editor lags way too hard when I edit that file. So I
+    // put it in a different file, and just inject it on startup, since it's JSON serialzable
+    setAllSamples?: Record<string, number[]>;
+};
+
+
+export type DspInfo = {
+    // [keyId, signal strength]
+    currentlyPlaying: [number, number][];
+    scheduledPlaybackTime: number;
+}
 
 export function registerDspLoopClass() {
     const OSC_GAIN_AWAKE_THRESHOLD = 0.001;
@@ -428,56 +480,4 @@ export function registerDspLoopClass() {
     }
 
     registerProcessor("dsp-loop", DSPLoop);
-}
-
-export type DSPPlaySettings = {
-    attack: number;
-    decay: number;
-    sustain: number;
-    sustainVolume: number;
-}
-
-type PlayingOscillator = {
-    state: {
-        _lastNoteIndex: number;
-        _frequency: number;
-        prevSignal: number;
-        awakeTime: number;
-        phase: number;
-        gain: number;
-    };
-    inputs: {
-        noteIndex: number;
-        signal: number;
-    },
-};
-
-type PlayingSampleFile = {
-    state: {
-        prevSampleFile: string;
-        sampleArray: number[];
-        sampleIdx: number;
-    };
-    inputs: {
-        // we don't want to transmit the massive array of samples across the wire every single time.
-        sample: string;
-    }
-};
-
-
-export type DspLoopMessage = 1337 | {
-    playSettings?: Partial<DSPPlaySettings>;
-    setOscilatorSignal?: [number, PlayingOscillator["inputs"]];
-    playSample?: [number, PlayingSampleFile["inputs"]];
-    scheduleKeys?: ScheduledKeyPress[] | null;
-    // This samples record is so massive that my editor lags way too hard when I edit that file. So I
-    // put it in a different file, and just inject it on startup, since it's JSON serialzable
-    setAllSamples?: Record<string, number[]>;
-};
-
-
-export type DspInfo = {
-    // [keyId, signal strength]
-    currentlyPlaying: [number, number][];
-    scheduledPlaybackTime: number;
 }

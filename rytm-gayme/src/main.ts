@@ -20,33 +20,36 @@ import {
     initDspLoopInterface,
     pressKey,
     releaseAllKeys,
-    releaseKey,
-    schedulePlayback
+    releaseKey
 } from "./dsp-loop-interface";
 import "./main.css";
 import { Sequencer } from "./sequencer";
 import {
-    deepCopyJSONSerializable,
     deleteRange,
-    getCurrentPlayingTime,
+    getCurrentPlayingTimeRelative,
     getCursorStartBeats,
     getItemIdxAtBeat,
     getItemStartBeats,
-    getPrevItemIndex,
+    getPlaybackDuration,
     getSelectionRange,
-    InstrumentKey,
     mutateSequencerTimeline,
-    newGlobalState,
-    recomputeState,
     resetCursorEndToCursorStart,
-    resetSequencer,
     setCursorBeats,
     setCursorDivisor,
     setIsRangeSelecting,
     setTimelineNoteAtPosition,
-    TIMELINE_ITEM_NOTE,
     timelineHasNoteAtPosition,
     TimelineItem
+} from "./sequencer-state";
+import {
+    deepCopyJSONSerializable,
+    InstrumentKey,
+    newGlobalState,
+    playAll,
+    playCurrentInterval,
+    recomputeState,
+    resetSequencer,
+    stopPlaying
 } from "./state";
 import { clamp } from "./utils/math-utils";
 
@@ -94,7 +97,7 @@ function Keyboard(rg: RenderGroup) {
             }>) {
                 rg.skipErrorBoundary = true;
 
-                const keyMarkedColor = `rgba(0, 0, 255)`;
+                const keyMarkedColor = `var(--playback)`;
 
                 let t = 0;
                 let scale = 0;
@@ -136,10 +139,28 @@ function Keyboard(rg: RenderGroup) {
             }
 
             let signal = 0;
+            let pressEffect = 0;
+            let hasNote = false;
 
             rg.preRenderFn((s) => {
                 signal = getCurrentOscillatorGain(s.key.index);
+
+                const sequencer = globalState.sequencer;
+                hasNote = timelineHasNoteAtPosition(
+                    sequencer.timeline,
+                    sequencer.cursorStart,
+                    sequencer.cursorDivisor,
+                    s.key.musicNote,
+                );
+
+                const PRESS_EFFECT = 5;
+
+                // later, this press effect should use the signal when actually playing.
+                pressEffect = PRESS_EFFECT *
+                    // Math.max(signal, hasNote ? 1 : 0);
+                    (hasNote ? 1 : 0);
             });
+
 
             return span({
                 class: " relative",
@@ -149,18 +170,29 @@ function Keyboard(rg: RenderGroup) {
                 rg.style("width", s => s.keySize + "px"),
                 rg.style("height", s => s.keySize + "px"),
                 rg.style("fontSize", s => (s.keySize / 2) + "px"),
-                rg.style("backgroundColor", () => signal > 0.1 ? `rgba(0, 0, 0, ${signal})` : `rgba(255, 255, 255, ${signal})`),
                 rg.style("color", () => signal > 0.1 ? `var(--bg)` : `var(--fg)`),
+                rg.style("transform", () => `translate(${pressEffect}px, ${pressEffect}px)`),
                 rg.on("mousedown", handlePress),
                 rg.on("mouseup", handleRelease),
                 rg.on("mouseleave", handleRelease),
+
+                // indicator that shows if it's pressed on the sequencer
                 div({
-                    style: "position: absolute; top:5px; left: 0; right:0;"
+                    style: "position: absolute; top:0px; left: 0; right:0; bottom: 0;"
                 }, [
+                    rg.style("backgroundColor", (s) => hasNote ? `var(--mg)` : "#0000"),
+                ]),
+                // letter bg
+                div({
+                    style: "position: absolute; top:0px; left: 0; right:0; bottom: 0;"
+                }, [
+                    rg.style("backgroundColor", () => `rgba(0, 0, 0, ${signal})`),
+                ]),
+                // letter text
+                div({ style: "position: absolute; top:5px; left: 0; right:0;" }, [
                     rg.text(s => s.key.text)
                 ]),
                 div({
-                    class: "text-mg",
                     style: "position: absolute; bottom:5px; left: 0; right:0;" +
                         "text-align: right;"
                 }, [
@@ -176,9 +208,9 @@ function Keyboard(rg: RenderGroup) {
                         return;
                     }
 
-                    const currentTime = getCurrentPlayingTime(sequencer);
+                    const currentTime = getCurrentPlayingTimeRelative(sequencer);
 
-                    const scheduledKeyPresses = sequencer._scheduledKeyPresses;
+                    const scheduledKeyPresses = globalState._scheduledKeyPresses;
                     for (let i = 0; i < scheduledKeyPresses.length; i++) {
                         const scheduledPress = scheduledKeyPresses[i];
                         if (scheduledPress.keyId !== s.key.index) {
@@ -258,100 +290,6 @@ function Keyboard(rg: RenderGroup) {
             });
         }
     });
-}
-
-let playingTimeout = 0;
-let reachedLastNote = false;
-function stopPlaying() {
-    clearTimeout(playingTimeout);
-    releaseAllKeys(globalState.flatKeys);
-
-    playingTimeout = 0;
-    reachedLastNote = false;
-
-    const sequencer = globalState.sequencer;
-    sequencer._scheduledKeyPresses = [];
-    schedulePlayback([]);
-    sequencer.startPlayingTime = 0;
-    sequencer.isPlaying = false;
-}
-
-function playToSelection(speed: number) {
-    const sequencer = globalState.sequencer;
-
-    const [start, end] = getSelectionRange(sequencer);
-    if (start !== -1 && end !== -1) {
-        startPlaying(start, end, speed);
-        return;
-    }
-
-    const idx = getPrevItemIndex(sequencer.timeline, getCursorStartBeats(sequencer));
-
-    // TODO: play starting closer to the cursor's start instead of the very stat
-    startPlaying(0, idx, speed);
-}
-
-function playAll(speed: number) {
-    const sequencer = globalState.sequencer;
-    startPlaying(0, sequencer.timeline.length - 1, speed);
-}
-
-function startPlaying(startIdx: number, endIdx: number, speed: number) {
-    // TODO: fix/rework. this was written before the beats refactor
-    /*
-    stopPlaying();
-
-    const sequencer = globalState.sequencer;
-    sequencer.startPlayingTime = Date.now();
-    sequencer.isPlaying = true;
-    for (const item of sequencer.timeline) {
-        item._scheduledStartTime = -1;
-        item._endTime = -1;
-    }
-
-    // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
-
-    const scheduledKeyPresses: ScheduledKeyPress[] = [];
-    for (let i = startIdx; i < sequencer.timeline.length && i <= endIdx; i++) {
-        const item = sequencer.timeline[i];
-        if (item.t === TIMELINE_ITEM_BPM) {
-            // this bpm thing doesn't do anything to the playback - it's purely for the UI
-            continue;
-        }
-
-        if (item.t === TIMELINE_ITEM_CHORD) {
-            for (const n of item.notes) {
-                const key = getKeyForNote(globalState, n);
-                if (!key) {
-                    continue;
-                }
-
-                scheduledKeyPresses.push({
-                    time: item._scheduledStartTime,
-                    keyId: key.index,
-                    pressed: true,
-                    noteIndex: n.noteIndex,
-                    sample: n.sample,
-                });
-
-                scheduledKeyPresses.push({
-                    time: item._endTime,
-                    keyId: key.index,
-                    pressed: false,
-                    noteIndex: n.noteIndex,
-                    sample: n.sample,
-                });
-            }
-            continue;
-        }
-
-        unreachable(item);
-    }
-
-    scheduledKeyPresses.sort((a, b) => a.time - b.time);
-    sequencer._scheduledKeyPresses = scheduledKeyPresses;
-    schedulePlayback(scheduledKeyPresses);
-    */
 }
 
 let loadSaveSidebarOpen = false;
@@ -502,9 +440,10 @@ function App(rg: RenderGroup) {
         recomputeState(globalState);
 
         const sequencer = globalState.sequencer;
-        const currentTime = getCurrentPlayingTime(sequencer);
-        if (currentTime > sequencer.playingDuration) {
-            stopPlaying();
+        const currentTime = getCurrentPlayingTimeRelative(sequencer);
+        const duration = getPlaybackDuration(sequencer);
+        if (currentTime > duration) {
+            stopPlaying(globalState);
         }
     });
 
@@ -557,7 +496,7 @@ function App(rg: RenderGroup) {
         }
 
         if (key === "K" && ctrlPressed && shiftPressed) {
-            sequencer.settings.showKeysInsteadOfABCDEFG = !sequencer.settings.showKeysInsteadOfABCDEFG;
+            globalState.settings.showKeysInsteadOfABCDEFG = !globalState.settings.showKeysInsteadOfABCDEFG;
             return true;
         }
 
@@ -569,13 +508,13 @@ function App(rg: RenderGroup) {
 
             if (key === "Enter") {
                 loadCurrentSelectedSequence();
-                playAll(1);
+                playAll(globalState, 1);
                 return true;
             }
 
             if (key === "Escape") {
                 loadSaveSidebarOpen = false;
-                stopPlaying();
+                stopPlaying(globalState);
                 return true;
             }
 
@@ -689,7 +628,7 @@ function App(rg: RenderGroup) {
 
         if (key === "Escape") {
             if (sequencer.isPlaying) {
-                stopPlaying();
+                stopPlaying(globalState);
                 return true;
             }
 
@@ -736,9 +675,9 @@ function App(rg: RenderGroup) {
         if (key === " ") {
             const speed = ctrlPressed ? 0.5 : 1;
             if (shiftPressed) {
-                playAll(speed);
+                playAll(globalState, speed);
             } else {
-                playToSelection(speed);
+                playCurrentInterval(globalState, speed);
             }
             return true;
         }
@@ -901,14 +840,16 @@ function rerenderApp() {
             const dspInfo = getDspInfo();
             const sequencer = globalState.sequencer;
 
-            if (dspInfo.scheduledPlaybackTime === -1) {
-                stopPlaying();
-            } else if (sequencer.isPlaying) {
-                // resync the current time with the DSP time. 
-                // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
-                const currentEstimatedScheduledTime = getCurrentPlayingTime(sequencer);
-                const difference = dspInfo.scheduledPlaybackTime - currentEstimatedScheduledTime;
-                sequencer.startPlayingTime -= difference;
+            if (sequencer.isPlaying) {
+                if (dspInfo.scheduledPlaybackTime === -1) {
+                    stopPlaying(globalState);
+                } else {
+                    // resync the current time with the DSP time. 
+                    // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
+                    const currentEstimatedScheduledTime = getCurrentPlayingTimeRelative(sequencer);
+                    const difference = dspInfo.scheduledPlaybackTime - currentEstimatedScheduledTime;
+                    sequencer.startPlayingTime -= difference;
+                }
             }
         }
     });
