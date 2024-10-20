@@ -1,5 +1,5 @@
 import { getNoteText, MusicNote } from "src/utils/music-theory-utils";
-import { getCurrentPlayingTimeRelative, getItemEndTime, getItemStartTime, getNextItemIndex, getPrevItemIndex, getSelectionRange, newSequencerState, recomputeSequencerState, SequencerState, TIMELINE_ITEM_BPM, TIMELINE_ITEM_NOTE, TimelineItem } from "./sequencer-state";
+import { getBeatsForTime, getCurrentPlayingTimeRelative, getCursorStartBeats, getItemEndTime, getItemStartBeats, getItemStartTime, getNextItemIndex, getPrevItemIndex, getRangeSelectionEndBeats, getRangeSelectionStartBeats, getSelectionRange, gteBeats, hasRangeSelection, isItemUnderCursor, lteBeats, newSequencerState, recomputeSequencerState, SequencerState, TIMELINE_ITEM_BPM, TIMELINE_ITEM_NOTE, TimelineItem } from "./sequencer-state";
 import { Insertable } from "./utils/dom-utils";
 import { releaseAllKeys, ScheduledKeyPress, schedulePlayback } from "./dsp-loop-interface";
 import { unreachable } from "./utils/asserts";
@@ -10,7 +10,6 @@ export type GlobalState = {
     flatKeys: InstrumentKey[];
     sequencer: SequencerState;
     settings: {
-        showKeysInsteadOfABCDEFG: boolean;
     };
 
     // DOM elements tracking which thing is selected or playing, for purposes of scrolling.
@@ -65,14 +64,39 @@ export function getCurrentPlayingTime(state: GlobalState): number {
         relativeTime * state._scheduledKeyPressesPlaybackSpeed;
 }
 
+export function getCurrentPlayingBeats(state: GlobalState): number {
+    const currentTime = getCurrentPlayingTime(state);
+    const beats = getBeatsForTime(state.sequencer, currentTime);
+    return beats;
+}
+
 export function isItemBeingPlayed(state: GlobalState, item: TimelineItem): boolean {
     if (!state.sequencer.isPlaying) {
         return false;
     }
-    
+
+    if (item._index < state.sequencer.startPlayingIdx) {
+        return false;
+    }
+    if (item._index > state.sequencer.endPlayingIdx) {
+        return false;
+    }
+
     const playbackTime = getCurrentPlayingTime(state);
     return getItemStartTime(item) <= playbackTime &&
         playbackTime <= getItemEndTime(item);
+}
+
+export function isItemRangeSelected(state: GlobalState, item: TimelineItem): boolean {
+    const sequencer = state.sequencer;
+    const start = getRangeSelectionStartBeats(sequencer);
+    const end = getRangeSelectionEndBeats(sequencer);
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+
+    const itemBeats = getItemStartBeats(item);
+
+    return lteBeats(min, itemBeats) && lteBeats(itemBeats, max);
 }
 
 export function stopPlaying(state: GlobalState) {
@@ -91,7 +115,7 @@ export function stopPlaying(state: GlobalState) {
 
 export function playCurrentInterval(state: GlobalState, speed: number) {
     const sequencer = state.sequencer;
-    if (sequencer.isRangeSelecting) {
+    if (hasRangeSelection(sequencer)) {
         const [startIdx, endIdx] = getSelectionRange(sequencer);
         if (startIdx !== -1 && endIdx !== -1) {
             startPlaying(state, startIdx, endIdx, speed);
@@ -100,12 +124,19 @@ export function playCurrentInterval(state: GlobalState, speed: number) {
         return;
     }
 
-    const leftExtent = getSequencerLeftExtent(sequencer);
-    const rightExtent = getSequencerRightExtent(sequencer);
-    const leftExtentIdx = getNextItemIndex(sequencer.timeline, leftExtent);
-    const rightExtentIdx = getPrevItemIndex(sequencer.timeline, rightExtent);
+    // play from now till the end.
+    const timeline = state.sequencer.timeline;
+    const cursorStart = getCursorStartBeats(sequencer);
+    let idx = 0;
+    while (idx < timeline.length) {
+        const item = timeline[idx];
+        if (isItemUnderCursor(item, cursorStart)) {
+            break;
+        }
+        idx++;
+    }
 
-    startPlaying(state, leftExtentIdx, rightExtentIdx, speed);
+    startPlaying(state, idx, timeline.length, speed);
 }
 
 export function playAll(state: GlobalState, speed: number) {
@@ -122,6 +153,8 @@ export function startPlaying(state: GlobalState, startIdx: number, endIdx: numbe
     }
 
     sequencer.startPlayingTime = Date.now();
+    sequencer.startPlayingIdx = startIdx;
+    sequencer.endPlayingIdx = endIdx;
     sequencer.isPlaying = true;
 
     // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
@@ -184,7 +217,7 @@ export function startPlaying(state: GlobalState, startIdx: number, endIdx: numbe
 function newKey(k: string): InstrumentKey {
     return {
         keyboardKey: k.toLowerCase(),
-        text: k,
+        text: k[0].toUpperCase() + k.substring(1),
         noteText: "",
         index: -1,
         musicNote: {},
@@ -271,7 +304,6 @@ export function newGlobalState(): GlobalState {
         flatKeys,
         sequencer: newSequencerState(),
         settings: {
-            showKeysInsteadOfABCDEFG: false,
         },
 
         _scheduledKeyPresses: [],

@@ -42,6 +42,8 @@
 /** displays */
 
 .inline-block { display: inline-block; }
+/** we have React.Fragment at home */
+.contents { display: contents; }
 .inline { display: inline; }
 .flex{ display: flex; }
 .pointer-events-none { pointer-events: none; }

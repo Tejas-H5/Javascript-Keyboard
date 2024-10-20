@@ -25,6 +25,7 @@ import {
 import "./main.css";
 import { Sequencer } from "./sequencer";
 import {
+    clearRangeSelection,
     deleteRange,
     getCurrentPlayingTimeRelative,
     getCursorStartBeats,
@@ -32,11 +33,10 @@ import {
     getItemStartBeats,
     getPlaybackDuration,
     getSelectionRange,
+    handleMovement,
+    hasRangeSelection,
     mutateSequencerTimeline,
-    resetCursorEndToCursorStart,
-    setCursorBeats,
     setCursorDivisor,
-    setIsRangeSelecting,
     setTimelineNoteAtPosition,
     timelineHasNoteAtPosition,
     TimelineItem
@@ -293,6 +293,7 @@ function Keyboard(rg: RenderGroup) {
 }
 
 let loadSaveSidebarOpen = false;
+let isKeyboard = true;
 let loadSaveCurrentSelection = "";
 
 function moveLoadSaveSelection(amount: number) {
@@ -390,43 +391,13 @@ function saveStateDebounced() {
     }, 100);
 }
 
-let copiedItemsStartOffsetBeats = 0;
+let copiedPositionStart = 0;
 let copiedItems: TimelineItem[] = [];
 
 function save() {
     const currentTracks = JSON.stringify(globalState.sequencer.timeline);
     allSavedSongs["autosaved"] = currentTracks;
     localStorage.setItem("allSavedSongs", JSON.stringify(allSavedSongs));
-}
-
-function HelpInfo(rg: RenderGroup<{ onClose(): void; }>) {
-    return div({ style: "padding: 10px" }, [
-        el("H3", {}, [
-            "Help"
-        ]),
-        div({}, [
-            "This website can be downloaded to your PC and ran offline!",
-            "This website/rhythm game is currently a work in progress. I'm not quite sure how it will end up.",
-        ]),
-        el("H3", {}, [
-            "Sequencer controls"
-        ]),
-        div({}, [
-            el("UL", {}, [
-                el("LI", {}, "Hold down multiple keys to input a chord."),
-                el("LI", {}, "Press TAB to add a '.'. This is a REST - it releases all the keys that are currently held."),
-                el("LI", {}, "Type an underscore character '_' to add a '_'. This is a hold - it keeps those keys held down for one more unit."),
-                el("LI", {}, "The '120' and the 1 / 4 are the BPM and interval. Change these to edit the speed and granualrity of the notes"),
-                el("LI", {}, "Arrow keys to move around, shift to select stuff, ctrl+c, ctrl+v to copy-paste notes (not to clipboard, just in this program)"),
-                el("LI", {}, "Shift + Enter to make a new line. Lines play one after another. You would create new lines for organisation of measures, and because different lines can have different bpms."),
-                el("LI", {}, "[Space] to play from the start of the current line to the currently selected note. Shift+Space plays from the very start to the very end, and Ctrl+Space plays at half speed."),
-            ])
-        ]),
-        rg.c(Button, (c, s) => c.render({
-            text: "Yep, I understand perfectly. makes sense to me!",
-            onClick: () => s.onClose(),
-        })),
-    ]);
 }
 
 function App(rg: RenderGroup) {
@@ -477,12 +448,6 @@ function App(rg: RenderGroup) {
         }
 
         const sequencer = globalState.sequencer;
-
-        if (key === "Shift" && !repeat && !ctrlPressed) {
-            setIsRangeSelecting(sequencer, true);
-            return true;
-        }
-
         let vAxis = 0;
         if (key === "ArrowUp") {
             vAxis = -1;
@@ -496,7 +461,7 @@ function App(rg: RenderGroup) {
         }
 
         if (key === "K" && ctrlPressed && shiftPressed) {
-            globalState.settings.showKeysInsteadOfABCDEFG = !globalState.settings.showKeysInsteadOfABCDEFG;
+            isKeyboard = !isKeyboard;
             return true;
         }
 
@@ -539,15 +504,6 @@ function App(rg: RenderGroup) {
             return true;
         }
 
-        if (ctrlPressed) {
-            if (key === "ArrowLeft") {
-                setCursorBeats(sequencer, -1);
-                return true;
-            } else if (key === "ArrowRight") {
-                setCursorBeats(sequencer, 1);
-            }
-        }
-
         if (shiftPressed && (
             key === "!" || key === "1"
             || key === "@" || key === "2"
@@ -581,9 +537,13 @@ function App(rg: RenderGroup) {
 
         // need to move by the current beat snap.
         if (key === "ArrowLeft" || key === "ArrowRight") {
-            let amount = key === "ArrowLeft" ? -1 : 1;
-            const cursorBeats = sequencer.cursorStart;
-            setCursorBeats(sequencer, cursorBeats + amount);
+            handleMovement(
+                sequencer, 
+                key === "ArrowRight" ? 1 : -1,
+                ctrlPressed,
+                shiftPressed
+            );
+
             return true;
         }
 
@@ -606,19 +566,36 @@ function App(rg: RenderGroup) {
         }
 
         if ((key === "C" || key === "c") && ctrlPressed) {
-            const [start, end] = getSelectionRange(sequencer);
-            if (start !== -1 && end !== -1) {
-                copiedItems = sequencer.timeline.slice(start, end + 1);
-                copiedItemsStartOffsetBeats = getItemStartBeats(copiedItems[0]) - getCursorStartBeats(sequencer);
+            const [startIdx, endIdx] = getSelectionRange(sequencer);
+
+            if (startIdx !== -1 && endIdx !== -1) {
+                copiedItems = sequencer.timeline.slice(startIdx, endIdx + 1)
+                    .map(deepCopyJSONSerializable);
+
+                copiedPositionStart = Math.min(
+                    getCursorStartBeats(sequencer),
+                    getItemStartBeats(sequencer.timeline[startIdx])
+                );
+
                 return true;
             }
+
+            return false;
         }
 
         if ((key === "V" || key === 'v') && ctrlPressed) {
             if (copiedItems.length > 0) {
                 mutateSequencerTimeline(sequencer, tl => {
+                    const delta = getCursorStartBeats(sequencer) - copiedPositionStart;
                     for (const item of copiedItems) {
                         const newItem = deepCopyJSONSerializable(item);
+
+                        // TODO: attempt to use clean numbers/integers here.
+                        // This is just my noob code for now
+                        const beats = getItemStartBeats(newItem);
+                        const newBeats = beats + delta;
+                        newItem.start = newBeats * newItem.divisor;
+
                         tl.push(newItem);
                     }
                 });
@@ -632,11 +609,22 @@ function App(rg: RenderGroup) {
                 return true;
             }
 
-            if (sequencer.isRangeSelecting) {
-                setIsRangeSelecting(sequencer, false);
-                resetCursorEndToCursorStart(sequencer);
+            if (hasRangeSelection(sequencer)) {
+                clearRangeSelection(sequencer);
                 return true;
             }
+        }
+
+        if (key === "Tab") {
+            if (shiftPressed) {
+                handleMovement(sequencer, -1, false, false);
+            } else {
+                handleMovement(sequencer, 1, false, false);
+            }
+            
+            // TODO: extend currently held notes by 1 as well
+
+            return true;
         }
 
         const instrumentKey = globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
@@ -698,7 +686,6 @@ function App(rg: RenderGroup) {
         shiftPressed: boolean,
     ): boolean {
         if (key === "Shift") {
-            setIsRangeSelecting(globalState.sequencer, false);
             return true;
         }
 
@@ -742,12 +729,6 @@ function App(rg: RenderGroup) {
         }
     }
 
-    let helpOpen = false;
-    function toggleHelp() {
-        helpOpen = !helpOpen;
-        rerenderApp();
-    }
-
     function toggleLoadSaveSiderbar() {
         loadSaveSidebarOpen = !loadSaveSidebarOpen;
         // needs it twice for some reason...
@@ -760,49 +741,63 @@ function App(rg: RenderGroup) {
         style: "position: fixed",
     }, [
         div({ class: "col flex-1" }, [
-            div({ class: "row align-items-center b" }, [
-                div({ class: "flex-1" }),
-                rg.c(Button, c => c.render({
-                    text: "Help?",
-                    onClick: toggleHelp
-                })),
-                rg.c(Button, c => c.render({
-                    text: (loadSaveSidebarOpen ? ">" : "<") + "Load/Save",
-                    onClick: toggleLoadSaveSiderbar
-                }))
-            ]),
-            rg.if(
-                () => helpOpen,
-                rg => rg.c(HelpInfo, c => c.render({
-                    onClose() {
-                        helpOpen = false;
-                        rerenderApp();
-                    }
-                })),
-            ),
-            div({ class: "row", style: "gap: 5px" }, [
-                span({ class: "b" }, "Sequencer"),
-                rg.if(
-                    () => copiedItems.length > 0,
-                    rg => rg.text(() => copiedItems.length + " items copied")
-                ),
-                div({ class: "flex-1" }),
-                rg.c(Button, c => c.render({
-                    text: "Clear All",
-                    onClick: clearSequencer
-                }))
-            ]),
-            rg.c(Sequencer, c => c.render({
-                state: globalState.sequencer,
-                globalState,
-                render: rerenderApp
-            })),
             // div({ class: "row justify-content-center flex-1" }, [
             //     rg.c(Teleprompter, c => c.render(null)),
             // ]),
-            div({ class: "row justify-content-center flex-1" }, [
-                rg.c(Keyboard, c => c.render(null)),
-            ]),
+            rg.if(
+                () => isKeyboard,
+                rg => (
+                    div({ class: "col flex-1" }, [
+                        div({ class: "row", style: "gap: 5px" }, [
+                            div({ class: "flex-1" }),
+                            span({ class: "b" }, "Keyboard"),
+                            div({ class: "flex-1" }),
+                        ]),
+                        div({ class: "row justify-content-center flex-1" }, [
+                            rg.c(Keyboard, c => c.render(null)),
+                        ]),
+                    ])
+                ),
+            ),
+            rg.else(
+                rg => (
+                    div({ class: "col flex-1" }, [
+                        div({ class: "row", style: "gap: 5px" }, [
+                            div({ class: "flex-1" }),
+                            span({ class: "b" }, "Gameplay"),
+                            div({ class: "flex-1" }),
+                        ]),
+                        "TODO"
+                    ])
+                )
+            ),
+            div({ class: "col flex-1" }, [
+                div({ class: "row", style: "gap: 5px" }, [
+                    div({ class: "flex-1" }),
+                    span({ class: "b" }, "Sequencer"),
+
+                    // TODO: put this in a better place
+                    rg.if(
+                        () => copiedItems.length > 0,
+                        rg => rg.text(() => copiedItems.length + " items copied")
+                    ),
+
+                    div({ class: "flex-1" }),
+                    rg.c(Button, c => c.render({
+                        text: "Clear All",
+                        onClick: clearSequencer
+                    })),
+                    rg.c(Button, c => c.render({
+                        text: (loadSaveSidebarOpen ? ">" : "<") + "Load/Save",
+                        onClick: toggleLoadSaveSiderbar
+                    }))
+                ]),
+                rg.c(Sequencer, c => c.render({
+                    state: globalState.sequencer,
+                    globalState,
+                    render: rerenderApp
+                })),
+            ])
         ]),
         rg.if(
             () => loadSaveSidebarOpen,
@@ -865,10 +860,7 @@ function rerenderApp() {
             return;
         }
 
-        // if (globalState.sequencer.isPlaying) 
-        {
-            app.renderWithCurrentState();
-        }
+        app.renderWithCurrentState();
     }, 1000 / 60);
 
     rerenderApp();

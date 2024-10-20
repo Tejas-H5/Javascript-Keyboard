@@ -17,6 +17,7 @@ type BaseTimelineItem = {
     start: number;
     divisor: number;
     _scheduledStart: number;
+    _index: number;
 };
 
 export const TIMELINE_ITEM_BPM = 1;
@@ -41,16 +42,20 @@ export type SequencerState = {
     _timelineLastUpdated: number;
 
     cursorStart: number;
-    isRangeSelecting: boolean;
-    cursorEnd: number;
     cursorDivisor: number;
     _currentBpm: number;
     _currentBpmTime: number;
 
+    isRangeSelecting: boolean;
+    rangeSelectStart: number;
+    rangeSelectEnd: number;
+
     currentHoveredTimelineItemIdx: number;
 
     isPlaying: boolean;
-    startPlayingTime: number; // this is the time IRL we started playing, not the time along the timeline.
+    startPlayingTime: number; // this is the time IRL we started playing, not the time along the timeline.seq
+    startPlayingIdx: number;
+    endPlayingIdx: number;
 };
 
 
@@ -62,12 +67,58 @@ export function getCursorStartBeats(state: SequencerState): number {
     return getBeats(state.cursorStart, state.cursorDivisor);
 }
 
-export function getCursorEndBeats(state: SequencerState): number {
-    return getBeats(state.cursorEnd, state.cursorDivisor);
+export function getRangeSelectionStartBeats(state: SequencerState): number {
+    return getBeats(state.rangeSelectStart, state.cursorDivisor);
+}
+
+export function getRangeSelectionEndBeats(state: SequencerState): number {
+    return getBeats(state.rangeSelectEnd, state.cursorDivisor);
+}
+
+export function hasRangeSelection(state: SequencerState) {
+    return state.rangeSelectStart !== -1 && state.rangeSelectEnd !== -1;
+}
+export function getSelectionRange(state: SequencerState): [number, number] {
+    const a = getRangeSelectionStartBeats(state);
+    const b = getRangeSelectionEndBeats(state);
+    const min = Math.min(a, b);
+    const max = Math.max(a, b);
+
+    let startIdx = getItemIdxAtBeat(state, min);
+    if (startIdx === -1) {
+        startIdx = getNextItemIndex(state.timeline, min);
+    }
+    let endIdx = getItemIdxAtBeat(state, max);
+    if (endIdx === -1) {
+        endIdx = getPrevItemIndex(state.timeline, max);
+    }
+
+    if (
+        startIdx === -1 ||
+        endIdx === -1 ||
+        endIdx < startIdx
+    ) {
+        return [-1, -1];
+    }
+
+    return [startIdx, endIdx];
+}
+
+export function clearRangeSelection(state: SequencerState) {
+    state.rangeSelectStart = -1;
+    state.rangeSelectEnd = -1;
 }
 
 export function setIsRangeSelecting(state: SequencerState, value: boolean) {
+    if (state.isRangeSelecting === value) {
+        return;
+    }
+
     state.isRangeSelecting = value;
+    if (state.isRangeSelecting) {
+        state.rangeSelectStart = state.cursorStart;
+        state.rangeSelectEnd = state.cursorStart;
+    }
 }
 
 
@@ -99,11 +150,8 @@ export function getNoteItemAtBeats(state: SequencerState, beats: number): NoteIt
 export function getNextItemIndex(timeline: TimelineItem[], beats: number, defaultValue = -1) {
     for (let i = 0; i < timeline.length; i++) {
         const item = timeline[i];
-        const itemBeats = getBeats(item.start, item.divisor);
-        if (
-            itemBeats >= beats
-            || within(itemBeats, beats, CURSOR_ITEM_TOLERANCE_BEATS)
-        ) {
+        const itemBeats = getItemStartBeats(item);
+        if (gtBeats(itemBeats, beats)) {
             return i;
         }
     }
@@ -133,7 +181,7 @@ export function getPrevItemIndex(timeline: TimelineItem[], beats: number, defaul
             continue;
         }
 
-        const itemBeats = getBeats(item.start, item.divisor);
+        const itemBeats = getItemStartBeats(item);
         if (ltBeats(itemBeats, beats)) {
             return i;
         }
@@ -173,7 +221,7 @@ export function getItemStartBeats(item: TimelineItem): number {
     return getBeats(item.start, item.divisor);
 }
 
-export function isItemUnderCursor(item: TimelineItem, cursorBeats: number):boolean {
+export function isItemUnderCursor(item: TimelineItem, cursorBeats: number): boolean {
     const start = getItemStartBeats(item);
     const end = getItemEndBeats(item);
     return lteBeats(start, cursorBeats) && ltBeats(cursorBeats, end);
@@ -200,8 +248,12 @@ export function mutateSequencerTimeline(state: SequencerState, fn: (timeline: Ti
     {
         timeline.sort((a, b) => {
             const delta = getBeats(a.start, a.divisor) - getBeats(b.start, b.divisor);
-            if (delta !== 0) {
+            if (Math.abs(delta) > CURSOR_ITEM_TOLERANCE_BEATS) {
                 return delta;
+            }
+
+            if (a.type === TIMELINE_ITEM_NOTE && b.type === TIMELINE_ITEM_NOTE) {
+                return compareMusicNotes(a.note, b.note);
             }
 
             return a.type - b.type;
@@ -217,8 +269,8 @@ export function mutateSequencerTimeline(state: SequencerState, fn: (timeline: Ti
 
             if (item.type === TIMELINE_ITEM_NOTE) {
                 if (within(
-                    getItemLengthBeats(item), 
-                    0, 
+                    getItemLengthBeats(item),
+                    0,
                     CURSOR_ITEM_TOLERANCE_BEATS
                 )) {
                     return false;
@@ -270,13 +322,16 @@ export function mutateSequencerTimeline(state: SequencerState, fn: (timeline: Ti
         }
     }
 
-    // Recompute the actual start and end times of every object
+    // Recompute the actual start and end times of every object, and indexes
     {
         let currentBpm = 120;
         let currentBpmBeats = 0;
-        for (const item of timeline) {
+        for (let i = 0; i < timeline.length; i++) {
+            const item = timeline[i];
             const itemStart = getItemStartBeats(item);
-            const relativeStart =  itemStart - currentBpmBeats;
+            const relativeStart = itemStart - currentBpmBeats;
+
+            item._index = i;
             item._scheduledStart = beatsToMs(relativeStart, currentBpm);
 
             if (item.type === TIMELINE_ITEM_BPM) {
@@ -287,7 +342,7 @@ export function mutateSequencerTimeline(state: SequencerState, fn: (timeline: Ti
 
             if (item.type === TIMELINE_ITEM_NOTE) {
                 const itemEnd = getItemEndBeats(item);
-                const relativeEnd  = itemEnd - currentBpmBeats;
+                const relativeEnd = itemEnd - currentBpmBeats;
                 item._scheduledEnd = beatsToMs(relativeEnd, currentBpm);
                 continue;
             }
@@ -299,22 +354,16 @@ export function mutateSequencerTimeline(state: SequencerState, fn: (timeline: Ti
     state._timelineLastUpdated = Date.now();
 }
 
-export function isNotePressed(state: SequencerState, note: MusicNote, beats: number, divisor: number) {
-    return ;
-}
-
-export function resetCursorEndToCursorStart(state: SequencerState) {
-    state.cursorEnd = state.cursorStart;
-}
-
 export function setCursorBeats(state: SequencerState, dividedBeats: number) {
     state.cursorStart = dividedBeats;
-    if (!state.isRangeSelecting) {
-        resetCursorEndToCursorStart(state);
-    }
 }
 
 export function setCursorDivisor(state: SequencerState, newDivisor: number) {
+    if (state.isRangeSelecting) {
+        // this breaks selection, so I've disabled it for now.
+        return;
+    }
+
     // Should verify that this works
     const newStartBeats = rebaseBeats(
         state.cursorStart,
@@ -322,52 +371,10 @@ export function setCursorDivisor(state: SequencerState, newDivisor: number) {
         newDivisor,
     );
 
-    const newEndBeats = rebaseBeats(
-        state.cursorEnd,
-        state.cursorDivisor,
-        newDivisor,
-    );
-
     state.cursorStart = newStartBeats;
-    state.cursorEnd = newEndBeats;
     state.cursorDivisor = newDivisor;
 }
 
-
-export function getSelectionRangeBeats(state: SequencerState): [number, number] {
-    const startBeats = getBeats(state.cursorStart, state.cursorDivisor);
-    const endBeats = getBeats(state.cursorEnd, state.cursorDivisor);
-    const minBeats = Math.min(startBeats, endBeats);
-    const maxBeats = Math.max(startBeats, endBeats);
-    return [minBeats, maxBeats];
-}
-
-export function getSelectionRange(state: SequencerState): [number, number] {
-    const [minBeats, maxBeats] = getSelectionRangeBeats(state);
-    let min = getNextItemIndex(state.timeline, minBeats);
-    let max = getPrevItemIndex(state.timeline, maxBeats);
-
-    if (min === -1) {
-        min = max;
-    }
-
-    if (max === -1) {
-        max = min;
-    }
-
-    if (min === -1 || max === -1) {
-        return [-1, -1];
-    }
-
-    // we need to make sure that the item after the min selection time is actually 
-    // within the bounds of the max time. 
-    const minItem = state.timeline[min]
-    if (minItem._scheduledStart > maxBeats) {
-        return [-1, -1];
-    }
-
-    return [min, max];
-}
 
 export function getCurrentItemIdx(state: SequencerState): number {
     return getItemIdxAtBeat(state, getCursorStartBeats(state));
@@ -384,19 +391,19 @@ export function deleteAtIdx(state: SequencerState, idx: number) {
 export function equalBeats(beatsA: number, beatsB: number): boolean {
     return within(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS);
 }
-export function lteBeats(beatsA: number, beatsB: number):boolean {
+export function lteBeats(beatsA: number, beatsB: number): boolean {
     return lessThanOrEqualTo(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
 }
 
-export function ltBeats(beatsA: number, beatsB: number):boolean {
+export function ltBeats(beatsA: number, beatsB: number): boolean {
     return lessThan(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
 }
 
-export function gteBeats(beatsA: number, beatsB: number):boolean {
+export function gteBeats(beatsA: number, beatsB: number): boolean {
     return greaterThanOrEqualTo(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
 }
 
-export function gtBeats(beatsA: number, beatsB: number):boolean {
+export function gtBeats(beatsA: number, beatsB: number): boolean {
     return greaterThan(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
 }
 
@@ -419,6 +426,7 @@ export function setTimelineNoteAtPosition(
             note,
             len,
             _scheduledStart: 0,
+            _index: 0,
             _scheduledEnd: 0,
         });
 
@@ -464,6 +472,7 @@ export function setTimelineNoteAtPosition(
                 divisor: item.divisor,
                 len: (rangeStartBeats - itemStart) * item.divisor,
                 _scheduledStart: 0,
+                _index: 0,
                 _scheduledEnd: 0,
             });
 
@@ -474,6 +483,7 @@ export function setTimelineNoteAtPosition(
                 divisor: item.divisor,
                 len: (itemEnd - rangeEndBeats) * item.divisor,
                 _scheduledStart: 0,
+                _index: 0,
                 _scheduledEnd: 0,
             });
             return false;
@@ -533,7 +543,7 @@ export function timelineHasNoteAtPosition(
         }
 
         if (
-            gtBeats(getItemEndBeats(item), rangeStartBeats) 
+            gtBeats(getItemEndBeats(item), rangeStartBeats)
             && ltBeats(getItemStartBeats(item), rangeEndBeats)
         ) {
             return true;
@@ -582,12 +592,16 @@ export function newSequencerState(): SequencerState {
     const sequencer: SequencerState = {
         timeline: [],
         cursorStart: 0,
-        cursorEnd: 0,
         cursorDivisor: 4,
-        isRangeSelecting: false,
         isPlaying: false,
         startPlayingTime: 0,
+        startPlayingIdx: 0,
+        endPlayingIdx: 0,
         currentHoveredTimelineItemIdx: -1,
+
+        isRangeSelecting: false,
+        rangeSelectEnd: -1,
+        rangeSelectStart: -1,
 
         // computed values:
 
@@ -626,4 +640,30 @@ export function getBeatsForTime(state: SequencerState, time: number): number {
 
     const relativeBeats = msToBeats(time - bpmTime, bpm);
     return bpmBeats + relativeBeats;
+}
+
+export function divisorSnap(beats: number, divisor: number): number {
+    return Math.floor(beats * divisor) / divisor;
+}
+
+export function handleMovement(
+    sequencer: SequencerState,
+    amount: number,
+    isCtrlPressed: boolean,
+    isShiftPressed: boolean,
+) {
+    setIsRangeSelecting(sequencer, isShiftPressed);
+
+    if (isCtrlPressed) {
+        // pressing ctrl to move by exactly 1 beat
+        amount *= sequencer.cursorDivisor;
+    }
+
+    const cursorBeats = sequencer.cursorStart;
+    const newStart = cursorBeats + amount;
+    setCursorBeats(sequencer, newStart);
+
+    if (sequencer.isRangeSelecting) {
+        sequencer.rangeSelectEnd = newStart;
+    }
 }
