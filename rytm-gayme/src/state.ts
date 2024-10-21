@@ -1,9 +1,9 @@
 import { getNoteText, MusicNote } from "src/utils/music-theory-utils";
-import { getBeatsForTime, getCurrentPlayingTimeRelative, getCursorStartBeats, getItemEndTime, getItemStartBeats, getItemStartTime, getNextItemIndex, getPrevItemIndex, getRangeSelectionEndBeats, getRangeSelectionStartBeats, getSelectionRange, gteBeats, hasRangeSelection, isItemUnderCursor, lteBeats, newSequencerState, recomputeSequencerState, SequencerState, TIMELINE_ITEM_BPM, TIMELINE_ITEM_NOTE, TimelineItem } from "./sequencer-state";
-import { Insertable } from "./utils/dom-utils";
 import { releaseAllKeys, ScheduledKeyPress, schedulePlayback } from "./dsp-loop-interface";
+import { getBeatsForTime, getCurrentPlayingTimeRelative, getCursorStartBeats, getItemEndTime, getItemStartBeats, getItemStartTime, getRangeSelectionEndBeats, getRangeSelectionStartBeats, getSelectionRange, hasRangeSelection, isItemUnderCursor, lteBeats, mutateSequencerTimeline, newSequencerState, recomputeSequencerState, SequencerState, TIMELINE_ITEM_BPM, TIMELINE_ITEM_NOTE, TimelineItem } from "./sequencer-state";
 import { unreachable } from "./utils/asserts";
-import { getSequencerLeftExtent, getSequencerRightExtent } from "./sequencer";
+import { clamp } from "./utils/math-utils";
+import { recursiveShallowCopyRemovingComputedFields } from "./utils/serialization-utils";
 
 export type GlobalState = {
     keys: InstrumentKey[][];
@@ -12,18 +12,49 @@ export type GlobalState = {
     settings: {
     };
 
-    // DOM elements tracking which thing is selected or playing, for purposes of scrolling.
-    // Might be redundantnow.
-    _currentPlayingEl: Insertable<HTMLElement> | null;
-    _currentSelectedEl: Insertable<HTMLElement> | null;
+    uiState: UIState;
+    savedState: SavedState;
 
-    _playingTimeout: number;
-    _reachedLastNote: boolean;
-    _scheduledKeyPresses: ScheduledKeyPress[];
-    _scheduledKeyPressesFirstItemStart: number;
-    _scheduledKeyPressesPlaybackSpeed: number;
+    playingTimeout: number;
+    reachedLastNote: boolean;
+    scheduledKeyPresses: ScheduledKeyPress[];
+    scheduledKeyPressesFirstItemStart: number;
+    scheduledKeyPressesPlaybackSpeed: number;
 };
 
+export type SavedState = {
+    allSavedSongs: Record<string, string>;
+}
+
+export type UIState = {
+    loadSaveSidebarOpen: boolean;
+    isKeyboard: boolean;
+    loadSaveCurrentSelection: string;
+
+    // TODO: polish. right now it's only good for local dev
+    saveStateTimeout: number;
+    copiedPositionStart: number;
+    copiedItems: TimelineItem[];
+};
+
+export function newUiState(): UIState {
+    return {
+        loadSaveSidebarOpen: false,
+        isKeyboard: true,
+        loadSaveCurrentSelection: "",
+
+        // TODO: polish. right now it's only good for local dev
+        saveStateTimeout: 0,
+        copiedPositionStart: 0,
+        copiedItems: [],
+    };
+}
+
+export function newSavedState(): SavedState {
+    return {
+        allSavedSongs: {}
+    };
+}
 
 export type InstrumentKey = {
     keyboardKey: string;
@@ -60,8 +91,8 @@ export function getCurrentPlayingTime(state: GlobalState): number {
     }
 
     const relativeTime = getCurrentPlayingTimeRelative(state.sequencer);
-    return state._scheduledKeyPressesFirstItemStart + 
-        relativeTime * state._scheduledKeyPressesPlaybackSpeed;
+    return state.scheduledKeyPressesFirstItemStart + 
+        relativeTime * state.scheduledKeyPressesPlaybackSpeed;
 }
 
 export function getCurrentPlayingBeats(state: GlobalState): number {
@@ -100,16 +131,16 @@ export function isItemRangeSelected(state: GlobalState, item: TimelineItem): boo
 }
 
 export function stopPlaying(state: GlobalState) {
-    clearTimeout(state._playingTimeout);
+    clearTimeout(state.playingTimeout);
     releaseAllKeys(state.flatKeys);
 
-    state._playingTimeout = 0;
-    state._reachedLastNote = false;
+    state.playingTimeout = 0;
+    state.reachedLastNote = false;
 
     const sequencer = state.sequencer;
     sequencer.startPlayingTime = 0;
     sequencer.isPlaying = false;
-    state._scheduledKeyPresses = [];
+    state.scheduledKeyPresses = [];
     schedulePlayback([]);
 }
 
@@ -207,9 +238,9 @@ export function startPlaying(state: GlobalState, startIdx: number, endIdx: numbe
 
     scheduledKeyPresses.sort((a, b) => a.time - b.time);
 
-    state._scheduledKeyPresses = scheduledKeyPresses;
-    state._scheduledKeyPressesFirstItemStart = firstItemStartTime;
-    state._scheduledKeyPressesPlaybackSpeed = speed;
+    state.scheduledKeyPresses = scheduledKeyPresses;
+    state.scheduledKeyPressesFirstItemStart = firstItemStartTime;
+    state.scheduledKeyPressesPlaybackSpeed = speed;
     schedulePlayback(scheduledKeyPresses);
 }
 
@@ -305,13 +336,73 @@ export function newGlobalState(): GlobalState {
         sequencer: newSequencerState(),
         settings: {
         },
-
-        _scheduledKeyPresses: [],
-        _scheduledKeyPressesFirstItemStart: 0,
-        _scheduledKeyPressesPlaybackSpeed: 1,
-        _playingTimeout: 0,
-        _reachedLastNote: false,
-        _currentPlayingEl: null,
-        _currentSelectedEl: null,
+        savedState: newSavedState(),
+        uiState: newUiState(),
+        scheduledKeyPresses: [],
+        scheduledKeyPressesFirstItemStart: 0,
+        scheduledKeyPressesPlaybackSpeed: 1,
+        playingTimeout: 0,
+        reachedLastNote: false,
     };
 }
+
+export function load(state: GlobalState) {
+    const savedState = localStorage.getItem("savedState");
+    if (!savedState) {
+        return;
+    }
+
+    state.savedState = JSON.parse(savedState);
+    mutateSequencerTimeline(state.sequencer, tl => {
+        tl.splice(0, tl.length);
+        tl.push(...JSON.parse(state.savedState.allSavedSongs["autosaved"]));
+    });
+}
+
+
+// TODO: save and load the entire state.
+export function save(state: GlobalState) {
+    const serialzed = recursiveShallowCopyRemovingComputedFields(state.sequencer.timeline);
+    const currentTracks = JSON.stringify(serialzed);
+
+    state.savedState.allSavedSongs["autosaved"] = currentTracks;
+
+    localStorage.setItem("savedState", JSON.stringify(state.savedState));
+    console.log("saved!");
+}
+
+export function saveStateDebounced(state: GlobalState) {
+    clearTimeout(state.uiState.saveStateTimeout);
+    state.uiState.saveStateTimeout = setTimeout(() => {
+        save(state);
+    }, 100);
+}
+
+export function moveLoadSaveSelection(state: GlobalState, amount: number) {
+    const keys = Object.keys(state.savedState.allSavedSongs);
+    const idx = keys.indexOf(state.uiState.loadSaveCurrentSelection);
+    if (idx === -1) {
+        state.uiState.loadSaveCurrentSelection = keys[0];
+        return;
+    }
+
+    const newIdx = clamp(idx + amount, 0, keys.length - 1);
+    state.uiState.loadSaveCurrentSelection = keys[newIdx];
+}
+
+export function getCurrentSelectedSequenceName(state: GlobalState) {
+    return state.uiState.loadSaveCurrentSelection;
+}
+
+export function loadCurrentSelectedSequence(state: GlobalState) {
+    const key = getCurrentSelectedSequenceName(state);
+    if (!state.savedState.allSavedSongs[key]) {
+        return;
+    }
+
+    mutateSequencerTimeline(state.sequencer, tl => {
+        tl.splice(0, tl.length);
+        tl.push(...JSON.parse(state.savedState.allSavedSongs[key]));
+    });
+}
+

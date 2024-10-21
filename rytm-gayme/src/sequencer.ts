@@ -1,4 +1,5 @@
 import { Button } from "./components/button";
+import { RenderContext } from "./render-context";
 import {
     CommandItem,
     divisorSnap,
@@ -26,7 +27,7 @@ import {
     isItemRangeSelected
 } from "./state";
 import { unreachable } from "./utils/asserts";
-import { div, getState, RenderGroup, scrollIntoView } from "./utils/dom-utils";
+import { div, getState, RenderGroup } from "./utils/dom-utils";
 import { inverseLerp, lerp } from "./utils/math-utils";
 import { compareMusicNotes, getNoteHashKey, getNoteText, MusicNote } from "./utils/music-theory-utils";
 
@@ -136,11 +137,7 @@ export function getSequencerRightExtent(sequencer: SequencerState): number {
 /**
  * This component handles both the editing UI and the gameplay UI
  */
-export function Sequencer(rg: RenderGroup<{
-    state: SequencerState;
-    globalState: GlobalState;
-    render(): void;
-}>) {
+export function Sequencer(rg: RenderGroup<RenderContext>) {
 
     function handleMouseLeave() {
         const state = getState(rg).state;
@@ -169,9 +166,6 @@ export function Sequencer(rg: RenderGroup<{
     };
 
     rg.preRenderFn(s => {
-        s.globalState._currentSelectedEl = null;
-        s.globalState._currentPlayingEl = null;
-
         let cursorStartBeats = getCursorStartBeats(s.state);
         if (s.state.isPlaying) {
             // move to where we're currently playing at all times
@@ -242,19 +236,6 @@ export function Sequencer(rg: RenderGroup<{
             });
         }
     });
-
-    rg.postRenderFn(s => {
-        const scrollEl = s.globalState._currentPlayingEl || s.globalState._currentSelectedEl;
-        if (scrollEl) {
-            scrollIntoView(scrollRoot.el, scrollEl, 0.5);
-        }
-    });
-
-    const scrollRoot = div({
-        class: "flex-1",
-    }, [
-        rg.on("mouseleave", handleMouseLeave),
-    ]);
 
     return div({
         class: "flex-1 col",
