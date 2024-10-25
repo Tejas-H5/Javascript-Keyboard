@@ -2,7 +2,7 @@ import { SequencerState } from "./sequencer-state";
 import { GlobalState } from "./state";
 
 export type RenderContext = {
-    state: SequencerState;
+    sequencer: SequencerState;
     globalState: GlobalState;
     render(): void;
 }

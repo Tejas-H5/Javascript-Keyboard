@@ -4,6 +4,7 @@ import {
     CommandItem,
     divisorSnap,
     getCursorStartBeats,
+    getItemEndBeats,
     getItemLengthBeats,
     getItemStartBeats,
     getNextItemIndex,
@@ -13,6 +14,7 @@ import {
     getSelectionRange,
     hasRangeSelection,
     isItemUnderCursor,
+    lteBeats,
     NoteItem,
     SequencerState,
     TIMELINE_ITEM_BPM,
@@ -84,8 +86,8 @@ function GridLine(rg: RenderGroup<{ text: string, divisor: number; }>) {
     ]);
 }
 
-function getSequencerThreads(
-    sequencer: SequencerState,
+function getTimelineMusicNoteThreads(
+    timeline: TimelineItem[],
     startBeats: number,
     endBeats: number,
     dstNotesMap: Map<string, NoteMapEntry>,
@@ -96,9 +98,8 @@ function getSequencerThreads(
         val.items.length = 0;
     }
 
-    const timeline = sequencer.timeline;
-    let start = getPrevItemIndex(sequencer.timeline, startBeats, 0);
-    let end = getNextItemIndex(sequencer.timeline, endBeats, timeline.length - 1);
+    let start = getPrevItemIndex(timeline, startBeats, 0);
+    let end = getNextItemIndex(timeline, endBeats, timeline.length - 1);
     for (let i = start; i <= end; i++) {
         const item = timeline[i];
         if (item.type === TIMELINE_ITEM_BPM) {
@@ -122,6 +123,59 @@ function getSequencerThreads(
     }
 }
 
+export function getTimelineNonOverappingThreads(
+    timeline: TimelineItem[],
+    startIdx: number,
+    endIdx: number,
+    dstThreads: TimelineItem[][],
+    dstVisited: boolean[],
+) {
+    for (let i = 0; i < dstVisited.length; i++) {
+        dstVisited[i] = false;
+    }
+    for (const thread of dstThreads) {
+        thread.length = 0;
+    }
+
+    let threadIdx = 0;
+    while (true) {
+        if (dstThreads.length === threadIdx) {
+            dstThreads.push([]);
+        }
+        const thread = dstThreads[threadIdx];
+        threadIdx++;
+        let lastItemEnd = -1;
+        let noneVisited = true;
+
+        for (let i = startIdx; i <= endIdx; i++) {
+            const item = timeline[i];
+            const start = getItemStartBeats(item);
+
+            if (dstVisited[i - startIdx]) {
+                continue;
+            }
+            dstVisited[i - startIdx] = false;
+
+            if (item.type !== TIMELINE_ITEM_NOTE) {
+                continue;
+            }
+
+            if (lteBeats(start, lastItemEnd)) {
+                continue;
+            }
+
+            lastItemEnd = getItemEndBeats(item);
+            thread.push(item);
+            dstVisited[i - startIdx] = true;
+            noneVisited = false;
+        }
+
+        if (noneVisited) {
+            break;
+        }
+    }
+}
+
 
 // The number of divisions to show before AND after the cursor.
 const NUM_EXTENT_DIVISIONS = 16;
@@ -140,7 +194,7 @@ export function getSequencerRightExtent(sequencer: SequencerState): number {
 export function Sequencer(rg: RenderGroup<RenderContext>) {
 
     function handleMouseLeave() {
-        const state = getState(rg).state;
+        const state = getState(rg).sequencer;
         state.currentHoveredTimelineItemIdx = -1;
         rg.renderWithCurrentState();
     }
@@ -166,14 +220,14 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
     };
 
     rg.preRenderFn(s => {
-        let cursorStartBeats = getCursorStartBeats(s.state);
-        if (s.state.isPlaying) {
+        let cursorStartBeats = getCursorStartBeats(s.sequencer);
+        if (s.sequencer.isPlaying) {
             // move to where we're currently playing at all times
             cursorStartBeats = getCurrentPlayingBeats(s.globalState);
-        } else if (s.state.isRangeSelecting) {
-            cursorStartBeats = getRangeSelectionEndBeats(s.state);
+        } else if (s.sequencer.isRangeSelecting) {
+            cursorStartBeats = getRangeSelectionEndBeats(s.sequencer);
         }
-        const divisor = s.state.cursorDivisor;
+        const divisor = s.sequencer.cursorDivisor;
 
         // Compute animation factors every frame without memoization
         {
@@ -182,24 +236,24 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
             currentCursorAnimated = lerp(currentCursorAnimated, lastCursorStartBeats, lerpFactor);
             divisorAnimated = lerp(
                 divisorAnimated,
-                s.state.cursorDivisor,
+                s.sequencer.cursorDivisor,
                 lerpFactor,
             );
-            let leftExtent = cursorStartBeats + getSequencerLeftExtent(s.state);
-            let rightExtent = cursorStartBeats + getSequencerRightExtent(s.state);
+            let leftExtent = cursorStartBeats + getSequencerLeftExtent(s.sequencer);
+            let rightExtent = cursorStartBeats + getSequencerRightExtent(s.sequencer);
             internalState.leftExtent = leftExtent;
             internalState.rightExtent = rightExtent;
             internalState.leftExtentAnimated = lerp(internalState.leftExtentAnimated, leftExtent, lerpFactor);
             internalState.rightExtentAnimated = lerp(internalState.rightExtentAnimated, rightExtent, lerpFactor);
 
-            internalState.leftExtentIdx = getPrevItemIndex(s.state.timeline, internalState.leftExtentAnimated);
+            internalState.leftExtentIdx = getPrevItemIndex(s.sequencer.timeline, internalState.leftExtentAnimated);
             if (internalState.leftExtentIdx === -1) {
                 internalState.leftExtentIdx = 0;
             }
 
-            internalState.rightExtentIdx = getNextItemIndex(s.state.timeline, internalState.rightExtentAnimated);
+            internalState.rightExtentIdx = getNextItemIndex(s.sequencer.timeline, internalState.rightExtentAnimated);
             if (internalState.rightExtentIdx === -1) {
-                internalState.rightExtentIdx = s.state.timeline.length - 1;
+                internalState.rightExtentIdx = s.sequencer.timeline.length - 1;
             }
         }
 
@@ -207,16 +261,16 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
         if (
             lastCursorStartBeats !== cursorStartBeats
             || lastCursorStartDivisor !== divisor
-            || lastUpdatedTime !== s.state._timelineLastUpdated
+            || lastUpdatedTime !== s.sequencer._timelineLastUpdated
             || invalidateCache
         ) {
-            lastUpdatedTime = s.state._timelineLastUpdated;
+            lastUpdatedTime = s.sequencer._timelineLastUpdated;
             lastCursorStartBeats = cursorStartBeats;
             lastCursorStartDivisor = divisor;
             invalidateCache = false;
 
-            getSequencerThreads(
-                s.state,
+            getTimelineMusicNoteThreads(
+                s.sequencer.timeline,
                 internalState.leftExtentAnimated,
                 internalState.rightExtentAnimated,
                 internalState.notesMap,
@@ -242,10 +296,10 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
         style: "padding: 10px",
     }, [
         rg.if(
-            s => hasRangeSelection(s.state),
+            s => hasRangeSelection(s.sequencer),
             rg => div({ class: "relative" }, [
                 rg.text(s => {
-                    const [start, end] = getSelectionRange(s.state);
+                    const [start, end] = getSelectionRange(s.sequencer);
                     if (start === -1 || end === -1) {
                         return "none selected";
                     }
@@ -263,12 +317,12 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
         }, [
             rg.list(div({ class: "contents" }), SequencerVerticalLine, (getNext, s) => {
                 const startNonFloored = internalState.leftExtent;
-                const start = divisorSnap(startNonFloored, s.state.cursorDivisor);
+                const start = divisorSnap(startNonFloored, s.sequencer.cursorDivisor);
                 const endNonFloored = internalState.rightExtent;
-                const end = divisorSnap(endNonFloored, s.state.cursorDivisor);
+                const end = divisorSnap(endNonFloored, s.sequencer.cursorDivisor);
 
                 // grid lines
-                for (let x = start; x < end; x += 1 / s.state.cursorDivisor) {
+                for (let x = start; x < end; x += 1 / s.sequencer.cursorDivisor) {
                     getNext().render({
                         internalState,
                         beats: x,
@@ -286,13 +340,13 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
                 // range select lines
                 getNext().render({
                     internalState,
-                    beats: getRangeSelectionStartBeats(s.state),
+                    beats: getRangeSelectionStartBeats(s.sequencer),
                     color: "var(--mg)"
                 });
 
                 getNext().render({
                     internalState,
-                    beats: getRangeSelectionEndBeats(s.state),
+                    beats: getRangeSelectionEndBeats(s.sequencer),
                     color: "var(--mg)"
                 })
 
@@ -310,7 +364,7 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
                 return rg.list(root, SequencerNotesUI, (getNext, s) => {
                     const c = getNext();
                     c.render({
-                        state: s.state,
+                        state: s.sequencer,
                         globalState: s.globalState,
                         render: s.render,
                         internalState,
@@ -321,7 +375,7 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
                     for (const entry of internalState.noteOrder) {
                         const c = getNext();
                         c.render({
-                            state: s.state,
+                            state: s.sequencer,
                             globalState: s.globalState,
                             render: s.render,
                             internalState,
@@ -333,7 +387,7 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
             }
         ]),
         div({ class: "row justify-content-center" }, [
-            rg.text(s => timelinePosToString(s.state.cursorStart, s.state.cursorDivisor)),
+            rg.text(s => timelinePosToString(s.sequencer.cursorStart, s.sequencer.cursorDivisor)),
         ]),
         rg.list(div({ class: "row" }), GridLine, (getNext, s) => {
             for (let i = 0; i < NUM_EXTENT_DIVISIONS; i++) {
@@ -342,7 +396,7 @@ export function Sequencer(rg: RenderGroup<RenderContext>) {
                 getNext().render({
                     // text: timestamp + "ms"
                     text: "", //timelinePosToString(s.state.cursorStartPos[0] + gridLineAmount, s.state.cursorStartPos[1]) 
-                    divisor: s.state.cursorDivisor,
+                    divisor: s.sequencer.cursorDivisor,
                 });
             }
         })

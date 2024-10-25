@@ -2,6 +2,7 @@ import { beatsToMs, compareMusicNotes, getNoteHashKey, msToBeats, MusicNote, not
 import { filterInPlace } from "./utils/array-utils";
 import { unreachable } from "./utils/asserts";
 import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "./utils/math-utils";
+import { getTimelineNonOverappingThreads } from "./sequencer";
 
 export const SEQUENCER_ROW_COLS = 8;
 
@@ -39,6 +40,8 @@ export type BpmChange = BaseTimelineItem & {
 
 export type SequencerState = {
     timeline: TimelineItem[];
+    _nonOverlappingItems: NoteItem[][];
+    _visitedBuffer: boolean[];
     _timelineLastUpdated: number;
 
     cursorStart: number;
@@ -351,6 +354,18 @@ export function mutateSequencerTimeline(state: SequencerState, fn: (timeline: Ti
         }
     }
 
+    // recompute the non-overlapping threads. 
+    // We can't do this for a specific window, because we don't want things from one thread to move to other threads.
+    {
+        getTimelineNonOverappingThreads(
+            timeline,
+            0,
+            timeline.length - 1,
+            state._nonOverlappingItems,
+            state._visitedBuffer,
+        );
+    }
+
     state._timelineLastUpdated = Date.now();
 }
 
@@ -407,6 +422,19 @@ export function gtBeats(beatsA: number, beatsB: number): boolean {
     return greaterThan(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
 }
 
+export function newTimelineItemNote(musicNote: MusicNote, start: number, len: number, divisor: number): NoteItem {
+    return {
+        type: TIMELINE_ITEM_NOTE,
+        start,
+        divisor,
+        note: musicNote,
+        len,
+        _scheduledStart: 0,
+        _index: 0,
+        _scheduledEnd: 0,
+    };
+}
+
 // This method mutates the timeline, and relies
 // on the postprocessing function to fix up it's mess
 export function setTimelineNoteAtPosition(
@@ -419,17 +447,7 @@ export function setTimelineNoteAtPosition(
 ) {
     if (onOrOff) {
         // no longer sorted! postprocessing will take care of this.
-        timeline.push({
-            type: TIMELINE_ITEM_NOTE,
-            start: position,
-            divisor: divisor,
-            note,
-            len,
-            _scheduledStart: 0,
-            _index: 0,
-            _scheduledEnd: 0,
-        });
-
+        timeline.push(newTimelineItemNote(note, position, len, divisor));
         return;
     }
 
@@ -458,34 +476,25 @@ export function setTimelineNoteAtPosition(
             return true;
         }
 
-        // Some notes will start before the range and need to actually be split into two notes.
+        // Some notes will start before the range and end after the range - they need to be split into two notes.
         if (
             ltBeats(itemStart, rangeStartBeats)
             && gtBeats(itemEnd, rangeEndBeats)
         ) {
             // postprocessing will take care of these too...
+            notesToAdd.push(newTimelineItemNote(
+                item.note, 
+                item.start, 
+                (rangeStartBeats - itemStart) * item.divisor, 
+                item.divisor
+            ));
 
-            notesToAdd.push({
-                type: TIMELINE_ITEM_NOTE,
-                note: item.note,
-                start: item.start,
-                divisor: item.divisor,
-                len: (rangeStartBeats - itemStart) * item.divisor,
-                _scheduledStart: 0,
-                _index: 0,
-                _scheduledEnd: 0,
-            });
-
-            notesToAdd.push({
-                type: TIMELINE_ITEM_NOTE,
-                note: item.note,
-                start: rangeEndBeats * item.divisor,
-                divisor: item.divisor,
-                len: (itemEnd - rangeEndBeats) * item.divisor,
-                _scheduledStart: 0,
-                _index: 0,
-                _scheduledEnd: 0,
-            });
+            notesToAdd.push(newTimelineItemNote(
+                item.note, 
+                rangeEndBeats * item.divisor, 
+                (itemEnd - rangeEndBeats) * item.divisor,
+                item.divisor
+            ));
             return false;
         }
 
@@ -591,6 +600,8 @@ export function isItemPlaying(state: SequencerState, item: TimelineItem): boolea
 export function newSequencerState(): SequencerState {
     const sequencer: SequencerState = {
         timeline: [],
+        _nonOverlappingItems: [],
+        _visitedBuffer: [],
         cursorStart: 0,
         cursorDivisor: 4,
         isPlaying: false,
