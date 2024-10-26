@@ -26,7 +26,10 @@ export type SavedState = {
     allSavedSongs: Record<string, string>;
 }
 
+type View = "startup" | "chart-select" | "play-chart" | "edit-chart";
 export type UIState = {
+    currentView: View;
+
     loadSaveSidebarOpen: boolean;
     isKeyboard: boolean;
     loadSaveCurrentSelection: string;
@@ -39,6 +42,8 @@ export type UIState = {
 
 export function newUiState(): UIState {
     return {
+        currentView: "edit-chart",
+
         loadSaveSidebarOpen: false,
         isKeyboard: true,
         loadSaveCurrentSelection: "",
@@ -406,3 +411,17 @@ export function loadCurrentSelectedSequence(state: GlobalState) {
     });
 }
 
+export function getSequencerPlaybackOrEditingCursor(globalState: GlobalState) {
+    const sequencer = globalState.sequencer;
+
+    if (sequencer.isPlaying) {
+        // move to where we're currently playing at all times
+        return getCurrentPlayingBeats(globalState);
+    } 
+
+    if (sequencer.isRangeSelecting) {
+        return getRangeSelectionEndBeats(sequencer);
+    }
+
+    return getCursorStartBeats(sequencer);
+}

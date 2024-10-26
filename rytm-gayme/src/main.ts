@@ -34,7 +34,6 @@ const globalState = newGlobalState();
 load(globalState);
 
 const renderContext: RenderContext = {
-    sequencer: globalState.sequencer,
     globalState,
     render: rerenderApp,
 };
