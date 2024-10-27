@@ -15,6 +15,7 @@ import { GlobalContext, load, newGlobalContext, stopPlaying } from "./global-con
 import {
     getCurrentPlayingTimeRelative
 } from "./state/sequencer-state";
+import { setScreenChartSelect } from "./state/ui-state";
 
 // all util styles
 
@@ -26,6 +27,8 @@ function rerenderApp() {
 }
 const globalContext = newGlobalContext(rerenderApp);
 load(globalContext);
+
+setScreenChartSelect(globalContext.ui);
 
 
 // initialize the app.

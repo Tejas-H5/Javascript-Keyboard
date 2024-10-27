@@ -24,11 +24,9 @@ import {
     setCursorDivisor,
     setTimelineNoteAtPosition, timelineHasNoteAtPosition
 } from "./state/sequencer-state";
-import {
-    deepCopyJSONSerializable,
-} from "./state/state";
+import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
 import { div, isEditingTextSomewhereInDocument, RenderGroup } from "./utils/dom-utils";
-import { SelectView } from "./views/select-view";
+import { ChartSelect } from "./views/chart-select";
 import { StartupView } from "./views/startup-view";
 import { getKeyForKeyboardKey } from "./state/keyboard-state";
 
@@ -84,7 +82,7 @@ export function App(rg: RenderGroup<GlobalContext>) {
         style: "position: fixed",
     }, [
         rg.if(() => ctx.ui.currentView === "startup", StartupView),
-        rg.else_if(() => ctx.ui.currentView === "chart-select", SelectView),
+        rg.else_if(() => ctx.ui.currentView === "chart-select", ChartSelect),
         rg.else_if(() => ctx.ui.currentView === "play-chart", PlayView),
         rg.else_if(() => ctx.ui.currentView === "edit-chart", EditView),
         rg.else(rg => div({}, [

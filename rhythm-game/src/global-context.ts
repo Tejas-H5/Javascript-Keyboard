@@ -13,9 +13,10 @@ import {
 } from "./state/sequencer-state";
 import { unreachable } from "src/utils/asserts";
 import { getKeyForNote, KeyboardState, newKeyboardState } from "./state/keyboard-state";
-import { newSavedState, newUiState, SavedState, UIState } from "./state/state";
+import { newSavedState, SavedState } from "./state/state";
 import { clamp } from "src/utils/math-utils";
 import { recursiveShallowCopyRemovingComputedFields } from "./utils/serialization-utils";
+import { newUiState, UIState } from "./state/ui-state";
 
 export type GlobalContext = {
     keyboard: KeyboardState;

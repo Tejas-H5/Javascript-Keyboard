@@ -1,14 +1,8 @@
-import { clamp } from "src/utils/math-utils";
-import { recursiveShallowCopyRemovingComputedFields } from "src/utils/serialization-utils";
-import { mutateSequencerTimeline, TimelineItem } from "./sequencer-state";
+import { TimelineItem } from "./sequencer-state";
 
-export type SavedState = {
-    allSavedSongs: Record<string, string>;
-}
-
-type View = "startup" | "chart-select" | "play-chart" | "edit-chart";
+type AppView = "startup" | "chart-select" | "play-chart" | "edit-chart";
 export type UIState = {
-    currentView: View;
+    currentView: AppView;
 
     loadSaveSidebarOpen: boolean;
     isKeyboard: boolean;
@@ -35,14 +29,6 @@ export function newUiState(): UIState {
     };
 }
 
-export function newSavedState(): SavedState {
-    return {
-        allSavedSongs: {}
-    };
+export function setScreenChartSelect(state: UIState) {
+    state.currentView = "chart-select";
 }
-
-export function deepCopyJSONSerializable<T>(thing: T) {
-    return JSON.parse(JSON.stringify(thing)) as T;
-}
-
-
