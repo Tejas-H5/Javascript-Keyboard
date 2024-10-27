@@ -1,4 +1,4 @@
-import { div, el, RenderGroup } from "./utils/dom-utils";
+import { div, el, RenderGroup } from "src/utils/dom-utils";
 
 export function Slider(rg: RenderGroup<{
     label: string;

@@ -1,6 +1,6 @@
 import { newFunctionUrl } from "src/utils/web-workers";
+import { MusicNote } from "src/utils/music-theory-utils";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, registerDspLoopClass } from "./dsp-loop";
-import { InstrumentKey } from "./state";
 import { getAllSamples } from "./samples";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
@@ -69,27 +69,27 @@ export function getCurrentOscillatorGain(id: number): number {
 
 export const currentPressedNoteIndexes = new Set<number>();
 
-export function pressKey(k: InstrumentKey) {
+export function pressKey(noteIndex: number, note: MusicNote) {
     resumeAudio();
 
-    setCurrentOscillatorGain(k.index, 1);
+    setCurrentOscillatorGain(noteIndex, 1);
 
-    if (k.musicNote.sample) {
-        audioLoopDispatch({ playSample: [k.index, { sample: k.musicNote.sample }] })
-    } else if (k.musicNote.noteIndex) {
-        currentPressedNoteIndexes.add(k.musicNote.noteIndex);
-        audioLoopDispatch({ setOscilatorSignal: [k.index, { noteIndex: k.musicNote.noteIndex, signal: 1 }] })
+    if (note.sample) {
+        audioLoopDispatch({ playSample: [noteIndex, { sample: note.sample }] })
+    } else if (note.noteIndex) {
+        currentPressedNoteIndexes.add(note.noteIndex);
+        audioLoopDispatch({ setOscilatorSignal: [noteIndex, { noteIndex, signal: 1 }] })
     } else {
         unreachable();
     }
 }
 
-export function releaseKey(k: InstrumentKey) {
-    if (k.musicNote.sample) {
+export function releaseKey(noteIndex: number, note: MusicNote) {
+    if (note.sample) {
         // do nothing
-    } else if (k.musicNote.noteIndex) {
-        currentPressedNoteIndexes.delete(k.musicNote.noteIndex);
-        audioLoopDispatch({ setOscilatorSignal: [k.index, { noteIndex: k.musicNote.noteIndex, signal: 0 }] })
+    } else if (note.noteIndex) {
+        currentPressedNoteIndexes.delete(note.noteIndex);
+        audioLoopDispatch({ setOscilatorSignal: [noteIndex, { noteIndex: note.noteIndex, signal: 0 }] })
     }
 }
 
@@ -99,26 +99,23 @@ export function schedulePlayback(presses: ScheduledKeyPress[]) {
     audioLoopDispatch({ scheduleKeys: presses });
 }
 
-// TODO: this shouldn't require any inputs. the dsp knows what keys are currently held.
-export function releaseAllKeys(flatKeys: InstrumentKey[]) {
-    for (const key of flatKeys) {
-        releaseKey(key);
-    }
+export function releaseAllKeys() {
+    audioLoopDispatch({ clearAllOscilatorSignals: true });
 }
 
-// TODO: better name
-export function releasePressedKeysBasedOnDuration(flatKeys: InstrumentKey[]) {
-    for (const key of flatKeys) {
-        if (key.remainingDuration > 0) {
-            key.remainingDuration -= 1;
-        }
-
-        if (key.remainingDuration === 0) {
-            releaseKey(key);
-        }
-    }
-}
-
+// // TODO: better name
+// export function releasePressedKeysBasedOnDuration(flatKeys: InstrumentKey[]) {
+//     for (const key of flatKeys) {
+//         if (key.remainingDuration > 0) {
+//             key.remainingDuration -= 1;
+//         }
+//
+//         if (key.remainingDuration === 0) {
+//             releaseKey(key);
+//         }
+//     }
+// }
+//
 function areDifferent(a: [number, number][], b: [number, number][]): boolean {
     if (a.length !== b.length) {
         return true;

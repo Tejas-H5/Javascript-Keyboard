@@ -1,8 +1,16 @@
 import { pressKey, releaseAllKeys, releaseKey } from "./dsp-loop-interface";
-import { EditView } from "./edit-view";
-import { PlayView } from "./play-view";
-import { RenderContext } from "./render-context";
-import { SelectView } from "./select-view";
+import { EditView } from "./views/edit-view";
+import { PlayView } from "./views/play-view";
+import {
+    GlobalContext,
+    playAll,
+    playCurrentInterval,
+    stopPlaying,
+    getCurrentSelectedSequenceName,
+    loadCurrentSelectedSequence,
+    moveLoadSaveSelection,
+    saveStateDebounced
+} from "./global-context";
 import {
     clearRangeSelection,
     deleteRange,
@@ -15,28 +23,23 @@ import {
     mutateSequencerTimeline,
     setCursorDivisor,
     setTimelineNoteAtPosition, timelineHasNoteAtPosition
-} from "./sequencer-state";
-import { StartupView } from "./startup-view";
+} from "./state/sequencer-state";
 import {
     deepCopyJSONSerializable,
-    getCurrentSelectedSequenceName,
-    loadCurrentSelectedSequence,
-    moveLoadSaveSelection,
-    playAll,
-    playCurrentInterval,
-    saveStateDebounced,
-    stopPlaying,
-    UIState
-} from "./state";
+} from "./state/state";
 import { div, isEditingTextSomewhereInDocument, RenderGroup } from "./utils/dom-utils";
+import { SelectView } from "./views/select-view";
+import { StartupView } from "./views/startup-view";
+import { getKeyForKeyboardKey } from "./state/keyboard-state";
 
 let instantiated = false;
 
 // Contains ALL logic
 
-export function App(rg: RenderGroup<RenderContext>) {
-    let uiState: UIState;
-    let renderContext: RenderContext;
+export function App(rg: RenderGroup<GlobalContext>) {
+    let ctx: GlobalContext;
+
+    rg.preRenderFn(s => ctx = s);
 
     if (!instantiated) {
         instantiated = true;
@@ -44,60 +47,55 @@ export function App(rg: RenderGroup<RenderContext>) {
         throw new Error("Can't instantiate the app twice!");
     }
 
-    rg.preRenderFn(s => {
-        uiState = s.globalState.uiState;
-        renderContext = s;
-    });
-
     // Add global event handlers.
     document.addEventListener("keydown", (e) => {
-        if (handleKeyDown(renderContext, e.key, e.ctrlKey || e.metaKey, e.shiftKey, e.repeat)) {
+        if (handleKeyDown(ctx, e.key, e.ctrlKey || e.metaKey, e.shiftKey, e.repeat)) {
             e.preventDefault();
-            renderContext.render();
+            ctx.render();
         }
     })
 
 
     document.addEventListener("keyup", (e) => {
-        if (handleKeyUp(renderContext, e.key, e.ctrlKey || e.metaKey, e.shiftKey)) {
+        if (handleKeyUp(ctx, e.key, e.ctrlKey || e.metaKey, e.shiftKey)) {
             e.preventDefault();
-            renderContext.render();
+            ctx.render();
         }
     });
 
     document.addEventListener("blur", () => {
-        releaseAllKeys(renderContext.globalState.flatKeys);
-        renderContext.render();
+        releaseAllKeys();
+        ctx.render();
     })
 
     document.addEventListener("mousemove", () => {
-        if (renderContext.globalState.sequencer.currentHoveredTimelineItemIdx !== -1) {
-            renderContext.globalState.sequencer.currentHoveredTimelineItemIdx = -1;
-            renderContext.render();
+        if (ctx.sequencer.currentHoveredTimelineItemIdx !== -1) {
+            ctx.sequencer.currentHoveredTimelineItemIdx = -1;
+            ctx.render();
         }
     });
 
     window.addEventListener("resize", () => {
-        renderContext.render();
+        ctx.render();
     });
 
     return div({
         class: "absolute-fill row",
         style: "position: fixed",
     }, [
-        rg.if(() => uiState.currentView === "startup", StartupView),
-        rg.else_if(() => uiState.currentView === "chart-select", SelectView),
-        rg.else_if(() => uiState.currentView === "play-chart", PlayView),
-        rg.else_if(() => uiState.currentView === "edit-chart", EditView),
+        rg.if(() => ctx.ui.currentView === "startup", StartupView),
+        rg.else_if(() => ctx.ui.currentView === "chart-select", SelectView),
+        rg.else_if(() => ctx.ui.currentView === "play-chart", PlayView),
+        rg.else_if(() => ctx.ui.currentView === "edit-chart", EditView),
         rg.else(rg => div({}, [
-            rg.text(() => "404 - view not found!!! (" + uiState.currentView + ")")
+            rg.text(() => "404 - view not found!!! (" + ctx.ui.currentView + ")")
         ])),
     ])
 }
 
 
 function handleKeyDown(
-    ctx: RenderContext,
+    ctx: GlobalContext,
     key: string,
     ctrlPressed: boolean,
     shiftPressed: boolean,
@@ -114,9 +112,7 @@ function handleKeyDown(
         return false;
     }
 
-    const globalState = ctx.globalState;
-    const uiState = globalState.uiState;
-    const sequencer = globalState.sequencer;
+    const { sequencer, ui, keyboard } = ctx;
 
     let vAxis = 0;
     if (key === "ArrowUp") {
@@ -125,41 +121,41 @@ function handleKeyDown(
         vAxis = 1;
     }
 
-    if (uiState.currentView === "edit-chart") {
+    if (ui.currentView === "edit-chart") {
         if (key === "S" && ctrlPressed && shiftPressed) {
-            globalState.uiState.loadSaveSidebarOpen = !globalState.uiState.loadSaveSidebarOpen;
+            ui.loadSaveSidebarOpen = !ui.loadSaveSidebarOpen;
             return true;
         }
 
         if (key === "K" && ctrlPressed && shiftPressed) {
-            uiState.isKeyboard = !uiState.isKeyboard;
+            ui.isKeyboard = !ui.isKeyboard;
             return true;
         }
 
-        if (uiState.loadSaveSidebarOpen) {
+        if (ui.loadSaveSidebarOpen) {
             if (vAxis !== 0) {
-                moveLoadSaveSelection(globalState, vAxis);
+                moveLoadSaveSelection(ctx, vAxis);
                 return true;
             }
 
             if (key === "Enter") {
-                loadCurrentSelectedSequence(globalState);
-                playAll(globalState, 1);
+                loadCurrentSelectedSequence(ctx);
+                playAll(ctx, 1);
                 return true;
             }
 
             if (key === "Escape") {
-                uiState.loadSaveSidebarOpen = false;
-                stopPlaying(globalState);
+                ui.loadSaveSidebarOpen = false;
+                stopPlaying(ctx);
                 return true;
             }
 
             if (key === "Delete") {
-                const name = getCurrentSelectedSequenceName(globalState);
-                if (name in globalState.savedState.allSavedSongs) {
+                const name = getCurrentSelectedSequenceName(ctx);
+                if (name in ctx.savedState.allSavedSongs) {
                     // TODO: real UI
                     if (confirm("You sure you want to delete " + name)) {
-                        delete globalState.savedState.allSavedSongs[name];
+                        delete ctx.savedState.allSavedSongs[name];
                         return true;
                     }
                 }
@@ -238,10 +234,10 @@ function handleKeyDown(
                 const [startIdx, endIdx] = getSelectionRange(sequencer);
 
                 if (startIdx !== -1 && endIdx !== -1) {
-                    uiState.copiedItems = sequencer.timeline.slice(startIdx, endIdx + 1)
+                    ui.copiedItems = sequencer.timeline.slice(startIdx, endIdx + 1)
                         .map(deepCopyJSONSerializable);
 
-                    uiState.copiedPositionStart = Math.min(
+                    ui.copiedPositionStart = Math.min(
                         getCursorStartBeats(sequencer),
                         getItemStartBeats(sequencer.timeline[startIdx])
                     );
@@ -253,10 +249,10 @@ function handleKeyDown(
             }
 
             if ((key === "V" || key === 'v') && ctrlPressed) {
-                if (uiState.copiedItems.length > 0) {
+                if (ui.copiedItems.length > 0) {
                     mutateSequencerTimeline(sequencer, tl => {
-                        const delta = getCursorStartBeats(sequencer) - uiState.copiedPositionStart;
-                        for (const item of uiState.copiedItems) {
+                        const delta = getCursorStartBeats(sequencer) - ui.copiedPositionStart;
+                        for (const item of ui.copiedItems) {
                             const newItem = deepCopyJSONSerializable(item);
 
                             // TODO: attempt to use clean numbers/integers here.
@@ -274,7 +270,7 @@ function handleKeyDown(
 
             if (key === "Escape") {
                 if (sequencer.isPlaying) {
-                    stopPlaying(globalState);
+                    stopPlaying(ctx);
                     return true;
                 }
 
@@ -299,20 +295,20 @@ function handleKeyDown(
             if (key === " ") {
                 const speed = ctrlPressed ? 0.5 : 1;
                 if (shiftPressed) {
-                    playAll(ctx.globalState, speed);
+                    playAll(ctx, speed);
                 } else {
-                    playCurrentInterval(ctx.globalState, speed);
+                    playCurrentInterval(ctx, speed);
                 }
                 return true;
             }
 
-            const instrumentKey = globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
+            const instrumentKey = getKeyForKeyboardKey(keyboard, key);
             if (instrumentKey) {
                 // TODO: Just do one or the other based on if we're in 'edit' mode or play mode ?
 
                 // play the instrument
                 {
-                    pressKey(instrumentKey);
+                    pressKey(instrumentKey.index, instrumentKey.musicNote);
                 }
 
                 // insert notes into the sequencer
@@ -333,7 +329,7 @@ function handleKeyDown(
                         );
                     });
 
-                    saveStateDebounced(globalState);
+                    saveStateDebounced(ctx);
                 }
 
                 return true;
@@ -346,7 +342,7 @@ function handleKeyDown(
 
 
 function handleKeyUp(
-    ctx: RenderContext,
+    ctx: GlobalContext,
     key: string,
     ctrlPressed: boolean,
     shiftPressed: boolean,
@@ -355,9 +351,9 @@ function handleKeyUp(
         return true;
     }
 
-    const instrumentKey = ctx.globalState.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
+    const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, key);
     if (instrumentKey) {
-        releaseKey(instrumentKey);
+        releaseKey(instrumentKey.index, instrumentKey.musicNote);
         return true;
     }
 

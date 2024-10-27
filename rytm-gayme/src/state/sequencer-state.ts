@@ -1,8 +1,8 @@
 import { beatsToMs, compareMusicNotes, getNoteHashKey, msToBeats, MusicNote, noteEquals, rebaseBeats } from "src/utils/music-theory-utils";
-import { filterInPlace } from "./utils/array-utils";
-import { unreachable } from "./utils/asserts";
-import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "./utils/math-utils";
-import { getTimelineNonOverappingThreads } from "./sequencer";
+import { filterInPlace } from "src/utils/array-utils";
+import { unreachable } from "src/utils/asserts";
+import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "src/utils/math-utils";
+import { ScheduledKeyPress } from "src/dsp-loop-interface";
 
 export const SEQUENCER_ROW_COLS = 8;
 
@@ -19,6 +19,11 @@ type BaseTimelineItem = {
     divisor: number;
     _scheduledStart: number;
     _index: number;
+};
+
+export type NoteMapEntry = { 
+    musicNote: MusicNote; 
+    items: NoteItem[];
 };
 
 export const TIMELINE_ITEM_BPM = 1;
@@ -59,6 +64,12 @@ export type SequencerState = {
     startPlayingTime: number; // this is the time IRL we started playing, not the time along the timeline.seq
     startPlayingIdx: number;
     endPlayingIdx: number;
+
+    playingTimeout: number;
+    reachedLastNote: boolean;
+    scheduledKeyPresses: ScheduledKeyPress[];
+    scheduledKeyPressesFirstItemStart: number;
+    scheduledKeyPressesPlaybackSpeed: number;
 };
 
 
@@ -614,7 +625,12 @@ export function newSequencerState(): SequencerState {
         rangeSelectEnd: -1,
         rangeSelectStart: -1,
 
-        // computed values:
+        scheduledKeyPresses: [],
+        scheduledKeyPressesFirstItemStart: 0,
+        scheduledKeyPressesPlaybackSpeed: 1,
+        playingTimeout: 0,
+        reachedLastNote: false,
+
 
         _timelineLastUpdated: 0,
         _currentBpm: DEFAULT_BPM,
@@ -678,3 +694,199 @@ export function handleMovement(
         sequencer.rangeSelectEnd = newStart;
     }
 }
+
+export function getSequencerPlaybackOrEditingCursor(sequencer: SequencerState) {
+    if (sequencer.isPlaying) {
+        // move to where we're currently playing at all times
+        return getCurrentPlayingBeats(sequencer);
+    } 
+
+    if (sequencer.isRangeSelecting) {
+        return getRangeSelectionEndBeats(sequencer);
+    }
+
+    return getCursorStartBeats(sequencer);
+}
+
+
+export function getCurrentPlayingTime(sequencer: SequencerState): number {
+    if (!sequencer.isPlaying) {
+        return -10;
+    }
+
+    const relativeTime = getCurrentPlayingTimeRelative(sequencer);
+    return sequencer.scheduledKeyPressesFirstItemStart + 
+        relativeTime * sequencer.scheduledKeyPressesPlaybackSpeed;
+}
+
+export function getCurrentPlayingBeats(sequencer: SequencerState): number {
+    const currentTime = getCurrentPlayingTime(sequencer);
+    const beats = getBeatsForTime(sequencer, currentTime);
+    return beats;
+}
+
+export function recomputeState(sequencer: SequencerState) {
+    recomputeSequencerState(sequencer);
+}
+
+export function isItemBeingPlayed(sequencer: SequencerState, item: TimelineItem): boolean {
+    if (!sequencer.isPlaying) {
+        return false;
+    }
+
+    if (item._index < sequencer.startPlayingIdx) {
+        return false;
+    }
+    if (item._index > sequencer.endPlayingIdx) {
+        return false;
+    }
+
+    const playbackTime = getCurrentPlayingTime(sequencer);
+    return getItemStartTime(item) <= playbackTime &&
+        playbackTime <= getItemEndTime(item);
+}
+
+export function isItemRangeSelected(sequencer: SequencerState, item: TimelineItem): boolean {
+    const start = getRangeSelectionStartBeats(sequencer);
+    const end = getRangeSelectionEndBeats(sequencer);
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+
+    const itemBeats = getItemStartBeats(item);
+
+    return lteBeats(min, itemBeats) && lteBeats(itemBeats, max);
+}
+
+export function getTimelineMusicNoteThreads(
+    timeline: TimelineItem[],
+    startBeats: number,
+    endBeats: number,
+    dstNotesMap: Map<string, NoteMapEntry>,
+    dstCommandsMap: CommandItem[],
+) {
+    dstCommandsMap.length = 0;
+    for (const val of dstNotesMap.values()) {
+        val.items.length = 0;
+    }
+
+    let start = getPrevItemIndex(timeline, startBeats, 0);
+    let end = getNextItemIndex(timeline, endBeats, timeline.length - 1);
+    for (let i = start; i <= end; i++) {
+        const item = timeline[i];
+        if (item.type === TIMELINE_ITEM_BPM) {
+            dstCommandsMap.push(item);
+            continue;
+        }
+
+        if (item.type === TIMELINE_ITEM_NOTE) {
+            const key = getNoteHashKey(item.note);
+            const entry = dstNotesMap.get(key) ?? { musicNote: item.note, items: [] };
+
+            entry.musicNote = item.note;
+            entry.items.push(item);
+
+            dstNotesMap.set(key, entry);
+
+            continue;
+        }
+
+        unreachable(item);
+    }
+}
+
+export function getTimelineNonOverappingThreads(
+    timeline: TimelineItem[],
+    startIdx: number,
+    endIdx: number,
+    dstThreads: TimelineItem[][],
+    dstVisited: boolean[],
+) {
+    for (let i = 0; i < dstVisited.length; i++) {
+        dstVisited[i] = false;
+    }
+    for (const thread of dstThreads) {
+        thread.length = 0;
+    }
+
+    let threadIdx = 0;
+    while (true) {
+        if (dstThreads.length === threadIdx) {
+            dstThreads.push([]);
+        }
+        const thread = dstThreads[threadIdx];
+        threadIdx++;
+        let lastItemEnd = -1;
+        let noneVisited = true;
+
+        for (let i = startIdx; i <= endIdx; i++) {
+            const item = timeline[i];
+            const start = getItemStartBeats(item);
+
+            if (dstVisited[i - startIdx]) {
+                continue;
+            }
+            dstVisited[i - startIdx] = false;
+
+            if (item.type !== TIMELINE_ITEM_NOTE) {
+                continue;
+            }
+
+            if (lteBeats(start, lastItemEnd)) {
+                continue;
+            }
+
+            lastItemEnd = getItemEndBeats(item);
+            thread.push(item);
+            dstVisited[i - startIdx] = true;
+            noneVisited = false;
+        }
+
+        if (noneVisited) {
+            break;
+        }
+    }
+}
+
+export function getNonOverlappingThreadsSubset(
+    srcThreads: NoteItem[][], 
+    startBeats: number,
+    endBeats: number,
+    dstThreads: NoteItem[][],
+) {
+    for (const arr of dstThreads) {
+        arr.length = 0;
+    }
+
+    // the letters closest to the center-line need to be the next letters  to press, and since this
+    // component is positions on the left, it's going backwards.
+    let dstThreadIdx = 0;
+    for (const thread of srcThreads) {
+        let hasItems = false;
+        for (const item of thread) {
+            const itemStart = getItemStartBeats(item);
+            const itemEnd = getItemEndBeats(item);
+            if (itemEnd < startBeats) {
+                continue;
+            }
+            if (itemStart > endBeats) {
+                break;
+            }
+
+            if (!hasItems) {
+                hasItems = true;
+                if (dstThreads.length <= dstThreadIdx) {
+                    dstThreads.push([]);
+                }
+            }
+
+            dstThreads[dstThreadIdx].push(item);
+        }
+
+        if (hasItems) {
+            dstThreadIdx++;
+        }
+    }
+}
+
+
+

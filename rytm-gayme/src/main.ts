@@ -11,32 +11,22 @@ import {
     initDspLoopInterface
 } from "./dsp-loop-interface";
 import "./main.css";
-import { RenderContext } from "./render-context";
+import { GlobalContext, load, newGlobalContext, stopPlaying } from "./global-context";
 import {
     getCurrentPlayingTimeRelative
-} from "./sequencer-state";
-import {
-    load,
-    newGlobalState,
-    stopPlaying
-} from "./state";
+} from "./state/sequencer-state";
 
 // all util styles
 
 const root = newInsertable(document.body);
-let app: Component<RenderContext, any> | undefined;
+let app: Component<GlobalContext, any> | undefined;
+
 function rerenderApp() {
-    app?.render(renderContext);
+    app?.render(globalContext);
 }
+const globalContext = newGlobalContext(rerenderApp);
+load(globalContext);
 
-const globalState = newGlobalState();
-
-load(globalState);
-
-const renderContext: RenderContext = {
-    globalState,
-    render: rerenderApp,
-};
 
 // initialize the app.
 (async () => {
@@ -45,11 +35,11 @@ const renderContext: RenderContext = {
             rerenderApp();
 
             const dspInfo = getDspInfo();
-            const sequencer = globalState.sequencer;
+            const sequencer = globalContext.sequencer;
 
             if (sequencer.isPlaying) {
                 if (dspInfo.scheduledPlaybackTime === -1) {
-                    stopPlaying(globalState);
+                    stopPlaying(globalContext);
                 } else {
                     // resync the current time with the DSP time. 
                     // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
@@ -62,18 +52,32 @@ const renderContext: RenderContext = {
     });
 
     // Our code only works after the audio context has loaded.
-    app = newComponent(App, renderContext);
+    app = newComponent(App, globalContext);
     appendChild(root, app);
 
-    // render to the dom at 60 fps (!)
-    // (based??)
-    setInterval(() => {
+    function onRender() {
         if (!app) {
             return;
         }
 
         app.renderWithCurrentState();
-    }, 1000 / 60);
+    }
+
+    // render to the dom at the monitor's fps (!)
+    // (based??)
+    let lastTime = 0;
+    function renderFunc(time: DOMHighResTimeStamp) {
+        const dtMs = time - lastTime;
+        lastTime = time;
+
+        if (dtMs < 300) {
+            globalContext.dt = dtMs / 1000;
+            onRender();
+        }
+
+        requestAnimationFrame(renderFunc);
+    }
+    requestAnimationFrame(renderFunc);
 
     rerenderApp();
 })();

@@ -42,6 +42,7 @@ type PlayingSampleFile = {
 export type DspLoopMessage = 1337 | {
     playSettings?: Partial<DSPPlaySettings>;
     setOscilatorSignal?: [number, PlayingOscillator["inputs"]];
+    clearAllOscilatorSignals?: true;
     playSample?: [number, PlayingSampleFile["inputs"]];
     scheduleKeys?: ScheduledKeyPress[] | null;
     // This samples record is so massive that my editor lags way too hard when I edit that file. So I
@@ -453,6 +454,12 @@ export function registerDspLoopClass() {
                 const osc = this.getPlayingOscillator(id);
                 osc.inputs = inputs;
                 osc.state.awakeTime = 0;
+            }
+
+            if (e.clearAllOscilatorSignals) {
+                for (const [, osc] of this.playingOscillators) {
+                    osc.inputs.signal = 0;
+                }
             }
 
             if (e.playSample) {

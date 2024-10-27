@@ -1,25 +1,36 @@
-import { RenderContext } from "./render-context";
-import { getNonOverlappingThreadsSubset } from "./sequencer";
-import { getItemLengthBeats, getItemStartBeats, NoteItem } from "./sequencer-state";
-import { getKeyForNote, getSequencerPlaybackOrEditingCursor, InstrumentKey } from "./state";
-import { div, RenderGroup } from "./utils/dom-utils";
-import { inverseLerp } from "./utils/math-utils";
+import {
+    getKeyForNote,
+    InstrumentKey
+} from "src/state/keyboard-state";
+import { GlobalContext } from "src/global-context";
+import {
+    getItemLengthBeats,
+    getItemStartBeats,
+    getSequencerPlaybackOrEditingCursor,
+    getNonOverlappingThreadsSubset,
+    NoteItem
+} from "src/state/sequencer-state";
+import {
+    div,
+    RenderGroup
+} from "src/utils/dom-utils";
+import { inverseLerp } from "src/utils/math-utils";
 
 const GAMEPLAY_LOOKAHEAD_BEATS = 2;
 const PADDING = 10;
 
 type GameArgs = {
-    ctx: RenderContext;
+    ctx: GlobalContext;
     thread: NoteItem[];
     start: number;
 }
 
-export function Gameplay(rg: RenderGroup<RenderContext>) {
+export function Gameplay(rg: RenderGroup<GlobalContext>) {
     const threads: NoteItem[][] = [];
     let start = 0;
 
     rg.preRenderFn(s => {
-        start = getSequencerPlaybackOrEditingCursor(s.globalState);
+        start = getSequencerPlaybackOrEditingCursor(s.sequencer);
         getNonOverlappingThreadsSubset(
             s.sequencer._nonOverlappingItems,
             start, 
@@ -57,13 +68,13 @@ function Thread(rg: RenderGroup<GameArgs>) {
 
 function Letters(rg: RenderGroup<GameArgs>) {
     function Letter(rg: RenderGroup<{
-        ctx: RenderContext;
+        ctx: GlobalContext;
         item: NoteItem;
     }>) {
         let key: InstrumentKey | undefined;
 
         rg.preRenderFn(s => {
-            key = getKeyForNote(s.ctx.globalState, s.item.note);
+            key = getKeyForNote(s.ctx.keyboard, s.item.note);
         });
 
         return div({}, [
@@ -84,7 +95,7 @@ function Letters(rg: RenderGroup<GameArgs>) {
 
 function Bars(rg: RenderGroup<GameArgs>) {
     function Bar(rg: RenderGroup<{
-        ctx: RenderContext;
+        ctx: GlobalContext;
         item: NoteItem;
         start: number;
     }>) {

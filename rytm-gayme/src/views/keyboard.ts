@@ -9,21 +9,19 @@ import {
     getCurrentOscillatorGain,
     pressKey,
     releaseKey
-} from "./dsp-loop-interface";
-import "./main.css";
+} from "src/dsp-loop-interface";
+import "src/main.css";
 import {
     getCurrentPlayingTimeRelative,
     timelineHasNoteAtPosition
-} from "./sequencer-state";
-import {
-    InstrumentKey
-} from "./state";
-import { RenderContext } from "./render-context";
+} from "src/state/sequencer-state";
+import { GlobalContext } from "src/global-context";
+import { InstrumentKey } from "src/state/keyboard-state";
 
 
-export function Keyboard(rg: RenderGroup<RenderContext>) {
+export function Keyboard(rg: RenderGroup<GlobalContext>) {
     function KeyboardRow(rg: RenderGroup<{
-        s: RenderContext;
+        s: GlobalContext;
         keys: InstrumentKey[];
         keySize: number;
         startOffset: number;
@@ -31,7 +29,7 @@ export function Keyboard(rg: RenderGroup<RenderContext>) {
         rg.skipErrorBoundary = true;
 
         function KeyboardKey(rg: RenderGroup<{
-            ctx: RenderContext;
+            ctx: GlobalContext;
             key: InstrumentKey;
             keySize: number;
         }>) {
@@ -74,13 +72,13 @@ export function Keyboard(rg: RenderGroup<RenderContext>) {
 
             function handlePress() {
                 const s = getState(rg);
-                pressKey(s.key);
+                pressKey(s.key.index, s.key.musicNote);
                 s.ctx.render();
             }
 
             function handleRelease() {
                 const s = getState(rg);
-                releaseKey(s.key);
+                releaseKey(s.key.index, s.key.musicNote);
                 s.ctx.render();
             }
 
@@ -91,7 +89,7 @@ export function Keyboard(rg: RenderGroup<RenderContext>) {
             rg.preRenderFn((s) => {
                 signal = getCurrentOscillatorGain(s.key.index);
 
-                const sequencer = s.ctx.globalState.sequencer;
+                const sequencer = s.ctx.sequencer;
                 hasNote = timelineHasNoteAtPosition(
                     sequencer.timeline,
                     sequencer.cursorStart,
@@ -149,14 +147,14 @@ export function Keyboard(rg: RenderGroup<RenderContext>) {
                 rg.list(div(), ApproachSquare, (getNext, s) => {
                     // need to iterate over all the notes within the approach window, 
                     // could need multiple approach squares for this key.
-                    const sequencer = s.ctx.globalState.sequencer;
+                    const sequencer = s.ctx.sequencer;
                     if (!sequencer.isPlaying) {
                         return;
                     }
 
                     const currentTime = getCurrentPlayingTimeRelative(sequencer);
 
-                    const scheduledKeyPresses = s.ctx.globalState.scheduledKeyPresses;
+                    const scheduledKeyPresses = s.ctx.sequencer.scheduledKeyPresses;
                     for (let i = 0; i < scheduledKeyPresses.length; i++) {
                         const scheduledPress = scheduledKeyPresses[i];
                         if (scheduledPress.keyId !== s.key.index) {
@@ -216,10 +214,10 @@ export function Keyboard(rg: RenderGroup<RenderContext>) {
         ];
 
         let maxOffset = 0;
-        const keys = s.globalState.keys;
+        const keys = s.keyboard.keys;
 
         for (let i = 0; i < keys.length; i++) {
-            const row = s.globalState.keys[i];
+            const row = s.keyboard.keys[i];
             let computedOffset = offsets[i] + row.length + 1;
             maxOffset = Math.max(maxOffset, computedOffset);
         }
@@ -229,7 +227,7 @@ export function Keyboard(rg: RenderGroup<RenderContext>) {
         const height = parent.clientHeight;
         const keySize = Math.min(
             width / maxOffset,
-            height / (s.globalState.keys.length),
+            height / (s.keyboard.keys.length),
         )
 
         for (let i = 0; i < keys.length; i++) {
