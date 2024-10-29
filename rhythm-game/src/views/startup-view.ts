@@ -1,7 +1,6 @@
 import { Button } from "src/components/button";
-import { GlobalContext } from "src/global-context";
-import { AppView, setScreen } from "src/state/ui-state";
-import { div, RenderGroup } from "src/utils/dom-utils";
+import { GlobalContext, setViewChartSelect } from "src/global-context";
+import { div, getState, RenderGroup } from "src/utils/dom-utils";
 
 export function StartupView(rg: RenderGroup<GlobalContext>) {
     // TODO: better game name
@@ -14,11 +13,6 @@ export function StartupView(rg: RenderGroup<GlobalContext>) {
 
     let currentView = 0;
 
-    // that's funny - I had intended to do way more screens, but I don't have that many 
-    let views: [AppView, string][] = [
-        ["chart-select", "Play"]
-    ];
-
     rg.preRenderFn((s) => {
         t += s.dt;
         if (t > 1) {
@@ -27,6 +21,15 @@ export function StartupView(rg: RenderGroup<GlobalContext>) {
 
         fontSizeAnimated = fontSize + animateScale * Math.sin(t * 2 * Math.PI);
     });
+
+    function onClickPlay() {
+        const s = getState(rg);
+        setViewChartSelect(s);
+    }
+
+    const views: [string, () => void][] = [
+        ["Play", onClickPlay]
+    ];
 
     return div({ class: "flex-1 col align-items-center relative" }, [
         div({ class: "col align-items-center", style: "font-size: 64px;" }, [
@@ -40,13 +43,11 @@ export function StartupView(rg: RenderGroup<GlobalContext>) {
         }, [
             rg.list(div({ class: "contents" }), MenuButton, (getNext, s) => {
                 for (let i = 0; i < views.length; i++) {
-                    const [view, text] = views[i];
+                    const [text, handler] = views[i];
                     getNext().render({
                         ctx: s,
                         text,
-                        onClick: () => {
-                            
-                        },
+                        onClick: handler,
                         isSelected: i === currentView,
                     });
                 }

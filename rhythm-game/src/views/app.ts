@@ -1,34 +1,39 @@
-import { pressKey, releaseAllKeys, releaseKey } from "./dsp-loop-interface";
-import { EditView } from "./views/edit-view";
-import { PlayView } from "./views/play-view";
+import { pressKey, releaseAllKeys, releaseKey } from "src/dsp-loop-interface";
 import {
+    copyNotesToTempStore,
+    getCurrentSelectedChartName,
     GlobalContext,
+    loadChart,
+    moveLoadSaveSelection,
+    pasteNotesFromTempStore,
     playAll,
     playCurrentInterval,
-    stopPlaying,
-    getCurrentSelectedSequenceName,
-    loadCurrentSelectedSequence,
-    moveLoadSaveSelection,
-    saveStateDebounced
-} from "./global-context";
+    saveStateDebounced,
+    setViewChartSelect,
+    setViewEditChart,
+    setViewPlayChart,
+    setViewStartScreen,
+    stopPlaying
+} from "src/global-context";
+import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
     clearRangeSelection,
     deleteRange,
     getCursorStartBeats,
     getItemIdxAtBeat,
-    getItemStartBeats,
     getSelectionRange,
     handleMovement,
     hasRangeSelection,
     mutateSequencerTimeline,
+    newTimelineItemMeasure,
     setCursorDivisor,
-    setTimelineNoteAtPosition, timelineHasNoteAtPosition
-} from "./state/sequencer-state";
-import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
-import { div, isEditingTextSomewhereInDocument, RenderGroup } from "./utils/dom-utils";
-import { ChartSelect } from "./views/chart-select";
-import { StartupView } from "./views/startup-view";
-import { getKeyForKeyboardKey } from "./state/keyboard-state";
+    setTimelineNoteAtPosition, timelineMeasureAtBeatsIdx, timelineHasNoteAtPosition
+} from "src/state/sequencer-state";
+import { div, isEditingTextSomewhereInDocument, RenderGroup } from "src/utils/dom-utils";
+import { ChartSelect } from "src/views/chart-select";
+import { EditView } from "src/views/edit-view";
+import { PlayView } from "src/views/play-view";
+import { StartupView } from "src/views/startup-view";
 
 let instantiated = false;
 
@@ -62,7 +67,6 @@ export function App(rg: RenderGroup<GlobalContext>) {
     });
 
     document.addEventListener("blur", () => {
-        releaseAllKeys();
         ctx.render();
     })
 
@@ -91,7 +95,6 @@ export function App(rg: RenderGroup<GlobalContext>) {
     ])
 }
 
-
 function handleKeyDown(
     ctx: GlobalContext,
     key: string,
@@ -119,41 +122,79 @@ function handleKeyDown(
         vAxis = 1;
     }
 
+    if (ui.currentView === "chart-select") {
+        if (key === "E" || key === "e") {
+            setViewEditChart(ctx, ui.loadSave.selectedChartName);
+            return true;
+        }
+
+        if (key === "Enter") {
+            setViewPlayChart(ctx, ui.loadSave.selectedChartName);
+            return true;
+        }
+
+        if (key === "Escape") {
+            setViewStartScreen(ctx);
+            return true;
+        }
+
+        return false;
+    }
+    
+    if (ui.currentView === "play-chart") {
+        // TODO: keyboard input
+
+
+        if (key === "Escape") {
+            setViewChartSelect(ctx);
+            return true;
+        }
+
+        return false;
+    }
+
+    if (ui.currentView === "startup") {
+        if (key === "Enter") {
+            // NOTE: will need to change when we add more screens we can go to from here
+            setViewChartSelect(ctx);
+            return true;
+        }
+
+        return false;
+    }
+
     if (ui.currentView === "edit-chart") {
         if (key === "S" && ctrlPressed && shiftPressed) {
-            ui.loadSaveSidebarOpen = !ui.loadSaveSidebarOpen;
+            ui.editView.sidebarOpen = !ui.editView.sidebarOpen;
             return true;
         }
-
-        if (key === "K" && ctrlPressed && shiftPressed) {
-            ui.isKeyboard = !ui.isKeyboard;
-            return true;
-        }
-
-        if (ui.loadSaveSidebarOpen) {
+        if (ui.editView.sidebarOpen) {
             if (vAxis !== 0) {
                 moveLoadSaveSelection(ctx, vAxis);
                 return true;
             }
 
             if (key === "Enter") {
-                loadCurrentSelectedSequence(ctx);
+                loadChart(ctx, ui.loadSave.selectedChartName);
                 playAll(ctx, 1);
                 return true;
             }
 
             if (key === "Escape") {
-                ui.loadSaveSidebarOpen = false;
+                ctx.ui.editView.sidebarOpen = false;
                 stopPlaying(ctx);
                 return true;
             }
 
             if (key === "Delete") {
-                const name = getCurrentSelectedSequenceName(ctx);
+                const name = getCurrentSelectedChartName(ctx);
                 if (name in ctx.savedState.allSavedSongs) {
-                    // TODO: real UI
+                    // TODO: real UI instead of confirm
                     if (confirm("You sure you want to delete " + name)) {
                         delete ctx.savedState.allSavedSongs[name];
+
+                        // NOTE: this only deletes the save file, but not the currently loaded chart's name
+
                         return true;
                     }
                 }
@@ -182,6 +223,10 @@ function handleKeyDown(
         }
 
         if (!repeat) {
+            if (key === "K" && ctrlPressed && shiftPressed) {
+                ui.editView.isKeyboard = !ui.editView.isKeyboard;
+                return true;
+            }
 
             if (shiftPressed && (
                 key === "!" || key === "1"
@@ -217,53 +262,41 @@ function handleKeyDown(
             if (key === "Delete") {
                 const [start, end] = getSelectionRange(sequencer);
                 if (start !== -1 && end !== -1) {
-                    deleteRange(sequencer, start, end);
+                    mutateSequencerTimeline(sequencer, tl => {
+                        deleteRange(tl, start, end);
+                    });
                     return true;
                 }
 
                 const idx = getItemIdxAtBeat(sequencer, getCursorStartBeats(sequencer));
                 if (idx !== -1) {
-                    deleteRange(sequencer, idx, idx);
+                    mutateSequencerTimeline(sequencer, tl => {
+                        deleteRange(tl, idx, idx);
+                    });
                     return true;
                 }
             }
 
             if ((key === "C" || key === "c") && ctrlPressed) {
                 const [startIdx, endIdx] = getSelectionRange(sequencer);
+                return copyNotesToTempStore(ctx, startIdx, endIdx);
+            }
 
-                if (startIdx !== -1 && endIdx !== -1) {
-                    ui.copiedItems = sequencer.timeline.slice(startIdx, endIdx + 1)
-                        .map(deepCopyJSONSerializable);
-
-                    ui.copiedPositionStart = Math.min(
-                        getCursorStartBeats(sequencer),
-                        getItemStartBeats(sequencer.timeline[startIdx])
-                    );
+            if ((key === "X" || key === "x") && ctrlPressed) {
+                const [startIdx, endIdx] = getSelectionRange(sequencer);
+                if (copyNotesToTempStore(ctx, startIdx, endIdx)) {
+                    mutateSequencerTimeline(sequencer, tl => {
+                        deleteRange(tl, startIdx, endIdx);
+                    })
 
                     return true;
                 }
-
                 return false;
             }
 
             if ((key === "V" || key === 'v') && ctrlPressed) {
-                if (ui.copiedItems.length > 0) {
-                    mutateSequencerTimeline(sequencer, tl => {
-                        const delta = getCursorStartBeats(sequencer) - ui.copiedPositionStart;
-                        for (const item of ui.copiedItems) {
-                            const newItem = deepCopyJSONSerializable(item);
-
-                            // TODO: attempt to use clean numbers/integers here.
-                            // This is just my noob code for now
-                            const beats = getItemStartBeats(newItem);
-                            const newBeats = beats + delta;
-                            newItem.start = newBeats * newItem.divisor;
-
-                            tl.push(newItem);
-                        }
-                    });
-                    return true;
-                }
+                pasteNotesFromTempStore(ctx);
+                return false;
             }
 
             if (key === "Escape") {
@@ -276,6 +309,9 @@ function handleKeyDown(
                     clearRangeSelection(sequencer);
                     return true;
                 }
+
+                setViewChartSelect(ctx);
+                return true;
             }
 
             if (key === "Tab") {
@@ -287,6 +323,21 @@ function handleKeyDown(
 
                 // TODO: extend currently held notes by 1 as well
 
+                return true;
+            }
+
+            if (shiftPressed && (key === "M" || key === "m")) {
+                const cursorStartBeats = getCursorStartBeats(sequencer);
+                mutateSequencerTimeline(sequencer, tl => {
+                    const idx = timelineMeasureAtBeatsIdx(sequencer, cursorStartBeats);
+                    if (idx === -1) {
+                        const start = sequencer.cursorStart;
+                        const divisor = sequencer.cursorDivisor;
+                        tl.push(newTimelineItemMeasure(start, divisor));
+                    } else {
+                        deleteRange(tl, idx, idx);
+                    }
+                });
                 return true;
             }
 
@@ -333,6 +384,8 @@ function handleKeyDown(
                 return true;
             }
         }
+
+        return false;
     }
 
     return false;

@@ -5,17 +5,16 @@ import {
     newComponent,
     newInsertable
 } from "src/utils/dom-utils";
-import { App } from "./app";
+import { App } from "./views/app";
 import {
     getDspInfo,
     initDspLoopInterface
 } from "./dsp-loop-interface";
 import "./main.css";
-import { GlobalContext, load, newGlobalContext, stopPlaying } from "./global-context";
+import { GlobalContext, load, newGlobalContext, setViewChartSelect, stopPlaying } from "./global-context";
 import {
     getCurrentPlayingTimeRelative
 } from "./state/sequencer-state";
-import { setScreenChartSelect } from "./state/ui-state";
 
 // all util styles
 
@@ -28,7 +27,10 @@ function rerenderApp() {
 const globalContext = newGlobalContext(rerenderApp);
 load(globalContext);
 
-setScreenChartSelect(globalContext.ui);
+// Remove this code - it's for prototyping
+{
+    setViewChartSelect(globalContext);
+}
 
 
 // initialize the app.

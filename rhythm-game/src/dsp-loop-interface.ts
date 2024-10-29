@@ -67,18 +67,15 @@ export function getCurrentOscillatorGain(id: number): number {
     return block[1];
 }
 
-export const currentPressedNoteIndexes = new Set<number>();
-
-export function pressKey(noteIndex: number, note: MusicNote) {
+export function pressKey(id: number, note: MusicNote) {
     resumeAudio();
 
-    setCurrentOscillatorGain(noteIndex, 1);
+    setCurrentOscillatorGain(id, 1);
 
     if (note.sample) {
-        audioLoopDispatch({ playSample: [noteIndex, { sample: note.sample }] })
+        audioLoopDispatch({ playSample: [id, { sample: note.sample }] })
     } else if (note.noteIndex) {
-        currentPressedNoteIndexes.add(note.noteIndex);
-        audioLoopDispatch({ setOscilatorSignal: [noteIndex, { noteIndex, signal: 1 }] })
+        audioLoopDispatch({ setOscilatorSignal: [id, { noteIndex: note.noteIndex, signal: 1 }] })
     } else {
         unreachable();
     }
@@ -88,7 +85,6 @@ export function releaseKey(noteIndex: number, note: MusicNote) {
     if (note.sample) {
         // do nothing
     } else if (note.noteIndex) {
-        currentPressedNoteIndexes.delete(note.noteIndex);
         audioLoopDispatch({ setOscilatorSignal: [noteIndex, { noteIndex: note.noteIndex, signal: 0 }] })
     }
 }
@@ -103,19 +99,6 @@ export function releaseAllKeys() {
     audioLoopDispatch({ clearAllOscilatorSignals: true });
 }
 
-// // TODO: better name
-// export function releasePressedKeysBasedOnDuration(flatKeys: InstrumentKey[]) {
-//     for (const key of flatKeys) {
-//         if (key.remainingDuration > 0) {
-//             key.remainingDuration -= 1;
-//         }
-//
-//         if (key.remainingDuration === 0) {
-//             releaseKey(key);
-//         }
-//     }
-// }
-//
 function areDifferent(a: [number, number][], b: [number, number][]): boolean {
     if (a.length !== b.length) {
         return true;

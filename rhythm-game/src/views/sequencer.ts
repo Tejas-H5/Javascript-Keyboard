@@ -24,10 +24,10 @@ import {
     NoteMapEntry,
     SequencerState,
     TIMELINE_ITEM_BPM,
+    TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
     TimelineItem
 } from "src/state/sequencer-state";
-import { } from "src/state/state";
 import { unreachable } from "src/utils/asserts";
 import { div, RenderGroup } from "src/utils/dom-utils";
 import { inverseLerp, lerp } from "src/utils/math-utils";
@@ -52,6 +52,10 @@ export function getItemSequencerText(globalState: KeyboardState, item: TimelineI
 
     if (item.type === TIMELINE_ITEM_BPM) {
         return "bpm=" + item.bpm;
+    }
+
+    if (item.type === TIMELINE_ITEM_MEASURE) {
+        return "measure";
     }
 
     return unreachable(item);
@@ -117,7 +121,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
     };
 
     rg.preRenderFn(s => {
-        const cursorStartBeats =  getSequencerPlaybackOrEditingCursor(s.sequencer);
+        const cursorStartBeats = getSequencerPlaybackOrEditingCursor(s.sequencer);
         const divisor = s.sequencer.cursorDivisor;
 
         // Compute animation factors every frame without memoization
@@ -206,6 +210,15 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
         div({
             class: "relative flex-1 overflow-y-auto",
         }, [
+            rg.if(
+                s => hasRangeSelection(s.sequencer),
+                rg => rg.c(SequencerRangeRect, (c, s) => c.render({
+                    internalState,
+                    beatsA: getRangeSelectionStartBeats(s.sequencer),
+                    beatsB: getRangeSelectionEndBeats(s.sequencer),
+                    color: `rgba(0, 0, 255, 0.25)`,
+                }))
+            ),
             rg.list(div({ class: "contents" }), SequencerVerticalLine, (getNext, s) => {
                 const sequencer = s.sequencer;
                 const startNonFloored = internalState.leftExtent;
@@ -221,13 +234,6 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                         color: "var(--bg2)",
                     });
                 }
-
-                // playback vertical line
-                getNext().render({
-                    internalState,
-                    beats: getCurrentPlayingBeats(s.sequencer),
-                    color: "var(--playback)"
-                });
 
                 // range select lines
                 getNext().render({
@@ -248,6 +254,22 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                     beats: lastCursorStartBeats,
                     color: "var(--fg)"
                 });
+
+
+                // add blue vertical lines for all the measures
+                for (const item of internalState.commandsList) {
+                    if (item.type !== TIMELINE_ITEM_MEASURE) {
+                        continue;
+                    }
+
+                    const beats = getItemStartBeats(item);
+                    getNext().render({
+                        internalState,
+                        beats,
+                        color: "var(--playback)"
+                    });
+                }
+
             }),
             () => {
                 const root = div({
@@ -267,7 +289,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                         c.render({
                             internalState,
                             ctx: s,
-                            musicNote: entry.musicNote, 
+                            musicNote: entry.musicNote,
                             items: entry.items,
                         });
                     }
@@ -291,15 +313,38 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
     ]);
 }
 
-function getAbsoluteLeftPercent(
-    internalState: SequencerUIInternalState, 
-    beats: number
-): number {
-    return inverseLerp(
-        internalState.leftExtentAnimated,
-        internalState.rightExtentAnimated,
-        beats,
-    ) * 100;
+
+function SequencerRangeRect(rg: RenderGroup<{
+    internalState: SequencerUIInternalState;
+    beatsA: number;
+    beatsB: number;
+    color: string;
+}>) {
+    let leftAbsolutePercent = 0;
+    let rightAbsolutePercent = 0;
+
+    rg.preRenderFn((s) => {
+        let min = Math.min(s.beatsA, s.beatsB);
+        let max = Math.max(s.beatsA, s.beatsB);
+
+        leftAbsolutePercent = inverseLerp(
+            s.internalState.leftExtentAnimated,
+            s.internalState.rightExtentAnimated,
+            min,
+        ) * 100;
+
+        rightAbsolutePercent = inverseLerp(
+            s.internalState.rightExtentAnimated,
+            s.internalState.leftExtentAnimated,
+            max,
+        ) * 100;
+    });
+
+    return div({ class: "absolute", style: "top: 0; bottom: 0;" }, [
+        rg.style("left", () => leftAbsolutePercent + "%"),
+        rg.style("right", () => rightAbsolutePercent + "%"),
+        rg.style("backgroundColor", s => s.color),
+    ]);
 }
 
 function SequencerVerticalLine(rg: RenderGroup<{
@@ -310,7 +355,11 @@ function SequencerVerticalLine(rg: RenderGroup<{
     let absolutePercent = 0;
 
     rg.preRenderFn((s) => {
-        absolutePercent = getAbsoluteLeftPercent(s.internalState, s.beats);
+        absolutePercent = inverseLerp(
+            s.internalState.leftExtentAnimated,
+            s.internalState.rightExtentAnimated,
+            s.beats,
+        ) * 100;
     });
 
     return rg.if(

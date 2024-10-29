@@ -6,9 +6,9 @@ import {
     GlobalContext,
     resetSequencer,
     stopPlaying,
-    getCurrentSelectedSequenceName,
-    loadCurrentSelectedSequence,
-    save,
+    getCurrentSelectedChartName,
+    loadChart,
+    saveAllCharts,
 } from "src/global-context";
 import {
     getCurrentPlayingTimeRelative,
@@ -27,64 +27,7 @@ import {
 import { Gameplay } from "src/views/gameplay";
 import { Keyboard } from "src/views/keyboard";
 import { Sequencer } from "src/views/sequencer";
-
-function LoadSavePanel(rg: RenderGroup<GlobalContext>) {
-    function Item(rg: RenderGroup<{ ctx: GlobalContext; name: string; }>) {
-        return div({}, [
-            rg.text(s => s.name),
-            rg.style("backgroundColor", s => s.name === getCurrentSelectedSequenceName(s.ctx) ? "var(--bg2)" : ""),
-            rg.on("click", s => {
-                setInputValue(input, s.name);
-                s.ctx.render();
-            })
-        ]);
-    }
-
-    const input = el<HTMLInputElement>("INPUT", { style: "width: 100%", placeholder: "enter name here" }, [
-        rg.on("input", (s) => {
-            s.ui.loadSaveCurrentSelection = input.el.value;
-            s.render();
-        })
-    ]);
-
-    rg.preRenderFn(s => {
-        setInputValue(input, getCurrentSelectedSequenceName(s));
-    });
-
-    return div({ style: "width: 33vw" }, [
-        div({ class: "row", style: "gap: 10px" }, [
-            // dont want to accidentally load over my work. smh.
-            rg.if(
-                s => (getCurrentSelectedSequenceName(s) in s.savedState.allSavedSongs),
-                rg => rg.c(Button, (c, s) => c.render({
-                    text: "Load",
-                    onClick() {
-                        loadCurrentSelectedSequence(s);
-                        s.render();
-                    }
-                })),
-            ),
-            input,
-            rg.if(
-                s => !!getCurrentSelectedSequenceName(s),
-                rg => rg.c(Button, (c, s) => c.render({
-                    text: "Save",
-                    onClick() {
-                        const key = getCurrentSelectedSequenceName(s);
-                        s.savedState.allSavedSongs[key] = JSON.stringify(s.sequencer.timeline);
-                        save(s);
-                        s.render();
-                    }
-                })),
-            )
-        ]),
-        rg.list(div(), Item, (getNext, s) => {
-            for (const key in s.savedState.allSavedSongs) {
-                getNext().render({ ctx: s, name: key });
-            }
-        })
-    ]);
-}
+import { recursiveShallowCopyRemovingComputedFields } from "src/utils/serialization-utils";
 
 export function EditView(rg: RenderGroup<GlobalContext>) {
     setCssVars({
@@ -122,7 +65,8 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
 
     function toggleLoadSaveSiderbar() {
         const s = getState(rg);
-        s.ui.loadSaveSidebarOpen = !s.ui.loadSaveSidebarOpen;
+        const ui = s.ui.editView;
+        ui.sidebarOpen = !ui.sidebarOpen;
         // needs it twice for some reason...
         s.render();
         s.render();
@@ -137,7 +81,7 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
             //     rg.c(Teleprompter, c => c.render(null)),
             // ]),
             rg.if(
-                s => s.ui.isKeyboard,
+                s => s.ui.editView.isKeyboard,
                 rg => (
                     div({ class: "col flex-1" }, [
                         div({ class: "row", style: "gap: 5px" }, [
@@ -172,8 +116,8 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
 
                     // TODO: put this in a better place
                     rg.if(
-                        s => s.ui.copiedItems.length > 0,
-                        rg => rg.text(s => s.ui.copiedItems.length + " items copied")
+                        s => s.ui.copied.items.length > 0,
+                        rg => rg.text(s => s.ui.copied.items.length + " items copied")
                     ),
 
                     div({ class: "flex-1" }),
@@ -182,7 +126,7 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
                         onClick: clearSequencer
                     })),
                     rg.c(Button, (c, s) => c.render({
-                        text: (s.ui.loadSaveSidebarOpen ? ">" : "<") + "Load/Save",
+                        text: (s.ui.editView.sidebarOpen ? ">" : "<") + "Load/Save",
                         onClick: toggleLoadSaveSiderbar
                     }))
                 ]),
@@ -190,11 +134,70 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
             ])
         ]),
         rg.if(
-            s => s.ui.loadSaveSidebarOpen,
+            s => s.ui.editView.sidebarOpen,
             rg => div({ class: "col" }, [
                 rg.c(LoadSavePanel, (c, s) => c.render(s))
             ])
         )
     ])
+}
+
+function LoadSavePanel(rg: RenderGroup<GlobalContext>) {
+    function Item(rg: RenderGroup<{ ctx: GlobalContext; name: string; }>) {
+        return div({}, [
+            rg.text(s => s.name),
+            rg.style("backgroundColor", s => s.name === getCurrentSelectedChartName(s.ctx) ? "var(--bg2)" : ""),
+            rg.on("click", s => {
+                setInputValue(input, s.name);
+                s.ctx.render();
+            })
+        ]);
+    }
+
+    const input = el<HTMLInputElement>("INPUT", { style: "width: 100%", placeholder: "enter name here" }, [
+        rg.on("input", (s) => {
+            s.ui.loadSave.selectedChartName = input.el.value;
+            s.render();
+        })
+    ]);
+
+    rg.preRenderFn(s => {
+        setInputValue(input, getCurrentSelectedChartName(s));
+    });
+
+    return div({ style: "width: 33vw" }, [
+        div({ class: "row", style: "gap: 10px" }, [
+            // dont want to accidentally load over my work. smh.
+            rg.if(
+                s => (getCurrentSelectedChartName(s) in s.savedState.allSavedSongs),
+                rg => rg.c(Button, (c, s) => c.render({
+                    text: "Load",
+                    onClick() {
+                        loadChart(s, s.ui.loadSave.selectedChartName);
+                        s.render();
+                    }
+                })),
+            ),
+            input,
+            rg.if(
+                s => !!getCurrentSelectedChartName(s),
+                rg => rg.c(Button, (c, s) => c.render({
+                    text: "Save",
+                    onClick() {
+                        const key = getCurrentSelectedChartName(s);
+                        const timelineSerialized = recursiveShallowCopyRemovingComputedFields(s.sequencer.timeline);
+                        s.savedState.allSavedSongs[key] = JSON.stringify(timelineSerialized);
+                        saveAllCharts(s);
+                        s.render();
+                    }
+                })),
+            )
+        ]),
+        rg.list(div(), Item, (getNext, s) => {
+            for (const key in s.savedState.allSavedSongs) {
+                getNext().render({ ctx: s, name: key });
+            }
+        })
+    ]);
 }
 

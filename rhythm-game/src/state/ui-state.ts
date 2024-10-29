@@ -4,31 +4,49 @@ type AppView = "startup" | "chart-select" | "play-chart" | "edit-chart";
 export type UIState = {
     currentView: AppView;
 
-    loadSaveSidebarOpen: boolean;
-    isKeyboard: boolean;
-    loadSaveCurrentSelection: string;
+    chartSelect: {
+        loadedCharts: string[];
+    },
 
-    // TODO: polish. right now it's only good for local dev
-    saveStateTimeout: number;
-    copiedPositionStart: number;
-    copiedItems: TimelineItem[];
+    loadSave: {
+        saveStateTimeout: number;
+        selectedChartName: string;
+        loadedChartName: string;
+    }
+
+    copied: {
+        items: TimelineItem[];
+        positionStart: number;
+    }
+
+    editView: {
+        isKeyboard: boolean;
+        sidebarOpen: boolean;
+    }
 };
 
 export function newUiState(): UIState {
     return {
         currentView: "startup",
 
-        loadSaveSidebarOpen: false,
-        isKeyboard: true,
-        loadSaveCurrentSelection: "",
+        chartSelect: {
+            loadedCharts: [],
+        },
 
-        // TODO: polish. right now it's only good for local dev
-        saveStateTimeout: 0,
-        copiedPositionStart: 0,
-        copiedItems: [],
+        loadSave: {
+            saveStateTimeout: 0,
+            loadedChartName: "",
+            selectedChartName: "",
+        },
+
+        copied: {
+            positionStart: 0,
+            items: [],
+        },
+
+        editView: {
+            isKeyboard: true,
+            sidebarOpen: false,
+        },
     };
-}
-
-export function setScreenChartSelect(state: UIState) {
-    state.currentView = "chart-select";
 }

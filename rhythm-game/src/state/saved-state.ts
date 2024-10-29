@@ -1,3 +1,4 @@
+
 export type SavedState = {
     allSavedSongs: Record<string, string>;
 }

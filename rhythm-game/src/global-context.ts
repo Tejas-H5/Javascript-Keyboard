@@ -1,6 +1,17 @@
 import { releaseAllKeys, ScheduledKeyPress, schedulePlayback } from "./dsp-loop-interface";
 import {
+    getBeatsRange,
+    getBpm,
+    getBpmChangeItemAtBeats,
     getCursorStartBeats,
+    getItemEndBeats,
+    getItemIdxAtBeat,
+    getItemStartBeats,
+    getLastMeasureBeats,
+    getNextItemIndex,
+    getPrevItemIndex,
+    getRangeSelectionEndBeats,
+    getRangeSelectionStartBeats,
     getSelectionRange,
     hasRangeSelection,
     isItemUnderCursor,
@@ -8,21 +19,24 @@ import {
     newSequencerState,
     SequencerState,
     TIMELINE_ITEM_BPM,
+    TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
     TimelineItem
 } from "./state/sequencer-state";
 import { unreachable } from "src/utils/asserts";
 import { getKeyForNote, KeyboardState, newKeyboardState } from "./state/keyboard-state";
-import { newSavedState, SavedState } from "./state/state";
+import { newSavedState, SavedState } from "./state/saved-state";
 import { clamp } from "src/utils/math-utils";
-import { recursiveShallowCopyRemovingComputedFields } from "./utils/serialization-utils";
 import { newUiState, UIState } from "./state/ui-state";
+import { deepCopyJSONSerializable } from "./utils/deep-copy-json";
+import { recursiveShallowCopyRemovingComputedFields } from "./utils/serialization-utils";
+import { beatsToMs } from "./utils/music-theory-utils";
 
 export type GlobalContext = {
     keyboard: KeyboardState;
     sequencer: SequencerState;
     ui: UIState;
-    savedState: SavedState;
+    savedState: SavedState; 
     render(): void;
     dt: DOMHighResTimeStamp;
 }
@@ -49,10 +63,24 @@ export function load(ctx: GlobalContext) {
     }
 
     ctx.savedState = JSON.parse(savedState);
-    mutateSequencerTimeline(ctx.sequencer, tl => {
-        tl.splice(0, tl.length);
-        tl.push(...JSON.parse(ctx.savedState.allSavedSongs["autosaved"]));
-    });
+    ctx.ui.loadSave.loadedChartName = "autosaved";
+}
+
+export function getCurrentSelectedChartName(ctx: GlobalContext) {
+    return ctx.ui.loadSave.selectedChartName;
+}
+
+// TODO: save the individual chart...
+export function saveAllCharts(ctx: GlobalContext) {
+    const { sequencer, savedState } = ctx;
+
+    const serialzed = recursiveShallowCopyRemovingComputedFields(sequencer.timeline);
+    const currentTracks = JSON.stringify(serialzed);
+
+    savedState.allSavedSongs["autosaved"] = currentTracks;
+
+    localStorage.setItem("savedState", JSON.stringify(savedState));
+    console.log("saved!");
 }
 
 export function stopPlaying({ sequencer } : GlobalContext) {
@@ -74,27 +102,16 @@ export function playCurrentInterval(
 ) {
     const { sequencer } = ctx;
     if (hasRangeSelection(sequencer)) {
-        const [startIdx, endIdx] = getSelectionRange(sequencer);
-        if (startIdx !== -1 && endIdx !== -1) {
-            startPlaying(ctx, startIdx, endIdx, speed);
-        }
-
+        const a = getRangeSelectionStartBeats(sequencer);
+        const b = getRangeSelectionEndBeats(sequencer);
+        startPlaying(ctx, a, b, speed);
         return;
     }
 
-    // play from now till the end.
-    const timeline = sequencer.timeline;
+    // Play from the last measure till now.
     const cursorStart = getCursorStartBeats(sequencer);
-    let idx = 0;
-    while (idx < timeline.length) {
-        const item = timeline[idx];
-        if (isItemUnderCursor(item, cursorStart)) {
-            break;
-        }
-        idx++;
-    }
-
-    startPlaying(ctx, idx, timeline.length, speed);
+    const lastMeasureStart = getLastMeasureBeats(sequencer, cursorStart);
+    startPlaying(ctx, lastMeasureStart, cursorStart, speed);
 }
 
 export function playAll(
@@ -106,17 +123,28 @@ export function playAll(
 
 export function startPlaying(
     { sequencer, keyboard }: GlobalContext,
-    startIdx: number, 
-    endIdx: number, 
+    startBeats: number,
+    endBeats: number,
     speed: number,
 ) {
+    const [startIdx, endIdx] = getBeatsRange(sequencer, startBeats, endBeats);
+    if (startIdx === -1 || endIdx === -1) {
+        return;
+    }
+
     const timeline = sequencer.timeline;
     const firstItem: TimelineItem | undefined = timeline[startIdx];
     if (!firstItem) {
         return;
     }
 
-    sequencer.startPlayingTime = Date.now();
+    const startItemBeats = getItemStartBeats(timeline[startIdx]);
+    const bpmChange = getBpmChangeItemAtBeats(sequencer, startBeats);
+    const bpm = getBpm(bpmChange);
+    const leadInBeats = startItemBeats - startBeats;
+    const leadInTime = beatsToMs(leadInBeats, bpm);
+
+    sequencer.startPlayingTime = Date.now() + leadInTime;
     sequencer.startPlayingIdx = startIdx;
     sequencer.endPlayingIdx = endIdx;
     sequencer.isPlaying = true;
@@ -124,11 +152,11 @@ export function startPlaying(
     // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
 
     const scheduledKeyPresses: ScheduledKeyPress[] = [];
-    const firstItemStartTime = timeline[startIdx]._scheduledStart;
+    const firstItemStartTime = timeline[startIdx]._scheduledStart - leadInTime;
 
     for (let i = startIdx; i < timeline.length && i <= endIdx; i++) {
         const item = timeline[i];
-        if (item.type === TIMELINE_ITEM_BPM) {
+        if (item.type === TIMELINE_ITEM_BPM || item.type === TIMELINE_ITEM_MEASURE) {
             // can't be played.
             continue;
         }
@@ -178,48 +206,101 @@ export function startPlaying(
 }
 
 
-// TODO: save and load the entire state.
-export function save(ctx: GlobalContext) {
-    const serialzed = recursiveShallowCopyRemovingComputedFields(ctx.sequencer.timeline);
-    const currentTracks = JSON.stringify(serialzed);
-
-    ctx.savedState.allSavedSongs["autosaved"] = currentTracks;
-
-    localStorage.setItem("savedState", JSON.stringify(ctx.savedState));
-    console.log("saved!");
-}
-
 export function saveStateDebounced(ctx: GlobalContext) {
-    clearTimeout(ctx.ui.saveStateTimeout);
-    ctx.ui.saveStateTimeout = setTimeout(() => {
-        save(ctx);
+    const ui = ctx.ui.loadSave;
+
+    clearTimeout(ui.saveStateTimeout);
+    ui.saveStateTimeout = setTimeout(() => {
+        saveAllCharts(ctx);
     }, 100);
 }
 
 export function moveLoadSaveSelection(ctx: GlobalContext, amount: number) {
+    const ui = ctx.ui.loadSave;
+
     const keys = Object.keys(ctx.savedState.allSavedSongs);
-    const idx = keys.indexOf(ctx.ui.loadSaveCurrentSelection);
+    const idx = keys.indexOf(ui.selectedChartName);
     if (idx === -1) {
-        ctx.ui.loadSaveCurrentSelection = keys[0];
+        ui.selectedChartName = keys[0];
         return;
     }
 
     const newIdx = clamp(idx + amount, 0, keys.length - 1);
-    ctx.ui.loadSaveCurrentSelection = keys[newIdx];
+    ui.selectedChartName = keys[newIdx];
 }
 
-export function getCurrentSelectedSequenceName(ctx: GlobalContext) {
-    return ctx.ui.loadSaveCurrentSelection;
-}
+export function loadChart(ctx: GlobalContext, chartName: string) {
+    const ui = ctx.ui.loadSave;
 
-export function loadCurrentSelectedSequence(ctx: GlobalContext) {
-    const key = getCurrentSelectedSequenceName(ctx);
-    if (!ctx.savedState.allSavedSongs[key]) {
+    if (!ctx.savedState.allSavedSongs[chartName]) {
         return;
     }
 
+    const json = ctx.savedState.allSavedSongs[chartName];
+    ui.loadedChartName = chartName;
     mutateSequencerTimeline(ctx.sequencer, tl => {
         tl.splice(0, tl.length);
-        tl.push(...JSON.parse(ctx.savedState.allSavedSongs[key]));
+        tl.push(...JSON.parse(json));
     });
+}
+
+export function copyNotesToTempStore(ctx: GlobalContext, startIdx: number, endIdx: number): boolean {
+    const { sequencer, ui } = ctx;
+
+    if (startIdx === -1 || endIdx === -1) {
+        return false;
+    }
+
+    ui.copied.items = sequencer.timeline.slice(startIdx, endIdx + 1)
+        .map(deepCopyJSONSerializable);
+
+    ui.copied.positionStart = Math.min(
+        getCursorStartBeats(sequencer),
+        getItemStartBeats(sequencer.timeline[startIdx])
+    );
+
+    return true;
+}
+
+export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
+    const { ui, sequencer } = ctx;
+
+    if (ui.copied.items.length === 0) {
+        return false;
+    }
+
+    mutateSequencerTimeline(sequencer, tl => {
+        const delta = getCursorStartBeats(sequencer) - ui.copied.positionStart;
+        for (const item of ui.copied.items) {
+            const newItem = deepCopyJSONSerializable(item);
+
+            // TODO: attempt to use clean numbers/integers here.
+            // This is just my noob code for now
+            const beats = getItemStartBeats(newItem);
+            const newBeats = beats + delta;
+            newItem.start = newBeats * newItem.divisor;
+
+            tl.push(newItem);
+        }
+    });
+
+    return true;
+}
+
+export function setViewEditChart(ctx: GlobalContext, chartName: string) {
+    ctx.ui.currentView = "edit-chart";
+    loadChart(ctx, chartName);
+}
+
+export function setViewPlayChart(ctx: GlobalContext, chartName: string) {
+    ctx.ui.currentView = "play-chart";
+    loadChart(ctx, chartName);
+}
+
+export function setViewChartSelect(ctx: GlobalContext) {
+    ctx.ui.currentView = "chart-select";
+}
+
+export function setViewStartScreen(ctx: GlobalContext) {
+    ctx.ui.currentView = "startup";
 }
