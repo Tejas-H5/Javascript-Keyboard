@@ -44,4 +44,8 @@ keyboard, but if I forget to do this somewhere, we'll run into a bug where no so
 - The only way to communicate with the custom audio worklet node is by sending serializable objects over message ports, which makes a lot of
 things that would be easy when doing audio stuff in a normal app much harder in the web world.
 
-TODO: explain how to make the waveform once we've got it sounding somewhat decent
+Right now, the waveform sounds kinda terrible. 
+
+## Setting up the development environment
+
+See Development.md for more info.
