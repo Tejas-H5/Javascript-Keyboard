@@ -365,30 +365,32 @@ export function mutateSequencerTimeline(state: SequencerState, fn: () => void) {
 
     // Recompute the actual start and end times of every object, and indexes
     {
-        let currentBpm = 120;
+        let currentBpm = DEFAULT_BPM;
+        let currentBpmTime = 0;
         let currentBpmBeats = 0;
         for (let i = 0; i < timeline.length; i++) {
             const item = timeline[i];
-            const itemStart = getItemStartBeats(item);
-            const relativeStart = itemStart - currentBpmBeats;
-
             item._index = i;
-            item._scheduledStart = beatsToMs(relativeStart, currentBpm);
+
+            const relativeBeats = getItemStartBeats(item) - currentBpmBeats;
+            const itemStartTime = currentBpmTime + beatsToMs(relativeBeats, currentBpm);
+            item._scheduledStart = itemStartTime;
 
             if (item.type === TIMELINE_ITEM_MEASURE) {
                 continue;
             }
 
             if (item.type === TIMELINE_ITEM_BPM) {
+                currentBpmTime = itemStartTime;
                 currentBpm = item.bpm;
-                currentBpmBeats = getBeats(item.start, item.divisor);
+                currentBpmBeats = getItemStartBeats(item);
                 continue;
             }
 
             if (item.type === TIMELINE_ITEM_NOTE) {
                 const itemEnd = getItemEndBeats(item);
                 const relativeEnd = itemEnd - currentBpmBeats;
-                item._scheduledEnd = beatsToMs(relativeEnd, currentBpm);
+                item._scheduledEnd = currentBpmTime + beatsToMs(relativeEnd, currentBpm);
                 continue;
             }
 

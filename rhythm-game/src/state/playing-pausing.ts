@@ -5,6 +5,7 @@ import {
     getBeatsIndexes,
     getBpm,
     getBpmChangeItemBeforeBeats,
+    getBpmTime,
     getCurrentPlayingBeats,
     getCursorStartBeats,
     getItemEndBeats,
@@ -103,11 +104,14 @@ export function startPlaying(
         return;
     }
 
-    const startItemBeats = getItemStartBeats(timeline[startIdx]);
+    const startItem = timeline[startIdx];
     const bpmChange = getBpmChangeItemBeforeBeats(sequencer, startBeats);
-    const bpm = getBpm(bpmChange);
-    const leadInBeats = startItemBeats - startBeats;
-    const leadInTime = beatsToMs(leadInBeats, bpm);
+    let cursorTime = 0;
+    if (bpmChange) {
+        const relativeBeats = startBeats - getItemStartBeats(bpmChange);
+        cursorTime = bpmChange._scheduledStart + beatsToMs(relativeBeats, bpmChange.bpm);
+    }
+    const leadInTime = startItem._scheduledStart - cursorTime;
 
     sequencer.startPlayingTime = Date.now() + leadInTime;
     sequencer.startPlayingIdx = startIdx;
