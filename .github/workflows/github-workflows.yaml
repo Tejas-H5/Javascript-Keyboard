@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: rytm-gayme
+        working-directory: rhythm-game
     steps:
       - name: Checkout
         uses: actions/checkout@v4
