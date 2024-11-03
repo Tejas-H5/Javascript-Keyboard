@@ -160,9 +160,6 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
                         if (scheduledPress.keyId !== s.key.index) {
                             continue;
                         }
-                        if (!scheduledPress.pressed) {
-                            continue;
-                        }
 
                         const APPROACH_WINDOW = 500;
                         const PERSIST_WINDOW = 200;

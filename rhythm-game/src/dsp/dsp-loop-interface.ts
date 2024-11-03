@@ -9,7 +9,7 @@ export type ScheduledKeyPress = {
     // Used to know which keyboard key is being played by the DSP.
     keyId: number;
 
-    pressed: boolean;
+    timeEnd: number;
     noteIndex?: number;
     sample?: string;
 }

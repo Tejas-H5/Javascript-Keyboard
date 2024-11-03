@@ -4,6 +4,7 @@ import {
     getKeyForNote,
     KeyboardState,
 } from "src/state/keyboard-state";
+import { previewNotes } from "src/state/playing-pausing";
 import {
     BpmChange,
     CommandItem,
@@ -25,6 +26,7 @@ import {
     Measure,
     mutateSequencerTimeline,
     newTimelineItemBpmChange,
+    NoteItem,
     NoteMapEntry,
     SequencerState,
     setCursorDivisor,
@@ -112,13 +114,9 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
         lastCursorStartDivisor = -1,
         lastUpdatedTime = -1,
         invalidateCache = false;
-
-    const needsRecomputation = (s: GlobalContext, cursorStartBeats: number, divisor: number) => {
-        return lastCursorStartBeats !== cursorStartBeats
-            || lastCursorStartDivisor !== divisor
-            || lastUpdatedTime !== s.sequencer._timelineLastUpdated
-            || invalidateCache
-    }
+    
+    const itemsUnderCursor = new Set<TimelineItem>();
+    const notesToPlay: NoteItem[] = [];
 
     let currentCursorAnimated = -1,
         divisorAnimated = 4;
@@ -172,7 +170,12 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
         }
 
         // Recompute the non-overlapping items in the sequencer timeline as needed
-        if (needsRecomputation(s, cursorStartBeats, divisor)) {
+        if (
+            lastCursorStartBeats !== cursorStartBeats
+            || lastCursorStartDivisor !== divisor
+            || lastUpdatedTime !== s.sequencer._timelineLastUpdated
+            || invalidateCache
+        ) {
             lastUpdatedTime = s.sequencer._timelineLastUpdated;
             lastCursorStartBeats = cursorStartBeats;
             lastCursorStartDivisor = divisor;
@@ -209,6 +212,31 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
             internalState.noteOrder.sort((a, b) => {
                 return compareMusicNotes(a.musicNote, b.musicNote);
             });
+
+            // check if we've got any new things in the set, and then play them.
+            if (!s.sequencer.isPlaying) {
+                for (const note of itemsUnderCursor) {
+                    if (!isItemUnderCursor(note, cursorStartBeats)) {
+                        itemsUnderCursor.delete(note);
+                    }
+                }
+
+                notesToPlay.length = 0;
+                for (const notes of internalState.notesMap.values()) {
+                    for (const note of notes.items) {
+                        if (isItemUnderCursor(note, cursorStartBeats)) {
+                            if (!itemsUnderCursor.has(note)) {
+                                console.log("playing note: ", note.note.noteIndex);
+                                notesToPlay.push(note);
+                            }
+
+                            itemsUnderCursor.add(note);
+                        }
+                    }
+                }
+
+                previewNotes(s, notesToPlay);
+            }
         }
     });
 

@@ -1,24 +1,24 @@
-import { unreachable } from "src/utils/asserts";
 import { releaseAllKeys, ScheduledKeyPress, schedulePlayback } from "src/dsp/dsp-loop-interface";
-import { getKeyForNote } from "src/state/keyboard-state";
+import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
 import {
     getBeatsIndexes,
-    getBpm,
     getBpmChangeItemBeforeBeats,
-    getBpmTime,
     getCurrentPlayingBeats,
     getCursorStartBeats,
     getItemEndBeats,
     getItemStartBeats,
+    getItemStartTime,
     getLastMeasureBeats,
     getRangeSelectionEndBeats,
     getRangeSelectionStartBeats,
     hasRangeSelection,
+    NoteItem,
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
     TimelineItem
 } from "src/state/sequencer-state";
+import { unreachable } from "src/utils/asserts";
 import { beatsToMs } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./global-context";
 
@@ -131,31 +131,7 @@ export function startPlaying(
         }
 
         if (item.type === TIMELINE_ITEM_NOTE) {
-            const n = item.note;
-            const key = getKeyForNote(keyboard, n);
-            if (!key) {
-                // this note can't be played either
-                continue;
-            }
-
-            scheduledKeyPresses.push({
-                time: item._scheduledStart - firstItemStartTime,
-                keyId: key.index,
-                pressed: true,
-                noteIndex: n.noteIndex,
-                sample: n.sample,
-            });
-
-            if (item.note.noteIndex) {
-                // notes need to be released, unlike samples.
-                scheduledKeyPresses.push({
-                    time: item._scheduledEnd - firstItemStartTime,
-                    keyId: key.index,
-                    pressed: false,
-                    noteIndex: n.noteIndex,
-                    sample: n.sample,
-                });
-            }
+            pushNotePress(scheduledKeyPresses, keyboard, item, firstItemStartTime);
             continue;
         }
 
@@ -166,6 +142,7 @@ export function startPlaying(
         scp.time /= speed;
     }
 
+    // TODO: prob not needed, since the timeline is sorted already
     scheduledKeyPresses.sort((a, b) => a.time - b.time);
 
     sequencer.scheduledKeyPresses = scheduledKeyPresses;
@@ -174,3 +151,40 @@ export function startPlaying(
     schedulePlayback(scheduledKeyPresses);
 }
 
+function pushNotePress(
+    scheduledKeyPresses: ScheduledKeyPress[], 
+    keyboard: KeyboardState, 
+    item: NoteItem,
+    firstItemStartTime: number,
+) {
+    const n = item.note;
+    const key = getKeyForNote(keyboard, n);
+    if (!key) {
+        // this note can't be played, do nothing
+        return;
+    }
+
+    scheduledKeyPresses.push({
+        time: item._scheduledStart - firstItemStartTime,
+        timeEnd: item._scheduledEnd - firstItemStartTime,
+        keyId: key.index,
+        noteIndex: n.noteIndex,
+        sample: n.sample,
+    });
+}
+
+// Plays notes without setting the sequencer's isPlaying = true.
+export function previewNotes(ctx: GlobalContext, notes: NoteItem[]) {
+    let minTime = Number.POSITIVE_INFINITY;
+    for (const note of notes) {
+        minTime = Math.min(minTime, getItemStartTime(note));
+    }
+
+    const keyboard = ctx.keyboard;
+    const scheduledKeyPresses: ScheduledKeyPress[] = [];
+    for (const note of notes) {
+        pushNotePress(scheduledKeyPresses, keyboard, note, minTime);
+    }
+
+    schedulePlayback(scheduledKeyPresses);
+}

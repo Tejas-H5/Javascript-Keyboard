@@ -107,14 +107,13 @@ export function getBeatsIndexes(state: SequencerState, startBeats: number, endBe
     const min = Math.min(startBeats, endBeats);
     const max = Math.max(startBeats, endBeats);
 
-    const startIdx = findLastIndexOf(
-        state.timeline, 
-        (item) => lteBeats(getItemStartBeats(item), min)
+    const startIdx = state.timeline.findIndex(
+        item => gteBeats(getItemStartBeats(item), min),
     );
 
     const endIdx = findLastIndexOf(
         state.timeline, 
-        (item) => lteBeats(getItemEndBeats(item), max)
+        (item) => lteBeats(getItemStartBeats(item), max)
     );
 
     if (
@@ -1020,15 +1019,37 @@ export function shiftSelectedItems(sequencer: SequencerState, amount: number) {
     }
 
     const amountBeats = getBeats(amount, sequencer.cursorDivisor);
-    const timeline = sequencer.timeline;
+    shiftItems(sequencer, startIdx, endIdx, amountBeats);
 
+    sequencer.rangeSelectStart += amountBeats * sequencer.cursorDivisor;
+    sequencer.rangeSelectEnd += amountBeats * sequencer.cursorDivisor;
+}
+
+export function shiftItemsAfterCursor(sequencer: SequencerState, amount: number) {
+    const cursorStart = getCursorStartBeats(sequencer);
+    const rightOfCursorIdx = sequencer.timeline.findIndex(
+        item => gteBeats(getItemStartBeats(item), cursorStart)
+    );
+
+    const amountBeats = getBeats(amount, sequencer.cursorDivisor);
+    shiftItems(sequencer, rightOfCursorIdx, sequencer.timeline.length - 1, amountBeats);
+}
+
+export function shiftItems(
+    sequencer: SequencerState, 
+    startIdx: number, 
+    endIdx: number, 
+    amountBeats: number,
+) {
+    if (startIdx === -1 || endIdx === -1) {
+        return;
+    }
+
+    const timeline = sequencer.timeline;
     for (let i = startIdx; i <= endIdx; i++) {
         const item = timeline[i];
         item.start += amountBeats * item.divisor;
     }
-
-    sequencer.rangeSelectStart += amountBeats * sequencer.cursorDivisor;
-    sequencer.rangeSelectEnd += amountBeats * sequencer.cursorDivisor;
 }
 
 

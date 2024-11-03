@@ -8,19 +8,19 @@ import {
     setViewPlayChart,
     setViewStartScreen,
 } from "src/state/global-context";
-import { 
+import { getKeyForKeyboardKey } from "src/state/keyboard-state";
+import {
     getCurrentSelectedChartName,
     loadChart,
     moveLoadSaveSelection,
     saveStateDebounced,
-} from "src/state/loading-saving-charts"
+} from "src/state/loading-saving-charts";
 import {
     playAll,
     playFromCursor,
     playFromLastMeasure,
     stopPlaying
 } from "src/state/playing-pausing";
-import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
     clearRangeSelection,
     deleteRange,
@@ -38,6 +38,7 @@ import {
     newTimelineItemMeasure,
     setCursorDivisor,
     setTimelineNoteAtPosition,
+    shiftItemsAfterCursor,
     shiftSelectedItems,
     timelineHasNoteAtPosition,
     timelineMeasureAtBeatsIdx
@@ -239,9 +240,15 @@ function handleKeyDown(
         let hasShiftRight = key === ">" || key === ".";
         if (shiftPressed && (hasShiftLeft || hasShiftRight)) {
             const amount = hasShiftRight ? 1 : -1;
+
             mutateSequencerTimeline(sequencer, () => {
-                shiftSelectedItems(sequencer, amount)
+                if (sequencer.isRangeSelecting) {
+                    shiftSelectedItems(sequencer, amount)
+                } else {
+                    shiftItemsAfterCursor(sequencer, amount);
+                }
             });
+
             return true;
         }
 

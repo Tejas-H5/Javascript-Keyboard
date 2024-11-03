@@ -208,11 +208,13 @@ export function registerDspLoopClass() {
         trackPlayback: {
             shouldSendUiUpdateSignals: boolean;
             scheduleKeys?: ScheduledKeyPress[];
+            scheduedKeysCurrentlyPlaying: ScheduledKeyPress[];
             scheduledPlaybackTime: number;
             scheduledPlaybackCurrentIdx: number;
         } = {
                 shouldSendUiUpdateSignals: false,
                 scheduleKeys: undefined,
+                scheduedKeysCurrentlyPlaying: [],
                 scheduledPlaybackTime: 0,
                 scheduledPlaybackCurrentIdx: 0,
             };
@@ -236,11 +238,12 @@ export function registerDspLoopClass() {
             let count = 0;
 
             const trackPlayback = this.trackPlayback;
+            const currentlyPlaying = trackPlayback.scheduedKeysCurrentlyPlaying;
 
             // update automated scheduled inputs, if applicable
             if (
                 trackPlayback.scheduleKeys &&
-                trackPlayback.scheduledPlaybackCurrentIdx < trackPlayback.scheduleKeys.length
+                trackPlayback.scheduledPlaybackCurrentIdx <= trackPlayback.scheduleKeys.length
             ) {
                 // run playback if we can
                 const dt = 1000 / sampleRate;
@@ -258,11 +261,13 @@ export function registerDspLoopClass() {
                     const nextItem = trackPlayback.scheduleKeys[trackPlayback.scheduledPlaybackCurrentIdx];
                     trackPlayback.scheduledPlaybackCurrentIdx++;
 
+                    currentlyPlaying.push(nextItem);
+
                     if (nextItem.noteIndex) {
                         const osc = this.getPlayingOscillator(nextItem.keyId);
                         osc.inputs = {
                             noteIndex: nextItem.noteIndex,
-                            signal: nextItem.pressed ? 1 : 0,
+                            signal: 1,
                         }
                         osc.state.awakeTime = 0;
                     }
@@ -275,13 +280,30 @@ export function registerDspLoopClass() {
                         osc.state.sampleIdx = 0;
                     }
 
-                    if (nextItem.pressed) {
-                        trackPlayback.shouldSendUiUpdateSignals = true;
-                    }
+                    trackPlayback.shouldSendUiUpdateSignals = true;
                 }
 
-                if (trackPlayback.scheduledPlaybackCurrentIdx >= trackPlayback.scheduleKeys.length) {
+                // stop playback once we've reached the last note, and
+                // have finished playing all other notes
+                if (
+                    trackPlayback.scheduledPlaybackCurrentIdx >= trackPlayback.scheduleKeys.length &&
+                    trackPlayback.scheduedKeysCurrentlyPlaying.length === 0
+                ) {
                     this.stopPlayingScheduledKeys();
+                }
+            }
+
+            // stop playing keys that are no longer playing
+            {
+                for (let i = 0; i < currentlyPlaying.length; i++) {
+                    const scheduled = currentlyPlaying[i];
+                    if (scheduled.timeEnd < trackPlayback.scheduledPlaybackTime) {
+                        const osc = this.getPlayingOscillator(scheduled.keyId);
+                        osc.inputs.signal = 0;
+                        currentlyPlaying[i] = currentlyPlaying[currentlyPlaying.length - 1];
+                        currentlyPlaying.pop();
+                        i--;
+                    }
                 }
             }
 
@@ -423,6 +445,13 @@ export function registerDspLoopClass() {
 
         stopPlayingScheduledKeys() {
             const trackPlayback = this.trackPlayback;
+
+            for (const currentlyPlaying of trackPlayback.scheduedKeysCurrentlyPlaying) {
+                const osc = this.getPlayingOscillator(currentlyPlaying.keyId);
+                osc.inputs.signal = 0;
+            }
+            trackPlayback.scheduedKeysCurrentlyPlaying.length = 0;
+
             trackPlayback.scheduleKeys = undefined;
             trackPlayback.scheduledPlaybackTime = -1;
             trackPlayback.scheduledPlaybackCurrentIdx = -1;
@@ -471,9 +500,8 @@ export function registerDspLoopClass() {
 
             if (e.scheduleKeys !== undefined) {
                 const trackPlayback = this.trackPlayback;
-                if (e.scheduleKeys === null || e.scheduleKeys.length === 0) {
-                    this.stopPlayingScheduledKeys();
-                } else {
+                this.stopPlayingScheduledKeys();
+                if (e.scheduleKeys !== null && e.scheduleKeys.length > 0) {
                     trackPlayback.scheduleKeys = e.scheduleKeys;
                     trackPlayback.scheduledPlaybackTime = 0;
                     trackPlayback.scheduledPlaybackCurrentIdx = 0;
