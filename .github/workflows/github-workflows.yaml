@@ -51,7 +51,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           # working-directory doesn't seem to apply here??
-          path: './rytm-gayme/dist'
+          path: './rhythm-game/dist'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
