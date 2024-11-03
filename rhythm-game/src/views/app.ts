@@ -1,33 +1,46 @@
-import { pressKey, releaseAllKeys, releaseKey } from "src/dsp-loop-interface";
+import { pressKey, releaseKey } from "src/dsp/dsp-loop-interface";
 import {
     copyNotesToTempStore,
-    getCurrentSelectedChartName,
     GlobalContext,
-    loadChart,
-    moveLoadSaveSelection,
     pasteNotesFromTempStore,
-    playAll,
-    playCurrentInterval,
-    saveStateDebounced,
     setViewChartSelect,
     setViewEditChart,
     setViewPlayChart,
     setViewStartScreen,
+} from "src/state/global-context";
+import { 
+    getCurrentSelectedChartName,
+    loadChart,
+    moveLoadSaveSelection,
+    saveStateDebounced,
+} from "src/state/loading-saving-charts"
+import {
+    playAll,
+    playFromCursor,
+    playFromLastMeasure,
     stopPlaying
-} from "src/global-context";
+} from "src/state/playing-pausing";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
     clearRangeSelection,
     deleteRange,
+    equalBeats,
+    getBpm,
+    getBpmChangeItemBeforeBeats,
     getCursorStartBeats,
     getItemIdxAtBeat,
-    getSelectionRange,
+    getItemStartBeats,
+    getSelectionStartEndIndexes,
     handleMovement,
     hasRangeSelection,
     mutateSequencerTimeline,
+    newTimelineItemBpmChange,
     newTimelineItemMeasure,
     setCursorDivisor,
-    setTimelineNoteAtPosition, timelineMeasureAtBeatsIdx, timelineHasNoteAtPosition
+    setTimelineNoteAtPosition,
+    shiftSelectedItems,
+    timelineHasNoteAtPosition,
+    timelineMeasureAtBeatsIdx
 } from "src/state/sequencer-state";
 import { div, isEditingTextSomewhereInDocument, RenderGroup } from "src/utils/dom-utils";
 import { ChartSelect } from "src/views/chart-select";
@@ -222,6 +235,16 @@ function handleKeyDown(
             return true;
         }
 
+        let hasShiftLeft = key === "<" || key === ",";
+        let hasShiftRight = key === ">" || key === ".";
+        if (shiftPressed && (hasShiftLeft || hasShiftRight)) {
+            const amount = hasShiftRight ? 1 : -1;
+            mutateSequencerTimeline(sequencer, () => {
+                shiftSelectedItems(sequencer, amount)
+            });
+            return true;
+        }
+
         if (!repeat) {
             if (key === "K" && ctrlPressed && shiftPressed) {
                 ui.editView.isKeyboard = !ui.editView.isKeyboard;
@@ -260,33 +283,33 @@ function handleKeyDown(
             }
 
             if (key === "Delete") {
-                const [start, end] = getSelectionRange(sequencer);
+                const [start, end] = getSelectionStartEndIndexes(sequencer);
                 if (start !== -1 && end !== -1) {
-                    mutateSequencerTimeline(sequencer, tl => {
-                        deleteRange(tl, start, end);
+                    mutateSequencerTimeline(sequencer, () => {
+                        deleteRange(sequencer.timeline, start, end);
                     });
                     return true;
                 }
 
                 const idx = getItemIdxAtBeat(sequencer, getCursorStartBeats(sequencer));
                 if (idx !== -1) {
-                    mutateSequencerTimeline(sequencer, tl => {
-                        deleteRange(tl, idx, idx);
+                    mutateSequencerTimeline(sequencer, () => {
+                        deleteRange(sequencer.timeline, idx, idx);
                     });
                     return true;
                 }
             }
 
             if ((key === "C" || key === "c") && ctrlPressed) {
-                const [startIdx, endIdx] = getSelectionRange(sequencer);
+                const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
                 return copyNotesToTempStore(ctx, startIdx, endIdx);
             }
 
             if ((key === "X" || key === "x") && ctrlPressed) {
-                const [startIdx, endIdx] = getSelectionRange(sequencer);
+                const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
                 if (copyNotesToTempStore(ctx, startIdx, endIdx)) {
-                    mutateSequencerTimeline(sequencer, tl => {
-                        deleteRange(tl, startIdx, endIdx);
+                    mutateSequencerTimeline(sequencer, () => {
+                        deleteRange(sequencer.timeline, startIdx, endIdx);
                     })
 
                     return true;
@@ -306,7 +329,7 @@ function handleKeyDown(
                 }
 
                 if (hasRangeSelection(sequencer)) {
-                    clearRangeSelection(sequencer);
+                    clearRangeSelection(sequencer, true);
                     return true;
                 }
 
@@ -328,26 +351,54 @@ function handleKeyDown(
 
             if (shiftPressed && (key === "M" || key === "m")) {
                 const cursorStartBeats = getCursorStartBeats(sequencer);
-                mutateSequencerTimeline(sequencer, tl => {
-                    const idx = timelineMeasureAtBeatsIdx(sequencer, cursorStartBeats);
-                    if (idx === -1) {
+                const idx = timelineMeasureAtBeatsIdx(sequencer, cursorStartBeats);
+                if (idx === -1) {
+                    const start = sequencer.cursorStart;
+                    const divisor = sequencer.cursorDivisor;
+                    mutateSequencerTimeline(sequencer, () => {
+                        sequencer.timeline.push(newTimelineItemMeasure(start, divisor));
+                    });
+                } else {
+                    mutateSequencerTimeline(sequencer, () => {
+                        deleteRange(sequencer.timeline, idx, idx);
+                    });
+                }
+                return true;
+            }
+
+            if (shiftPressed && (key === "b" || key === "B")) {
+                const start = getCursorStartBeats(sequencer);
+                const bpmChange = getBpmChangeItemBeforeBeats(sequencer, start);
+                if (bpmChange && equalBeats(start, getItemStartBeats(bpmChange))) {
+                    mutateSequencerTimeline(sequencer, () => {
+                        deleteRange(sequencer.timeline, bpmChange._index, bpmChange._index);
+                    });
+                } else {
+                    mutateSequencerTimeline(sequencer, () => {
                         const start = sequencer.cursorStart;
                         const divisor = sequencer.cursorDivisor;
-                        tl.push(newTimelineItemMeasure(start, divisor));
-                    } else {
-                        deleteRange(tl, idx, idx);
-                    }
-                });
+                        const bpm = getBpm(bpmChange);
+                        const newBpmChange = newTimelineItemBpmChange(start, divisor, bpm);
+                        sequencer.timeline.push(newBpmChange);
+                    });
+                }
                 return true;
             }
 
             if (key === " ") {
+                if (sequencer.isPlaying) {
+                    // pause at the cursor
+                    stopPlaying(ctx, true);
+                    return true;
+                }
+
                 const speed = ctrlPressed ? 0.5 : 1;
                 if (shiftPressed) {
-                    playAll(ctx, speed);
+                    playFromLastMeasure(ctx, speed);
                 } else {
-                    playCurrentInterval(ctx, speed);
+                    playFromCursor(ctx, speed);
                 }
+
                 return true;
             }
 
@@ -362,7 +413,8 @@ function handleKeyDown(
 
                 // insert notes into the sequencer
                 {
-                    mutateSequencerTimeline(sequencer, tl => {
+                    mutateSequencerTimeline(sequencer, () => {
+                        const tl = sequencer.timeline;
                         const pos = sequencer.cursorStart;
                         const divisor = sequencer.cursorDivisor;
                         const note = instrumentKey.musicNote;

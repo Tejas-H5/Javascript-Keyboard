@@ -1,5 +1,6 @@
 import { Button } from "src/components/button";
-import { GlobalContext, loadChart, setViewChartSelect, setViewEditChart, setViewPlayChart, setViewStartScreen } from "src/global-context";
+import { GlobalContext, setViewEditChart, setViewPlayChart, setViewStartScreen } from "src/state/global-context";
+import { loadChart } from "src/state/loading-saving-charts";
 import { div, getState, RenderGroup } from "src/utils/dom-utils";
 
 export function ChartSelect(rg: RenderGroup<GlobalContext>) {

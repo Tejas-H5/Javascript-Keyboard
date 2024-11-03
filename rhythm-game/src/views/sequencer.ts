@@ -1,35 +1,41 @@
-import { GlobalContext } from "src/global-context";
+import { Button } from "src/components/button";
+import { GlobalContext } from "src/state/global-context";
 import {
     getKeyForNote,
     KeyboardState,
 } from "src/state/keyboard-state";
 import {
+    BpmChange,
     CommandItem,
     divisorSnap,
-    getCurrentPlayingBeats,
+    getBeatsIndexes,
+    getBpm,
     getCursorStartBeats,
     getItemLengthBeats,
     getItemStartBeats,
-    getNextItemIndex,
-    getPrevItemIndex,
     getRangeSelectionEndBeats,
     getRangeSelectionStartBeats,
-    getSelectionRange,
+    getSelectionStartEndIndexes,
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
     hasRangeSelection,
     isItemBeingPlayed,
     isItemRangeSelected,
     isItemUnderCursor,
+    Measure,
+    mutateSequencerTimeline,
+    newTimelineItemBpmChange,
     NoteMapEntry,
     SequencerState,
+    setCursorDivisor,
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
     TimelineItem
 } from "src/state/sequencer-state";
+import { filterInPlace2 } from "src/utils/array-utils";
 import { unreachable } from "src/utils/asserts";
-import { div, RenderGroup } from "src/utils/dom-utils";
+import { div, getState, RenderGroup } from "src/utils/dom-utils";
 import { inverseLerp, lerp } from "src/utils/math-utils";
 import { compareMusicNotes, getNoteText, MusicNote } from "src/utils/music-theory-utils";
 
@@ -77,6 +83,8 @@ type SequencerUIInternalState = {
     notesMap: Map<string, NoteMapEntry>;
     noteOrder: NoteMapEntry[];
     commandsList: CommandItem[]
+    bpmChanges: BpmChange[];
+    measures: Measure[];
 };
 
 function GridLine(rg: RenderGroup<{ text: string, divisor: number; }>) {
@@ -105,6 +113,13 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
         lastUpdatedTime = -1,
         invalidateCache = false;
 
+    const needsRecomputation = (s: GlobalContext, cursorStartBeats: number, divisor: number) => {
+        return lastCursorStartBeats !== cursorStartBeats
+            || lastCursorStartDivisor !== divisor
+            || lastUpdatedTime !== s.sequencer._timelineLastUpdated
+            || invalidateCache
+    }
+
     let currentCursorAnimated = -1,
         divisorAnimated = 4;
 
@@ -118,6 +133,8 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
         notesMap: new Map(),
         noteOrder: [],
         commandsList: [],
+        bpmChanges: [],
+        measures: [],
     };
 
     rg.preRenderFn(s => {
@@ -141,24 +158,21 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
             internalState.leftExtentAnimated = lerp(internalState.leftExtentAnimated, leftExtent, lerpFactor);
             internalState.rightExtentAnimated = lerp(internalState.rightExtentAnimated, rightExtent, lerpFactor);
 
-            internalState.leftExtentIdx = getPrevItemIndex(s.sequencer.timeline, internalState.leftExtentAnimated);
+            [internalState.leftExtentIdx, internalState.rightExtentIdx] = getBeatsIndexes(
+                s.sequencer, 
+                internalState.leftExtentAnimated, 
+                internalState.rightExtentAnimated,
+            );
             if (internalState.leftExtentIdx === -1) {
                 internalState.leftExtentIdx = 0;
             }
-
-            internalState.rightExtentIdx = getNextItemIndex(s.sequencer.timeline, internalState.rightExtentAnimated);
             if (internalState.rightExtentIdx === -1) {
                 internalState.rightExtentIdx = s.sequencer.timeline.length - 1;
             }
         }
 
         // Recompute the non-overlapping items in the sequencer timeline as needed
-        if (
-            lastCursorStartBeats !== cursorStartBeats
-            || lastCursorStartDivisor !== divisor
-            || lastUpdatedTime !== s.sequencer._timelineLastUpdated
-            || invalidateCache
-        ) {
+        if (needsRecomputation(s, cursorStartBeats, divisor)) {
             lastUpdatedTime = s.sequencer._timelineLastUpdated;
             lastCursorStartBeats = cursorStartBeats;
             lastCursorStartDivisor = divisor;
@@ -170,6 +184,18 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                 internalState.rightExtentAnimated,
                 internalState.notesMap,
                 internalState.commandsList
+            );
+
+            filterInPlace2(
+                internalState.commandsList, 
+                internalState.bpmChanges, 
+                c => c.type === TIMELINE_ITEM_BPM
+            );
+
+            filterInPlace2(
+                internalState.commandsList, 
+                internalState.measures, 
+                c => c.type === TIMELINE_ITEM_MEASURE
             );
 
             // recompute the note order
@@ -186,6 +212,30 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
         }
     });
 
+    function handleBpmInputChange(newBpm: number) {
+        const s = getState(rg);
+        const sequencer = s.sequencer;
+        const lastBpmChange = sequencer._lastBpmChange;
+        if (!lastBpmChange) {
+            mutateSequencerTimeline(sequencer, () => {
+                sequencer.timeline.push(newTimelineItemBpmChange(0, 4, newBpm));
+            });
+            return;
+        }
+
+        mutateSequencerTimeline(sequencer, () => {
+            lastBpmChange.bpm = newBpm;
+        });
+
+        s.render();
+    }
+
+    function handleDivisionChange(newDivisor: number) {
+        const s = getState(rg);
+        setCursorDivisor(s.sequencer, newDivisor);
+        s.render();
+    }
+
     return div({
         class: "flex-1 col",
         style: "padding: 10px",
@@ -194,7 +244,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
             s => hasRangeSelection(s.sequencer),
             rg => div({ class: "relative" }, [
                 rg.text(s => {
-                    const [start, end] = getSelectionRange(s.sequencer);
+                    const [start, end] = getSelectionStartEndIndexes(s.sequencer);
                     if (start === -1 || end === -1) {
                         return "none selected";
                     }
@@ -202,10 +252,21 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                 }),
             ]),
         ),
-        div({ class: "row" }, [
-            rg.text(() => Math.floor(internalState.leftExtentAnimated) + "ms"),
+        div({ class: "row", style: "gap: 20px" }, [
             div({ class: "flex-1" }),
-            rg.text(() => Math.floor(internalState.rightExtentAnimated) + "ms"),
+            rg.c(BpmInput, (c, s) => {
+                c.render({
+                    value: getBpm(s.sequencer._lastBpmChange),
+                    onChange: handleBpmInputChange,
+                })
+            }),
+            rg.c(DivisionInput, (c, s) => {
+                c.render({
+                    value: s.sequencer.cursorDivisor,
+                    onChange: handleDivisionChange,
+                })
+            }),
+            div({ class: "flex-1" }),
         ]),
         div({
             class: "relative flex-1 overflow-y-auto",
@@ -232,6 +293,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                         internalState,
                         beats: x,
                         color: "var(--bg2)",
+                        thickness: 1,
                     });
                 }
 
@@ -239,20 +301,23 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                 getNext().render({
                     internalState,
                     beats: getRangeSelectionStartBeats(sequencer),
-                    color: "var(--mg)"
+                    color: "var(--mg)",
+                    thickness: 3,
                 });
 
                 getNext().render({
                     internalState,
                     beats: getRangeSelectionEndBeats(sequencer),
-                    color: "var(--mg)"
+                    color: "var(--mg)",
+                    thickness: 3,
                 })
 
                 // cursor start vertical line
                 getNext().render({
                     internalState,
                     beats: lastCursorStartBeats,
-                    color: "var(--fg)"
+                    color: "var(--fg)",
+                    thickness: 3,
                 });
 
 
@@ -266,7 +331,8 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                     getNext().render({
                         internalState,
                         beats,
-                        color: "var(--playback)"
+                        color: "var(--playback)",
+                        thickness: 4,
                     });
                 }
 
@@ -276,12 +342,18 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                     style: "border-top: 1px solid var(--fg); border-bottom: 1px solid var(--fg);"
                 });
                 return rg.list(root, SequencerNotesUI, (getNext, s) => {
-                    const c = getNext();
-                    c.render({
+                    getNext().render({
                         ctx: s,
                         internalState,
-                        musicNote: null,
-                        items: internalState.commandsList,
+                        text: "bpm",
+                        items: internalState.bpmChanges,
+                    });
+
+                    getNext().render({
+                        ctx: s,
+                        internalState,
+                        text: "measures",
+                        items: internalState.measures,
                     });
 
                     for (const entry of internalState.noteOrder) {
@@ -289,7 +361,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                         c.render({
                             internalState,
                             ctx: s,
-                            musicNote: entry.musicNote,
+                            text: getItemSequencerText(s.keyboard, entry.items[0]),
                             items: entry.items,
                         });
                     }
@@ -351,6 +423,7 @@ function SequencerVerticalLine(rg: RenderGroup<{
     internalState: SequencerUIInternalState;
     beats: number;
     color: string;
+    thickness: number;
 }>) {
     let absolutePercent = 0;
 
@@ -368,6 +441,7 @@ function SequencerVerticalLine(rg: RenderGroup<{
             class: "absolute",
             style: "width: 3px; top: 0; bottom: 0;"
         }, [
+            rg.style("width", s => s.thickness + "px"),
             rg.style("left", () => absolutePercent + "%"),
             rg.style("backgroundColor", s => s.color),
         ])
@@ -376,24 +450,27 @@ function SequencerVerticalLine(rg: RenderGroup<{
 
 
 function SequencerNotesUI(rg: RenderGroup<{
-    musicNote: MusicNote | null;
+    text: string;
     items: TimelineItem[];
     ctx: GlobalContext;
     internalState: SequencerUIInternalState;
 }>) {
-    return div({ class: "relative", style: "padding: 3px 10px;" }, [
-        rg.text(s => s.musicNote ? getItemSequencerText(s.ctx.keyboard, s.items[0]) : "null"),
-        rg.list(div(), SequencerThreadItemUI, (getNext, s) => {
-            for (let i = 0; i < s.items.length; i++) {
-                const c = getNext();
-                c.render({
-                    item: s.items[i],
-                    internalState: s.internalState,
-                    ctx: s.ctx,
-                });
-            }
-        })
-    ]);
+    return rg.if(
+        s => s.items.length > 0,
+        rg => div({ class: "relative", style: "padding: 3px 10px;" }, [
+            rg.text(s => s.text),
+            rg.list(div(), SequencerThreadItemUI, (getNext, s) => {
+                for (let i = 0; i < s.items.length; i++) {
+                    const c = getNext();
+                    c.render({
+                        item: s.items[i],
+                        internalState: s.internalState,
+                        ctx: s.ctx,
+                    });
+                }
+            })
+        ])
+    );
 }
 
 
@@ -453,125 +530,125 @@ function SequencerThreadItemUI(rg: RenderGroup<{
     ]);
 }
 
-//
-// // allows someone to specifically select a number between 1 and 16
-// function DivisionInput(rg: RenderGroup<{
-//     value: number;
-//     onChange(val: number): void;
-// }>) {
-//     function onChange(val: number) {
-//         const s = getState(rg);
-//         if (val > 0 && val <= 16) {
-//             s.onChange(val);
-//         }
-//     }
-//
-//     function getPrev(val: number) {
-//         //truly I can't think of the math formula for this...
-//         switch (val) {
-//             case 1: return 1;
-//             case 2: return 1;
-//             case 3: return 1;
-//             case 4: return 2;
-//             case 5: return 1;
-//             case 6: return 3;
-//             case 7: return 1;
-//             case 8: return 4;
-//             case 9: return 6;
-//             case 10: return 5;
-//             case 11: return 1;
-//             case 12: return 6;
-//             case 13: return 12;
-//             case 14: return 7;
-//             case 15: return 10;
-//             case 16: return 12;
-//         }
-//         throw new Error("Invalid val: " + val);
-//     }
-//
-//     function getNext(val: number) {
-//         //truly I can't think of the math formula for this either ...
-//         switch (val) {
-//             case 1: return 2;
-//             case 2: return 4;
-//             case 3: return 6;
-//             case 4: return 8;
-//             case 5: return 10;
-//             case 6: return 12;
-//             case 7: return 14;
-//             case 8: return 16;
-//             case 9: return 12;
-//             case 10: return 15;
-//             case 11: return 13;
-//             case 12: return 16;
-//             case 13: return 15;
-//             case 14: return 16;
-//             case 15: return 16;
-//             case 16: return 16;
-//         }
-//         throw new Error("Invalid val: " + val);
-//     }
-//
-//     return div({ class: "row justify-content-center" }, [
-//         rg.c(Button, (c, s) => c.render({
-//             text: "<",
-//             onClick() {
-//                 onChange(getPrev(s.value));
-//             }
-//         })),
-//         rg.c(Button, (c, s) => c.render({
-//             text: "-",
-//             onClick: () => onChange(s.value - 1),
-//         })),
-//         div({ class: "flex-1" }),
-//         rg.text(s => "1 / " + s.value),
-//         div({ class: "flex-1" }),
-//         rg.c(Button, (c, s) => c.render({
-//             text: "+",
-//             onClick: () => onChange(s.value + 1),
-//         })),
-//         rg.c(Button, (c, s) => c.render({
-//             text: ">",
-//             onClick() {
-//                 onChange(getNext(s.value));
-//             }
-//         })),
-//     ]);
-// }
-//
-//
-// function BpmInput(rg: RenderGroup<{
-//     value: number;
-//     onChange(val: number): void;
-// }>) {
-//     return div({ class: "row justify-content-center" }, [
-//         rg.c(Button, (c, s) => c.render({
-//             text: "<",
-//             onClick() {
-//                 s.onChange(s.value - 10);
-//             }
-//         })),
-//         rg.c(Button, (c, s) => c.render({
-//             text: "-",
-//             onClick() {
-//                 s.onChange(s.value - 1);
-//             }
-//         })),
-//         div({ class: "flex-1" }),
-//         rg.text(s => s.value.toFixed(1) + ""),
-//         div({ class: "flex-1" }),
-//         rg.c(Button, (c, s) => c.render({
-//             text: "+",
-//             onClick() {
-//                 s.onChange(s.value + 1);
-//             }
-//         })),
-//         rg.c(Button, (c, s) => c.render({
-//             text: ">",
-//             onClick() {
-//                 s.onChange(s.value + 10);
-//             }
-//         })),
-//     ]);
-// }
-//
+
+// allows someone to specifically select a number between 1 and 16
+function DivisionInput(rg: RenderGroup<{
+    value: number;
+    onChange(val: number): void;
+}>) {
+    function onChange(val: number) {
+        const s = getState(rg);
+        if (val > 0 && val <= 16) {
+            s.onChange(val);
+        }
+    }
+
+    function getPrev(val: number) {
+        //truly I can't think of the math formula for this...
+        switch (val) {
+            case 1: return 1;
+            case 2: return 1;
+            case 3: return 1;
+            case 4: return 2;
+            case 5: return 1;
+            case 6: return 3;
+            case 7: return 1;
+            case 8: return 4;
+            case 9: return 6;
+            case 10: return 5;
+            case 11: return 1;
+            case 12: return 6;
+            case 13: return 12;
+            case 14: return 7;
+            case 15: return 10;
+            case 16: return 12;
+        }
+        throw new Error("Invalid val: " + val);
+    }
+
+    function getNext(val: number) {
+        //truly I can't think of the math formula for this either ...
+        switch (val) {
+            case 1: return 2;
+            case 2: return 4;
+            case 3: return 6;
+            case 4: return 8;
+            case 5: return 10;
+            case 6: return 12;
+            case 7: return 14;
+            case 8: return 16;
+            case 9: return 12;
+            case 10: return 15;
+            case 11: return 13;
+            case 12: return 16;
+            case 13: return 15;
+            case 14: return 16;
+            case 15: return 16;
+            case 16: return 16;
+        }
+        throw new Error("Invalid val: " + val);
+    }
+
+    return div({ class: "row justify-content-center" }, [
+        rg.c(Button, (c, s) => c.render({
+            text: "<",
+            onClick() {
+                onChange(getPrev(s.value));
+            }
+        })),
+        rg.c(Button, (c, s) => c.render({
+            text: "-",
+            onClick: () => onChange(s.value - 1),
+        })),
+        div({ class: "flex-1" }),
+        rg.text(s => "1 / " + s.value),
+        div({ class: "flex-1" }),
+        rg.c(Button, (c, s) => c.render({
+            text: "+",
+            onClick: () => onChange(s.value + 1),
+        })),
+        rg.c(Button, (c, s) => c.render({
+            text: ">",
+            onClick() {
+                onChange(getNext(s.value));
+            }
+        })),
+    ]);
+}
+
+
+function BpmInput(rg: RenderGroup<{
+    value: number;
+    onChange(val: number): void;
+}>) {
+    return div({ class: "row justify-content-center" }, [
+        rg.c(Button, (c, s) => c.render({
+            text: "<",
+            onClick() {
+                s.onChange(s.value - 10);
+            }
+        })),
+        rg.c(Button, (c, s) => c.render({
+            text: "-",
+            onClick() {
+                s.onChange(s.value - 1);
+            }
+        })),
+        div({ class: "flex-1" }),
+        rg.text(s => s.value.toFixed(1) + ""),
+        div({ class: "flex-1" }),
+        rg.c(Button, (c, s) => c.render({
+            text: "+",
+            onClick() {
+                s.onChange(s.value + 1);
+            }
+        })),
+        rg.c(Button, (c, s) => c.render({
+            text: ">",
+            onClick() {
+                s.onChange(s.value + 10);
+            }
+        })),
+    ]);
+}
+

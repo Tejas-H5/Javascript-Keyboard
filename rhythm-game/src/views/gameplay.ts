@@ -2,7 +2,7 @@ import {
     getKeyForNote,
     InstrumentKey
 } from "src/state/keyboard-state";
-import { GlobalContext } from "src/global-context";
+import { GlobalContext } from "src/state/global-context";
 import {
     getItemLengthBeats,
     getItemStartBeats,

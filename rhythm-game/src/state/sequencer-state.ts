@@ -2,7 +2,7 @@ import { beatsToMs, compareMusicNotes, getNoteHashKey, msToBeats, MusicNote, not
 import { filterInPlace, findLastIndexOf } from "src/utils/array-utils";
 import { unreachable } from "src/utils/asserts";
 import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "src/utils/math-utils";
-import { ScheduledKeyPress } from "src/dsp-loop-interface";
+import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
 
 export const SEQUENCER_ROW_COLS = 8;
 
@@ -57,8 +57,7 @@ export type SequencerState = {
 
     cursorStart: number;
     cursorDivisor: number;
-    _currentBpm: number;
-    _currentBpmTime: number;
+    _lastBpmChange: BpmChange | undefined;
 
     isRangeSelecting: boolean;
     rangeSelectStart: number;
@@ -98,24 +97,25 @@ export function getRangeSelectionEndBeats(state: SequencerState): number {
 export function hasRangeSelection(state: SequencerState) {
     return state.rangeSelectStart !== -1 && state.rangeSelectEnd !== -1;
 }
-export function getSelectionRange(state: SequencerState): [number, number] {
+export function getSelectionStartEndIndexes(state: SequencerState): [number, number] {
     const a = getRangeSelectionStartBeats(state);
     const b = getRangeSelectionEndBeats(state);
-    return getBeatsRange(state, a, b);
+    return getBeatsIndexes(state, a, b);
 }
 
-export function getBeatsRange(state: SequencerState, startBeats: number, endBeats: number): [number, number] {
+export function getBeatsIndexes(state: SequencerState, startBeats: number, endBeats: number): [number, number] {
     const min = Math.min(startBeats, endBeats);
     const max = Math.max(startBeats, endBeats);
 
-    let startIdx = getItemIdxAtBeat(state, min);
-    if (startIdx === -1) {
-        startIdx = getNextItemIndex(state.timeline, min);
-    }
-    let endIdx = getItemIdxAtBeat(state, max);
-    if (endIdx === -1) {
-        endIdx = getPrevItemIndex(state.timeline, max);
-    }
+    const startIdx = findLastIndexOf(
+        state.timeline, 
+        (item) => lteBeats(getItemStartBeats(item), min)
+    );
+
+    const endIdx = findLastIndexOf(
+        state.timeline, 
+        (item) => lteBeats(getItemEndBeats(item), max)
+    );
 
     if (
         startIdx === -1 ||
@@ -128,7 +128,11 @@ export function getBeatsRange(state: SequencerState, startBeats: number, endBeat
     return [startIdx, endIdx];
 }
 
-export function clearRangeSelection(state: SequencerState) {
+export function clearRangeSelection(state: SequencerState, goBackToStart: boolean) {
+    if (goBackToStart) {
+        state.cursorStart = state.rangeSelectStart;
+    }
+
     state.isRangeSelecting = false;
     state.rangeSelectStart = -1;
     state.rangeSelectEnd = -1;
@@ -176,18 +180,6 @@ export function getNoteItemAtBeats(state: SequencerState, beats: number): NoteIt
     return item;
 }
 
-export function getNextItemIndex(timeline: TimelineItem[], beats: number, defaultValue = -1) {
-    for (let i = 0; i < timeline.length; i++) {
-        const item = timeline[i];
-        const itemBeats = getItemStartBeats(item);
-        if (gtBeats(itemBeats, beats)) {
-            return i;
-        }
-    }
-
-    return defaultValue;
-}
-
 export function getPlaybackDuration(state: SequencerState): number {
     const timeline = state.timeline;
     if (timeline.length === 0) {
@@ -201,22 +193,6 @@ export function getPlaybackDuration(state: SequencerState): number {
 
     return lastItem._scheduledStart;
 
-}
-
-export function getPrevItemIndex(timeline: TimelineItem[], beats: number, defaultValue = -1, type?: TimelineItemType) {
-    for (let i = timeline.length - 1; i >= 0; i--) {
-        const item = timeline[i];
-        if (type && type !== item.type) {
-            continue;
-        }
-
-        const itemBeats = getItemStartBeats(item);
-        if (ltBeats(itemBeats, beats)) {
-            return i;
-        }
-    }
-
-    return defaultValue;
 }
 
 export function getPrevItemIndexForTime(timeline: TimelineItem[], time: number, defaultValue = -1, type?: TimelineItemType) {
@@ -268,10 +244,10 @@ export function getItemEndBeats(item: TimelineItem): number {
 }
 
 // TODO: add some tests
-export function mutateSequencerTimeline(state: SequencerState, fn: (timeline: TimelineItem[]) => void) {
+export function mutateSequencerTimeline(state: SequencerState, fn: () => void) {
     const timeline = state.timeline;
     const timelineTemp = state._timelineTempBuffer;
-    fn(timeline);
+    fn();
 
     // Perform expensive recomputations whenever we mutate the timeline rather than per frame
 
@@ -488,6 +464,17 @@ export function gtBeats(beatsA: number, beatsB: number): boolean {
     return greaterThan(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
 }
 
+export function newTimelineItemBpmChange(start: number, divisor: number, bpm: number): BpmChange {
+    return {
+        type: TIMELINE_ITEM_BPM,
+        bpm,
+        start, 
+        divisor, 
+        _scheduledStart: 0,
+        _index: 0,
+    };
+}
+
 export function newTimelineItemMeasure(start: number, divisor: number): Measure {
     return {
         type: TIMELINE_ITEM_MEASURE,
@@ -645,9 +632,7 @@ export function recomputeSequencerState(sequencer: SequencerState) {
     // recompute current bpm
     {
         const startBeats = getCursorStartBeats(sequencer);
-        const bpmChange = getBpmChangeItemAtBeats(sequencer, startBeats);
-        sequencer._currentBpm = getBpm(bpmChange);
-        sequencer._currentBpmTime = getBpmTime(bpmChange);
+        sequencer._lastBpmChange = getBpmChangeItemBeforeBeats(sequencer, startBeats);
     }
 }
 
@@ -661,14 +646,18 @@ export function getBpmTime(bpmChange: BpmChange | undefined): number {
     return bpmChange._scheduledStart;
 }
 
+export function getBpmChangeItemBeforeBeats(sequencer: SequencerState, beats: number): BpmChange | undefined {
+    const timeline = sequencer.timeline;
 
-export function getBpmChangeItemAtBeats(sequencer: SequencerState, beats: number): BpmChange | undefined {
-    const idx = getPrevItemIndex(sequencer.timeline, beats, -1, TIMELINE_ITEM_BPM);
+    const idx = findLastIndexOf(timeline, item =>
+        item.type === TIMELINE_ITEM_BPM
+        && lteBeats(getItemStartBeats(item), beats)
+    );
     if (idx === -1) {
         return undefined;
     }
 
-    const item = sequencer.timeline[idx];
+    const item = timeline[idx];
     if (item.type !== TIMELINE_ITEM_BPM) {
         throw new Error("!item || item.type !== TIMELINE_ITEM_BPM");
     }
@@ -678,7 +667,11 @@ export function getBpmChangeItemAtBeats(sequencer: SequencerState, beats: number
 
 export function getLastMeasureBeats(sequencer: SequencerState, beats: number): number {
     const timeline = sequencer.timeline;
-    const idx = getPrevItemIndex(timeline, beats, -1, TIMELINE_ITEM_MEASURE);
+
+    const idx = findLastIndexOf(timeline, item =>
+        item.type === TIMELINE_ITEM_BPM
+        && lteBeats(getItemStartTime(item), beats)
+    );
     if (idx === -1) {
         return 0;
     }
@@ -740,8 +733,7 @@ export function newSequencerState(): SequencerState {
 
 
         _timelineLastUpdated: 0,
-        _currentBpm: DEFAULT_BPM,
-        _currentBpmTime: 0,
+        _lastBpmChange: undefined,
     };
 
     return sequencer
@@ -876,11 +868,35 @@ export function getTimelineMusicNoteThreads(
         val.items.length = 0;
     }
 
-    let start = getPrevItemIndex(timeline, startBeats, 0);
-    let end = getNextItemIndex(timeline, endBeats, timeline.length - 1);
+    let start = findLastIndexOf(timeline, item => 
+        lteBeats(getItemStartTime(item), startBeats)
+    );
+    if (start === -1) {
+        start = 0;
+    }
+
+    let end = timeline.findIndex(item => 
+        gteBeats(getItemStartBeats(item), endBeats)
+    );
+    if (end === -1) {
+        end = timeline.length -1
+    }
+
     for (let i = start; i <= end; i++) {
         const item = timeline[i];
-        if (item.type === TIMELINE_ITEM_BPM || item.type === TIMELINE_ITEM_MEASURE) {
+        const itemStart = getItemStartBeats(item);
+        const itemEnd = getItemEndBeats(item);
+        if (ltBeats(itemStart, startBeats)) {
+            continue;
+        }
+        if (gtBeats(itemEnd, endBeats)) {
+            break;
+        }
+
+        if (
+            item.type === TIMELINE_ITEM_BPM || 
+            item.type === TIMELINE_ITEM_MEASURE
+        ) {
             dstCommandsList.push(item);
             continue;
         }
@@ -995,5 +1011,22 @@ export function getNonOverlappingThreadsSubset(
     }
 }
 
+export function shiftSelectedItems(sequencer: SequencerState, amount: number) {
+    const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
+    if (startIdx === -1 || endIdx === -1) {
+        return;
+    }
+
+    const amountBeats = getBeats(amount, sequencer.cursorDivisor);
+    const timeline = sequencer.timeline;
+
+    for (let i = startIdx; i <= endIdx; i++) {
+        const item = timeline[i];
+        item.start += amountBeats * item.divisor;
+    }
+
+    sequencer.rangeSelectStart += amountBeats * sequencer.cursorDivisor;
+    sequencer.rangeSelectEnd += amountBeats * sequencer.cursorDivisor;
+}
 
 

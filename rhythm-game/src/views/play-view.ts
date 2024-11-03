@@ -1,4 +1,4 @@
-import { GlobalContext } from "src/global-context";
+import { GlobalContext } from "src/state/global-context";
 import { div, RenderGroup } from "src/utils/dom-utils";
 
 export function PlayView(rg: RenderGroup<GlobalContext>) {

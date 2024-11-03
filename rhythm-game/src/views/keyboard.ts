@@ -9,13 +9,13 @@ import {
     getCurrentOscillatorGain,
     pressKey,
     releaseKey
-} from "src/dsp-loop-interface";
+} from "src/dsp/dsp-loop-interface";
 import "src/main.css";
 import {
     getCurrentPlayingTimeRelative,
     timelineHasNoteAtPosition
 } from "src/state/sequencer-state";
-import { GlobalContext } from "src/global-context";
+import { GlobalContext } from "src/state/global-context";
 import { InstrumentKey } from "src/state/keyboard-state";
 
 

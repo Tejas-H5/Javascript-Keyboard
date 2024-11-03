@@ -5,11 +5,13 @@ import "src/main.css";
 import {
     GlobalContext,
     resetSequencer,
-    stopPlaying,
+} from "src/state/global-context";
+import { stopPlaying, } from "src/state/playing-pausing";
+import { 
     getCurrentSelectedChartName,
     loadChart,
     saveAllCharts,
-} from "src/global-context";
+} from "src/state/loading-saving-charts";
 import {
     getCurrentPlayingTimeRelative,
     getPlaybackDuration,

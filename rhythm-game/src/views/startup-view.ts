@@ -1,5 +1,5 @@
 import { Button } from "src/components/button";
-import { GlobalContext, setViewChartSelect } from "src/global-context";
+import { GlobalContext, setViewChartSelect } from "src/state/global-context";
 import { div, getState, RenderGroup } from "src/utils/dom-utils";
 
 export function StartupView(rg: RenderGroup<GlobalContext>) {

@@ -1,7 +1,9 @@
+import { Sample } from "src/samples/all-samples";
+
 // at least one of these fields must be set
 export type MusicNote = {
     noteIndex?: number;
-    sample?: string;
+    sample?: Sample;
 }
 
 export function getNoteHashKey(note: MusicNote): string {

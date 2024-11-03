@@ -1,3 +1,4 @@
+import { Sample } from "src/samples/all-samples";
 import { getNoteText, MusicNote } from "src/utils/music-theory-utils";
 
 export type KeyboardState = {
@@ -52,17 +53,17 @@ export function newKeyboardState(): KeyboardState {
         // drums row
         {
             const drumKeys = "1234567890-=".split("").map(k => newKey(k));
-            const drumSlots = [
+            const drumSlots: { name: string, sample: Sample }[] = [
                 { name: "kickA", sample: "kick", },
                 { name: "kickB", sample: "kick", },
                 { name: "snareA", sample: "snare", },
                 { name: "snareB", sample: "snare", },
-                { name: "hatA", sample: "hatA", },
-                { name: "hatB", sample: "hatB", },
-                { name: "crashA", sample: "crashA", },
-                { name: "crashB", sample: "crashB", },
-                { name: "randA", sample: "randA", },
-                { name: "randB", sample: "randB", },
+                { name: "hatA", sample: "hat1", },
+                { name: "hatB", sample: "hat2", },
+                { name: "crashA", sample: "crash1", },
+                { name: "crashB", sample: "crash2", },
+                { name: "randA", sample: "rand1", },
+                { name: "randB", sample: "rand2", },
                 // TODO: add some more samples for these guys
                 { name: "snareC", sample: "snare", },
                 { name: "snareD", sample: "snare", },

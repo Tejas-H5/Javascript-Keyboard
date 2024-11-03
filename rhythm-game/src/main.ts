@@ -9,12 +9,14 @@ import { App } from "./views/app";
 import {
     getDspInfo,
     initDspLoopInterface
-} from "./dsp-loop-interface";
+} from "src/dsp/dsp-loop-interface";
 import "./main.css";
-import { GlobalContext, load, newGlobalContext, setViewChartSelect, stopPlaying } from "./global-context";
+import { GlobalContext, newGlobalContext, setViewChartSelect, } from "src/state/global-context";
 import {
     getCurrentPlayingTimeRelative
 } from "./state/sequencer-state";
+import { load } from "./state/loading-saving-charts";
+import { stopPlaying } from "./state/playing-pausing";
 
 // all util styles
 
