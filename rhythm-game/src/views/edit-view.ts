@@ -5,6 +5,7 @@ import "src/main.css";
 import {
     GlobalContext,
     resetSequencer,
+    setViewTestCurrentChart,
 } from "src/state/global-context";
 import { stopPlaying, } from "src/state/playing-pausing";
 import { 
@@ -26,8 +27,6 @@ import {
     setInputValue,
     span
 } from "src/utils/dom-utils";
-import { Gameplay } from "src/views/gameplay";
-import { Keyboard } from "src/views/keyboard";
 import { Sequencer } from "src/views/sequencer";
 import { recursiveShallowCopyRemovingComputedFields } from "src/utils/serialization-utils";
 
@@ -57,6 +56,14 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
         }));
     }
 
+    function testFromHere() {
+        const s = getState(rg);
+
+        setViewTestCurrentChart(s);
+
+        s.render();
+    }
+
     function clearSequencer() {
         if (confirm("Are you sure you want to clear your progress?")) {
             const s = getState(rg);
@@ -79,38 +86,6 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
         style: "position: fixed",
     }, [
         div({ class: "col flex-1" }, [
-            // div({ class: "row justify-content-center flex-1" }, [
-            //     rg.c(Teleprompter, c => c.render(null)),
-            // ]),
-            rg.if(
-                s => s.ui.editView.isKeyboard,
-                rg => (
-                    div({ class: "col flex-1" }, [
-                        div({ class: "row", style: "gap: 5px" }, [
-                            div({ class: "flex-1" }),
-                            span({ class: "b" }, "Keyboard"),
-                            div({ class: "flex-1" }),
-                        ]),
-                        div({ class: "row justify-content-center flex-1" }, [
-                            rg.c(Keyboard, (c, s) => c.render(s)),
-                        ]),
-                    ])
-                ),
-            ),
-            rg.else(
-                rg => (
-                    div({ class: "col flex-1" }, [
-                        div({ class: "row", style: "gap: 5px" }, [
-                            div({ class: "flex-1" }),
-                            span({ class: "b" }, "Gameplay"),
-                            div({ class: "flex-1" }),
-                        ]),
-                        div({ class: "row justify-content-center flex-1" }, [
-                            rg.c(Gameplay, (c, s) => c.render(s)),
-                        ]),
-                    ])
-                )
-            ),
             div({ class: "col flex-1" }, [
                 div({ class: "row", style: "gap: 5px" }, [
                     div({ class: "flex-1" }),
@@ -123,6 +98,10 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
                     ),
 
                     div({ class: "flex-1" }),
+                    rg.c(Button, c => c.render({
+                        text: "Test",
+                        onClick: testFromHere
+                    })),
                     rg.c(Button, c => c.render({
                         text: "Clear All",
                         onClick: clearSequencer

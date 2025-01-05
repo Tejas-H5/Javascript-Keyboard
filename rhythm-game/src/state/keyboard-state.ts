@@ -35,7 +35,7 @@ export function getKeyForKeyboardKey(state: KeyboardState, key: string): Instrum
 
 function newKey(k: string): InstrumentKey {
     return {
-        keyboardKey: k.toLowerCase(),
+        keyboardKey: k === "↵" ? "enter" : k.toLowerCase(),
         text: k[0].toUpperCase() + k.substring(1),
         noteText: "",
         index: -1,
@@ -86,7 +86,7 @@ export function newKeyboardState(): KeyboardState {
         {
             const pianoKeys: InstrumentKey[][] = [
                 "qwertyuiop[]".split("").map(newKey),
-                [..."asdfghjkl;'".split("").map(newKey), newKey("enter")],
+                "asdfghjkl;'↵".split("").map(newKey),
                 "zxcvbnm,./".split("").map(newKey),
             ];
 

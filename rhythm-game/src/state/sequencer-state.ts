@@ -21,10 +21,6 @@ type BaseTimelineItem = {
     _index: number;
 };
 
-export type NoteMapEntry = { 
-    musicNote: MusicNote; 
-    items: NoteItem[];
-};
 
 export const TIMELINE_ITEM_BPM = 1;
 export const TIMELINE_ITEM_MEASURE = 2;
@@ -857,6 +853,11 @@ export function isItemRangeSelected(sequencer: SequencerState, item: TimelineIte
     return lteBeats(min, itemBeats) && lteBeats(itemBeats, max);
 }
 
+export type NoteMapEntry = { 
+    musicNote: MusicNote; 
+    items: NoteItem[];
+};
+
 export function getTimelineMusicNoteThreads(
     timeline: TimelineItem[],
     startBeats: number,
@@ -887,10 +888,10 @@ export function getTimelineMusicNoteThreads(
         const item = timeline[i];
         const itemStart = getItemStartBeats(item);
         const itemEnd = getItemEndBeats(item);
-        if (ltBeats(itemStart, startBeats)) {
+        if (ltBeats(itemEnd, startBeats)) {
             continue;
         }
-        if (gtBeats(itemEnd, endBeats)) {
+        if (gtBeats(itemStart, endBeats)) {
             break;
         }
 
@@ -917,6 +918,7 @@ export function getTimelineMusicNoteThreads(
         unreachable(item);
     }
 }
+
 
 export function getTimelineNonOverappingThreads(
     timeline: TimelineItem[],
@@ -1052,4 +1054,15 @@ export function shiftItems(
     }
 }
 
+export function getTrackExtent(sequencer: SequencerState): number {
+    const timeline = sequencer.timeline;
+    if (timeline.length === 0) {
+        return 0;
+    }
+
+    const lastItem = timeline[timeline.length - 1];
+    // +1 for good luck - it's used to find a bound that must alawys include the last note, 
+    // that we can play every note
+    return getItemEndBeats(lastItem) + 1;
+}
 

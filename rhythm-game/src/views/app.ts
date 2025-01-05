@@ -5,8 +5,9 @@ import {
     pasteNotesFromTempStore,
     setViewChartSelect,
     setViewEditChart,
-    setViewPlayChart,
+    setViewPlayCurrentChart,
     setViewStartScreen,
+    setViewTestCurrentChart,
 } from "src/state/global-context";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
@@ -136,6 +137,8 @@ function handleKeyDown(
         vAxis = 1;
     }
 
+    const startTestingPressed =  ctrlPressed && shiftPressed && key === "T";
+
     if (ui.currentView === "chart-select") {
         if (key === "E" || key === "e") {
             setViewEditChart(ctx, ui.loadSave.selectedChartName);
@@ -143,7 +146,7 @@ function handleKeyDown(
         }
 
         if (key === "Enter") {
-            setViewPlayChart(ctx, ui.loadSave.selectedChartName);
+            setViewPlayCurrentChart(ctx);
             return true;
         }
 
@@ -151,20 +154,20 @@ function handleKeyDown(
             setViewStartScreen(ctx);
             return true;
         }
-
-        return false;
     }
     
     if (ui.currentView === "play-chart") {
         // TODO: keyboard input
 
 
-        if (key === "Escape") {
-            setViewChartSelect(ctx);
+        if (key === "Escape" || startTestingPressed) {
+            if (ui.playView.isTesting) {
+                setViewEditChart(ctx, ui.loadSave.loadedChartName);
+            } else {
+                setViewChartSelect(ctx);
+            }
             return true;
         }
-
-        return false;
     }
 
     if (ui.currentView === "startup") {
@@ -173,15 +176,53 @@ function handleKeyDown(
             setViewChartSelect(ctx);
             return true;
         }
-
-        return false;
     }
+
+
+    if (
+        (ui.currentView === "edit-chart") ||
+        (ui.currentView === "play-chart" && ui.playView.isTesting)
+    ) {
+
+        // need to move by the current beat snap.
+        if (key === "ArrowLeft" || key === "ArrowRight") {
+            handleMovement(
+                sequencer,
+                key === "ArrowRight" ? 1 : -1,
+                ctrlPressed,
+                shiftPressed
+            );
+
+            return true;
+        }
+
+        if (!repeat) {
+            if (key === " ") {
+                if (sequencer.isPlaying) {
+                    // pause at the cursor
+                    stopPlaying(ctx, true);
+                    return true;
+                }
+
+                const speed = ctrlPressed ? 0.5 : 1;
+                if (shiftPressed) {
+                    playFromLastMeasure(ctx, speed);
+                } else {
+                    playFromCursor(ctx, speed);
+                }
+
+                return true;
+            }
+        }
+    }
+
 
     if (ui.currentView === "edit-chart") {
         if (key === "S" && ctrlPressed && shiftPressed) {
             ui.editView.sidebarOpen = !ui.editView.sidebarOpen;
             return true;
         }
+
         if (ui.editView.sidebarOpen) {
             if (vAxis !== 0) {
                 moveLoadSaveSelection(ctx, vAxis);
@@ -224,18 +265,6 @@ function handleKeyDown(
             return true;
         }
 
-        // need to move by the current beat snap.
-        if (key === "ArrowLeft" || key === "ArrowRight") {
-            handleMovement(
-                sequencer,
-                key === "ArrowRight" ? 1 : -1,
-                ctrlPressed,
-                shiftPressed
-            );
-
-            return true;
-        }
-
         let hasShiftLeft = key === "<" || key === ",";
         let hasShiftRight = key === ">" || key === ".";
         if (shiftPressed && (hasShiftLeft || hasShiftRight)) {
@@ -253,8 +282,8 @@ function handleKeyDown(
         }
 
         if (!repeat) {
-            if (key === "K" && ctrlPressed && shiftPressed) {
-                ui.editView.isKeyboard = !ui.editView.isKeyboard;
+            if (startTestingPressed) {
+                setViewTestCurrentChart(ctx);
                 return true;
             }
 
@@ -287,6 +316,8 @@ function handleKeyDown(
                 } else if (key === "$" || key === "4") {
                     cycleThroughDivisors([4, 7, 10, 11, 13, 14,]);
                 }
+
+                return true;
             }
 
             if (key === "Delete") {
@@ -392,23 +423,6 @@ function handleKeyDown(
                 return true;
             }
 
-            if (key === " ") {
-                if (sequencer.isPlaying) {
-                    // pause at the cursor
-                    stopPlaying(ctx, true);
-                    return true;
-                }
-
-                const speed = ctrlPressed ? 0.5 : 1;
-                if (shiftPressed) {
-                    playFromLastMeasure(ctx, speed);
-                } else {
-                    playFromCursor(ctx, speed);
-                }
-
-                return true;
-            }
-
             const instrumentKey = getKeyForKeyboardKey(keyboard, key);
             if (instrumentKey) {
                 // TODO: Just do one or the other based on if we're in 'edit' mode or play mode ?
@@ -443,8 +457,6 @@ function handleKeyDown(
                 return true;
             }
         }
-
-        return false;
     }
 
     return false;

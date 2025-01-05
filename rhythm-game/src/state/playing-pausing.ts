@@ -11,6 +11,7 @@ import {
     getLastMeasureBeats,
     getRangeSelectionEndBeats,
     getRangeSelectionStartBeats,
+    getTrackExtent,
     hasRangeSelection,
     NoteItem,
     TIMELINE_ITEM_BPM,
@@ -80,15 +81,25 @@ export function playAll(
     ctx : GlobalContext,
     speed: number
 ) {
-    startPlaying(ctx, 0, ctx.sequencer.timeline.length - 1, speed);
+    startPlaying(ctx, 0, undefined, speed);
 }
 
+
+// TODO: handle the 'error' when we haven't clicked any buttons yet so the browser prevents audio from playing
 export function startPlaying(
     ctx: GlobalContext,
     startBeats: number,
-    endBeats: number,
-    speed: number,
+    endBeats?: number,
+    speed?: number,
 ) {
+    if (endBeats === undefined) {
+        endBeats = getTrackExtent(ctx.sequencer);
+    }
+
+    if (speed === undefined) {
+        speed = 1;
+    }
+
     stopPlaying(ctx);
 
     const { sequencer, keyboard } = ctx;

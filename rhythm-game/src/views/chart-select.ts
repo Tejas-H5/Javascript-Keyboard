@@ -1,5 +1,5 @@
 import { Button } from "src/components/button";
-import { GlobalContext, setViewEditChart, setViewPlayChart, setViewStartScreen } from "src/state/global-context";
+import { GlobalContext, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "src/state/global-context";
 import { loadChart } from "src/state/loading-saving-charts";
 import { div, getState, RenderGroup } from "src/utils/dom-utils";
 
@@ -16,7 +16,7 @@ export function ChartSelect(rg: RenderGroup<GlobalContext>) {
 
     function onClickPlay() {
         const s = getState(rg);
-        setViewPlayChart(s, s.ui.loadSave.selectedChartName);
+        setViewPlayCurrentChart(s);
     }
 
     return div({ class: "flex-1 col" }, [
@@ -69,6 +69,9 @@ function ChartSelectButton(rg: RenderGroup<{
                 text: s.chartName,
                 onClick() {
                     loadChart(s.ctx, s.chartName);
+                    setViewPlayCurrentChart(s.ctx);
+
+                    s.ctx.render();
                 }
             });
         }),

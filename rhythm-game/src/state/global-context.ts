@@ -1,15 +1,17 @@
-import { loadChart } from "./loading-saving-charts";
+import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
 import { KeyboardState, newKeyboardState } from "./keyboard-state";
+import { loadChart } from "./loading-saving-charts";
+import { startPlaying, stopPlaying } from "./playing-pausing";
 import { newSavedState, SavedState } from "./saved-state";
 import {
+    getBeats,
     getCursorStartBeats,
     getItemStartBeats,
     mutateSequencerTimeline,
     newSequencerState,
     SequencerState
 } from "./sequencer-state";
-import { newUiState, UIState } from "./ui-state";
-import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
+import { AppView, newUiState, UIState } from "./ui-state";
 
 export type GlobalContext = {
     keyboard: KeyboardState;
@@ -79,19 +81,69 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
 }
 
 export function setViewEditChart(ctx: GlobalContext, chartName: string) {
-    ctx.ui.currentView = "edit-chart";
+    setCurrentView(ctx, "edit-chart");
     loadChart(ctx, chartName);
 }
 
-export function setViewPlayChart(ctx: GlobalContext, chartName: string) {
-    ctx.ui.currentView = "play-chart";
+export function setViewTestCurrentChart(ctx: GlobalContext) {
+    ctx.ui.playView.isTesting = true;
+    setViewPlayChart(ctx, ctx.ui.loadSave.loadedChartName);
+}
+
+export function setViewPlayCurrentChart(ctx: GlobalContext) {
+    ctx.ui.playView.isTesting = false;
+    setViewPlayChart(ctx, ctx.ui.loadSave.selectedChartName);
+}
+
+function setViewPlayChart(ctx: GlobalContext, chartName: string) {
     loadChart(ctx, chartName);
+    setCurrentView(ctx, "play-chart");
 }
 
 export function setViewChartSelect(ctx: GlobalContext) {
-    ctx.ui.currentView = "chart-select";
+    setCurrentView(ctx, "chart-select");
 }
 
 export function setViewStartScreen(ctx: GlobalContext) {
-    ctx.ui.currentView = "startup";
+    setCurrentView(ctx, "startup");
+}
+
+function setCurrentView(ctx: GlobalContext, view: AppView) {
+    const { editView, playView } = ctx.ui;
+    const sequencer = ctx.sequencer;
+
+    switch(ctx.ui.currentView) {
+        case "edit-chart":
+            editView.lastCursorStart = sequencer.cursorStart;
+            editView.lastCursorDivisor = sequencer.cursorDivisor;
+            break;
+        case "play-chart":
+            stopPlaying(ctx);
+            break;
+    }
+
+    ctx.ui.currentView = view;
+
+    switch(ctx.ui.currentView) {
+        case "edit-chart":
+            if (editView.lastCursorDivisor !== 0) {
+                sequencer.cursorStart = editView.lastCursorStart;
+                sequencer.cursorDivisor = editView.lastCursorDivisor;
+            }
+            break;
+        case "chart-select":
+            editView.lastCursorStart = 0;
+            editView.lastCursorDivisor = 0;
+            break;
+        case "play-chart":
+            let startFromBeats: number;
+            if (playView.isTesting) {
+                startFromBeats = getBeats(editView.lastCursorStart, editView.lastCursorDivisor);
+            } else {
+                startFromBeats = 0;
+            }
+
+            startPlaying(ctx, startFromBeats - 2);
+            break;
+    }
 }

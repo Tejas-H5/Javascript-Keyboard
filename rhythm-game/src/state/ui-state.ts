@@ -1,6 +1,6 @@
 import { TimelineItem } from "./sequencer-state";
 
-type AppView = "startup" | "chart-select" | "play-chart" | "edit-chart";
+export type AppView = "startup" | "chart-select" | "play-chart" | "edit-chart";
 export type UIState = {
     currentView: AppView;
 
@@ -20,14 +20,19 @@ export type UIState = {
     }
 
     editView: {
-        isKeyboard: boolean;
         sidebarOpen: boolean;
+        lastCursorStart: number;
+        lastCursorDivisor: number;
+    }
+
+    playView: {
+        isTesting: boolean;
     }
 };
 
 export function newUiState(): UIState {
     return {
-        currentView: "startup",
+        currentView: "edit-chart",
 
         chartSelect: {
             loadedCharts: [],
@@ -45,8 +50,13 @@ export function newUiState(): UIState {
         },
 
         editView: {
-            isKeyboard: true,
             sidebarOpen: false,
+            lastCursorStart: 0,
+            lastCursorDivisor: 0,
         },
+
+        playView: {
+            isTesting: false,
+        }
     };
 }

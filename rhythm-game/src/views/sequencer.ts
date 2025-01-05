@@ -210,7 +210,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                 internalState.noteOrder.push(entry);
             }
             internalState.noteOrder.sort((a, b) => {
-                return compareMusicNotes(a.musicNote, b.musicNote);
+                return compareMusicNotes(b.musicNote, a.musicNote);
             });
 
             // check if we've got any new things in the set, and then play them.
@@ -367,7 +367,8 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
             }),
             () => {
                 const root = div({
-                    style: "border-top: 1px solid var(--fg); border-bottom: 1px solid var(--fg);"
+                    style: "border-top: 1px solid var(--fg); border-bottom: 1px solid var(--fg);",
+                    class: "col justify-content-center h-100",
                 });
                 return rg.list(root, SequencerNotesUI, (getNext, s) => {
                     getNext().render({

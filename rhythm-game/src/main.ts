@@ -1,22 +1,22 @@
 import "src/css/layout.css";
 import {
+    getDspInfo,
+    initDspLoopInterface
+} from "src/dsp/dsp-loop-interface";
+import { GlobalContext, newGlobalContext, } from "src/state/global-context";
+import {
     appendChild,
     Component,
     newComponent,
     newInsertable
 } from "src/utils/dom-utils";
-import { App } from "./views/app";
-import {
-    getDspInfo,
-    initDspLoopInterface
-} from "src/dsp/dsp-loop-interface";
 import "./main.css";
-import { GlobalContext, newGlobalContext, setViewChartSelect, } from "src/state/global-context";
+import { load, loadChart } from "./state/loading-saving-charts";
+import { stopPlaying } from "./state/playing-pausing";
 import {
     getCurrentPlayingTimeRelative
 } from "./state/sequencer-state";
-import { load } from "./state/loading-saving-charts";
-import { stopPlaying } from "./state/playing-pausing";
+import { App } from "./views/app";
 
 // all util styles
 
@@ -29,11 +29,7 @@ function rerenderApp() {
 const globalContext = newGlobalContext(rerenderApp);
 load(globalContext);
 
-// Remove this code - it's for prototyping
-{
-    setViewChartSelect(globalContext);
-}
-
+loadChart(globalContext, "test song");
 
 // initialize the app.
 (async () => {
