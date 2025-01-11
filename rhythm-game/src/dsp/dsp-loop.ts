@@ -20,6 +20,8 @@ type PlayingOscillator = {
         awakeTime: number;
         phase: number;
         gain: number;
+        volume: number;
+        manuallyPressed: boolean;
     };
     inputs: {
         noteIndex: number;
@@ -32,6 +34,8 @@ type PlayingSampleFile = {
         prevSampleFile: string;
         sampleArray: number[];
         sampleIdx: number;
+        volume: number;
+        manuallyPressed: boolean;
     };
     inputs: {
         // we don't want to transmit the massive array of samples across the wire every single time.
@@ -45,6 +49,7 @@ export type DspLoopMessage = 1337 | {
     clearAllOscilatorSignals?: true;
     playSample?: [number, PlayingSampleFile["inputs"]];
     scheduleKeys?: ScheduledKeyPress[] | null;
+    scheduleKeysVolume?: number;
     // This samples record is so massive that my editor lags way too hard when I edit that file. So I
     // put it in a different file, and just inject it on startup, since it's JSON serialzable
     setAllSamples?: Record<string, number[]>;
@@ -52,8 +57,8 @@ export type DspLoopMessage = 1337 | {
 
 
 export type DspInfo = {
-    // [keyId, signal strength]
-    currentlyPlaying: [number, number][];
+    // [keyId, signal strength, owner]
+    currentlyPlaying: [number, number, number][];
     scheduledPlaybackTime: number;
 }
 
@@ -208,12 +213,14 @@ export function registerDspLoopClass() {
         trackPlayback: {
             shouldSendUiUpdateSignals: boolean;
             scheduleKeys?: ScheduledKeyPress[];
+            scheduledKeysVolume: number;
             scheduedKeysCurrentlyPlaying: ScheduledKeyPress[];
             scheduledPlaybackTime: number;
             scheduledPlaybackCurrentIdx: number;
         } = {
                 shouldSendUiUpdateSignals: false,
                 scheduleKeys: undefined,
+                scheduledKeysVolume: 1,
                 scheduedKeysCurrentlyPlaying: [],
                 scheduledPlaybackTime: 0,
                 scheduledPlaybackCurrentIdx: 0,
@@ -269,6 +276,7 @@ export function registerDspLoopClass() {
                             noteIndex: nextItem.noteIndex,
                             signal: 1,
                         }
+                        osc.state.volume = this.trackPlayback.scheduledKeysVolume;
                         osc.state.awakeTime = 0;
                     }
 
@@ -277,6 +285,7 @@ export function registerDspLoopClass() {
                         osc.inputs = {
                             sample: nextItem.sample,
                         };
+                        osc.state.volume = max(this.trackPlayback.scheduledKeysVolume, osc.state.volume);
                         osc.state.sampleIdx = 0;
                     }
 
@@ -314,7 +323,7 @@ export function registerDspLoopClass() {
 
                     updateOscillator(osc, this.playSettings);
 
-                    sample += getOscillatorValue(osc);
+                    sample += getOscillatorValue(osc) * osc.state.volume;
                     count += 1;
                 }
             }
@@ -326,7 +335,7 @@ export function registerDspLoopClass() {
 
                     updateSample(sampleFile, this);
 
-                    sample += getSampleFileValue(sampleFile);
+                    sample += getSampleFileValue(sampleFile) * sampleFile.state.volume;
                     count += 1;
                 }
             }
@@ -363,7 +372,7 @@ export function registerDspLoopClass() {
                         osc[1].state.gain > 0.001;
                 });
 
-                lastCount == this.playingSamples.length;
+                lastCount = this.playingSamples.length;
                 filterInPlace(this.playingSamples, (osc) => {
                     return osc[1].state.sampleIdx !== osc[1].state.sampleArray.length;
                 });
@@ -394,7 +403,7 @@ export function registerDspLoopClass() {
             }
 
             const newSample: PlayingSampleFile = {
-                state: { sampleIdx: 0, prevSampleFile: "", sampleArray: [] },
+                state: { sampleIdx: 0, prevSampleFile: "", sampleArray: [], volume: 0, manuallyPressed: false },
                 inputs: { sample: "" }
             };
             this.playingSamples.push([id, newSample]);
@@ -409,8 +418,8 @@ export function registerDspLoopClass() {
             }
 
             const newOsc: PlayingOscillator = {
-                state: { _lastNoteIndex: -1, _frequency: 0, prevSignal: 0, awakeTime: 0, phase: 0, gain: 0, },
-                inputs: { noteIndex: 0, signal: 0, },
+                state: { _lastNoteIndex: -1, _frequency: 0, prevSignal: 0, awakeTime: 0, phase: 0, gain: 0, volume: 0, manuallyPressed: false },
+                inputs: { noteIndex: 0, signal: 0 },
             };
             this.playingOscillators.push([id, newOsc]);
             return newOsc;
@@ -427,12 +436,20 @@ export function registerDspLoopClass() {
 
             if (signals) {
                 // this is the only way for the main thread to know this info :sad:
-                const currentPlaybackSignals: [number, number][] = [];
+                const currentPlaybackSignals: [number, number, number][] = [];
                 for (const [key, osc] of this.playingOscillators) {
-                    currentPlaybackSignals.push([key, max(osc.inputs.signal, osc.state.gain)]);
+                    currentPlaybackSignals.push([
+                        key, 
+                        max(osc.inputs.signal, osc.state.gain),
+                        osc.state.manuallyPressed ? 0 : 1
+                    ]);
                 }
                 for (const [key, osc] of this.playingSamples) {
-                    currentPlaybackSignals.push([key, 1 - (osc.state.sampleIdx / osc.state.sampleArray.length)]);
+                    currentPlaybackSignals.push([
+                        key, 
+                        1 - (osc.state.sampleIdx / osc.state.sampleArray.length),
+                        osc.state.manuallyPressed ? 0 : 1
+                    ]);
                 }
 
                 payload.currentlyPlaying = currentPlaybackSignals;
@@ -471,7 +488,7 @@ export function registerDspLoopClass() {
 
                     // @ts-ignore trust me bro
                     const val = e.playSettings[k];
-                    if (val) {
+                    if (val !== undefined) {
                         // @ts-ignore trust me bro
                         this.playSettings[k] = val;
                     }
@@ -481,8 +498,13 @@ export function registerDspLoopClass() {
             if (e.setOscilatorSignal) {
                 const [id, inputs] = e.setOscilatorSignal;
                 const osc = this.getPlayingOscillator(id);
+
                 osc.inputs = inputs;
                 osc.state.awakeTime = 0;
+
+                // normal key presses have volume 1
+                osc.state.volume = 1;
+                osc.state.manuallyPressed = true;
             }
 
             if (e.clearAllOscilatorSignals) {
@@ -494,8 +516,13 @@ export function registerDspLoopClass() {
             if (e.playSample) {
                 const [id, inputs] = e.playSample;
                 const osc = this.getPlayingSample(id);
+
                 osc.inputs = inputs;
                 osc.state.sampleIdx = 0;
+
+                // normal key presses have volume 1
+                osc.state.volume = 1;
+                osc.state.manuallyPressed = true;
             }
 
             if (e.scheduleKeys !== undefined) {
@@ -506,6 +533,10 @@ export function registerDspLoopClass() {
                     trackPlayback.scheduledPlaybackTime = 0;
                     trackPlayback.scheduledPlaybackCurrentIdx = 0;
                 }
+            }
+
+            if (e.scheduleKeysVolume !== undefined) {
+                this.trackPlayback.scheduledKeysVolume = e.scheduleKeysVolume;
             }
 
             if (e.setAllSamples) {

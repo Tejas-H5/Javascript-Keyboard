@@ -1,7 +1,7 @@
 import { Button } from "src/components/button";
-import { GlobalContext, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "src/state/global-context";
 import { loadChart } from "src/state/loading-saving-charts";
 import { div, getState, RenderGroup } from "src/utils/dom-utils";
+import { GlobalContext, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "./app";
 
 export function ChartSelect(rg: RenderGroup<GlobalContext>) {
     function onClickBack() {

@@ -1,9 +1,9 @@
 import { clamp } from "src/utils/math-utils";
-import { GlobalContext } from "./global-context";
 import {
     mutateSequencerTimeline
 } from "./sequencer-state";
 import { recursiveShallowCopyRemovingComputedFields } from "src/utils/serialization-utils";
+import { GlobalContext } from "src/views/app";
 
 export function load(ctx: GlobalContext) {
     const savedState = localStorage.getItem("savedState");

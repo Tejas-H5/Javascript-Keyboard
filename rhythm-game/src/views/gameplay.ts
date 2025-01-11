@@ -1,4 +1,4 @@
-import { GlobalContext } from "src/state/global-context";
+import { getCurrentOscillatorGain, getCurrentOscillatorOwner } from "src/dsp/dsp-loop-interface";
 import {
     getKeyForNote,
     InstrumentKey,
@@ -21,6 +21,7 @@ import {
 } from "src/utils/dom-utils";
 import { inverseLerp } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
+import { GlobalContext } from "./app";
 
 const GAMEPLAY_LOOKAHEAD_BEATS = 2;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
@@ -165,7 +166,7 @@ function VerticalThread(rg: RenderGroup<{
     ctx: GlobalContext;
     thread: NoteItem[];
     start: number;
-    instrumentKey: InstrumentKey | undefined;
+    instrumentKey: InstrumentKey;
 }>) {
     function Bar(rg: RenderGroup<{
         ctx: GlobalContext;
@@ -174,6 +175,7 @@ function VerticalThread(rg: RenderGroup<{
     }>) {
         let heightPercent = 0;
         let bottomPercent = 0;
+
         rg.preRenderFn(s => {
             const start = s.start;
             const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
@@ -188,7 +190,6 @@ function VerticalThread(rg: RenderGroup<{
                 heightPercent += bottomPercent;
                 bottomPercent = 0;
             }
-
         });
 
         return div({
@@ -200,32 +201,53 @@ function VerticalThread(rg: RenderGroup<{
         ]);
     }
 
-    return div({ 
-        class: "col align-items-center justify-content-center", 
-        style: "width: 40px; font-size: 64px;" 
-    }, [
-        span({ style: "transition: color 0.2s; height: 2ch;" }, [
+    let signal = 0;
+    let owner = 0;
+
+    rg.preRenderFn(s => {
+        owner = getCurrentOscillatorOwner(s.instrumentKey.index) 
+        signal = getCurrentOscillatorGain(s.instrumentKey.index) 
+    });
+
+    function createLetter() {
+        return span({ style: "transition: color 0.2s; height: 2ch;" }, [
             rg.style("color", s => s.thread.length === 0 ? "var(--bg2)" : "var(--fg)"),
             rg.text((s) => s.instrumentKey ? s.instrumentKey.text : "?"),
+        ]);
+    }
+
+    return div({ class: "row align-items-stretch justify-content-start" }, [
+        rg.if(s => s.instrumentKey.isLeftmost, rg =>
+            div({ style: "width: 2px; background: var(--fg)" })
+        ),
+        div({ 
+            class: "col align-items-center justify-content-center", 
+            style: "width: 40px; font-size: 64px;" 
+        }, [
+            createLetter(),
+            div({ style: "width: 100%; height: 2px; background-color: var(--fg);" }),
+            div({ class: "flex-1 relative w-100 overflow-hidden", style: "transition: background-color 0.2s;" }, [
+                rg.style("backgroundColor", s =>
+                    (owner === 0 && signal > 0.001) ? `rgba(255, 0, 0, ${signal})` :
+                        s.thread.length === 0 ? "var(--bg)" :
+                            "var(--bg2)"
+                ),
+                rg.list(div({ class: "contents" }), Bar, (getNext, s) => {
+                    for (const item of s.thread) {
+                        getNext().render({
+                            ctx: s.ctx,
+                            item, 
+                            start: s.start,
+                        });
+                    }
+                }),
+            ]),
+            div({ style: "width: 100%; height: 2px; background-color: var(--fg);" }),
+            createLetter(),
         ]),
-        div({ style: "height: 3px; left: 0; right: 0; background-color: var(--fg);" }),
-        div({ class: "flex-1 relative w-100 overflow-hidden", style: "transition: background-color 0.2s;" }, [
-            rg.style("backgroundColor", s => s.thread.length === 0 ? "var(--bg)" : "var(--bg2)"),
-            rg.list(div({ class: "contents" }), Bar, (getNext, s) => {
-                for (const item of s.thread) {
-                    getNext().render({
-                        ctx: s.ctx,
-                        item, 
-                        start: s.start,
-                    });
-                }
-            }),
-        ]),
-        div({ style: "height: 3px; left: 0; right: 0; background-color: var(--fg);" }),
-        span({ style: "transition: color 0.2s; height: 2ch;" }, [
-            rg.style("color", s => s.thread.length === 0 ? "var(--bg2)" : "var(--fg)"),
-            rg.text((s) => s.instrumentKey ? s.instrumentKey.text : "?"),
-        ]),
+        rg.if(s => s.instrumentKey.isRightmost, rg =>
+            div({ style: "width: 2px; background: var(--fg)" })
+        ),
     ]);
 }
 
@@ -260,6 +282,7 @@ export function GameplayV1(rg: RenderGroup<GlobalContext>) {
 }
 
 
+// 'Thread' might not be the right name for this vertical bar
 function Thread(rg: RenderGroup<GameArgs>) {
     return div({ class: "row justify-content-center" }, [
         rg.c(Bars, (c, s) => {

@@ -2,11 +2,6 @@ import { Button } from "src/components/button";
 import { Slider } from "src/components/slider";
 import "src/css/layout.css";
 import "src/main.css";
-import {
-    GlobalContext,
-    resetSequencer,
-    setViewTestCurrentChart,
-} from "src/state/global-context";
 import { stopPlaying, } from "src/state/playing-pausing";
 import { 
     getCurrentSelectedChartName,
@@ -29,6 +24,7 @@ import {
 } from "src/utils/dom-utils";
 import { Sequencer } from "src/views/sequencer";
 import { recursiveShallowCopyRemovingComputedFields } from "src/utils/serialization-utils";
+import { GlobalContext, resetSequencer, setViewTestCurrentChart } from "./app";
 
 export function EditView(rg: RenderGroup<GlobalContext>) {
     setCssVars({

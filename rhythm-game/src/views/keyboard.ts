@@ -15,8 +15,8 @@ import {
     getCurrentPlayingTimeRelative,
     timelineHasNoteAtPosition
 } from "src/state/sequencer-state";
-import { GlobalContext } from "src/state/global-context";
 import { InstrumentKey } from "src/state/keyboard-state";
+import { GlobalContext } from "./app";
 
 
 export function Keyboard(rg: RenderGroup<GlobalContext>) {

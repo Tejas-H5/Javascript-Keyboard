@@ -3,7 +3,6 @@ import {
     getDspInfo,
     initDspLoopInterface
 } from "src/dsp/dsp-loop-interface";
-import { GlobalContext, newGlobalContext, } from "src/state/global-context";
 import {
     appendChild,
     Component,
@@ -16,7 +15,7 @@ import { stopPlaying } from "./state/playing-pausing";
 import {
     getCurrentPlayingTimeRelative
 } from "./state/sequencer-state";
-import { App } from "./views/app";
+import { App, GlobalContext, newGlobalContext } from "./views/app";
 
 // all util styles
 

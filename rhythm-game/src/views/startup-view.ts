@@ -1,6 +1,6 @@
 import { Button } from "src/components/button";
-import { GlobalContext, setViewChartSelect } from "src/state/global-context";
 import { div, getState, RenderGroup } from "src/utils/dom-utils";
+import { GlobalContext, setViewChartSelect } from "./app";
 
 export function StartupView(rg: RenderGroup<GlobalContext>) {
     // TODO: better game name

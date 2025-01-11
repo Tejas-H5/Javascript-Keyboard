@@ -21,7 +21,7 @@ import {
 } from "src/state/sequencer-state";
 import { unreachable } from "src/utils/asserts";
 import { beatsToMs } from "src/utils/music-theory-utils";
-import { GlobalContext } from "./global-context";
+import { GlobalContext } from "src/views/app";
 
 
 export function stopPlaying({ sequencer }: GlobalContext, stopOnCursor = false) {
@@ -124,11 +124,6 @@ export function startPlaying(
     }
     const leadInTime = startItem._scheduledStart - cursorTime;
 
-    sequencer.startPlayingTime = Date.now() + leadInTime;
-    sequencer.startPlayingIdx = startIdx;
-    sequencer.endPlayingIdx = endIdx;
-    sequencer.isPlaying = true;
-
     // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
 
     const scheduledKeyPresses: ScheduledKeyPress[] = [];
@@ -160,6 +155,11 @@ export function startPlaying(
     sequencer.scheduledKeyPressesFirstItemStart = firstItemStartTime;
     sequencer.scheduledKeyPressesPlaybackSpeed = speed;
     schedulePlayback(scheduledKeyPresses);
+
+    sequencer.startPlayingTime = Date.now() + leadInTime;
+    sequencer.startPlayingIdx = startIdx;
+    sequencer.endPlayingIdx = endIdx;
+    sequencer.isPlaying = true;
 }
 
 function pushNotePress(

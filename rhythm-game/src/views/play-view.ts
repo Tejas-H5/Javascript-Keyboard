@@ -1,6 +1,6 @@
-import { GlobalContext } from "src/state/global-context";
 import { div, RenderGroup } from "src/utils/dom-utils";
 import { Gameplay } from "./gameplay";
+import { GlobalContext } from "./app";
 
 export function PlayView(rg: RenderGroup<GlobalContext>) {
     // Rewind the track a bit, and then start from there

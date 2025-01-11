@@ -666,7 +666,7 @@ export function getLastMeasureBeats(sequencer: SequencerState, beats: number): n
     const timeline = sequencer.timeline;
 
     const idx = findLastIndexOf(timeline, item =>
-        item.type === TIMELINE_ITEM_BPM
+        item.type === TIMELINE_ITEM_MEASURE
         && lteBeats(getItemStartTime(item), beats)
     );
     if (idx === -1) {
@@ -727,7 +727,6 @@ export function newSequencerState(): SequencerState {
         scheduledKeyPressesPlaybackSpeed: 1,
         playingTimeout: 0,
         reachedLastNote: false,
-
 
         _timelineLastUpdated: 0,
         _lastBpmChange: undefined,

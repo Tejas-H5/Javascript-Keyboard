@@ -13,6 +13,8 @@ export type InstrumentKey = {
     text: string;
     noteText: string;
     musicNote: MusicNote;
+    isLeftmost: boolean;
+    isRightmost: boolean;
 
     // this is the 'id'
     index: number;
@@ -40,7 +42,9 @@ function newKey(k: string): InstrumentKey {
         noteText: "",
         index: -1,
         musicNote: {},
-        remainingDuration: 0
+        remainingDuration: 0,
+        isLeftmost: false,
+        isRightmost: false,
     };
 }
 
@@ -74,10 +78,12 @@ export function newKeyboardState(): KeyboardState {
 
             keys.push(drumKeys);
 
-            for (const i in drumSlots) {
+            for (let i = 0; i < drumSlots.length; i++) {
                 const key = drumKeys[i];
                 key.noteText = drumSlots[i].name;
                 key.musicNote.sample = drumSlots[i].sample;
+                key.isLeftmost = i === 0;
+                key.isRightmost = i === drumSlots.length - 1;
                 flatKeys.push(key);
             }
         }
@@ -93,8 +99,8 @@ export function newKeyboardState(): KeyboardState {
             keys.push(...pianoKeys);
 
             let noteIndexOffset = 0;
-            for (const i in pianoKeys) {
-                for (const j in pianoKeys[i]) {
+            for (let i = 0; i < pianoKeys.length; i++) {
+                for (let j = 0; j < pianoKeys[i].length; j++) {
                     const key = pianoKeys[i][j];
 
                     flatKeys.push(key);
@@ -104,6 +110,8 @@ export function newKeyboardState(): KeyboardState {
 
                     key.noteText = getNoteText(noteIndex);
                     key.musicNote.noteIndex = noteIndex;
+                    key.isLeftmost = j === 0;
+                    key.isRightmost = j === pianoKeys[i].length -1;
                 }
             }
         }

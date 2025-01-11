@@ -26,6 +26,7 @@ const dspInfo: DspInfo = {
     currentlyPlaying: [],
     scheduledPlaybackTime: 0,
 };
+let scheduledVolume = 1;
 
 function unreachable() {
     throw new Error("Unreachable code in dsp interface!");
@@ -36,21 +37,26 @@ export function updatePlaySettings(fn: (s: DSPPlaySettings) => void) {
     audioLoopDispatch({ playSettings });
 }
 
+export function setScheduledPlaybackVolume(value: number) {
+    scheduledVolume = value;
+    audioLoopDispatch({ scheduleKeysVolume: value });
+}
+
 export function getDspInfo() {
     return dspInfo;
 }
 
-export function getInfoBlock(id: number): [number, number] | undefined {
+export function getInfoBlock(id: number): [number, number, number] | undefined {
     return dspInfo.currentlyPlaying.find(b => b[0] === id);
 }
 
 // This thing gets overwritten very frequently every second, but we probably want our ui to update instantly and not
 // within 1/10 of a second. this compromise is due to an inability to simply pull values from the dsp loop as needed - 
 // instead, the dsp loop has been configured to push it's relavant state very frequently. SMH.
-function getOrMakeInfoBlock(id: number): [number, number] {
+function getOrMakeInfoBlock(id: number): [number, number, number] {
     const block = getInfoBlock(id);
     if (block) return block;
-    const b: [number, number] = [id, 0];
+    const b: [number, number, number] = [id, 0, 0];
     dspInfo.currentlyPlaying.push(b);
     return b;
 }
@@ -65,6 +71,16 @@ export function getCurrentOscillatorGain(id: number): number {
         return 0;
     }
     return block[1];
+}
+
+// 0 -> user. 
+// 1 -> Not implement yet, but  it will be (track_idx + 1) - you'll need to do id - 1 to get the track index
+export function getCurrentOscillatorOwner(id: number): number {
+    const block = getInfoBlock(id);
+    if (!block) {
+        return 0;
+    }
+    return block[2];
 }
 
 export function pressKey(id: number, note: MusicNote) {
@@ -99,22 +115,20 @@ export function releaseAllKeys() {
     audioLoopDispatch({ clearAllOscilatorSignals: true });
 }
 
-function areDifferent(a: [number, number][], b: [number, number][]): boolean {
+function areEqual(a: [number, number, number][], b: [number, number, number][]): boolean {
     if (a.length !== b.length) {
-        return true;
+        return false;
     }
 
     for (let i = 0; i < a.length; i++) {
-        if (a[i][0] !== b[i][0]) {
-            return true;
-        }
-
-        if (a[i][1] !== b[i][1]) {
-            return true;
+        for (let j = 0; j < a[i].length; j++) {
+            if (a[i][j] !== b[i][j]) {
+                return false;
+            }
         }
     }
 
-    return false;
+    return true;
 }
 
 export function audioLoopDispatch(message: DspLoopMessage) {
@@ -169,7 +183,7 @@ export async function initDspLoopInterface({
         let rerender = false;
         if (
             data.currentlyPlaying
-            && areDifferent(dspInfo.currentlyPlaying, data.currentlyPlaying)
+            && !areEqual(dspInfo.currentlyPlaying, data.currentlyPlaying)
         ) {
             dspInfo.currentlyPlaying = data.currentlyPlaying;
             rerender = true;

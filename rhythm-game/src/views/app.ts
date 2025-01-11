@@ -1,15 +1,5 @@
-import { pressKey, releaseKey } from "src/dsp/dsp-loop-interface";
-import {
-    copyNotesToTempStore,
-    GlobalContext,
-    pasteNotesFromTempStore,
-    setViewChartSelect,
-    setViewEditChart,
-    setViewPlayCurrentChart,
-    setViewStartScreen,
-    setViewTestCurrentChart,
-} from "src/state/global-context";
-import { getKeyForKeyboardKey } from "src/state/keyboard-state";
+import { pressKey, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
+import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     getCurrentSelectedChartName,
     loadChart,
@@ -20,12 +10,15 @@ import {
     playAll,
     playFromCursor,
     playFromLastMeasure,
+    startPlaying,
     stopPlaying
 } from "src/state/playing-pausing";
+import { newSavedState, SavedState } from "src/state/saved-state";
 import {
     clearRangeSelection,
     deleteRange,
     equalBeats,
+    getBeats,
     getBpm,
     getBpmChangeItemBeforeBeats,
     getCursorStartBeats,
@@ -35,8 +28,10 @@ import {
     handleMovement,
     hasRangeSelection,
     mutateSequencerTimeline,
+    newSequencerState,
     newTimelineItemBpmChange,
     newTimelineItemMeasure,
+    SequencerState,
     setCursorDivisor,
     setTimelineNoteAtPosition,
     shiftItemsAfterCursor,
@@ -44,70 +39,33 @@ import {
     timelineHasNoteAtPosition,
     timelineMeasureAtBeatsIdx
 } from "src/state/sequencer-state";
+import { AppView, newUiState, UIState } from "src/state/ui-state";
+import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
 import { div, isEditingTextSomewhereInDocument, RenderGroup } from "src/utils/dom-utils";
 import { ChartSelect } from "src/views/chart-select";
 import { EditView } from "src/views/edit-view";
 import { PlayView } from "src/views/play-view";
 import { StartupView } from "src/views/startup-view";
 
-let instantiated = false;
 
-// Contains ALL logic
+export type GlobalContext = {
+    keyboard: KeyboardState;
+    sequencer: SequencerState;
+    ui: UIState;
+    savedState: SavedState; 
+    render(): void;
+    dt: DOMHighResTimeStamp;
+}
 
-export function App(rg: RenderGroup<GlobalContext>) {
-    let ctx: GlobalContext;
-
-    rg.preRenderFn(s => ctx = s);
-
-    if (!instantiated) {
-        instantiated = true;
-    } else {
-        throw new Error("Can't instantiate the app twice!");
-    }
-
-    // Add global event handlers.
-    document.addEventListener("keydown", (e) => {
-        if (handleKeyDown(ctx, e.key, e.ctrlKey || e.metaKey, e.shiftKey, e.repeat)) {
-            e.preventDefault();
-            ctx.render();
-        }
-    })
-
-
-    document.addEventListener("keyup", (e) => {
-        if (handleKeyUp(ctx, e.key, e.ctrlKey || e.metaKey, e.shiftKey)) {
-            e.preventDefault();
-            ctx.render();
-        }
-    });
-
-    document.addEventListener("blur", () => {
-        ctx.render();
-    })
-
-    document.addEventListener("mousemove", () => {
-        if (ctx.sequencer.currentHoveredTimelineItemIdx !== -1) {
-            ctx.sequencer.currentHoveredTimelineItemIdx = -1;
-            ctx.render();
-        }
-    });
-
-    window.addEventListener("resize", () => {
-        ctx.render();
-    });
-
-    return div({
-        class: "absolute-fill row",
-        style: "position: fixed",
-    }, [
-        rg.if(() => ctx.ui.currentView === "startup", StartupView),
-        rg.else_if(() => ctx.ui.currentView === "chart-select", ChartSelect),
-        rg.else_if(() => ctx.ui.currentView === "play-chart", PlayView),
-        rg.else_if(() => ctx.ui.currentView === "edit-chart", EditView),
-        rg.else(rg => div({}, [
-            rg.text(() => "404 - view not found!!! (" + ctx.ui.currentView + ")")
-        ])),
-    ])
+export function newGlobalContext(renderFn: () => void): GlobalContext {
+    return { 
+        keyboard: newKeyboardState(),
+        sequencer: newSequencerState(),
+        ui: newUiState(),
+        savedState: newSavedState(),
+        render: renderFn,
+        dt: 0,
+    };
 }
 
 function handleKeyDown(
@@ -137,7 +95,15 @@ function handleKeyDown(
         vAxis = 1;
     }
 
-    const startTestingPressed =  ctrlPressed && shiftPressed && key === "T";
+    const startTestingPressed =  shiftPressed && key === "T";
+
+    if (ui.currentView === "startup") {
+        if (key === "Enter") {
+            // NOTE: will need to change when we add more screens we can go to from here
+            setViewChartSelect(ctx);
+            return true;
+        }
+    } 
 
     if (ui.currentView === "chart-select") {
         if (key === "E" || key === "e") {
@@ -154,8 +120,9 @@ function handleKeyDown(
             setViewStartScreen(ctx);
             return true;
         }
-    }
-    
+        return false;
+    } 
+
     if (ui.currentView === "play-chart") {
         // TODO: keyboard input
 
@@ -168,16 +135,13 @@ function handleKeyDown(
             }
             return true;
         }
-    }
 
-    if (ui.currentView === "startup") {
-        if (key === "Enter") {
-            // NOTE: will need to change when we add more screens we can go to from here
-            setViewChartSelect(ctx);
+        const instrumentKey = getKeyForKeyboardKey(keyboard, key);
+        if (instrumentKey) {
+            pressKey(instrumentKey.index, instrumentKey.musicNote);
             return true;
         }
-    }
-
+    } 
 
     if (
         (ui.currentView === "edit-chart") ||
@@ -214,8 +178,7 @@ function handleKeyDown(
                 return true;
             }
         }
-    }
-
+    } 
 
     if (ui.currentView === "edit-chart") {
         if (key === "S" && ctrlPressed && shiftPressed) {
@@ -425,8 +388,6 @@ function handleKeyDown(
 
             const instrumentKey = getKeyForKeyboardKey(keyboard, key);
             if (instrumentKey) {
-                // TODO: Just do one or the other based on if we're in 'edit' mode or play mode ?
-
                 // play the instrument
                 {
                     pressKey(instrumentKey.index, instrumentKey.musicNote);
@@ -480,4 +441,189 @@ function handleKeyUp(
     }
 
     return false;
+}
+
+export function resetSequencer(ctx: GlobalContext) {
+    ctx.sequencer = newSequencerState();
+}
+
+export function copyNotesToTempStore(ctx: GlobalContext, startIdx: number, endIdx: number): boolean {
+    const { sequencer, ui } = ctx;
+
+    if (startIdx === -1 || endIdx === -1) {
+        return false;
+    }
+
+    ui.copied.items = sequencer.timeline.slice(startIdx, endIdx + 1)
+        .map(deepCopyJSONSerializable);
+
+    ui.copied.positionStart = Math.min(
+        getCursorStartBeats(sequencer),
+        getItemStartBeats(sequencer.timeline[startIdx])
+    );
+
+    return true;
+}
+
+export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
+    const { ui, sequencer } = ctx;
+
+    if (ui.copied.items.length === 0) {
+        return false;
+    }
+
+    mutateSequencerTimeline(sequencer, () => {
+        const delta = getCursorStartBeats(sequencer) - ui.copied.positionStart;
+        for (const item of ui.copied.items) {
+            const newItem = deepCopyJSONSerializable(item);
+
+            // TODO: attempt to use clean numbers/integers here.
+            // This is just my noob code for now
+            const beats = getItemStartBeats(newItem);
+            const newBeats = beats + delta;
+            newItem.start = newBeats * newItem.divisor;
+
+            sequencer.timeline.push(newItem);
+        }
+    });
+
+    return true;
+}
+
+export function setViewEditChart(ctx: GlobalContext, chartName: string) {
+    setCurrentView(ctx, "edit-chart");
+    loadChart(ctx, chartName);
+}
+
+export function setViewTestCurrentChart(ctx: GlobalContext) {
+    ctx.ui.playView.isTesting = true;
+    setViewPlayChart(ctx, ctx.ui.loadSave.loadedChartName);
+}
+
+export function setViewPlayCurrentChart(ctx: GlobalContext) {
+    ctx.ui.playView.isTesting = false;
+    setViewPlayChart(ctx, ctx.ui.loadSave.selectedChartName);
+}
+
+function setViewPlayChart(ctx: GlobalContext, chartName: string) {
+    loadChart(ctx, chartName);
+    setCurrentView(ctx, "play-chart");
+}
+
+export function setViewChartSelect(ctx: GlobalContext) {
+    setCurrentView(ctx, "chart-select");
+}
+
+export function setViewStartScreen(ctx: GlobalContext) {
+    setCurrentView(ctx, "startup");
+}
+
+function setCurrentView(ctx: GlobalContext, view: AppView) {
+    if (ctx.ui.currentView === view) {
+        return;
+    }
+
+    const { editView, playView } = ctx.ui;
+    const sequencer = ctx.sequencer;
+
+    // run code while exiting a view
+    {
+        switch(ctx.ui.currentView) {
+            case "edit-chart":
+                editView.lastCursorStart = sequencer.cursorStart;
+                editView.lastCursorDivisor = sequencer.cursorDivisor;
+                break;
+            case "play-chart":
+                stopPlaying(ctx);
+                setScheduledPlaybackVolume(1);
+                break;
+        }
+    }
+
+    ctx.ui.currentView = view;
+
+    // run code while entering a view
+    {
+        switch(ctx.ui.currentView) {
+            case "edit-chart":
+                if (editView.lastCursorDivisor !== 0) {
+                    sequencer.cursorStart = editView.lastCursorStart;
+                    sequencer.cursorDivisor = editView.lastCursorDivisor;
+                }
+                break;
+            case "chart-select":
+                editView.lastCursorStart = 0;
+                editView.lastCursorDivisor = 0;
+                break;
+            case "play-chart":
+                let startFromBeats: number;
+                if (playView.isTesting) {
+                    startFromBeats = getBeats(editView.lastCursorStart, editView.lastCursorDivisor);
+                } else {
+                    startFromBeats = 0;
+                }
+
+                setScheduledPlaybackVolume(0.1);
+                startPlaying(ctx, startFromBeats - 2);
+                break;
+        }
+    }
+}
+
+// Contains ALL logic
+let instantiated = false;
+export function App(rg: RenderGroup<GlobalContext>) {
+    let ctx: GlobalContext;
+
+    rg.preRenderFn(s => ctx = s);
+
+    if (!instantiated) {
+        instantiated = true;
+    } else {
+        throw new Error("Can't instantiate the app twice!");
+    }
+
+    // Add global event handlers.
+    document.addEventListener("keydown", (e) => {
+        if (handleKeyDown(ctx, e.key, e.ctrlKey || e.metaKey, e.shiftKey, e.repeat)) {
+            e.preventDefault();
+            ctx.render();
+        }
+    })
+
+
+    document.addEventListener("keyup", (e) => {
+        if (handleKeyUp(ctx, e.key, e.ctrlKey || e.metaKey, e.shiftKey)) {
+            e.preventDefault();
+            ctx.render();
+        }
+    });
+
+    document.addEventListener("blur", () => {
+        ctx.render();
+    })
+
+    document.addEventListener("mousemove", () => {
+        if (ctx.sequencer.currentHoveredTimelineItemIdx !== -1) {
+            ctx.sequencer.currentHoveredTimelineItemIdx = -1;
+            ctx.render();
+        }
+    });
+
+    window.addEventListener("resize", () => {
+        ctx.render();
+    });
+
+    return div({
+        class: "absolute-fill row",
+        style: "position: fixed",
+    }, [
+        rg.if(() => ctx.ui.currentView === "startup", StartupView),
+        rg.else_if(() => ctx.ui.currentView === "chart-select", ChartSelect),
+        rg.else_if(() => ctx.ui.currentView === "play-chart", PlayView),
+        rg.else_if(() => ctx.ui.currentView === "edit-chart", EditView),
+        rg.else(rg => 
+            rg.text(() => "404 - view not found!!! (" + ctx.ui.currentView + ")")
+        ),
+    ])
 }

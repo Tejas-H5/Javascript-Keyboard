@@ -1,5 +1,4 @@
 import { Button } from "src/components/button";
-import { GlobalContext } from "src/state/global-context";
 import {
     getKeyForNote,
     KeyboardState,
@@ -40,6 +39,7 @@ import { unreachable } from "src/utils/asserts";
 import { div, getState, RenderGroup } from "src/utils/dom-utils";
 import { inverseLerp, lerp } from "src/utils/math-utils";
 import { compareMusicNotes, getNoteText, MusicNote } from "src/utils/music-theory-utils";
+import { GlobalContext } from "./app";
 
 export function getMusicNoteText(n: MusicNote): string {
     if (n.sample) {
