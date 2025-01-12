@@ -20,11 +20,13 @@ const playSettings: DSPPlaySettings = {
     decay: 0.5,
     sustainVolume: 0.5,
     sustain: 0.25,
+    isUserDriven: false,
 };
 let dspPort: MessagePort | undefined;
 const dspInfo: DspInfo = { 
     currentlyPlaying: [],
     scheduledPlaybackTime: 0,
+    isPaused: false,
 };
 let scheduledVolume = 1;
 
@@ -189,9 +191,13 @@ export async function initDspLoopInterface({
             rerender = true;
         }
 
-        if (data.scheduledPlaybackTime) {
+        if (data.scheduledPlaybackTime !== undefined) {
             dspInfo.scheduledPlaybackTime = data.scheduledPlaybackTime;
             rerender = true;
+        }
+
+        if (data.isPaused !== undefined && data.isPaused !== dspInfo.isPaused) {
+            dspInfo.isPaused = data.isPaused;
         }
 
         if (rerender) {

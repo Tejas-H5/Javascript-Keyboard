@@ -1,4 +1,4 @@
-import { releaseAllKeys, ScheduledKeyPress, schedulePlayback } from "src/dsp/dsp-loop-interface";
+import { releaseAllKeys, ScheduledKeyPress, schedulePlayback, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
 import {
     getBeatsIndexes,
@@ -42,26 +42,26 @@ export function stopPlaying({ sequencer }: GlobalContext, stopOnCursor = false) 
     schedulePlayback([]);
 }
 
-export function playFromLastMeasure(ctx: GlobalContext, speed: number) {
+export function playFromLastMeasure(ctx: GlobalContext, options: PlayOptions = {}) {
     const { sequencer } = ctx;
 
     // Play from the last measure till the end
     const cursorStart = getCursorStartBeats(sequencer);
     const lastMeasureStart = getLastMeasureBeats(sequencer, cursorStart);
-    const endBeats = getItemEndBeats(sequencer.timeline[sequencer.timeline.length - 1]);
-    startPlaying(ctx, lastMeasureStart, endBeats, speed);
+    const endBeats = getTrackExtent(sequencer);
+    startPlaying(ctx, lastMeasureStart, endBeats, options);
 }
 
-export function playFromCursor(ctx: GlobalContext, speed: number) { 
+export function playFromCursor(ctx: GlobalContext, options: PlayOptions = {}) { 
     const { sequencer } = ctx;
 
     // Play from the last measure till the end
     const cursorStart = getCursorStartBeats(sequencer);
     const endBeats = getItemEndBeats(sequencer.timeline[sequencer.timeline.length - 1]);
-    startPlaying(ctx, cursorStart, endBeats, speed);
+    startPlaying(ctx, cursorStart, endBeats, options);
 }
 
-export function playCurrentRangeSelection(ctx: GlobalContext, speed: number,) {
+export function playCurrentRangeSelection(ctx: GlobalContext, options: PlayOptions = {}) {
     const { sequencer } = ctx;
 
     if (sequencer.timeline.length === 0) {
@@ -74,31 +74,26 @@ export function playCurrentRangeSelection(ctx: GlobalContext, speed: number,) {
 
     const a = getRangeSelectionStartBeats(sequencer);
     const b = getRangeSelectionEndBeats(sequencer);
-    startPlaying(ctx, a, b, speed);
+    startPlaying(ctx, a, b, options);
 }
 
-export function playAll(
-    ctx : GlobalContext,
-    speed: number
-) {
-    startPlaying(ctx, 0, undefined, speed);
+export function playAll(ctx : GlobalContext, options: PlayOptions = {}) {
+    startPlaying(ctx, 0, undefined, options);
 }
+
+export type PlayOptions = {
+    speed?: number;
+    isUserDriven?: boolean;
+};
 
 
 // TODO: handle the 'error' when we haven't clicked any buttons yet so the browser prevents audio from playing
-export function startPlaying(
-    ctx: GlobalContext,
-    startBeats: number,
-    endBeats?: number,
-    speed?: number,
-) {
+export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: number, options: PlayOptions = {}) {
     if (endBeats === undefined) {
         endBeats = getTrackExtent(ctx.sequencer);
     }
 
-    if (speed === undefined) {
-        speed = 1;
-    }
+    let { speed = 1, isUserDriven = false } = options;
 
     stopPlaying(ctx);
 
@@ -127,7 +122,7 @@ export function startPlaying(
     // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
 
     const scheduledKeyPresses: ScheduledKeyPress[] = [];
-    const firstItemStartTime = timeline[startIdx]._scheduledStart - leadInTime;
+    const startPlaybackFromTime = timeline[startIdx]._scheduledStart - leadInTime;
 
     for (let i = startIdx; i < timeline.length && i <= endIdx; i++) {
         const item = timeline[i];
@@ -137,7 +132,7 @@ export function startPlaying(
         }
 
         if (item.type === TIMELINE_ITEM_NOTE) {
-            pushNotePress(scheduledKeyPresses, keyboard, item, firstItemStartTime);
+            pushNotePress(scheduledKeyPresses, keyboard, item, startPlaybackFromTime);
             continue;
         }
 
@@ -146,27 +141,30 @@ export function startPlaying(
 
     for (const scp of scheduledKeyPresses) {
         scp.time /= speed;
+        scp.timeEnd /= speed;
     }
 
-    // TODO: prob not needed, since the timeline is sorted already
+    // TODO: sort prob not needed, since the timeline is sorted already
     scheduledKeyPresses.sort((a, b) => a.time - b.time);
-
     sequencer.scheduledKeyPresses = scheduledKeyPresses;
-    sequencer.scheduledKeyPressesFirstItemStart = firstItemStartTime;
+    sequencer.scheduledKeyPressesFirstItemStart = startPlaybackFromTime;
     sequencer.scheduledKeyPressesPlaybackSpeed = speed;
-    schedulePlayback(scheduledKeyPresses);
 
     sequencer.startPlayingTime = Date.now() + leadInTime;
     sequencer.startPlayingIdx = startIdx;
     sequencer.endPlayingIdx = endIdx;
     sequencer.isPlaying = true;
+    sequencer.isPaused = false;
+
+    updatePlaySettings(s => s.isUserDriven = isUserDriven);
+    schedulePlayback(scheduledKeyPresses);
 }
 
 function pushNotePress(
     scheduledKeyPresses: ScheduledKeyPress[], 
     keyboard: KeyboardState, 
     item: NoteItem,
-    firstItemStartTime: number,
+    startPlaybackFromTime: number,
 ) {
     const n = item.note;
     const key = getKeyForNote(keyboard, n);
@@ -176,8 +174,8 @@ function pushNotePress(
     }
 
     scheduledKeyPresses.push({
-        time: item._scheduledStart - firstItemStartTime,
-        timeEnd: item._scheduledEnd - firstItemStartTime,
+        time: item._scheduledStart - startPlaybackFromTime,
+        timeEnd: item._scheduledEnd - startPlaybackFromTime,
         keyId: key.index,
         noteIndex: n.noteIndex,
         sample: n.sample,

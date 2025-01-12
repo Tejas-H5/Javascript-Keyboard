@@ -40,6 +40,7 @@ import { div, getState, RenderGroup } from "src/utils/dom-utils";
 import { inverseLerp, lerp } from "src/utils/math-utils";
 import { compareMusicNotes, getNoteText, MusicNote } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
+import { cnColourVars, cnLayout } from "src/dom-root";
 
 export function getMusicNoteText(n: MusicNote): string {
     if (n.sample) {
@@ -90,7 +91,7 @@ type SequencerUIInternalState = {
 };
 
 function GridLine(rg: RenderGroup<{ text: string, divisor: number; }>) {
-    return div({ class: "flex-1" }, [
+    return div({ class: cnLayout.flex1 }, [
         rg.text(s => s.text),
     ]);
 }
@@ -265,12 +266,12 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
     }
 
     return div({
-        class: "flex-1 col",
+        class: cnLayout.flex1 + cnLayout.col,
         style: "padding: 10px",
     }, [
         rg.if(
             s => hasRangeSelection(s.sequencer),
-            rg => div({ class: "relative" }, [
+            rg => div({ class: cnLayout.relative }, [
                 rg.text(s => {
                     const [start, end] = getSelectionStartEndIndexes(s.sequencer);
                     if (start === -1 || end === -1) {
@@ -280,8 +281,8 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                 }),
             ]),
         ),
-        div({ class: "row", style: "gap: 20px" }, [
-            div({ class: "flex-1" }),
+        div({ class: cnLayout.row, style: "gap: 20px" }, [
+            div({ class: cnLayout.flex1 }),
             rg.c(BpmInput, (c, s) => {
                 c.render({
                     value: getBpm(s.sequencer._lastBpmChange),
@@ -294,10 +295,10 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                     onChange: handleDivisionChange,
                 })
             }),
-            div({ class: "flex-1" }),
+            div({ class: cnLayout.flex1 }),
         ]),
         div({
-            class: "relative flex-1 overflow-y-auto",
+            class: cnLayout.flex1 + cnLayout.relative + cnLayout.overflowYAuto,
         }, [
             rg.if(
                 s => hasRangeSelection(s.sequencer),
@@ -308,7 +309,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                     color: `rgba(0, 0, 255, 0.25)`,
                 }))
             ),
-            rg.list(div({ class: "contents" }), SequencerVerticalLine, (getNext, s) => {
+            rg.list(div({ class: cnLayout.contents }), SequencerVerticalLine, (getNext, s) => {
                 const sequencer = s.sequencer;
                 const startNonFloored = internalState.leftExtent;
                 const start = divisorSnap(startNonFloored, sequencer.cursorDivisor);
@@ -320,7 +321,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                     getNext().render({
                         internalState,
                         beats: x,
-                        color: "var(--bg2)",
+                        color: cnColourVars.bg2,
                         thickness: 1,
                     });
                 }
@@ -329,14 +330,14 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                 getNext().render({
                     internalState,
                     beats: getRangeSelectionStartBeats(sequencer),
-                    color: "var(--mg)",
+                    color: cnColourVars.mg,
                     thickness: 3,
                 });
 
                 getNext().render({
                     internalState,
                     beats: getRangeSelectionEndBeats(sequencer),
-                    color: "var(--mg)",
+                    color: cnColourVars.mg,
                     thickness: 3,
                 })
 
@@ -344,7 +345,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                 getNext().render({
                     internalState,
                     beats: lastCursorStartBeats,
-                    color: "var(--fg)",
+                    color: cnColourVars.fg,
                     thickness: 3,
                 });
 
@@ -359,7 +360,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                     getNext().render({
                         internalState,
                         beats,
-                        color: "var(--playback)",
+                        color: cnColourVars.playback,
                         thickness: 4,
                     });
                 }
@@ -367,8 +368,8 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
             }),
             () => {
                 const root = div({
-                    style: "border-top: 1px solid var(--fg); border-bottom: 1px solid var(--fg);",
-                    class: "col justify-content-center h-100",
+                    style: `border-top: 1px solid ${cnColourVars.fg}: 1px solid var(--fg);`,
+                    class: cnLayout.col + cnLayout.justifyContentCenter + cnLayout.h100,
                 });
                 return rg.list(root, SequencerNotesUI, (getNext, s) => {
                     getNext().render({
@@ -397,10 +398,10 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                 });
             }
         ]),
-        div({ class: "row justify-content-center" }, [
+        div({ class: cnLayout.row + cnLayout.justifyContentCenter }, [
             rg.text(s => timelinePosToString(s.sequencer.cursorStart, s.sequencer.cursorDivisor)),
         ]),
-        rg.list(div({ class: "row" }), GridLine, (getNext, s) => {
+        rg.list(div({ class: cnLayout.row }), GridLine, (getNext, s) => {
             for (let i = 0; i < NUM_EXTENT_DIVISIONS; i++) {
                 const gridLineAmount = i - NUM_EXTENT_DIVISIONS / 2;
                 // const timestamp = getTime(s.state._currentBpm, s.state.cursorDivisor, s.state.cursorStartBeats + gridLineAmount)
@@ -441,7 +442,7 @@ function SequencerRangeRect(rg: RenderGroup<{
         ) * 100;
     });
 
-    return div({ class: "absolute", style: "top: 0; bottom: 0;" }, [
+    return div({ class: cnLayout.absolute, style: "top: 0; bottom: 0;" }, [
         rg.style("left", () => leftAbsolutePercent + "%"),
         rg.style("right", () => rightAbsolutePercent + "%"),
         rg.style("backgroundColor", s => s.color),
@@ -467,7 +468,7 @@ function SequencerVerticalLine(rg: RenderGroup<{
     return rg.if(
         () => absolutePercent >= 0 && absolutePercent <= 100,
         rg => div({
-            class: "absolute",
+            class: cnLayout.absolute,
             style: "width: 3px; top: 0; bottom: 0;"
         }, [
             rg.style("width", s => s.thickness + "px"),
@@ -486,7 +487,7 @@ function SequencerNotesUI(rg: RenderGroup<{
 }>) {
     return rg.if(
         s => s.items.length > 0,
-        rg => div({ class: "relative", style: "padding: 3px 10px;" }, [
+        rg => div({ class: cnLayout.relative, style: "padding: 3px 10px;" }, [
             rg.text(s => s.text),
             rg.list(div(), SequencerThreadItemUI, (getNext, s) => {
                 for (let i = 0; i < s.items.length; i++) {
@@ -549,12 +550,12 @@ function SequencerThreadItemUI(rg: RenderGroup<{
     });
 
     return div({
-        class: "nowrap",
-        style: "position: absolute; overflow-x: clip; padding: 3px 10px; border: 1px solid var(--fg); box-sizing: border-box; top: 0;",
+        class: cnLayout.noWrap + cnLayout.absolute,
+        style: `overflow-x: clip; padding: 3px 10px; border: 1px solid ${cnColourVars.fg}; box-sizing: border-box; top: 0;`,
     }, [
         rg.style("left", () => leftPercent + "%"),
         rg.style("width", () => width + "%"),
-        rg.style("backgroundColor", () => isBeingPlayed ? "var(--playback)" : isUnderCursor ? "var(--bg2)" : "var(--bg)"),
+        rg.style("backgroundColor", () => isBeingPlayed ? cnColourVars.playback : isUnderCursor ? cnColourVars.bg2 : cnColourVars.bg),
         rg.text(() => text),
     ]);
 }
@@ -618,7 +619,7 @@ function DivisionInput(rg: RenderGroup<{
         throw new Error("Invalid val: " + val);
     }
 
-    return div({ class: "row justify-content-center" }, [
+    return div({ class: cnLayout.row + cnLayout.justifyContentCenter }, [
         rg.c(Button, (c, s) => c.render({
             text: "<",
             onClick() {
@@ -629,9 +630,9 @@ function DivisionInput(rg: RenderGroup<{
             text: "-",
             onClick: () => onChange(s.value - 1),
         })),
-        div({ class: "flex-1" }),
+        div({ class: cnLayout.flex1 }),
         rg.text(s => "1 / " + s.value),
-        div({ class: "flex-1" }),
+        div({ class: cnLayout.flex1 }),
         rg.c(Button, (c, s) => c.render({
             text: "+",
             onClick: () => onChange(s.value + 1),
@@ -650,7 +651,7 @@ function BpmInput(rg: RenderGroup<{
     value: number;
     onChange(val: number): void;
 }>) {
-    return div({ class: "row justify-content-center" }, [
+    return div({ class: cnLayout.row + cnLayout.justifyContentCenter }, [
         rg.c(Button, (c, s) => c.render({
             text: "<",
             onClick() {
@@ -663,9 +664,9 @@ function BpmInput(rg: RenderGroup<{
                 s.onChange(s.value - 1);
             }
         })),
-        div({ class: "flex-1" }),
+        div({ class: cnLayout.flex1 }),
         rg.text(s => s.value.toFixed(1) + ""),
-        div({ class: "flex-1" }),
+        div({ class: cnLayout.flex1 }),
         rg.c(Button, (c, s) => c.render({
             text: "+",
             onClick() {

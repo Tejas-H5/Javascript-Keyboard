@@ -62,6 +62,8 @@ export type SequencerState = {
     currentHoveredTimelineItemIdx: number;
 
     isPlaying: boolean;
+    isPaused: boolean;
+    pausedTime: number;
     startPlayingTime: number; // this is the time IRL we started playing, not the time along the timeline.seq
     startPlayingIdx: number;
     endPlayingIdx: number;
@@ -667,7 +669,7 @@ export function getLastMeasureBeats(sequencer: SequencerState, beats: number): n
 
     const idx = findLastIndexOf(timeline, item =>
         item.type === TIMELINE_ITEM_MEASURE
-        && lteBeats(getItemStartTime(item), beats)
+        && lteBeats(getItemStartBeats(item), beats)
     );
     if (idx === -1) {
         return 0;
@@ -713,6 +715,8 @@ export function newSequencerState(): SequencerState {
         cursorStart: 0,
         cursorDivisor: 4,
         isPlaying: false,
+        isPaused: false,
+        pausedTime: 0,
         startPlayingTime: 0,
         startPlayingIdx: 0,
         endPlayingIdx: 0,
@@ -735,9 +739,34 @@ export function newSequencerState(): SequencerState {
     return sequencer
 }
 
+export function syncPlayback(sequencer: SequencerState, dspTime: number, dspPaused: boolean) {
+    if (!sequencer.isPlaying) {
+        return;
+    }
+
+    sequencer.isPaused = dspPaused;
+    if (dspPaused) {
+        sequencer.pausedTime = dspTime;
+        // the other way:
+        // if (!sequencer.isPaused) {
+        //     sequencer.pausedTime = Date.now() - sequencer.startPlayingTime;
+        // }
+    } else {
+        // resync the current time with the DSP time. 
+        // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
+        const currentEstimatedScheduledTime = getCurrentPlayingTimeRelative(sequencer);
+        const difference = dspTime - currentEstimatedScheduledTime;
+        sequencer.startPlayingTime -= difference;
+    }
+}
+
 export function getCurrentPlayingTimeRelative(state: SequencerState): number {
     if (!state.isPlaying) {
         return -10;
+    }
+
+    if (state.isPaused) {
+        return state.pausedTime;
     }
 
     return Date.now() - state.startPlayingTime;

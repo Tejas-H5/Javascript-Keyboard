@@ -1,4 +1,9 @@
-import { div, el, RenderGroup } from "src/utils/dom-utils";
+import { div, el, RenderGroup, newStyleGenerator } from "src/utils/dom-utils";
+
+const sg = newStyleGenerator();
+const cnSlider = sg.cn("slider", [
+    " {}"
+]);
 
 export function Slider(rg: RenderGroup<{
     label: string;
@@ -8,9 +13,9 @@ export function Slider(rg: RenderGroup<{
     step: number;
     onChange: (value: number) => void;
 }>) {
-    return div({ class: "row" }, [
+    return div({ style: "display: flex; flex-direction: row;" }, [
         div({}, rg.text((s) => s.label)),
-        el<HTMLInputElement>("INPUT", { type: "range", class: "slider", }, [
+        el<HTMLInputElement>("INPUT", { type: "range", class: cnSlider, }, [
             rg.attr("min", (s) => "" + s.min),
             rg.attr("max", (s) => "" + s.max),
             rg.attr("step", (s) => "" + s.step),

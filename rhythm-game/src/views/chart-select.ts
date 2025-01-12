@@ -2,6 +2,7 @@ import { Button } from "src/components/button";
 import { loadChart } from "src/state/loading-saving-charts";
 import { div, getState, RenderGroup } from "src/utils/dom-utils";
 import { GlobalContext, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "./app";
+import { cnLayout } from "src/dom-root";
 
 export function ChartSelect(rg: RenderGroup<GlobalContext>) {
     function onClickBack() {
@@ -11,7 +12,7 @@ export function ChartSelect(rg: RenderGroup<GlobalContext>) {
 
     function onClickEdit() {
         const s = getState(rg);
-        setViewEditChart(s, s.ui.loadSave.selectedChartName);
+        setViewEditChart(s);
     }
 
     function onClickPlay() {
@@ -19,15 +20,15 @@ export function ChartSelect(rg: RenderGroup<GlobalContext>) {
         setViewPlayCurrentChart(s);
     }
 
-    return div({ class: "flex-1 col" }, [
-        div({ class: "flex-1 row" }, [
-            div({ class: "flex-1 col" }, [
+    return div({ class: cnLayout.flex1 + cnLayout.col }, [
+        div({ class: cnLayout.flex1 + cnLayout.row }, [
+            div({ class: cnLayout.flex1 + cnLayout.col }, [
                 div({ style: "font-size: 64px;" }, [
                     "Charts"
                 ])
             ]),
-            div({ class: "col", style: "width: 35%" }, [
-                rg.list(div({ class: "contents" }), ChartSelectButton, (getNext, s) => {
+            div({ class: cnLayout.col, style: "width: 35%" }, [
+                rg.list(div({ class: cnLayout.contents }), ChartSelectButton, (getNext, s) => {
                     for (const chartName in s.savedState.allSavedSongs) {
                         const chartJson = s.savedState.allSavedSongs[chartName];
                         getNext().render({ ctx: s, chartName, chartJson});
@@ -40,7 +41,7 @@ export function ChartSelect(rg: RenderGroup<GlobalContext>) {
                 )
             ]),
         ]),
-        div({ class: "row", style: "gap: 5px" }, [
+        div({ class: cnLayout.row, style: "gap: 5px" }, [
             rg.c(Button, c => c.render({
                 text: "Back",
                 onClick: onClickBack

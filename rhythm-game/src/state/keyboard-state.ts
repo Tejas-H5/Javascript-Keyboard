@@ -1,4 +1,5 @@
 import { Sample } from "src/samples/all-samples";
+import { newColorFromHsv } from "src/utils/colour";
 import { getNoteText, MusicNote } from "src/utils/music-theory-utils";
 
 export type KeyboardState = {
@@ -15,6 +16,11 @@ export type InstrumentKey = {
     musicNote: MusicNote;
     isLeftmost: boolean;
     isRightmost: boolean;
+    cssColours: {
+        light: string;
+        normal: string;
+        dark: string;
+    };
 
     // this is the 'id'
     index: number;
@@ -45,6 +51,11 @@ function newKey(k: string): InstrumentKey {
         remainingDuration: 0,
         isLeftmost: false,
         isRightmost: false,
+        cssColours: {
+            light: "",
+            normal: "",
+            dark: "",
+        },
     };
 }
 
@@ -116,9 +127,14 @@ export function newKeyboardState(): KeyboardState {
             }
         }
 
-        // re-index the things
         for (let i = 0; i < flatKeys.length; i++) {
+            // re-index the things
             flatKeys[i].index = i;
+
+            // colors!
+            flatKeys[i].cssColours.normal = "" + newColorFromHsv(((2 * i + 1) / flatKeys.length) % 1, 1, 0.5);
+            flatKeys[i].cssColours.light = "" + newColorFromHsv(((2 * i + 1) / flatKeys.length) % 1, 1, 0.75);
+            flatKeys[i].cssColours.dark = "" + newColorFromHsv(((2 * i + 1) / flatKeys.length) % 1, 1, 0.25);
         }
     }
 

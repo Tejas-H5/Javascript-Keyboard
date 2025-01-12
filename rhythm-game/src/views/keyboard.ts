@@ -17,6 +17,7 @@ import {
 } from "src/state/sequencer-state";
 import { InstrumentKey } from "src/state/keyboard-state";
 import { GlobalContext } from "./app";
+import { cnColourVars, cnLayout } from "src/dom-root";
 
 
 export function Keyboard(rg: RenderGroup<GlobalContext>) {
@@ -41,7 +42,7 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
             }>) {
                 rg.skipErrorBoundary = true;
 
-                const keyMarkedColor = `var(--playback)`;
+                const keyMarkedColor = cnColourVars.playback;
 
                 let t = 0;
                 let scale = 0;
@@ -52,21 +53,21 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
 
                 return div({}, [
                     div({
-                        class: "absolute",
-                        style: `top: 0; left: 0; bottom: 0; right: 0; background-color: ${keyMarkedColor};`
+                        class: cnLayout.absolute,
+                        style: `background-color: ${keyMarkedColor};`
                     }, [
                         rg.style("opacity", () => "" + t),
                     ]),
                     // This osu! style border kinda whack ngl.
-                    // div({
-                    //     class: "absolute",
-                    //     style: "border: 5px solid var(--fg); opacity: 1;"
-                    // }, [
-                    //     rg.style("top", () => -scale + "px"),
-                    //     rg.style("left", () => -scale + "px"),
-                    //     rg.style("bottom", () => -scale + "px"),
-                    //     rg.style("right", () => -scale + "px"),
-                    // ]),
+                    div({
+                        class: cnLayout.absolute,
+                        style: `border: 5px solid ${cnColourVars.fg}; opacity: 1;`
+                    }, [
+                        rg.style("top", () => -scale + "px"),
+                        rg.style("left", () => -scale + "px"),
+                        rg.style("bottom", () => -scale + "px"),
+                        rg.style("right", () => -scale + "px"),
+                    ]),
                 ]);
             }
 
@@ -107,14 +108,14 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
 
 
             return span({
-                class: " relative",
-                style: "font-family: monospace; outline: 1px solid var(--foreground);" +
+                class: cnLayout.relative,
+                style: `font-family: monospace; outline: 1px solid ${cnColourVars.fg};` +
                     "display: inline-block; text-align: center; user-select: none;",
             }, [
                 rg.style("width", s => s.keySize + "px"),
                 rg.style("height", s => s.keySize + "px"),
                 rg.style("fontSize", s => (s.keySize / 2) + "px"),
-                rg.style("color", () => signal > 0.1 ? `var(--bg)` : `var(--fg)`),
+                rg.style("color", () => signal > 0.1 ? cnColourVars.bg : cnColourVars.fg),
                 rg.style("transform", () => `translate(${pressEffect}px, ${pressEffect}px)`),
                 rg.on("mousedown", handlePress),
                 rg.on("mouseup", handleRelease),
@@ -124,7 +125,7 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
                 div({
                     style: "position: absolute; top:0px; left: 0; right:0; bottom: 0;"
                 }, [
-                    rg.style("backgroundColor", (s) => hasNote ? `var(--mg)` : "#0000"),
+                    rg.style("backgroundColor", (s) => hasNote ? cnColourVars.mg : cnColourVars.bg),
                 ]),
                 // letter bg
                 div({
@@ -182,11 +183,11 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
             ]);
         }
 
-        return div({ class: "row", style: "gap: 5px;" }, [
+        return div({ class: cnLayout.row, style: "gap: 5px;" }, [
             div({}, [
                 rg.style("width", s => (s.startOffset * s.keySize) + "px"),
             ]),
-            rg.list(div({ class: "row" }), KeyboardKey, (getNext, s) => {
+            rg.list(div({ class: cnLayout.row }), KeyboardKey, (getNext, s) => {
                 for (let i = 0; i < s.keys.length; i++) {
                     const key = getNext();
                     key.render({ 
@@ -199,7 +200,7 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
         ]);
     }
 
-    const root = div({ class: "" });
+    const root = div();
 
     return rg.list(root, KeyboardRow, (getNext, s) => {
         const offsets = [

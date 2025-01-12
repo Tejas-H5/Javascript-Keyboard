@@ -1,6 +1,5 @@
 import { getCurrentOscillatorGain, getCurrentOscillatorOwner } from "src/dsp/dsp-loop-interface";
 import {
-    getKeyForNote,
     InstrumentKey,
     KeyboardState
 } from "src/state/keyboard-state";
@@ -8,7 +7,6 @@ import {
     CommandItem,
     getItemLengthBeats,
     getItemStartBeats,
-    getNonOverlappingThreadsSubset,
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
     NoteItem,
@@ -21,18 +19,11 @@ import {
 } from "src/utils/dom-utils";
 import { inverseLerp } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
-import { GlobalContext } from "./app";
+import { GlobalContext, setViewEditChart } from "./app";
+import { cnColourVars, cnLayout } from "src/dom-root";
 
 const GAMEPLAY_LOOKAHEAD_BEATS = 2;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
-const PADDING = 10;
-
-type GameArgs = {
-    ctx: GlobalContext;
-    thread: NoteItem[];
-    start: number;
-}
-
 
 export type KeysMapEntry = { 
     instrumentKey: InstrumentKey;
@@ -73,16 +64,19 @@ export function Gameplay(rg: RenderGroup<GlobalContext>) {
     const commandsList: CommandItem[] = [];
 
     rg.preRenderFn(s => {
+        const playView = s.ui.playView;
+        if (!s.sequencer.isPlaying) {
+            if (playView.isTesting) {
+                setViewEditChart(s);
+            } else {
+                throw new Error("TODO: implement the chart finish screen!");
+            }
+
+            return;
+        }
+
         start = getSequencerPlaybackOrEditingCursor(s.sequencer);
 
-        // getNonOverlappingThreadsSubset(
-        //     s.sequencer._nonOverlappingItems,
-        //     start,
-        //     start + GAMEPLAY_LOOKAHEAD_BEATS,
-        //     threads
-        // );
-
-        
         getTimelineMusicNoteThreads(
             s.sequencer.timeline,
             start,
@@ -97,22 +91,11 @@ export function Gameplay(rg: RenderGroup<GlobalContext>) {
     });
 
     return div({
-        class: "flex-1 col align-items-stretch justify-content-center overflow-hidden",
+        class: cnLayout.flex1 + cnLayout.col + cnLayout.alignItemsStretch + 
+            cnLayout.justifyContentCenter + cnLayout.overflowHidden
     }, [
-        div({ class: "flex-1 row align-items-stretch justify-content-center overflow-hidden" }, [
-            rg.list(div({ class: "contents" }), VerticalThread, (getNext, s) => {
-                // for (const thread of notesMap.values()) {
-                //     if (thread.items.length === 0) {
-                //         continue;
-                //     }
-                //
-                //     getNext().render({
-                //         ctx: s,
-                //         thread: thread.items,
-                //         start
-                //     });
-                // }
-
+        div({ class: cnLayout.flex1 + cnLayout.row + cnLayout.alignItemsStretch + cnLayout.justifyContentCenter + cnLayout.overflowHidden }, [
+            rg.list(div({ class: cnLayout.contents }), VerticalThread, (getNext, s) => {
                 let i = 0;
                 for (const thread of keysMap.values()) {
                     getNext().render({
@@ -121,44 +104,9 @@ export function Gameplay(rg: RenderGroup<GlobalContext>) {
                         start,
                         instrumentKey: thread.instrumentKey,
                     })
-
-                    // i++;
-                    // if (i >= midpoint) {
-                    //     break;
-                    // }
                 }
             }),
         ]),
-        /* div({ class: "flex-1 row align-items-stretch justify-content-center overflow-hidden" }, [
-            rg.list(div({ class: "contents" }), VerticalThread, (getNext, s) => {
-                // for (const thread of notesMap.values()) {
-                //     if (thread.items.length === 0) {
-                //         continue;
-                //     }
-                //
-                //     getNext().render({
-                //         ctx: s,
-                //         thread: thread.items,
-                //         start
-                //     });
-                // }
-
-                let i = 0;
-                for (const thread of keysMap.values()) {
-                    if (i < midpoint) {
-                        i++;
-                        continue;
-                    }
-
-                    getNext().render({
-                        ctx: s,
-                        thread: thread._items,
-                        start,
-                        instrumentKey: thread.instrumentKey,
-                    })
-                }
-            }),
-        ]) */
     ]);
 }
 
@@ -168,214 +116,133 @@ function VerticalThread(rg: RenderGroup<{
     start: number;
     instrumentKey: InstrumentKey;
 }>) {
-    function Bar(rg: RenderGroup<{
-        ctx: GlobalContext;
-        item: NoteItem;
-        start: number;
-    }>) {
-        let heightPercent = 0;
-        let bottomPercent = 0;
-
-        rg.preRenderFn(s => {
-            const start = s.start;
-            const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
-            const itemStart = getItemStartBeats(s.item);
-            const itemLength = getItemLengthBeats(s.item);
-
-            bottomPercent = 100 * inverseLerp(start, end, itemStart);
-            heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
-
-            // prevent the bar from going past the midpoint line
-            if (bottomPercent < 0) {
-                heightPercent += bottomPercent;
-                bottomPercent = 0;
-            }
-        });
-
-        return div({
-            style: "position: absolute; outline: 1px solid var(--fg); left: 0; right: 0; z-index: 10;" +
-                "color: transparent; background-color: var(--fg); transition: background-color 0.2s;"
-        }, [
-            rg.style("bottom", () => bottomPercent + "%"),
-            rg.style("height", () => heightPercent + "%"),
-        ]);
-    }
-
     let signal = 0;
     let owner = 0;
+    let backgroundColor = "";
 
     rg.preRenderFn(s => {
         owner = getCurrentOscillatorOwner(s.instrumentKey.index) 
         signal = getCurrentOscillatorGain(s.instrumentKey.index) 
+
+        backgroundColor = cnColourVars.bg;
+        const hasPress = (owner === 0 && signal > 0.001);
+        if (hasPress) {
+            if (s.thread.length > 0) {
+                // TODO: we actually have a very precise signal that we can use here...
+                backgroundColor = cnColourVars.fg2;
+            } else {
+                // you pressed an irrelevant row...
+                backgroundColor = "#ff0000";
+            }
+        } else {
+            if (s.thread.length > 0) {
+                backgroundColor = cnColourVars.bg2;
+            } else {
+                backgroundColor = cnColourVars.bg;
+            }
+        }
     });
 
     function createLetter() {
         return span({ style: "transition: color 0.2s; height: 2ch;" }, [
-            rg.style("color", s => s.thread.length === 0 ? "var(--bg2)" : "var(--fg)"),
+            rg.style("color", s => s.thread.length === 0 ? cnColourVars.bg2 : cnColourVars.fg),
             rg.text((s) => s.instrumentKey ? s.instrumentKey.text : "?"),
         ]);
     }
 
-    return div({ class: "row align-items-stretch justify-content-start" }, [
+    return div({ class: cnLayout.row + cnLayout.alignItemsStretch + cnLayout.justifyContentStart }, [
         rg.if(s => s.instrumentKey.isLeftmost, rg =>
-            div({ style: "width: 2px; background: var(--fg)" })
+            div({ style: `width: 2px; background: ${cnColourVars.fg}` })
         ),
         div({ 
-            class: "col align-items-center justify-content-center", 
+            class: cnLayout.col + cnLayout.alignItemsCenter + cnLayout.justifyContentCenter,
             style: "width: 40px; font-size: 64px;" 
         }, [
             createLetter(),
-            div({ style: "width: 100%; height: 2px; background-color: var(--fg);" }),
-            div({ class: "flex-1 relative w-100 overflow-hidden", style: "transition: background-color 0.2s;" }, [
-                rg.style("backgroundColor", s =>
-                    (owner === 0 && signal > 0.001) ? `rgba(255, 0, 0, ${signal})` :
-                        s.thread.length === 0 ? "var(--bg)" :
-                            "var(--bg2)"
-                ),
-                rg.list(div({ class: "contents" }), Bar, (getNext, s) => {
+            div({ style: `width: 100%; height: 2px; background-color: ${cnColourVars.fg};` }),
+            div({ 
+                class: cnLayout.flex1 + cnLayout.relative + cnLayout.w100 + cnLayout.overflowHidden, 
+                style: "transition: background-color 0.2s;" 
+            }, [
+                rg.style("backgroundColor", s => backgroundColor),
+                rg.list(div({ class: cnLayout.contents }), Bar, (getNext, s) => {
                     for (const item of s.thread) {
                         getNext().render({
                             ctx: s.ctx,
+                            instrumentKey: s.instrumentKey,
                             item, 
                             start: s.start,
                         });
                     }
                 }),
             ]),
-            div({ style: "width: 100%; height: 2px; background-color: var(--fg);" }),
+            div({ style: `width: 100%; height: 2px; background-color: ${cnColourVars.fg};` }),
             createLetter(),
         ]),
         rg.if(s => s.instrumentKey.isRightmost, rg =>
-            div({ style: "width: 2px; background: var(--fg)" })
+            div({ style: `width: 2px; background: ${cnColourVars.fg}` })
         ),
     ]);
 }
 
+function Bar(rg: RenderGroup<{
+    ctx: GlobalContext;
+    instrumentKey: InstrumentKey;
+    item: NoteItem;
+    start: number;
+}>) {
+    let heightPercent = 0;
+    let bottomPercent = 0;
 
-export function GameplayV1(rg: RenderGroup<GlobalContext>) {
-    const threads: NoteItem[][] = [];
-    let start = 0;
+    let animation = 0;
+    let color = "";
 
     rg.preRenderFn(s => {
-        start = getSequencerPlaybackOrEditingCursor(s.sequencer);
-        getNonOverlappingThreadsSubset(
-            s.sequencer._nonOverlappingItems,
-            start, 
-            start + GAMEPLAY_LOADAHEAD_BEATS,
-            threads
-        );
-    });
+        const start = s.start;
+        const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
+        const itemStart = getItemStartBeats(s.item);
+        const itemLength = getItemLengthBeats(s.item);
 
-    return div({ class: "flex-1 col align-items-stretch justify-contents-center overflow-hidden" }, [
-        div({ class: "flex-1" }),
-        rg.list(div({ class: "contents" }), Thread, (getNext, s) => {
-            for (const thread of threads) {
-                if (thread.length === 0) {
-                    continue;
-                }
-                getNext().render({ ctx: s, thread, start });
-            }
-        }),
-        rg.else(rg => div({ class: "contents" }, "Break")),
-        div({ class: "flex-1" }),
-    ])
-}
+        bottomPercent = 100 * inverseLerp(start, end, itemStart);
+        heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
 
-
-// 'Thread' might not be the right name for this vertical bar
-function Thread(rg: RenderGroup<GameArgs>) {
-    return div({ class: "row justify-content-center" }, [
-        rg.c(Bars, (c, s) => {
-            c.render(s);
-        }),
-        div({ style: "width: 3px; top: 0; bottom: 0; background-color: var(--fg);" }),
-        rg.c(Letters, (c, s) => {
-            c.render(s);
-        }),
-    ])
-}
-
-function Letters(rg: RenderGroup<GameArgs>) {
-    function Letter(rg: RenderGroup<{
-        ctx: GlobalContext;
-        item: NoteItem;
-        flipped: boolean;
-    }>) {
-        let key: InstrumentKey | undefined;
-
-        rg.preRenderFn(s => {
-            key = getKeyForNote(s.ctx.keyboard, s.item.note);
-        });
-
-        return div({}, [
-            rg.text(() => key ? key.text : "?"),
-            rg.style("padding", () => PADDING + "px"),
-            rg.style("justifyContent", s => s.flipped ? "left" : "right"),
-        ]);
-    }
-
-    return rg.list(div({ class: "row flex-1" }), Letter, (getNext, s) => {
-        // the letters closest to the center-line need to be the next letters  to press, and since this
-        // component is positions on the left, it's going backwards.
-        for (let i = s.thread.length - 1; i >= 0; i--) {
-            const item = s.thread[i];
-            getNext().render({ 
-                ctx: s.ctx, 
-                item,
-                flipped: true,
-            });
-        }
-    });
-}
-
-function Bars(rg: RenderGroup<GameArgs>) {
-    function Bar(rg: RenderGroup<{
-        ctx: GlobalContext;
-        item: NoteItem;
-        start: number;
-        flipped: boolean;
-    }>) {
-        let leftPercent = 0;
-        let widthPercent = 0;
-
-        rg.preRenderFn(s => {
-            const start = s.start;
-            const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
-            const itemStart = getItemStartBeats(s.item);
-            const itemLength = getItemLengthBeats(s.item);
-
-            leftPercent = 100 * inverseLerp(start, end, itemStart);
-            widthPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
-
+        if (bottomPercent <= 0) {
             // prevent the bar from going past the midpoint line
-            if (leftPercent < 0) {
-                widthPercent += leftPercent;
-                leftPercent = 0;
-            }
-        });
+            heightPercent += bottomPercent;
+            bottomPercent = 0;
 
-        return div({
-            style: "color: transparent; position: absolute; outline: 1px solid var(--fg); top: 0px; bottom: 0px;"
-        }, [
-            rg.style("left", s => s.flipped ? "" : (leftPercent + "%")),
-            rg.style("right", s => !s.flipped ? "" : (leftPercent + "%")),
-            rg.style("width", () => widthPercent + "%"),
-        ]);
-    }
-
-    const root = div({ class: "flex-1 row justify-content-start relative", style: "height: 2ch; padding: 10px" })
-    return rg.list(root, Bar, (getNext, s) => {
-        // the letters closest to the center-line need to be the next letters  to press, and since this
-        // component is positions on the left, it's going backwards.
-        for (let i = s.thread.length - 1; i >= 0; i--) {
-            const item = s.thread[i];
-            getNext().render({ 
-                ctx: s.ctx, 
-                item, 
-                start: s.start ,
-                flipped: true,
-            });
         }
+
+        if (bottomPercent < 0.1) {
+            // give user an indication that they should care about the fact that this bar has reached the bottm.
+            // hopefully they'll see the keyboard letter just below it, and try pressing it.
+            animation += s.ctx.dt;
+            if (animation > 1) {
+                animation = 0;
+            }
+        } else {
+            animation = 1;
+        }
+
+        color = animation > 0.5 ? "#FFFF00" : cnColourVars.fg;
+        // color = animation < 0.5 ? "#FFFF00" : s.instrumentKey.cssColours.normal;
     });
+
+    return div({
+        style: "position: absolute; left: 0; right: 0; z-index: 10;" +
+            "color: transparent;"
+    }, [
+        rg.style("bottom", () => bottomPercent + "%"),
+        rg.style("height", () => heightPercent + "%"),
+        div({ style: `width: 100%; height: 100%; position: relative; background-color: ${cnColourVars.fg}` }, [
+            div({
+                style: "position: absolute; left: 2px; right: 2px; top: 2px; bottom: 2px;" +
+                    "transition: background-color 0.2s;"
+            }, [
+                rg.style("backgroundColor", () => color),
+            ])
+        ])
+    ]);
 }
+
 

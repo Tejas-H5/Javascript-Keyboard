@@ -32,7 +32,7 @@ export type UIState = {
 
 export function newUiState(): UIState {
     return {
-        currentView: "play-chart",
+        currentView: "startup",
 
         chartSelect: {
             loadedCharts: [],

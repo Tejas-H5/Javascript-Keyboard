@@ -6,28 +6,21 @@ import {
 import {
     appendChild,
     Component,
-    newComponent,
-    newInsertable
+    newComponent
 } from "src/utils/dom-utils";
+import { domRoot } from "./dom-root";
 import "./main.css";
 import { load, loadChart } from "./state/loading-saving-charts";
 import { stopPlaying } from "./state/playing-pausing";
-import {
-    getCurrentPlayingTimeRelative
-} from "./state/sequencer-state";
-import { App, GlobalContext, newGlobalContext } from "./views/app";
+import { syncPlayback } from "./state/sequencer-state";
+import { App, GlobalContext, newGlobalContext, setViewPlayCurrentChart } from "./views/app";
 
-// all util styles
-
-const root = newInsertable(document.body);
 let app: Component<GlobalContext, any> | undefined;
-
 function rerenderApp() {
     app?.render(globalContext);
 }
 const globalContext = newGlobalContext(rerenderApp);
 load(globalContext);
-
 loadChart(globalContext, "test song");
 
 // initialize the app.
@@ -43,19 +36,16 @@ loadChart(globalContext, "test song");
                 if (dspInfo.scheduledPlaybackTime === -1) {
                     stopPlaying(globalContext);
                 } else {
-                    // resync the current time with the DSP time. 
-                    // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
-                    const currentEstimatedScheduledTime = getCurrentPlayingTimeRelative(sequencer);
-                    const difference = dspInfo.scheduledPlaybackTime - currentEstimatedScheduledTime;
-                    sequencer.startPlayingTime -= difference;
+                    syncPlayback(sequencer, dspInfo.scheduledPlaybackTime, dspInfo.isPaused);
                 }
-            }
+            } 
         }
     });
 
     // Our code only works after the audio context has loaded.
     app = newComponent(App, globalContext);
-    appendChild(root, app);
+    appendChild(domRoot, app);
+    setViewPlayCurrentChart(globalContext);
 
     function onRender() {
         if (!app) {

@@ -4,6 +4,17 @@ export type Insertable<T extends ValidElement = HTMLElement> = {
     _isHidden: boolean;
 };
 
+export function initializeDomUtils(root: Insertable) {
+    // Insert some CSS styles that this framework uses for error handling and debugging.
+    newStyleGenerator(root.el).s(`
+.catastrophic---error > * { display: none !important; }
+.catastrophic---error::before {
+    content: "An error occured when updating this content. You've found a bug!";
+}
+.debug { border: 1px solid red; }
+`   );
+}
+
 export function newInsertable<T extends ValidElement>(el: T): Insertable<T> {
     return { el, _isHidden: false };
 }
@@ -1122,22 +1133,13 @@ export function scrollIntoView(
     scrollParent.scrollTop = scrollToElOffsetTop - scrollOffset + elementHeightOffset;
 }
 
-export function setCssVars(vars: Record<string, string>, cssRoot?: HTMLElement) {
-    if (!cssRoot) {
-        cssRoot = document.querySelector(":root") as HTMLElement;
-    }
-
-    for (const k in vars) {
-        cssRoot.style.setProperty(k, vars[k]);
-    }
-};
-
 let styleGeneratorId = 0;
+let allClassNamesWeMade = new Set<string>();
 /**
  * NOTE: this should always be called at a global scope on a *per-module* basis, and never on a per-component basis.
  * Otherwise you'll just have a tonne of duplicate styles lying around in the DOM. 
  */
-export function newStyleGenerator(appendUnder? : Element) {
+export function newStyleGenerator(appendUnder? : ValidElement) {
     if (!appendUnder) {
         // Sometimes you will need to append styles under something that isn't the body...
         appendUnder = document.body;
@@ -1149,12 +1151,30 @@ export function newStyleGenerator(appendUnder? : Element) {
 
     styleGeneratorId++;
 
+    const varFns = new Map<string, (() => string)>();
+
     return {
-        // css class names can't start with numbers, but uuids occasionally do. hence "s".
-        // The "-" is very important for preventing name collisions.
-        prefix: "s" + styleGeneratorId + "-",
-        makeClass(className: string, styles: string[]): string {
-            const name = this.prefix + className;
+        // makes a new style. for when you can't make a class.
+        s(string: string) {
+            root.el.appendChild(
+                document.createTextNode("\n\n" + string + "\n\n")
+            );
+        },
+        cssVar(name: string, fn: () => string) {
+            varFns.set(name, fn);
+            return "var(--" + name + ")";
+        },
+        updateVars() {
+            for (const [cssVar, fn] of varFns) {
+                appendUnder.style.setProperty("--" + cssVar, fn());
+            }
+        },
+        // makes a new class, it's variants, and returns the class name
+        cn(className: string, styles: string[] | string): string {
+            let name = className;
+            while (allClassNamesWeMade.has(name)) {
+                name += "-1";
+            }
 
             for (const style of styles) {
                 root.el.appendChild(
@@ -1162,7 +1182,8 @@ export function newStyleGenerator(appendUnder? : Element) {
                 );
             }
 
-            return name;
+            // allow joining class names with +
+            return name + " ";
         }
     };
 }
