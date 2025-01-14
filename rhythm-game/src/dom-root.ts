@@ -5,7 +5,7 @@ export const domRoot = newInsertable(document.body);
 initializeDomUtils(domRoot);
 const styles = initStyles(domRoot);
 
-export const colours = styles.colours;
+export const cnColourLiterals = styles.colours;
 export const cnColourVars = styles.colourVars;
 export const cnSizeVars = styles.sizeVars;
 export const cnStyle = styles.cnStyle;

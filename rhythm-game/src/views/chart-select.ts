@@ -35,7 +35,7 @@ export function ChartSelect(rg: RenderGroup<GlobalContext>) {
                     }
                 }),
                 rg.else(
-                    rg => div({}, [
+                    rg => rg && div({}, [
                         "No songs yet! You'll need to make some yourself"
                     ])
                 )

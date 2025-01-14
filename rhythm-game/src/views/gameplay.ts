@@ -19,8 +19,9 @@ import {
 } from "src/utils/dom-utils";
 import { inverseLerp } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
-import { GlobalContext, setViewEditChart } from "./app";
-import { cnColourVars, cnLayout } from "src/dom-root";
+import { GlobalContext } from "./app";
+import { cnColourLiterals, cnColourVars, cnLayout } from "src/dom-root";
+import { lerpColor, newColor } from "src/utils/colour";
 
 const GAMEPLAY_LOOKAHEAD_BEATS = 2;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
@@ -64,17 +65,6 @@ export function Gameplay(rg: RenderGroup<GlobalContext>) {
     const commandsList: CommandItem[] = [];
 
     rg.preRenderFn(s => {
-        const playView = s.ui.playView;
-        if (!s.sequencer.isPlaying) {
-            if (playView.isTesting) {
-                setViewEditChart(s);
-            } else {
-                throw new Error("TODO: implement the chart finish screen!");
-            }
-
-            return;
-        }
-
         start = getSequencerPlaybackOrEditingCursor(s.sequencer);
 
         getTimelineMusicNoteThreads(
@@ -96,7 +86,6 @@ export function Gameplay(rg: RenderGroup<GlobalContext>) {
     }, [
         div({ class: cnLayout.flex1 + cnLayout.row + cnLayout.alignItemsStretch + cnLayout.justifyContentCenter + cnLayout.overflowHidden }, [
             rg.list(div({ class: cnLayout.contents }), VerticalThread, (getNext, s) => {
-                let i = 0;
                 for (const thread of keysMap.values()) {
                     getNext().render({
                         ctx: s,
@@ -120,27 +109,21 @@ function VerticalThread(rg: RenderGroup<{
     let owner = 0;
     let backgroundColor = "";
 
+    const currentBgColor = newColor(0, 0, 0, 1);
+
+
     rg.preRenderFn(s => {
         owner = getCurrentOscillatorOwner(s.instrumentKey.index) 
         signal = getCurrentOscillatorGain(s.instrumentKey.index) 
 
         backgroundColor = cnColourVars.bg;
         const hasPress = (owner === 0 && signal > 0.001);
-        if (hasPress) {
-            if (s.thread.length > 0) {
-                // TODO: we actually have a very precise signal that we can use here...
-                backgroundColor = cnColourVars.fg2;
-            } else {
-                // you pressed an irrelevant row...
-                backgroundColor = "#ff0000";
-            }
-        } else {
-            if (s.thread.length > 0) {
-                backgroundColor = cnColourVars.bg2;
-            } else {
-                backgroundColor = cnColourVars.bg;
-            }
-        }
+
+        const wantedBgColor = s.thread.length > 0 ? cnColourLiterals.bg2 : cnColourLiterals.bg;
+        const wantedFgColor = s.thread.length > 0 ? cnColourLiterals.fg2 : cnColourLiterals.error;
+
+        lerpColor(wantedBgColor, wantedFgColor, hasPress ? signal : 0, currentBgColor);
+        backgroundColor = currentBgColor.toCssString();
     });
 
     function createLetter() {
@@ -151,7 +134,7 @@ function VerticalThread(rg: RenderGroup<{
     }
 
     return div({ class: cnLayout.row + cnLayout.alignItemsStretch + cnLayout.justifyContentStart }, [
-        rg.if(s => s.instrumentKey.isLeftmost, rg =>
+        rg.if(s => s.instrumentKey.isLeftmost, rg => rg &&
             div({ style: `width: 2px; background: ${cnColourVars.fg}` })
         ),
         div({ 
@@ -164,7 +147,7 @@ function VerticalThread(rg: RenderGroup<{
                 class: cnLayout.flex1 + cnLayout.relative + cnLayout.w100 + cnLayout.overflowHidden, 
                 style: "transition: background-color 0.2s;" 
             }, [
-                rg.style("backgroundColor", s => backgroundColor),
+                rg.style("backgroundColor", () => backgroundColor),
                 rg.list(div({ class: cnLayout.contents }), Bar, (getNext, s) => {
                     for (const item of s.thread) {
                         getNext().render({
@@ -179,7 +162,7 @@ function VerticalThread(rg: RenderGroup<{
             div({ style: `width: 100%; height: 2px; background-color: ${cnColourVars.fg};` }),
             createLetter(),
         ]),
-        rg.if(s => s.instrumentKey.isRightmost, rg =>
+        rg.if(s => s.instrumentKey.isRightmost, rg => rg &&
             div({ style: `width: 2px; background: ${cnColourVars.fg}` })
         ),
     ]);
@@ -221,7 +204,7 @@ function Bar(rg: RenderGroup<{
                 animation = 0;
             }
         } else {
-            animation = 1;
+            animation = 0;
         }
 
         color = animation > 0.5 ? "#FFFF00" : cnColourVars.fg;

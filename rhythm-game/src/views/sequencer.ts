@@ -403,7 +403,6 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
         ]),
         rg.list(div({ class: cnLayout.row }), GridLine, (getNext, s) => {
             for (let i = 0; i < NUM_EXTENT_DIVISIONS; i++) {
-                const gridLineAmount = i - NUM_EXTENT_DIVISIONS / 2;
                 // const timestamp = getTime(s.state._currentBpm, s.state.cursorDivisor, s.state.cursorStartBeats + gridLineAmount)
                 getNext().render({
                     // text: timestamp + "ms"

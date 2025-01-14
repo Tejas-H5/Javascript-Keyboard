@@ -76,7 +76,9 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
             div({ class: cnLayout.col + cnLayout.flex1 }, [
                 div({ class: cnLayout.row + cnLayout.gap5 }, [
                     div({ class: cnLayout.flex1 }),
-                    span({ class: cnStyle.b }, "Sequencer"),
+                    span({ class: cnStyle.b }, [
+                        "Sequencer"
+                    ]),
 
                     // TODO: put this in a better place
                     rg.if(

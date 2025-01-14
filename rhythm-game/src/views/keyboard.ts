@@ -125,7 +125,7 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
                 div({
                     style: "position: absolute; top:0px; left: 0; right:0; bottom: 0;"
                 }, [
-                    rg.style("backgroundColor", (s) => hasNote ? cnColourVars.mg : cnColourVars.bg),
+                    rg.style("backgroundColor", () => hasNote ? cnColourVars.mg : cnColourVars.bg),
                 ]),
                 // letter bg
                 div({

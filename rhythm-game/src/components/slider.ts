@@ -14,7 +14,9 @@ export function Slider(rg: RenderGroup<{
     onChange: (value: number) => void;
 }>) {
     return div({ style: "display: flex; flex-direction: row;" }, [
-        div({}, rg.text((s) => s.label)),
+        div({}, [ 
+            rg.text((s) => s.label)
+        ]),
         el<HTMLInputElement>("INPUT", { type: "range", class: cnSlider, }, [
             rg.attr("min", (s) => "" + s.min),
             rg.attr("max", (s) => "" + s.max),

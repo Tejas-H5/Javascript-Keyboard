@@ -13,6 +13,7 @@ export function initStyles(root: Insertable) {
         fg2: newColorFromHex("#333"),
         fg: newColorFromHex("#000"),
         playback: newColorFromHex("#00F"),
+        error: newColorFromHex("#F00"),
     };
 
     const colourVars = {
@@ -22,12 +23,13 @@ export function initStyles(root: Insertable) {
         fg2: sg.cssVar("fg2", () => "" + colours.fg2),
         fg: sg.cssVar("fg", () => "" + colours.fg),
         playback: sg.cssVar("playback", () => "" + colours.playback),
+        error: sg.cssVar("error", () => "" + colours.error),
     }
 
     const sizeVars = {
-        mediumText: sg.cssVar("medium", () => "36px"),
-        normalText: sg.cssVar("normal", () => "18px"),
-        smallText: sg.cssVar("small", () => "14px"),
+        mediumText: sg.cssVar("medium", () => "4rem"),
+        normalText: sg.cssVar("normal", () => "2rem"),
+        smallText: sg.cssVar("small", () => "1rem"),
     };
 
     sg.updateVars();
@@ -38,6 +40,7 @@ body {
     font-size: ${sizeVars.normalText};
     color: ${colours.fg};
     background: ${colourVars.bg};
+    font-size: 1em;
 }
 
 textarea {
@@ -64,11 +67,15 @@ input:focus {
 
     const cnStyle = {
         b: sg.cn("b", [ ` { font-weight: bold; } `]),
-        mediumFont: sg.cn("medium-font", [ `font-size: ${sizeVars.mediumText}` ]),
-        normalFont: sg.cn("medium-font", [ `font-size: ${sizeVars.normalText}` ]),
-        smallFont: sg.cn("medium-font", [ `font-size: ${sizeVars.smallText}` ]),
+
+        mediumFont: sg.cn("medium-font", [ ` { font-size: ${sizeVars.mediumText}; }` ]),
+        normalFont: sg.cn("normal-font", [ ` { font-size: ${sizeVars.normalText}; }` ]),
+        smallFont: sg.cn("small-font", [ ` { font-size: ${sizeVars.smallText}; }` ]),
+
         textMg: sg.cn("text-mg", [ ` { color: ${colourVars.mg}; }`]),
-        inverted: sg.cn("inverted", [ ` { color: ${colourVars.bg}; background: ${colourVars.fg}; }` ]), 
+        inverted: sg.cn("inverted", [ ` { color: ${colourVars.bg} ; background: ${colourVars.fg}; }` ]), 
+
+        border1Solid: sg.cn("border-1-solid", [`{ border: 1px solid ${colourVars.fg}; }`]),
     };
 
     const cnLayout = {

@@ -9,7 +9,8 @@ export function initializeDomUtils(root: Insertable) {
     newStyleGenerator(root.el).s(`
 .catastrophic---error > * { display: none !important; }
 .catastrophic---error::before {
-    content: "An error occured when updating this content. You've found a bug!";
+    content: var(--error-text);
+    text-align: center;
 }
 .debug { border: 1px solid red; }
 `   );
@@ -126,15 +127,11 @@ export function replaceChildrenEl(el: Element, children: InsertableList) {
  */
 type Functionality<T extends ValidElement> = (parent: Insertable<T>) => void | Insertable<any>;
 type InsertableInitializerListItem<T extends ValidElement> = Insertable<ValidElement> | string | false | Functionality<T>;
-export type InsertableInitializerList<T extends ValidElement = HTMLElement> = InsertableInitializerListItem<T> | InsertableInitializerListItem<T>[];
+export type InsertableInitializerList<T extends ValidElement = HTMLElement> = InsertableInitializerListItem<T>[];
 
 /** Use this to initialize an element's children later. Don't call it after a component has been rendered */
 export function addChildren<T extends ValidElement>(ins: Insertable<T>, children: InsertableInitializerList<T>): Insertable<T> {
     const element = ins.el;
-
-    if (!Array.isArray(children)) {
-        children = [children];
-    }
 
     for (let c of children) {
         if (c === false) {
@@ -149,11 +146,7 @@ export function addChildren<T extends ValidElement>(ins: Insertable<T>, children
             c = res;
         }
 
-        if (Array.isArray(c)) {
-            for (const insertable of c) {
-                element.appendChild(insertable.el);
-            }
-        } else if (typeof c === "string") {
+        if (typeof c === "string") {
             element.appendChild(document.createTextNode(c));
         } else {
             element.appendChild(c.el);
@@ -264,8 +257,8 @@ export function setClass<T extends ValidElement>(component: Insertable<T>, cssCl
         // Yep. this is another massive performance boost. you would imagine that the browser devs would do this on 
         // their end, but they don't...
         // Maybe because if they did an additional check like this on their end, and then I decided I wanted to 
-        // memoize on my end (which would be much faster anyway), their thing would be a little slower for no reason.
-        // At least, that is what I'm guessing the reason is
+        // memoize on my end (which would be much faster anyway), the overall system would be a little slower for no reason.
+        // At least, that is what I'm guessing their reasoning is
         return state;
     }
 
@@ -278,7 +271,10 @@ export function setClass<T extends ValidElement>(component: Insertable<T>, cssCl
     return state;
 };
 
-export function setVisible<U extends HTMLElement | SVGElement, T>(component: Insertable<U>, state: T | null | undefined | false | "" | 0): state is T {
+export function setVisible<U extends ValidElement, T>(
+    component: Insertable<U>, 
+    state: T | null | undefined | false | "" | 0
+): state is T {
     component._isHidden = !state;
     if (state) {
         component.el.style.setProperty("display", "", "")
@@ -380,8 +376,14 @@ export function setAttrs<T extends ValidElement, C extends Insertable<T>>(
     return ins;
 }
 
-export function setErrorClass<T extends ValidElement>(root: Insertable<T>, state: boolean) {
-    setClass(root, "catastrophic---error", state);
+export function setErrorClass<T extends ValidElement>(root: Insertable<T> | Component<any, any>, state: boolean, templateName: string) {
+    if (setClass(root, "catastrophic---error", state)) {
+        const message = templateName ? `An error occured while updating the ${templateName} component`  :
+            "An error occured while updating an element";
+        root.el.style.setProperty("--error-text", JSON.stringify(`${message}. You've found a bug!`));
+    } else {
+        root.el.style.removeProperty("--error-text");
+    }
 }
 
 export type ListRenderer<R extends ValidElement, T, U extends ValidElement> = Insertable<R> & {
@@ -510,7 +512,7 @@ export function setText(component: Insertable, text: string) {
     }
 
     component.el.textContent = text;
-};
+}
 
 export function isEditingInput(component: Insertable): boolean {
     return document.activeElement === component.el;
@@ -531,7 +533,7 @@ export function setInputValue<T extends TextElement>(component: Insertable<T>, t
 
     inputElement.selectionStart = selectionStart;
     inputElement.selectionEnd = selectionEnd;
-};
+}
 
 export function getState<T>(c: Component<T, any> | RenderGroup<T>): T {
     const s = c.s;
@@ -556,11 +558,12 @@ export function __newComponentInternal<
     T,
     U extends ValidElement,
     Si extends T,
->(root: Insertable<U>, renderFn: (s: T) => void, s: Si | undefined) {
+>(root: Insertable<U>, renderFn: (s: T) => void, s: Si | undefined, templateName: string) {
     const component: Component<T, U> = {
         el: root.el,
         instantiated: false,
         rendering: false,
+        templateName,
         get _isHidden() { return root._isHidden; },
         set _isHidden(val: boolean) { root._isHidden = val; },
         s: s,
@@ -858,19 +861,18 @@ function renderFunctions<S>(rg: RenderGroup<S>, renderFns: RenderFn<S>[]) {
         //
         // TODO: consider doing this for callbacks as well, it shouldn't be too hard.
 
-        if (renderFns[i].error !== undefined) {
-            // don't run more functions for this component if one of them errored
-            continue;
-        }
-
         try {
-            setErrorClass(errorRoot, false);
+            setErrorClass(errorRoot, false, rg.templateName);
             fn(s);
         } catch (e) {
-            setErrorClass(errorRoot, true);
+            setErrorClass(errorRoot, true, rg.templateName);
+
             // TODO: do something with these errors we're collecting. lmao.
             renderFns[i].error = e;
             console.error("An error occured while rendering your component:", e);
+
+            // don't run more functions for this component if one of them errored
+            break;
         }
     }
 }
@@ -1056,12 +1058,12 @@ export function newComponent<T, U extends ValidElement, Si extends T>(
 ) {
     const rg = newRenderGroup<T, Si>(
         initialState,
-        templateFn.name ?? "unknown fn name",
+        templateFn.name ?? "",
         skipErrorBoundary,
     );
 
     const root = templateFn(rg);
-    const component = __newComponentInternal(root, rg.render, initialState);
+    const component = __newComponentInternal(root, rg.render, initialState, rg.templateName);
     rg.instantiatedRoot = root;
 
     if (component.s !== undefined) {
@@ -1089,6 +1091,8 @@ export type Component<T, U extends ValidElement> = Insertable<U> & {
     renderWithCurrentState(): void;
     s: T | undefined;
     instantiated: boolean;
+    /** Used for debugging purposes */
+    templateName: string;
     /**
      * Internal variable used to catch infinite recursion bug 
      */

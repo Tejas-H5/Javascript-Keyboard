@@ -416,7 +416,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 }
 
 function handleKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
-    const { key, ctrlPressed, shiftPressed, isRepeat } = keyPressState;
+    const { key, ctrlPressed, shiftPressed } = keyPressState;
 
     if (
         // allow typing into text fields
@@ -429,7 +429,7 @@ function handleKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolea
         return false;
     }
 
-    const { sequencer, ui, keyboard } = ctx;
+    const { ui } = ctx;
 
     if (ui.currentView === "startup") {
         return handleStartupKeyDown(ctx, keyPressState);
