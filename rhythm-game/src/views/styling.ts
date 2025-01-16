@@ -7,23 +7,23 @@ export function initStyles(root: Insertable) {
     const sg = newStyleGenerator(root.el);
 
     const colours = {
-        bg: newColorFromHex("#FFF"),
-        bg2: newColorFromHex("#CCC"),
-        mg: newColorFromHex("#888"),
-        fg2: newColorFromHex("#333"),
-        fg: newColorFromHex("#000"),
-        playback: newColorFromHex("#00F"),
-        error: newColorFromHex("#F00"),
+        bgLiteral: newColorFromHex("#FFF"),
+        bg2Literal: newColorFromHex("#CCC"),
+        mgLiteral: newColorFromHex("#888"),
+        fg2Literal: newColorFromHex("#333"),
+        fgLiteral: newColorFromHex("#000"),
+        playbackLiteral: newColorFromHex("#00F"),
+        errorLiteral: newColorFromHex("#F00"),
     };
 
     const colourVars = {
-        bg: sg.cssVar("bg", () => "" + colours.bg),
-        bg2: sg.cssVar("bg2", () => "" + colours.bg2),
-        mg: sg.cssVar("mg", () => "" + colours.mg),
-        fg2: sg.cssVar("fg2", () => "" + colours.fg2),
-        fg: sg.cssVar("fg", () => "" + colours.fg),
-        playback: sg.cssVar("playback", () => "" + colours.playback),
-        error: sg.cssVar("error", () => "" + colours.error),
+        bg: sg.cssVar("bg", () => "" + colours.bgLiteral),
+        bg2: sg.cssVar("bg2", () => "" + colours.bg2Literal),
+        mg: sg.cssVar("mg", () => "" + colours.mgLiteral),
+        fg2: sg.cssVar("fg2", () => "" + colours.fg2Literal),
+        fg: sg.cssVar("fg", () => "" + colours.fgLiteral),
+        playback: sg.cssVar("playback", () => "" + colours.playbackLiteral),
+        error: sg.cssVar("error", () => "" + colours.errorLiteral),
     }
 
     const sizeVars = {
@@ -38,7 +38,7 @@ export function initStyles(root: Insertable) {
 body {
     font-family: monospace;
     font-size: ${sizeVars.normalText};
-    color: ${colours.fg};
+    color: ${colourVars.fg};
     background: ${colourVars.bg};
     font-size: 1em;
 }
@@ -72,7 +72,7 @@ input:focus {
         normalFont: sg.cn("normal-font", [ ` { font-size: ${sizeVars.normalText}; }` ]),
         smallFont: sg.cn("small-font", [ ` { font-size: ${sizeVars.smallText}; }` ]),
 
-        textMg: sg.cn("text-mg", [ ` { color: ${colourVars.mg}; }`]),
+        defocusedText: sg.cn("text-mg", [ ` { color: ${colourVars.mg}; }`]),
         inverted: sg.cn("inverted", [ ` { color: ${colourVars.bg} ; background: ${colourVars.fg}; }` ]), 
 
         border1Solid: sg.cn("border-1-solid", [`{ border: 1px solid ${colourVars.fg}; }`]),
@@ -121,7 +121,7 @@ input:focus {
         preWrap: sg.cn("pre-wrap", [` { white-space: pre-wrap; }`]),
         noWrap: sg.cn("nowrap", [` { white-space: nowrap; }`]),
         handleLongWords: sg.cn("handle-long-words", [` { overflow-wrap: anywhere; word-break: normal; }`]),
-        strikethrough: sg.cn("strikethrough", [` { text-decoration: line-through; text-decoration-color: ${colours.fg} }`]),
+        strikethrough: sg.cn("strikethrough", [` { text-decoration: line-through; text-decoration-color: ${colourVars.fg} }`]),
 
         /** common spacings */
 

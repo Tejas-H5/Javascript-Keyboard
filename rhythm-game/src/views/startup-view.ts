@@ -1,7 +1,7 @@
 import { Button } from "src/components/button";
-import { div, getState, RenderGroup } from "src/utils/dom-utils";
+import { div, RenderGroup } from "src/utils/dom-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
-import { cnLayout } from "src/dom-root";
+import { cn } from "src/dom-root";
 
 export function StartupView(rg: RenderGroup<GlobalContext>) {
     // TODO: better game name
@@ -24,7 +24,7 @@ export function StartupView(rg: RenderGroup<GlobalContext>) {
     });
 
     function onClickPlay() {
-        const s = getState(rg);
+        const s = rg.s;
         setViewChartSelect(s);
     }
 
@@ -32,17 +32,17 @@ export function StartupView(rg: RenderGroup<GlobalContext>) {
         ["Play", onClickPlay]
     ];
 
-    return div({ class: cnLayout.flex1 + cnLayout.col + cnLayout.alignItemsCenter + cnLayout.relative }, [
-        div({ class: cnLayout.col + cnLayout.alignItemsCenter, style: "font-size: 64px;" }, [
+    return div({ class: cn.flex1 + cn.col + cn.alignItemsCenter + cn.relative }, [
+        div({ class: cn.col + cn.alignItemsCenter, style: "font-size: 64px;" }, [
             rg.style("fontSize", () => fontSizeAnimated + "px"),
             gameName,
 
         ]),
         div({
-            class: cnLayout.absolute,
+            class: cn.absolute,
             style: "top: 25%; bottom: 25%; font-size: 24px;"
         }, [
-            rg.list(div({ class: cnLayout.contents }), MenuButton, (getNext, s) => {
+            rg.list(div({ class: cn.contents }), MenuButton, (getNext, s) => {
                 for (let i = 0; i < views.length; i++) {
                     const [text, handler] = views[i];
                     getNext().render({

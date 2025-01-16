@@ -1,34 +1,31 @@
 import { Button } from "src/components/button";
 import { loadChart } from "src/state/loading-saving-charts";
-import { div, getState, RenderGroup } from "src/utils/dom-utils";
+import { div, RenderGroup } from "src/utils/dom-utils";
 import { GlobalContext, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "./app";
-import { cnLayout } from "src/dom-root";
+import { cn } from "src/dom-root";
 
 export function ChartSelect(rg: RenderGroup<GlobalContext>) {
     function onClickBack() {
-        const s = getState(rg);
-        setViewStartScreen(s);
+        setViewStartScreen(rg.s);
     }
 
     function onClickEdit() {
-        const s = getState(rg);
-        setViewEditChart(s);
+        setViewEditChart(rg.s);
     }
 
     function onClickPlay() {
-        const s = getState(rg);
-        setViewPlayCurrentChart(s);
+        setViewPlayCurrentChart(rg.s);
     }
 
-    return div({ class: cnLayout.flex1 + cnLayout.col }, [
-        div({ class: cnLayout.flex1 + cnLayout.row }, [
-            div({ class: cnLayout.flex1 + cnLayout.col }, [
+    return div({ class: cn.flex1 + cn.col }, [
+        div({ class: cn.flex1 + cn.row }, [
+            div({ class: cn.flex1 + cn.col }, [
                 div({ style: "font-size: 64px;" }, [
                     "Charts"
                 ])
             ]),
-            div({ class: cnLayout.col, style: "width: 35%" }, [
-                rg.list(div({ class: cnLayout.contents }), ChartSelectButton, (getNext, s) => {
+            div({ class: cn.col, style: "width: 35%" }, [
+                rg.list(div({ class: cn.contents }), ChartSelectButton, (getNext, s) => {
                     for (const chartName in s.savedState.allSavedSongs) {
                         const chartJson = s.savedState.allSavedSongs[chartName];
                         getNext().render({ ctx: s, chartName, chartJson});
@@ -41,7 +38,7 @@ export function ChartSelect(rg: RenderGroup<GlobalContext>) {
                 )
             ]),
         ]),
-        div({ class: cnLayout.row, style: "gap: 5px" }, [
+        div({ class: cn.row, style: "gap: 5px" }, [
             rg.c(Button, c => c.render({
                 text: "Back",
                 onClick: onClickBack

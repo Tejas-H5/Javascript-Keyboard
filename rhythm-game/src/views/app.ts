@@ -1,4 +1,4 @@
-import { cnLayout } from "src/dom-root";
+import { cn } from "src/dom-root";
 import { pressKey, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
@@ -42,7 +42,7 @@ import {
 } from "src/state/sequencer-state";
 import { AppView, newUiState, UIState } from "src/state/ui-state";
 import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
-import { div, isEditingTextSomewhereInDocument, RenderGroup } from "src/utils/dom-utils";
+import { contentsDiv, div, isEditingTextSomewhereInDocument, RenderGroup } from "src/utils/dom-utils";
 import { ChartSelect } from "src/views/chart-select";
 import { EditView } from "src/views/edit-view";
 import { PlayView } from "src/views/play-view";
@@ -229,7 +229,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         }
 
         const speed = ctrlPressed ? 0.5 : 1;
-        const isUserDriven = ui.currentView === "play-chart";
+        const isUserDriven = ui.currentView === "playChart";
         if (shiftPressed) {
             playFromLastMeasure(ctx, { speed, isUserDriven });
         } else {
@@ -435,17 +435,17 @@ function handleKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolea
         return handleStartupKeyDown(ctx, keyPressState);
     }
 
-    if (ui.currentView === "chart-select") {
+    if (ui.currentView === "chartSelect") {
         return handleChartSelectKeyDown(ctx, keyPressState) 
     } 
 
     // There's a lot of overlap in the functionality of these two views
-    if (ui.currentView === "play-chart" || ui.currentView === "edit-chart") {
+    if (ui.currentView === "playChart" || ui.currentView === "editChart") {
         if (handlePlayChartOrEditChartKeyDown(ctx, keyPressState)) {
             return true;
         }
 
-        if (ui.currentView === "play-chart") {
+        if (ui.currentView === "playChart") {
             return handlePlayChartKeyDown(ctx, keyPressState);
         }
 
@@ -525,7 +525,7 @@ export function setViewEditChart(ctx: GlobalContext) {
         throw new Error("NO chart loaded!! bruh");
     }
 
-    setCurrentView(ctx, "edit-chart");
+    setCurrentView(ctx, "editChart");
 }
 
 export function setViewTestCurrentChart(ctx: GlobalContext) {
@@ -536,7 +536,7 @@ export function setViewTestCurrentChart(ctx: GlobalContext) {
     }
 
     // dont reload the chart, just use the one we have now...
-    setCurrentView(ctx, "play-chart");
+    setCurrentView(ctx, "playChart");
 }
 
 export function setViewPlayCurrentChart(ctx: GlobalContext) {
@@ -546,11 +546,11 @@ export function setViewPlayCurrentChart(ctx: GlobalContext) {
         throw new Error("NO chart loaded!! bruh");
     }
 
-    setCurrentView(ctx, "play-chart");
+    setCurrentView(ctx, "playChart");
 }
 
 export function setViewChartSelect(ctx: GlobalContext) {
-    setCurrentView(ctx, "chart-select");
+    setCurrentView(ctx, "chartSelect");
 }
 
 export function setViewStartScreen(ctx: GlobalContext) {
@@ -568,11 +568,11 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
     // run code while exiting a view
     {
         switch(ctx.ui.currentView) {
-            case "edit-chart":
+            case "editChart":
                 editView.lastCursorStart = sequencer.cursorStart;
                 editView.lastCursorDivisor = sequencer.cursorDivisor;
                 break;
-            case "play-chart":
+            case "playChart":
                 stopPlaying(ctx);
                 setScheduledPlaybackVolume(1);
                 break;
@@ -584,17 +584,17 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
     // run code while entering a view
     {
         switch(ctx.ui.currentView) {
-            case "edit-chart":
+            case "editChart":
                 if (editView.lastCursorDivisor !== 0) {
                     sequencer.cursorStart = editView.lastCursorStart;
                     sequencer.cursorDivisor = editView.lastCursorDivisor;
                 }
                 break;
-            case "chart-select":
+            case "chartSelect":
                 editView.lastCursorStart = 0;
                 editView.lastCursorDivisor = 0;
                 break;
-            case "play-chart":
+            case "playChart":
                 let startFromBeats: number;
                 if (playView.isTesting) {
                     startFromBeats = getBeats(editView.lastCursorStart, editView.lastCursorDivisor);
@@ -709,13 +709,17 @@ export function App(rg: RenderGroup<GlobalContext>) {
         ctx.render();
     });
 
-    return div({ class: cnLayout.absoluteFill + cnLayout.row + cnLayout.fixed }, [
-        rg.if(() => ctx.ui.currentView === "startup", StartupView),
-        rg.else_if(() => ctx.ui.currentView === "chart-select", ChartSelect),
-        rg.else_if(() => ctx.ui.currentView === "play-chart", PlayView),
-        rg.else_if(() => ctx.ui.currentView === "edit-chart", EditView),
-        rg.else(rg => 
-            rg.text(() => "404 - view not found!!! (" + ctx.ui.currentView + ")")
-        ),
+    return div({ 
+        class: cn.absoluteFill + cn.row + cn.fixed + cn.normalFont,
+    }, [
+        rg.switch(contentsDiv(), s => s.ui.currentView, {
+            startup: StartupView,
+            chartSelect: ChartSelect,
+            playChart: PlayView,
+            editChart: EditView,
+        }),
+        rg.else(rg => div({}, [
+            rg.text(s => `TODO: implement ${s.ui.currentView} ...`),
+        ]))
     ])
 }

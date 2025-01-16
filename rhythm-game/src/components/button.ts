@@ -1,10 +1,10 @@
 import { el, newStyleGenerator, RenderGroup } from "src/utils/dom-utils";
 
-import { cnColourVars } from "src/dom-root";
+import { cn } from "src/dom-root";
 
-const BG_COLOR = cnColourVars.bg;
-const FG_COLOR = cnColourVars.fg;
-const BG2_COLOR = cnColourVars.bg2;
+const BG_COLOR = cn.bg;
+const FG_COLOR = cn.fg;
+const BG2_COLOR = cn.bg2;
 
 const sg = newStyleGenerator();
 const cnButton = sg.cn("button", [

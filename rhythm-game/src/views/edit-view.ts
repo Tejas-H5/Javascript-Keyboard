@@ -16,7 +16,6 @@ import {
 import {
     div,
     el,
-    getState,
     RenderGroup,
     setInputValue,
     span
@@ -24,7 +23,7 @@ import {
 import { Sequencer } from "src/views/sequencer";
 import { recursiveShallowCopyRemovingComputedFields } from "src/utils/serialization-utils";
 import { GlobalContext, resetSequencer, setViewTestCurrentChart } from "./app";
-import { cnColourVars, cnLayout, cnStyle } from "src/dom-root";
+import { cn } from "src/dom-root";
 
 export function EditView(rg: RenderGroup<GlobalContext>) {
     rg.preRenderFn((s) => {
@@ -47,7 +46,7 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
     }
 
     function testFromHere() {
-        const s = getState(rg);
+        const s = rg.s;
 
         setViewTestCurrentChart(s);
 
@@ -56,14 +55,14 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
 
     function clearSequencer() {
         if (confirm("Are you sure you want to clear your progress?")) {
-            const s = getState(rg);
+            const s = rg.s;
             resetSequencer(s);
             s.render();
         }
     }
 
     function toggleLoadSaveSiderbar() {
-        const s = getState(rg);
+        const s = rg.s;
         const ui = s.ui.editView;
         ui.sidebarOpen = !ui.sidebarOpen;
         // needs it twice for some reason...
@@ -71,12 +70,12 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
         s.render();
     }
 
-    return div({ class: cnLayout.absoluteFill + cnLayout.row + cnLayout.fixed }, [
-        div({ class: cnLayout.col + cnLayout.flex1 }, [
-            div({ class: cnLayout.col + cnLayout.flex1 }, [
-                div({ class: cnLayout.row + cnLayout.gap5 }, [
-                    div({ class: cnLayout.flex1 }),
-                    span({ class: cnStyle.b }, [
+    return div({ class: cn.absoluteFill + cn.row + cn.fixed }, [
+        div({ class: cn.col + cn.flex1 }, [
+            div({ class: cn.col + cn.flex1 }, [
+                div({ class: cn.row + cn.gap5 }, [
+                    div({ class: cn.flex1 }),
+                    span({ class: cn.b }, [
                         "Sequencer"
                     ]),
 
@@ -86,7 +85,7 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
                         rg => rg.text(s => s.ui.copied.items.length + " items copied")
                     ),
 
-                    div({ class: cnLayout.flex1 }),
+                    div({ class: cn.flex1 }),
                     rg.c(Button, c => c.render({
                         text: "Test",
                         onClick: testFromHere
@@ -105,7 +104,7 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
         ]),
         rg.if(
             s => s.ui.editView.sidebarOpen,
-            rg => div({ class: cnLayout.col }, [
+            rg => div({ class: cn.col }, [
                 rg.c(LoadSavePanel, (c, s) => c.render(s))
             ])
         )
@@ -116,7 +115,7 @@ function LoadSavePanel(rg: RenderGroup<GlobalContext>) {
     function Item(rg: RenderGroup<{ ctx: GlobalContext; name: string; }>) {
         return div({}, [
             rg.text(s => s.name),
-            rg.style("backgroundColor", s => s.name === getCurrentSelectedChartName(s.ctx) ? cnColourVars.bg2 : ""),
+            rg.style("backgroundColor", s => s.name === getCurrentSelectedChartName(s.ctx) ? cn.bg2 : ""),
             rg.on("click", s => {
                 setInputValue(input, s.name);
                 s.ctx.render();
@@ -136,7 +135,7 @@ function LoadSavePanel(rg: RenderGroup<GlobalContext>) {
     });
 
     return div({ style: "width: 33vw" }, [
-        div({ class: cnLayout.row, style: "gap: 10px" }, [
+        div({ class: cn.row, style: "gap: 10px" }, [
             // dont want to accidentally load over my work. smh.
             rg.if(
                 s => (getCurrentSelectedChartName(s) in s.savedState.allSavedSongs),

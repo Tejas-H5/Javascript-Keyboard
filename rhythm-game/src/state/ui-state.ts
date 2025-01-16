@@ -1,6 +1,6 @@
 import { TimelineItem } from "./sequencer-state";
 
-export type AppView = "startup" | "chart-select" | "play-chart" | "edit-chart";
+export type AppView = "startup" | "chartSelect" | "playChart" | "editChart";
 export type UIState = {
     currentView: AppView;
 

@@ -15,7 +15,7 @@ export function initializeDomUtils(root: Insertable) {
 // ---- DOM node and Insertable<T> creation
 
 type ValidElement = HTMLElement | SVGElement;
-export type Insertable<T extends ValidElement = HTMLElement> = {
+export interface Insertable<T extends ValidElement = HTMLElement> {
     el: T;
     _isHidden: boolean;
 };
@@ -62,11 +62,7 @@ function elInternal<T extends ValidElement>(
  * Hint: the `g` element can be used to group SVG elements under 1 DOM node. It's basically the `div` of the SVG world, and
  * defers me from having to implement something like React fragments for 1 more day...
  */
-export function elSvg<T extends SVGElement>(
-    type: string,
-    attrs?: Attrs,
-    children?: InsertableInitializerList<T>,
-) {
+export function elSvg<T extends SVGElement>(type: string, attrs?: Attrs, children?: InsertableInitializerList<T>) {
     const xmlNamespace = "http://www.w3.org/2000/svg";
     const svgEl = document.createElementNS(xmlNamespace, type) as T;
     if (type === "svg") {
@@ -89,6 +85,10 @@ export function elSvg<T extends SVGElement>(
  */
 export function div(attrs?: Attrs, children?: InsertableInitializerList<HTMLDivElement>) {
     return el<HTMLDivElement>("DIV", attrs, children);
+}
+
+export function contentsDiv() {
+    return div({ style: "display: contents !important;" });
 }
 
 export function span(attrs?: Attrs, children?: InsertableInitializerList<HTMLSpanElement>) {
@@ -162,14 +162,9 @@ export function replaceChildrenEl(el: Element, children: InsertableList) {
     }
 }
 
-
-
 /**
- * Attempts to append a child onto the end of a component, but in such a way that
- * if the final element in {@link mountPoint}.children is identical to {@link child}.el,
+ * Appends {@link child} to the end of {@link mountPoints}'s child list. If it's already there, 
  * no actions are performed.
- *
- * This way, the code path where no data has changed can remain reasonably performant
  */
 export function appendChild(mountPoint: Insertable<any>, child: Insertable<any>) {
     const el = mountPoint.el;
@@ -179,10 +174,8 @@ export function appendChild(mountPoint: Insertable<any>, child: Insertable<any>)
 export function appendChildEl(mountPointEl: Element, child: Insertable<any>) {
     const children = mountPointEl.children;
     if (children.length > 0 && children[children.length - 1] === child.el) {
-        // This actually increases performance as well.
-        // Because of this return statement, list renderers whos children haven't changed at all can be rerendered 
-        // over and over again without moving any DOM nodes. And I have actually able to verify that it _does_ make a difference -
-        // this return statement eliminated scrollbar-flickering inside of my scrolling list component
+        // This has surprisingly been found to improve performance and actually do something.
+        // Components that were previously flickering their scrollbar every reder no longer do so with this change.
         return;
     }
 
@@ -190,9 +183,8 @@ export function appendChildEl(mountPointEl: Element, child: Insertable<any>) {
 }
 
 /**
- * Attempts to set the ith child on {@link mountPoint} to {@link child}.
- * If this is already the case, no actions are performed.
- * This way, the code path where no data has changed can remain reasonably performant
+ * Sets {@link mountPoint}'s ith child to {@link child}.
+ * Does nothing if it's already there.
  */
 export function setChildAt(mountPoint: Insertable<any>, child: Insertable<any>, i: number,) {
     setChildAtEl(mountPoint.el, child, i);
@@ -201,7 +193,7 @@ export function setChildAt(mountPoint: Insertable<any>, child: Insertable<any>, 
 export function setChildAtEl(mountPointEl: Element, child: Insertable<any>, i: number) {
     const children = mountPointEl.children;
     if (children[i] === child.el) {
-        // saves perf as above.
+        /** Same performance reasons as {@link appendChildEl} */
         return;
     }
 
@@ -210,6 +202,7 @@ export function setChildAtEl(mountPointEl: Element, child: Insertable<any>, i: n
     }
 
     mountPointEl.replaceChild(child.el, children[i]);
+    console.log("replaced child!");
 }
 
 /**
@@ -237,8 +230,6 @@ export function removeChildEl(mountPointEl: Element, child: Insertable) {
 
 /**
  * Clears all children under {@link mountPoint}.
- *
- * NOTE: I've never used this method in practice, so there may be glaring flaws...
  */
 export function clearChildren(mountPoint: Insertable<any>) {
     mountPoint.el.replaceChildren();
@@ -249,25 +240,23 @@ export function clearChildren(mountPoint: Insertable<any>) {
 type StyleObject<U extends ValidElement> = (U extends HTMLElement ? keyof HTMLElement["style"] : keyof SVGElement["style"]);
 
 /** 
- * A little more performant than setting the style directly.
+ * Sets a style for a component. Does nothing if it is already the same style. 
  */
 export function setStyle<U extends ValidElement, K extends StyleObject<U>>(root: Insertable<U>, val: K, style: U["style"][K]) {
     if (root.el.style[val] !== style) {
+        /** Same performance reasons as {@link setClass} */
         root.el.style[val] = style;
     }
 }
 
 /** 
- * A little more performant than adding/removing from the classList directly, but still quite slow actually.
+ * Enables/disables a class on a component. Does nothing if already enabled/disabled.
  */
 export function setClass<T extends ValidElement>(component: Insertable<T>, cssClass: string, state: boolean): boolean {
     const contains = component.el.classList.contains(cssClass);
     if (state === contains) {
-        // Yep. this is another massive performance boost. you would imagine that the browser devs would do this on 
-        // their end, but they don't...
-        // Maybe because if they did an additional check like this on their end, and then I decided I wanted to 
-        // memoize on my end (which would be much faster anyway), the overall system would be a little slower for no reason.
-        // At least, that is what I'm guessing their reasoning is
+        // This was profiled and found to provide a noticeable performance gain at the time of writing it.
+        // However, it may be ever-so-slightly faster to memoize the `state` argument on your end and set this directly.
         return state;
     }
 
@@ -280,6 +269,10 @@ export function setClass<T extends ValidElement>(component: Insertable<T>, cssCl
     return state;
 };
 
+/**
+ * Since it is so common to do, this is a util to set the display of a component to "None".
+ * Also does some type narrowing.
+ */
 export function setVisible<U extends ValidElement, T>(
     component: Insertable<U>, 
     state: T | null | undefined | false | "" | 0
@@ -293,9 +286,11 @@ export function setVisible<U extends ValidElement, T>(
     return !!state;
 }
 
-// This is a certified jQuery moment: https://stackoverflow.com/questions/19669786/check-if-element-is-visible-in-dom
-// This method is mainly used in gobal event handlers to early-return when a UI component isn't visble yet, so
-// it will also return false if the component hasn't been rendered for the first time.
+/** 
+ * This jQuery code is taken from: https://stackoverflow.com/questions/19669786/check-if-element-is-visible-in-dom
+ * This method is mainly used in gobal event handlers to early-return when a UI component isn't visble yet, so
+ * it will also return false if the component hasn't been rendered for the first time. 
+ */
 export function isVisible(component: Component<unknown, HTMLElement> | Insertable<HTMLElement>): boolean {
     if (wasHiddenOrUninserted(component)) {
         // if _isHidden is set, then the component is guaranteed to be hidden via CSS, assuming
@@ -306,7 +301,7 @@ export function isVisible(component: Component<unknown, HTMLElement> | Insertabl
     // If _isHidden is false, we need to perform additional checking to determine if a component is visible or not.
     // This is why we don't call isVisible to disable rendering when a component is hidden.
 
-    if ("s" in component && component.s === undefined) {
+    if ("s" in component && component._s === undefined) {
         // Not visible if no state is present.
         return false;
     }
@@ -320,7 +315,7 @@ export function isVisibleEl(el: HTMLElement) {
 
 /** 
  * Any name and string is fine, but I've hardcoded a few for autocomplete. 
- * A common bug is to type 'styles' instead of 'style' and wonder why the layout isn't working
+ * A common bug is to type 'styles' instead of 'style' and wonder why the layout isn't working, for example.
  */
 type Attrs = { [qualifiedName: string]: string | undefined } & {
     style?: string | Record<keyof HTMLElement["style"], string | null>;
@@ -329,12 +324,7 @@ type Attrs = { [qualifiedName: string]: string | undefined } & {
     src?: string;
 }
 
-export function setAttr<T extends ValidElement>(
-    el: Insertable<T>,
-    key: string,
-    val: string | undefined,
-    wrap = false,
-) {
+export function setAttr<T extends ValidElement>(el: Insertable<T>, key: string, val: string | undefined, wrap = false) {
     if (val === undefined) {
         el.el.removeAttribute(key);
         return;
@@ -356,17 +346,11 @@ export function setAttr<T extends ValidElement>(
     el.el.setAttribute(key, val);
 }
 
-export function getAttr<T extends ValidElement>(
-    el: Insertable<T>, key: string
-) {
+export function getAttr<T extends ValidElement>(el: Insertable<T>, key: string) {
     return el.el.getAttribute(key);
 }
 
-export function setAttrs<T extends ValidElement, C extends Insertable<T>>(
-    ins: C,
-    attrs: Attrs,
-    wrap = false,
-): C {
+export function setAttrs<T extends ValidElement, C extends Insertable<T>>(ins: C, attrs: Attrs, wrap = false): C {
     for (const attr in attrs) {
         const val = attrs[attr];
         if (attr === "style" && typeof val === "object") {
@@ -385,11 +369,9 @@ export function setAttrs<T extends ValidElement, C extends Insertable<T>>(
 
 
 /** 
- * Why extract such simple method calls as `addEventListener` into it's own helper function?
- * It's mainly so that the code minifier can minify all usages of this method, which should reduce the total filesize sent to the user.
- * So in other words, the methods are extracted based on usage frequency and not complexity.
+ * `on` and `off` exist, because a) `c.el.addEventListener` was a very common operation, and
+ * b) It should allow for a couple of characters to be saved in the final HTML...
  *
- * Also I'm thinkig it might make defining simple buttons/interactions a bit simpler, but I haven't found this to be the case just yet.
  * TODO: extend to SVG element
  */
 export function on<K extends keyof HTMLElementEventMap>(
@@ -402,7 +384,10 @@ export function on<K extends keyof HTMLElementEventMap>(
     return ins;
 }
 
-/** Removes event listeners added with {@link on} or addEventListener */
+/** 
+ * shorthand for `removeEventListener`. I never use this tbh - I've just never found a reason to totally remove an event handler - 
+ * I find it much easier to just write code that early-returns out of events as needed. But it's here for completeness's sake.
+ */
 export function off<K extends keyof HTMLElementEventMap>(
     ins: Insertable<HTMLElement>,
     type: K,
@@ -411,18 +396,6 @@ export function off<K extends keyof HTMLElementEventMap>(
 ) {
     ins.el.removeEventListener(type, listener, options);
     return ins;
-}
-
-type TextElement = HTMLTextAreaElement | HTMLInputElement;
-
-export function setInputValueAndResize<T extends TextElement>(inputComponent: Insertable<T>, text: string) {
-    setInputValue(inputComponent, text);
-    resizeInputToValue(inputComponent);
-}
-
-/** This is how I know to make an input that auto-sizes to it's text */
-export function resizeInputToValue<T extends TextElement>(inputComponent: Insertable<T>) {
-    setAttr(inputComponent, "size", "" + inputComponent.el.value.length);
 }
 
 /** 
@@ -446,6 +419,19 @@ export function setText(component: Insertable, text: string) {
 
 export function isEditingInput(component: Insertable): boolean {
     return document.activeElement === component.el;
+}
+
+
+type TextElement = HTMLTextAreaElement | HTMLInputElement;
+
+export function setInputValueAndResize<T extends TextElement>(inputComponent: Insertable<T>, text: string) {
+    setInputValue(inputComponent, text);
+    resizeInputToValue(inputComponent);
+}
+
+/** This is how I know to make an input that auto-sizes to it's text */
+export function resizeInputToValue<T extends TextElement>(inputComponent: Insertable<T>) {
+    setAttr(inputComponent, "size", "" + inputComponent.el.value.length);
 }
 
 /** NOTE: assumes that component.el is an HTMLInputElement */
@@ -507,25 +493,37 @@ export function scrollIntoView(
 // ---- Render group API
 
 
-export type RenderGroup<S = null> = {
+/**
+ * Render groups are the foundation of this 'framework'.
+ * Fundamentally, a 'render group' is an array of functions that are called in the 
+ * same order that they were appended. They can all be invoked with one render call. 
+ * Sounds a lot like an 'event' from C#. And it probably is tbh.
+ *
+ * It is now an internal implementation detail, and you don't really ever need to create them yourself.
+ */
+export class RenderGroup<S = null> {
+    readonly preRenderFnList: RenderFn<S>[] = [];
+    readonly domRenderFnList: RenderFn<S>[] = [];
+    readonly postRenderFnList: RenderFn<S>[] = [];
+
     /**
      * The current state of this render group, passed to every render function.
      */
-    s: S | undefined;
+    _s: S | undefined;
     /** 
      * The name of the template function this render group has been passed into. Mainly used for debugging and error reporting.
      */
-    templateName: string;
+    readonly templateName: string;
     /**
      * Internal variable that allows getting the root of the component a render group is attached to
-     * without having the root itself. see {@link getRoot}
+     * without having the root itself. 
      */
-    instantiatedRoot?: Insertable<any>;
+    instantiatedRoot: Insertable<any> | undefined = undefined;
     /* 
      * Has this component rendered once? 
      * Used to detect bugs where a render function may continue to add more handlers during the render part
      */
-    instantiated: boolean;
+    instantiated = false;
     /** 
      * Disables error handling when set to true.
      **/
@@ -533,21 +531,65 @@ export type RenderGroup<S = null> = {
     /** 
      * Internal variable used to check if an 'if' statement is currently open to any 'else' statement that follows it.
      */
-    ifStatementOpen: boolean;
+    ifStatementOpen = false;
+
+    constructor(
+        initialState: S | undefined,
+        templateName: string = "unknown",
+        skipErrorBoundary = false,
+    ) {
+        this._s = initialState;
+        this.templateName = templateName;
+        this.skipErrorBoundary = skipErrorBoundary;
+    }
+
+    get s(): S {
+        if (this._s === undefined) {
+            throw new Error("Can't access the state before the first render!");
+        }
+        return this._s;
+    }
+
+    get root() {
+        const root = this.instantiatedRoot;
+        if (root === undefined) {
+            throw new Error(`This render group does not have a root!`);
+        }
+
+        return root;
+    }
+
     /**
      * Sets the current state of this render group, and 
      * then immediately calls {@link RenderGroup.renderWithCurrentState}.
      */
-    render: (s: S) => void;
+    render(s: S) {
+        this.ifStatementOpen = false;
+        this._s = s;
+        this.renderWithCurrentState();
+    }
+
     /**
-     * Calls every render function in the order they were appended to the array using the current state {@link RenderGroup.s}.
+     * Calls every render function in the order they were appended to the array using the current state {@link RenderGroup._s}.
      * If this value is undefined, this function will throw.
      */
-    renderWithCurrentState: () => void;
+    renderWithCurrentState() {
+        this.instantiated = true;
+
+        this.renderFunctions(this.preRenderFnList);
+        this.renderFunctions(this.domRenderFnList);
+        this.renderFunctions(this.postRenderFnList);
+    }
+
     /**
      * Returns a span which will update it's text with {@link fn} each render.
      */
-    text: (fn: (s: S) => string) => Insertable<HTMLSpanElement>;
+    text(fn: (s: S) => string): Insertable<HTMLSpanElement> {
+        const e = span();
+        this.pushRenderFn(this.domRenderFnList, (s) => setText(e, fn(s)), e);
+        return e;
+    }
+
     /**
      * Instantiates and returns the new component that was instantiated.
      * The component rerenders with {@link renderFn} each render.
@@ -559,7 +601,7 @@ export type RenderGroup<S = null> = {
      *          class: ....
      *      }, [ 
      *          rg.c(TopBar, c => c.render(null)),
-     *          rg.cNull(MainContentView, (c, s) => c.render(s)),
+     *          rg.c(MainContentView, (c, s) => c.render(s)),
      *          rg.c(ProgressBar, (c, s) => c.render({
      *              percentage: s.loadingProgress,
      *          }),
@@ -567,11 +609,156 @@ export type RenderGroup<S = null> = {
      * }
      * ```
      */
-    c<T, U extends ValidElement>(templateFn: TemplateFn<T, U>, renderFn: (c: Component<T, U>, s: S) => void): Component<T, U>;
+    c<T, U extends ValidElement>(templateFn: TemplateFn<T, U>, renderFn: (c: Component<T, U>, s: S) => void): Component<T, U> {
+        const component = newComponent(templateFn);
+        return this.inlineFn(component, (c, s) => renderFn(c, s));
+    }
+
     /**
      * Returns what you passed in, and will 'rerender' it with {@link renderFn} each render.
      */
-    inlineFn: <T extends Insertable<U>, U extends ValidElement>(thing: T, renderFn: (c: T, s: S) => void) => T;
+    inlineFn<T extends Insertable<U>, U extends ValidElement>(component: T, renderFn: (c: T, s: S) => void): T {
+        this.pushRenderFn(this.domRenderFnList, (s) => renderFn(component, s), component);
+        return component;
+    }
+
+    /** 
+     * Same as `else_if(() => true, ...)`,
+     */
+    else<U extends ValidElement> (templateFn: TemplateFn<S, U>): Component<S, U> {
+        return this.else_if(() => true, templateFn);
+    }
+
+    /**
+     * Display a specific component based on a string value.
+     * Doesn't have to be exhaustive.
+     **/
+    switch<R extends ValidElement, U extends ValidElement, K extends string | number>(
+        root: Insertable<R>,
+        predicate: (s: S) => K,
+        dispatchTable: Record<K, TemplateFn<S, U>>,
+    ): Component<S, R> {
+        return this.partial_switch(root, predicate, dispatchTable);
+    }
+
+    /**
+     * Display a specific component based on a string value.
+     **/
+    partial_switch<R extends ValidElement, U extends ValidElement, K extends string | number>(
+        root: Insertable<R>,
+        predicate: (s: S) => K,
+        dispatchTable: Partial<Record<K, TemplateFn<S, U>>>,
+    ): Component<S, R> {
+        const c = newComponent((rg: RenderGroup<S>) => {
+            // @ts-ignore trust me bro
+            const cache: Record<K, Component<S, U>> = {};
+            for (const k in dispatchTable) {
+                const templateFn = dispatchTable[k];
+                if (templateFn) {
+                    cache[k] = newComponent(templateFn);
+                }
+            }
+
+            return rg.inlineFn(root, (root, s) => {
+                const res = predicate(s);
+                const component = cache[res];
+                if (!component) {
+                    this.ifStatementOpen = true;
+                    clearChildren(root);
+                    return;
+                }
+
+                setChildAt(root, component, 0);
+                component.render(s);
+            })
+        });
+        return this.inlineFn(c, (c, s) => c.render(s));
+    }
+
+    /** 
+     * Sets a component visible based on a predicate, and only renders it if it is visible 
+     **/
+    if<U extends ValidElement> (predicate: (s: S) => boolean, templateFn: TemplateFn<S, U>): Component<S, U> {
+        return this.inlineFn(newComponent(templateFn), (c, s) => {
+            this.ifStatementOpen = true;
+            if (setVisible(c, this.ifStatementOpen && predicate(s))) {
+                this.ifStatementOpen = false;
+                c.render(s);
+            }
+        });
+    }
+
+    /** 
+     * Same as `if`, but only runs it's predicate if previous predicates were false.
+     */
+    else_if<U extends ValidElement> (predicate: (s: S) => boolean, templateFn: TemplateFn<S, U>): Component<S, U> {
+        return this.inlineFn(newComponent(templateFn), (c, s) => {
+            if (setVisible(c, this.ifStatementOpen && predicate(s))) {
+                this.ifStatementOpen = false;
+                c.render(s);
+            }
+        });
+    }
+
+    /** 
+     * Same as `if`, but it will hide the component if T is undefined. This allows for some type narrowing.
+     */
+    with<U extends ValidElement, T> (predicate: (s: S) => T | undefined, templateFn: TemplateFn<T, U>): Component<T, U> {
+        return this.inlineFn(newComponent(templateFn), (c, s) => {
+            this.ifStatementOpen = true;
+            const val = predicate(s);
+            if (setVisible(c, val)) {
+                this.ifStatementOpen = false;
+                c.render(val);
+            }
+        });
+    }
+    
+    /** 
+     * The `with` equivelant of `else_if`
+     */
+    else_with<U extends ValidElement, T> (predicate: (s: S) => T | undefined, templateFn: TemplateFn<T, U>): Component<T, U> {
+        return this.inlineFn(newComponent(templateFn), (c, s) => {
+            if (!this.ifStatementOpen) {
+                setVisible(c, false);
+                return;
+            }
+
+            const val = predicate(s);
+            // val could be 0 or ""...
+            const res = val === undefined ? val : undefined;
+            if (setVisible(c, res)) {
+                this.ifStatementOpen = false;
+                c.render(res);
+            }
+        });
+    }
+
+    /**
+     * Returns functionality that will append an event to the parent component.
+     * TODO: (ME) - extend to SVGElement as well. you can still use it for those, but you'll be fighting with TypeScript
+     */
+    on<K extends keyof HTMLElementEventMap>(
+        type: K,
+        listener: (s: S, ev: HTMLElementEventMap[K]) => any,
+        options?: boolean | AddEventListenerOptions
+    ): Functionality<HTMLElement> {
+        return (parent) => {
+            on(parent, type, (e) => {
+                listener(this.s, e);
+            }, options);
+        }
+    }
+
+    /** 
+     * Returns functionality that will set attributes on the parent component each render.
+     */
+    attr<U extends ValidElement>(attrName: string, valueFn: (s: S) => string): Functionality<U> {
+        return (parent) => {
+            this.pushRenderFn(this.domRenderFnList, (s) => setAttr(parent, attrName, valueFn(s)), parent);
+        }
+    }
+
     /** 
      * Returns a new {@link ListRenderer} rooted with {@link root}, and {@link templateFn} as the repeating component.
      * It will rerender with {@link renderFn} each render.
@@ -596,251 +783,150 @@ export type RenderGroup<S = null> = {
      * Hint: you can make a `div({ style: "display: contents" })` div to get a similar effect to React.fragment as far as layout is concerned.
      * You can also use `el("g")` for SVGs.
      */
-    list: <R extends ValidElement, T, U extends ValidElement>(
+    list<R extends ValidElement, T, U extends ValidElement>(
         root: Insertable<R>,
         templateFn: TemplateFn<T, U>,
         renderFn: (getNext: () => Component<T, U>, s: S, listRenderer: ListRenderer<R, T, U>) => void,
-    ) => ListRenderer<R, T, U>;
+    ): ListRenderer<R, T, U> {
+        const listRenderer = newListRenderer(root, () => newComponent(templateFn));
+        this.pushRenderFn(this.domRenderFnList, (s) => {
+            listRenderer.render((getNext) => {
+                renderFn(getNext, s, listRenderer);
+            });
+            this.ifStatementOpen = listRenderer.lastIdx === 0;
+        }, root);
+        return listRenderer;
+    }
+
     /** 
-     * Sets a component visible based on a predicate, and only renders it if it is visible 
-     **/
-    if: <U extends ValidElement> (predicate: (s: S) => boolean, templateFn: TemplateFn<S, U>) => Component<S, U>,
-    /** 
-     * Same as `if`, but only runs it's predicate if previous predicates were false.
+     * Returns functionality that will enable/disable a particular class in the classList each render.
      */
-    else_if: <U extends ValidElement> (predicate: (s: S) => boolean, templateFn: TemplateFn<S, U>) => Component<S, U>,
+    class<U extends ValidElement>(className: string, predicate: (s: S) => boolean): Functionality<U> {
+        return (parent) => {
+            this.pushRenderFn(this.domRenderFnList, (s) => setClass(parent, className, predicate(s)), parent);
+        }
+    }
+
     /** 
-     * Same as `else_if(() => true, ...)`,
+     * Returns functionality that will sets the current value of an element's style each render.
      */
-    else: <U extends ValidElement> (templateFn: TemplateFn<S, U>) => Component<S, U>,
-    /** 
-     * Same as `if`, but it will hide the component if T is undefined. This allows for some type narrowing.
-     */
-    with: <U extends ValidElement, T> (predicate: (s: S) => T | undefined, templateFn: TemplateFn<T, U>) => Component<T, U>,
-    /** 
-     * The `with` equivelant of `else_if`
-     */
-    else_with: <U extends ValidElement, T> (predicate: (s: S) => T | undefined, templateFn: TemplateFn<T, U>) => Component<T, U>,
+    style<U extends ValidElement, K extends StyleObject<U>>(val: K, valueFn: (s: S) => U["style"][K]): Functionality<U> {
+        return (parent) => {
+            const currentStyle = parent.el.style[val];
+            this.pushRenderFn(this.domRenderFnList, (s) => setStyle(parent, val, valueFn(s) || currentStyle), parent);
+        };
+    }
+
     /**
      * Returns custom functionality, allowing for declaratively specifying a component's behaviour.
      * See the documentation for {@link el} for info on how that works.
      */
-    functionality: <U extends ValidElement> (fn: (val: Insertable<U>, s: S) => void) => Functionality<U>;
+    functionality<U extends ValidElement> (fn: (val: Insertable<U>, s: S) => void): Functionality<U> {
+        return (parent) => {
+            this.pushRenderFn(this.domRenderFnList, (s) => fn(parent, s), parent);
+        };
+    }
+
     /**
-     * Returns functionality that will append an event to the parent component.
-     * TODO: (ME) - extend to SVGElement as well. you can still use it for those, but you'll be fighting with TypeScript
-     */
-    on: <K extends keyof HTMLElementEventMap>(
-        type: K,
-        listener: (s: S, ev: HTMLElementEventMap[K]) => any,
-        options?: boolean | AddEventListenerOptions
-    ) => Functionality<HTMLElement>;
-    /** 
-     * Returns functionality that will set attributes on the parent component each render.
-     */
-    attr: <U extends ValidElement>(attrName: string, valueFn: (s: S) => string) => Functionality<U>;
-    /** 
-     * Returns functionality that will enable/disable a particular class in the classList each render.
-     */
-    class: <U extends ValidElement>(className: string, predicate: (s: S) => boolean) => Functionality<U>;
-    /** 
-     * Returns functionality that will sets the current value of an element's style each render.
-     */
-    style: <U extends ValidElement, K extends StyleObject<U>>(val: K, valueFn: (s: S) => U["style"][K]) => Functionality<U>;
-    /**
-     * Appends a custom render function to this render group. Usefull for adding functionality to the render group
-     * that has nothing to do with the DOM or the UI, or if you find it better to use an imperative approach to 
-     * writing a particular component (most real JS UI frameworks suck at this and don't allow this, 
-     * which is what prompted me to make a custom framework in the first place).
-     *
+     * Appends a custom function to this render group that runs before all the DOM render functions.
+     * Use this to pre-compute state, and do other imperative things (most real JS UI frameworks suck at 
+     * or don't allow or look down upon imperative code, which is what prompted me to make a custom framework that embraces it).
+     * 
      * Code here always runs before DOM render functions, and postRenderFunctions on this component.
-     * This ordering is only local to this component. The following code should log the numbers 1-7 in order:
      *
      * ```
-     * function App(rg: RenderGroup) {
-     *      rg.preRenderFn(() => console.log(1));
-     *      rg.postRenderFn(() => console.log(7));
+     * function App(rg: RenderGroup<GameState>) {
+     *      let x = 0;
+     *      let alpha = 0;
+     *
+     *      rg.preRenderFn((s) => {
+     *          x += s.dt;
+     *          if (x > 1) {
+     *              x = 0;
+     *          }
+     *
+     *          alpha = Math.sin(x * 2 * Math.PI);
+     *      });
      *
      *      return div({}, [
-     *          rg.c(InnerComponent, (c, s) => {
-     *              console.log(2);
-     *              c.render(s)
-     *              console.log(6)
-     *          })
+     *          rg.style("backgroundColor", () => `rgba(0, 0, 0, ${alpha})`),
+     *      ]);
+     * }
+     * ```
+     */
+    preRenderFn(fn: (s: S) => void, errorRoot?: Insertable<any>) {
+        this.pushRenderFn(this.preRenderFnList, fn, errorRoot);
+    }
+
+    /** 
+     * Similar to {@link RenderGroup.preRenderFn}, but this function will be run _after_ the dom rendering functions.
+     *
+     * function App(rg: RenderGroup<GameState>) {
+     *      let t0 = 0;
+     *      rg.preRenderFn((s) => {
+     *          t0 = Performance.now();
+     *      });
+     *
+     *      rg.postRenderFn((s) => {
+     *          const timeTakenMs = Performance.now() - t0;
+     *          console.log(`Our app rendered in ${timeTakenMs}ms`);
+     *      });
+     *
+     *      return div({}, [
+     *          rg.style("backgroundColor", () => `rgba(0, 0, 0, ${alpha})`),
      *      ]);
      * }
      *
-     * function InnerComponent(rg: RenderGroup) {
-     *      rg.preRenderFn(() => console.log(3));
-     *      rg.postRenderFn(() => console.log(5));
-     *
-     *      return div({}, [
-     *          rg.text(() => {
-     *              console.log(4)
-     *              return "Hello!"
-     *          })
-     *      ])
-     * }
-     *
-     * newComponent(App).render(null);
-     *
-     * ```
      */
-    preRenderFn: (fn: (s: S) => void, errorRoot?: Insertable<any>) => void;
-    /** 
-     * Similar to {@link RenderGroup.preRenderFn}, but this function will be run _after_ the dom rendering functions.
-     */
-    postRenderFn: (fn: (s: S) => void, errorRoot?: Insertable<any>) => void;
-};
+    postRenderFn(fn: (s: S) => void, errorRoot?: Insertable<any>) {
+        this.pushRenderFn(this.postRenderFnList, fn, errorRoot);
+    }
 
-/**
- * Render groups are the foundation of this 'framework'.
- * Fundamentally, a 'render group' is an array of functions that are called in the 
- * same order that they were appended.
- *
- * It is now an internal implementation detail, and you don't really ever need to create them yourself.
- */
-function newRenderGroup<S, Si extends S>(
-    initialState: Si | undefined,
-    templateName: string = "unknown",
-    skipErrorBoundary = false,
-): RenderGroup<S> {
-    const preRenderFn: RenderFn<S>[] = [];
-    const domRenderFn: RenderFn<S>[] = [];
-    const postRenderFn: RenderFn<S>[] = [];
+    private renderFunctions(renderFns: RenderFn<S>[]) {
+        const s = this.s;
+        const defaultErrorRoot = this.root;
 
-    const rg: RenderGroup<S> = {
-        /** 
-         * NOTE: 
-         * this s is actually a copy of the reference/value passed into this render group - 
-         * we need it so that callbacks we add here work.
-         */
-        s: initialState,
-        templateName,
-        instantiatedRoot: undefined,
-        instantiated: false,
-        skipErrorBoundary,
-        ifStatementOpen: false,
-        render(s) {
-            rg.ifStatementOpen = false;
-            rg.s = s;
-            rg.renderWithCurrentState();
-        },
-        renderWithCurrentState() {
-            rg.instantiated = true;
+        countRender(this.templateName, this, renderFns.length);
 
-            renderFunctions(rg, preRenderFn);
-            renderFunctions(rg, domRenderFn);
-            renderFunctions(rg, postRenderFn);
-        },
-        text: (fn) => {
-            const e = span();
-            pushRenderFn(rg, domRenderFn, (s) => setText(e, fn(s)), e);
-            return e;
-        },
-        // Very big brain here
-        else: (templateFn) => {
-            return rg.else_if(() => true, templateFn);
-        },
-        if: (predicate, templateFn) => {
-            return rg.inlineFn(newComponent(templateFn), (c, s) => {
-                rg.ifStatementOpen = true;
-                if (setVisible(c, rg.ifStatementOpen && predicate(s))) {
-                    rg.ifStatementOpen = false;
-                    c.render(s);
-                }
-            });
-        },
-        else_if: (predicate, templateFn) => {
-            return rg.inlineFn(newComponent(templateFn), (c, s) => {
-                if (setVisible(c, rg.ifStatementOpen && predicate(s))) {
-                    rg.ifStatementOpen = false;
-                    c.render(s);
-                }
-            });
-        },
-        with: (predicate, templateFn) => {
-            return rg.inlineFn(newComponent(templateFn), (c, s) => {
-                rg.ifStatementOpen = true;
-                const val = predicate(s);
-                if (setVisible(c, val)) {
-                    rg.ifStatementOpen = false;
-                    c.render(val);
-                }
-            });
-        },
-        else_with: (predicate, templateFn) => {
-            return rg.inlineFn(newComponent(templateFn), (c, s) => {
-                if (!rg.ifStatementOpen) {
-                    setVisible(c, false);
-                    return;
-                }
-
-                const val = predicate(s);
-                // val could be 0 or ""...
-                const res = val === undefined ? val : undefined;
-                if (setVisible(c, res)) {
-                    rg.ifStatementOpen = false;
-                    c.render(res);
-                }
-            });
-        },
-        c: (templateFn, renderFn) => {
-            const component = newComponent(templateFn);
-            return rg.inlineFn(component, (c, s) => renderFn(c, s));
-        },
-        inlineFn: (component, renderFn) => {
-            pushRenderFn(rg, domRenderFn, (s) => renderFn(component, s), component);
-            return component;
-        },
-        on(type, listener, options) {
-            return (parent) => {
-                on(parent, type, (e) => {
-                    const s = getState(rg);
-                    listener(s, e);
-                }, options);
+        if (this.skipErrorBoundary) {
+            for (let i = 0; i < renderFns.length; i++) {
+                renderFns[i].fn(s);
             }
-        },
-        attr: (attrName, valueFn) => {
-            return (parent) => {
-                pushRenderFn(rg, domRenderFn, (s) => setAttr(parent, attrName, valueFn(s)), parent);
-            }
-        },
-        list: (root, templateFn, renderFn) => {
-            const listRenderer = newListRenderer(root, () => newComponent(templateFn));
-            pushRenderFn(rg, domRenderFn, (s) => {
-                listRenderer.render((getNext) => {
-                    renderFn(getNext, s, listRenderer);
-                });
-                rg.ifStatementOpen = listRenderer.lastIdx === 0;
-            }, root);
-            return listRenderer;
-        },
-        class: (className, predicate) => {
-            return (parent) => {
-                pushRenderFn(rg, domRenderFn, (s) => setClass(parent, className, predicate(s)), parent);
-            }
-        },
-        style: (styleName, valueFn) => {
-            return (parent) => {
-                const currentStyle = parent.el.style[styleName];
-                pushRenderFn(rg, domRenderFn, (s) => setStyle(parent, styleName, valueFn(s) || currentStyle), parent);
-            };
-        },
-        functionality: (fn) => {
-            return (parent) => {
-                pushRenderFn(rg, domRenderFn, (s) => fn(parent, s), parent);
-            };
-        },
-        preRenderFn: (fn, root) => {
-            pushRenderFn(rg, preRenderFn, fn, root);
-        },
-        postRenderFn: (fn, root) => {
-            pushRenderFn(rg, postRenderFn, fn, root);
-        },
-    };
+            return;
+        }
 
-    return rg;
+        for (let i = 0; i < renderFns.length; i++) {
+            const errorRoot = renderFns[i].root || defaultErrorRoot;
+            const fn = renderFns[i].fn;
+
+            // While this still won't catch errors with callbacks, it is still extremely helpful.
+            // By catching the error at this component and logging it, we allow all other components to render as expected, and
+            // It becomes a lot easier to spot the cause of a bug.
+            //
+            // TODO: consider doing this for callbacks as well, it shouldn't be too hard.
+
+            try {
+                setErrorClass(errorRoot, false, this.templateName);
+                fn(s);
+            } catch (e) {
+                setErrorClass(errorRoot, true, this.templateName);
+
+                // TODO: do something with these errors we're collecting. lmao.
+                renderFns[i].error = e;
+                console.error("An error occured while rendering your component:", e);
+
+                // don't run more functions for this component if one of them errored
+                break;
+            }
+        }
+    }
+
+    private pushRenderFn(renderFns: RenderFn<S>[], fn: (s: S) => void, root: Insertable<any> | undefined) {
+        if (this.instantiated) {
+            throw new Error("Can't add event handlers to this template (" + this.templateName + ") after it's been instantiated");
+        }
+        renderFns.push({ root, fn });
+    }
 }
 
 
@@ -864,134 +950,86 @@ function checkForRenderMistake<T extends ValidElement>(ins: Insertable<T>) {
     }
 }
 
-export function getState<T>(c: Component<T, any> | RenderGroup<T>): T {
-    const s = c.s;
-    if (s === undefined) {
-        throw new Error(`A component should been rendered with state at least once before we can access it's state!`);
-    }
-
-    return s;
-}
-
 /**
- * Get the root insertable the render group is attached to without
- * needing a reference to the root. Allows you to write components like
- *
- * ```
- * function Component(rg: RenderGroup<State>) {
- *      rg.preRenderFn(s => {
- *          const root = getRoot(rg);
- *          console.log(root.el);
- *      });
- *
- *      // calling getRoot() here will result in an exception - we don't have a root yet!
- *
- *      return div(
- *          ....
- *      )
- * }
- * ```
+ * Components encapsulate a DOM root, a render function, and internal state.
+ * They existed before render groups.
+ * 
+ * This class is also an internal implementation detail that you never need to use - 
+ * see {@link newComponent};
  */
-export function getRoot<T>(c: RenderGroup<T>): Insertable<any> {
-    const root = c.instantiatedRoot;
-    if (root === undefined) {
-        throw new Error(`This render group does not have a root!`);
-    }
-
-    return root;
-}
-
-
-export function __newComponentInternal<
-    T,
-    U extends ValidElement,
-    Si extends T,
->(root: Insertable<U>, renderFn: (s: T) => void, s: Si | undefined, templateName: string) {
-    const component: Component<T, U> = {
-        el: root.el,
-        instantiated: false,
-        rendering: false,
-        templateName,
-        get _isHidden() { return root._isHidden; },
-        set _isHidden(val: boolean) { root._isHidden = val; },
-        s: s,
-        render(args: T) {
-            component.s = args;
-            component.renderWithCurrentState();
-        },
-        renderWithCurrentState() {
-            if (component.rendering) {
-                throw new Error("Can't call a component's render method while it's already rendering");
-            }
-
-            if (component.instantiated) {
-                checkForRenderMistake(component);
-            }
-
-            // Setting this value this late allows the component to render once before it's ever inserted.
-            component.instantiated = true;
-
-            component.rendering = true;
-            const s = getState(component);
-
-            try {
-                renderFn(s);
-            } finally {
-                component.rendering = false;
-            }
+export class Component<T, U extends ValidElement> implements Insertable<U> {
+    root: Insertable<U>;
+    el: U;
+    get _isHidden() { return this.root._isHidden; }
+    set _isHidden(val: boolean) { this.root._isHidden = val; }
+    _s: T | undefined;
+    get s() {
+        if (this._s === undefined) {
+            throw new Error(`This component does not have a root!`);
         }
-    };
 
-    return component;
-}
-
-
-type RenderFn<S> = { fn: (s: S) => void; root: Insertable<any> | undefined; error?: any };
-function pushRenderFn<S>(rg: RenderGroup<S>, renderFns: RenderFn<S>[], fn: (s: S) => void, root: Insertable<any> | undefined) {
-    if (rg.instantiated) {
-        throw new Error("Can't add event handlers to this template (" + rg.templateName + ") after it's been instantiated");
+        return this._s;
     }
-    renderFns.push({ root, fn });
-}
+    instantiated = false;
+    /**
+     * Internal variable used to catch infinite recursion bug 
+     */
+    rendering = false;
+    /** Used for debugging purposes */
+    templateName: string;
+    renderFn: { fn: (s: T) => void };
 
-function renderFunctions<S>(rg: RenderGroup<S>, renderFns: RenderFn<S>[]) {
-    const s = getState(rg);
-    const defaultErrorRoot = getRoot(rg);
-    countRender(rg.templateName, rg, renderFns.length);
-    if (rg.skipErrorBoundary) {
-        for (let i = 0; i < renderFns.length; i++) {
-            renderFns[i].fn(s);
+    constructor(
+        root: Insertable<U>, 
+        renderFn: (s: T) => void, 
+        s: T | undefined, 
+        templateName: string,
+    ) {
+        this.root = root;
+        this.el = root.el;
+        this.templateName = templateName;
+        this._s = s;
+        this.renderFn = { fn: renderFn };
+    }
+    /**
+     * Renders the component with the arguments provided.
+     * 
+     * if skipErrorBoundary has not been set to false (it is true by default), any exceptions are handled by 
+     * adding the "catastrophic---error" css class to the root element of this component.
+     */
+    render(args: T) {
+        this._s = args;
+        this.renderWithCurrentState();
+    }
+    /**
+     * Renders the component with the arguments provided.
+     * 
+     * if skipErrorBoundary has been set to true, any exceptions are handled by 
+     * adding the "catastrophic---error" css class to the root element of this component.
+     */
+    renderWithCurrentState() {
+        if (this.rendering) {
+            throw new Error("Can't call a this's render method while it's already rendering");
         }
-        return;
-    }
 
-    for (let i = 0; i < renderFns.length; i++) {
-        const errorRoot = renderFns[i].root || defaultErrorRoot;
-        const fn = renderFns[i].fn;
+        if (this.instantiated) {
+            checkForRenderMistake(this);
+        }
 
-        // While this still won't catch errors with callbacks, it is still extremely helpful.
-        // By catching the error at this component and logging it, we allow all other components to render as expected, and
-        // It becomes a lot easier to spot the cause of a bug.
-        //
-        // TODO: consider doing this for callbacks as well, it shouldn't be too hard.
+        // Setting this value this late allows the this to render once before it's ever inserted.
+        this.instantiated = true;
+
+        this.rendering = true;
 
         try {
-            setErrorClass(errorRoot, false, rg.templateName);
-            fn(s);
-        } catch (e) {
-            setErrorClass(errorRoot, true, rg.templateName);
-
-            // TODO: do something with these errors we're collecting. lmao.
-            renderFns[i].error = e;
-            console.error("An error occured while rendering your component:", e);
-
-            // don't run more functions for this component if one of them errored
-            break;
+            this.renderFn.fn(this.s);
+        } finally {
+            this.rendering = false;
         }
     }
 }
 
-
+type RenderFn<S> = { fn: (s: S) => void; root: Insertable<any> | undefined; error?: any };
 type TemplateFn<T, U extends ValidElement> = (rg: RenderGroup<T>) => Insertable<U>;
 
 /**
@@ -1005,49 +1043,22 @@ export function newComponent<T, U extends ValidElement, Si extends T>(
     initialState?: Si,
     skipErrorBoundary = false
 ) {
-    const rg = newRenderGroup<T, Si>(
+    const rg = new RenderGroup<T>(
         initialState,
         templateFn.name ?? "",
         skipErrorBoundary,
     );
 
     const root = templateFn(rg);
-    const component = __newComponentInternal(root, rg.render, initialState, rg.templateName);
+    const component = new Component(root, rg.render.bind(rg), initialState, rg.templateName);
     rg.instantiatedRoot = root;
 
-    if (component.s !== undefined) {
+    if (component._s !== undefined) {
         component.renderWithCurrentState();
     }
 
     return component;
 }
-
-
-export type Component<T, U extends ValidElement> = Insertable<U> & {
-    /**
-     * Renders the component with the arguments provided.
-     * 
-     * if skipErrorBoundary has not been set to false (it is true by default), any exceptions are handled by 
-     * adding the "catastrophic---error" css class to the root element of this component.
-     */
-    render(args: T): void;
-    /**
-     * Renders the component with the arguments provided.
-     * 
-     * if skipErrorBoundary has been set to true, any exceptions are handled by 
-     * adding the "catastrophic---error" css class to the root element of this component.
-     */
-    renderWithCurrentState(): void;
-    s: T | undefined;
-    instantiated: boolean;
-    /** Used for debugging purposes */
-    templateName: string;
-    /**
-     * Internal variable used to catch infinite recursion bug 
-     */
-    rendering: boolean;
-}
-
 
 // ---- List rendering API
 
@@ -1113,6 +1124,7 @@ export function newListRenderer<R extends ValidElement, T, U extends ValidElemen
 
 let styleGeneratorId = 0;
 let allClassNamesWeMade = new Set<string>();
+
 /**
  * NOTE: this should always be called at a global scope on a *per-module* basis, and never on a per-component basis.
  * Otherwise you'll just have a tonne of duplicate styles lying around in the DOM. 
