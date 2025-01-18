@@ -1,7 +1,6 @@
 import { Button } from "src/components/button";
-import { div, RenderGroup } from "src/utils/dom-utils";
+import { div, RenderGroup, cn } from "src/utils/dom-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
-import { cn } from "src/dom-root";
 
 export function StartupView(rg: RenderGroup<GlobalContext>) {
     // TODO: better game name
@@ -32,17 +31,17 @@ export function StartupView(rg: RenderGroup<GlobalContext>) {
         ["Play", onClickPlay]
     ];
 
-    return div({ class: cn.flex1 + cn.col + cn.alignItemsCenter + cn.relative }, [
-        div({ class: cn.col + cn.alignItemsCenter, style: "font-size: 64px;" }, [
+    return div({ class: [cn.flex1, cn.col, cn.alignItemsCenter, cn.relative] }, [
+        div({ class: [cn.col, cn.alignItemsCenter], style: "font-size: 64px;" }, [
             rg.style("fontSize", () => fontSizeAnimated + "px"),
             gameName,
 
         ]),
         div({
-            class: cn.absolute,
+            class: [cn.absolute],
             style: "top: 25%; bottom: 25%; font-size: 24px;"
         }, [
-            rg.list(div({ class: cn.contents }), MenuButton, (getNext, s) => {
+            rg.list(div({ class: [cn.contents] }), MenuButton, (getNext, s) => {
                 for (let i = 0; i < views.length; i++) {
                     const [text, handler] = views[i];
                     getNext().render({

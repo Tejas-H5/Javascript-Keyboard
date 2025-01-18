@@ -6,14 +6,19 @@ import {
 import {
     appendChild,
     Component,
-    newComponent
+    initializeDomUtils,
+    newComponent,
+    newInsertable
 } from "src/utils/dom-utils";
-import { domRoot } from "./dom-root";
 import "./main.css";
 import { load, loadChart } from "./state/loading-saving-charts";
 import { stopPlaying } from "./state/playing-pausing";
 import { syncPlayback } from "./state/sequencer-state";
 import { App, GlobalContext, newGlobalContext, setViewPlayCurrentChart } from "./views/app";
+
+const domRoot = newInsertable(document.body);
+initializeDomUtils(domRoot);
+
 
 let app: Component<GlobalContext, any> | undefined;
 function rerenderApp() {

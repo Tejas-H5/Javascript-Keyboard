@@ -1,4 +1,3 @@
-import { cn } from "src/dom-root";
 import { pressKey, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
@@ -42,24 +41,25 @@ import {
 } from "src/state/sequencer-state";
 import { AppView, newUiState, UIState } from "src/state/ui-state";
 import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
-import { contentsDiv, div, isEditingTextSomewhereInDocument, RenderGroup } from "src/utils/dom-utils";
+import { cn, contentsDiv, div, isEditingTextSomewhereInDocument, RenderGroup } from "src/utils/dom-utils";
 import { ChartSelect } from "src/views/chart-select";
 import { EditView } from "src/views/edit-view";
 import { PlayView } from "src/views/play-view";
 import { StartupView } from "src/views/startup-view";
+import { cnApp } from "./styling";
 
 
 export type GlobalContext = {
     keyboard: KeyboardState;
     sequencer: SequencerState;
     ui: UIState;
-    savedState: SavedState; 
+    savedState: SavedState;
     render(): void;
     dt: DOMHighResTimeStamp;
 }
 
 export function newGlobalContext(renderFn: () => void): GlobalContext {
-    return { 
+    return {
         keyboard: newKeyboardState(),
         sequencer: newSequencerState(),
         ui: newUiState(),
@@ -70,7 +70,7 @@ export function newGlobalContext(renderFn: () => void): GlobalContext {
 }
 
 function handleStartupKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
-    const  { key } = keyPressState;
+    const { key } = keyPressState;
 
     if (key === "Enter") {
         // NOTE: will need to change when we add more screens we can go to from here
@@ -436,8 +436,8 @@ function handleKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolea
     }
 
     if (ui.currentView === "chartSelect") {
-        return handleChartSelectKeyDown(ctx, keyPressState) 
-    } 
+        return handleChartSelectKeyDown(ctx, keyPressState)
+    }
 
     // There's a lot of overlap in the functionality of these two views
     if (ui.currentView === "playChart" || ui.currentView === "editChart") {
@@ -450,7 +450,7 @@ function handleKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolea
         }
 
         return handleEditChartKeyDown(ctx, keyPressState);
-    } 
+    }
 
     throw new Error("Unhandled view - " + ui.currentView);
 }
@@ -567,7 +567,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
 
     // run code while exiting a view
     {
-        switch(ctx.ui.currentView) {
+        switch (ctx.ui.currentView) {
             case "editChart":
                 editView.lastCursorStart = sequencer.cursorStart;
                 editView.lastCursorDivisor = sequencer.cursorDivisor;
@@ -583,7 +583,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
 
     // run code while entering a view
     {
-        switch(ctx.ui.currentView) {
+        switch (ctx.ui.currentView) {
             case "editChart":
                 if (editView.lastCursorDivisor !== 0) {
                     sequencer.cursorStart = editView.lastCursorStart;
@@ -664,15 +664,15 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
 // Contains ALL logic
 let instantiated = false;
 export function App(rg: RenderGroup<GlobalContext>) {
-    let ctx: GlobalContext;
-
-    rg.preRenderFn(s => ctx = s);
-
     if (!instantiated) {
         instantiated = true;
     } else {
         throw new Error("Can't instantiate the app twice!");
     }
+
+    let ctx: GlobalContext;
+
+    rg.preRenderFn(s => ctx = s);
 
     // Add global event handlers.
     const keyPressState = newKeyPressState();
@@ -709,8 +709,8 @@ export function App(rg: RenderGroup<GlobalContext>) {
         ctx.render();
     });
 
-    return div({ 
-        class: cn.absoluteFill + cn.row + cn.fixed + cn.normalFont,
+    return div({
+        class: [cn.absoluteFill, cn.row, cn.fixed, cnApp.normalFont],
     }, [
         rg.switch(contentsDiv(), s => s.ui.currentView, {
             startup: StartupView,

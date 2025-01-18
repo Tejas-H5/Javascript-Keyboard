@@ -1,12 +1,12 @@
-import { Insertable, RenderGroup, div, newStyleGenerator, setChildAt } from "src/utils/dom-utils";
+import { Insertable, RenderGroup, div, setChildAt, newCssBuilder } from "src/utils/dom-utils";
+import { cssVars } from "src/views/styling";
 
-import { cn } from "src/dom-root";
-
-const BG_COLOR = cn.bg;
+const BG_COLOR = cssVars.bg;
 const UNDERLAY_COLOR = "rgba(0, 0, 0, 0.5)";
 
-const sg = newStyleGenerator();
-const cnModal = sg.cn("cnModal", [` { 
+const cssb = newCssBuilder("modal");
+
+const cnModal = cssb.cn("cnModal", [` { 
     top: 0vh; left: 0vw; right: 0vw; bottom: 0vh; z-index: 9999; 
     background-color: ${UNDERLAY_COLOR}; pointer-events: all; 
     position: fixed;
@@ -18,7 +18,7 @@ export function Modal(rg: RenderGroup<{ onClose(): void; content: Insertable; }>
         rg.functionality((div, s) => setChildAt(div, s.content, 0)),
     ]);
 
-    const root = div({ class: cnModal, }, [bgRect]);
+    const root = div({ class: [cnModal], }, [bgRect]);
 
     let blockMouseDown = false;
 

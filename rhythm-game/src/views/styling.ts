@@ -1,45 +1,44 @@
 // Using css was a mistake. Most styling should be available in javascript for the code to know about and use...
-import { newColorFromHex } from "src/utils/colour";
-import { Insertable, newStyleGenerator } from "src/utils/dom-utils";
+import { newCssBuilder, newColorFromHex, setCssVars } from "src/utils/dom-utils";
+
+const mainTheme = Object.freeze({
+    bg: newColorFromHex("#FFF"),
+    bg2: newColorFromHex("#CCC"),
+    mg: newColorFromHex("#888"),
+    fg2: newColorFromHex("#333"),
+    fg: newColorFromHex("#000"),
+    playback: newColorFromHex("#00F"),
+    error: newColorFromHex("#F00"),
+
+    mediumText: "4rem",
+    normalText: "2rem",
+    smallText: "1rem",
+});
+
+export type Theme = typeof mainTheme;
+
+export const cssVars: Record<keyof Theme, string> = {
+    bg: "var(--bg)",
+    bg2: "var(--bg2)",
+    mg: "var(--mg)",
+    fg2: "var(--fg2)",
+    fg: "var(--fg)",
+    playback: "var(--playback)",
+    error: "var(--error)",
+    mediumText: "var(--mediumText)",
+    normalText: "var(--normalText)",
+    smallText: "var(--smallText)",
+} as const;
 
 
-export function initStyles(root: Insertable) {
-    const sg = newStyleGenerator(root.el);
+const cssb = newCssBuilder();
 
-    const colours = {
-        bgLiteral: newColorFromHex("#FFF"),
-        bg2Literal: newColorFromHex("#CCC"),
-        mgLiteral: newColorFromHex("#888"),
-        fg2Literal: newColorFromHex("#333"),
-        fgLiteral: newColorFromHex("#000"),
-        playbackLiteral: newColorFromHex("#00F"),
-        errorLiteral: newColorFromHex("#F00"),
-    };
-
-    const colourVars = {
-        bg: sg.cssVar("bg", () => "" + colours.bgLiteral),
-        bg2: sg.cssVar("bg2", () => "" + colours.bg2Literal),
-        mg: sg.cssVar("mg", () => "" + colours.mgLiteral),
-        fg2: sg.cssVar("fg2", () => "" + colours.fg2Literal),
-        fg: sg.cssVar("fg", () => "" + colours.fgLiteral),
-        playback: sg.cssVar("playback", () => "" + colours.playbackLiteral),
-        error: sg.cssVar("error", () => "" + colours.errorLiteral),
-    }
-
-    const sizeVars = {
-        mediumText: sg.cssVar("medium", () => "4rem"),
-        normalText: sg.cssVar("normal", () => "2rem"),
-        smallText: sg.cssVar("small", () => "1rem"),
-    };
-
-    sg.updateVars();
-
-    sg.s(`
+cssb.s(`
 body {
     font-family: monospace;
-    font-size: ${sizeVars.normalText};
-    color: ${colourVars.fg};
-    background: ${colourVars.bg};
+    font-size: ${cssVars.normalText};
+    color: ${cssVars.fg};
+    background: ${cssVars.bg};
     font-size: 1em;
 }
 
@@ -51,7 +50,7 @@ textarea {
 }
 
 textarea:focus {
-    background-color: ${colourVars.bg2};
+    background-color: ${cssVars.bg2};
 }
 
 input {
@@ -61,95 +60,33 @@ input {
 }
 
 input:focus {
-    background-color: ${colourVars.bg2};
+    background-color: ${cssVars.bg2};
 }
     `);
 
-    const cnStyle = {
-        b: sg.cn("b", [ ` { font-weight: bold; } `]),
+export const cnApp = {
+    b: cssb.cn("b", [` { font-weight: bold; } `]),
 
-        mediumFont: sg.cn("medium-font", [ ` { font-size: ${sizeVars.mediumText}; }` ]),
-        normalFont: sg.cn("normal-font", [ ` { font-size: ${sizeVars.normalText}; }` ]),
-        smallFont: sg.cn("small-font", [ ` { font-size: ${sizeVars.smallText}; }` ]),
+    mediumFont: cssb.cn("mediumFont", [` { font-size: ${cssVars.mediumText}; }`]),
+    normalFont: cssb.cn("normalFont", [` { font-size: ${cssVars.normalText}; }`]),
+    smallFont: cssb.cn("smallFont", [` { font-size: ${cssVars.smallText}; }`]),
 
-        defocusedText: sg.cn("text-mg", [ ` { color: ${colourVars.mg}; }`]),
-        inverted: sg.cn("inverted", [ ` { color: ${colourVars.bg} ; background: ${colourVars.fg}; }` ]), 
+    defocusedText: cssb.cn("defocusedText", [` { color: ${cssVars.mg}; }`]),
+    inverted: cssb.cn("inverted", [` { color: ${cssVars.bg} ; background: ${cssVars.fg}; }`]),
 
-        border1Solid: sg.cn("border-1-solid", [`{ border: 1px solid ${colourVars.fg}; }`]),
-    };
+    border1Solid: cssb.cn("border1Solid", [`{ border: 1px solid ${cssVars.fg}; }`]),
+};
 
-    const cnLayout = {
-        row: sg.cn("row", [` { display: flex; flex-direction: row; }`]),
-        col: sg.cn("col", [` { display: flex; flex-direction: column; }`]),
-        flexWrap: sg.cn("flex-wrap", [` { display: flex; flex-flow: wrap; }`]),
+setCssVars(mainTheme);
 
-        /** The min-width and min-height here is the secret sauce. Now the flex containers won't keep overflowing lmao */
-        flex1: sg.cn("flex-1", [` { flex: 1; min - width: 0; min - height: 0; }`]),
-        alignItemsCenter: sg.cn("align-items-center", [` { align-items: center; }`]),
-        justifyContentCenter: sg.cn("justify-content-center", [` { justify-content: center; }`]),
-        justifyContentStart: sg.cn("justify-content-start", [` { justify-content: start; }`]),
-        justifyContentEnd: sg.cn("justify-content-end", [` { justify-content: end; }`]),
-        alignItemsEnd: sg.cn("align-items-end", [` { align-items: flex-end; }`]),
-        alignItemsStart: sg.cn("align-items-start", [` { align-items: flex-start; }`]),
-        alignItemsStretch: sg.cn("align-items-stretch", [` { align-items: stretch; }`]),
+let currentTheme: Theme = mainTheme;
 
-        /** positioning */
-        fixed: sg.cn("fixed", [` { position: fixed; }`]),
-        sticky: sg.cn("sticky", [` { position: sticky; }`]),
-        absolute: sg.cn("absolute", [` { position: absolute; }`]),
-        relative: sg.cn("relative", [` { position: relative; }`]),
-        absoluteFill: sg.cn("absolute-fill", [` { position: absolute; top: 0; right: 0; left: 0; bottom: 0; width: 100%; height: 100%; }`]),
-        borderBox: sg.cn("border-box", [` { box-sizing: border-box; }`]),
+export function getCurrentTheme(): Readonly<Theme> {
+    return currentTheme;
+}
 
-        /** displays */
-
-        inlineBlock: sg.cn("inline-block", [` { display: inline-block; }`]),
-        inline: sg.cn("inline", [` { display: inline; }`]),
-        flex: sg.cn("flex", [` { display: flex; }`]),
-        pointerEventsNone: sg.cn("pointer-events-none", [` { pointer-events: none; }`]),
-        pointerEventsAll: sg.cn("pointer-events-all", [` { pointer-events: all; }`]),
-
-        /** we have React.Fragment at home */
-        contents: sg.cn("contents", [` { display: contents; }`]),
-
-        /** text and text layouting */
-
-        textAlignCenter: sg.cn("text-align-center", [` { text-align: center; }`]),
-        textAlignRight: sg.cn("text-align-right", [` { text-align: right; }`]),
-        textAlignLeft: sg.cn("text-align-left", [` { text-align: left; }`]),
-        pre: sg.cn("pre", [` { white-space: pre; }`]),
-        preWrap: sg.cn("pre-wrap", [` { white-space: pre-wrap; }`]),
-        noWrap: sg.cn("nowrap", [` { white-space: nowrap; }`]),
-        handleLongWords: sg.cn("handle-long-words", [` { overflow-wrap: anywhere; word-break: normal; }`]),
-        strikethrough: sg.cn("strikethrough", [` { text-decoration: line-through; text-decoration-color: ${colourVars.fg} }`]),
-
-        /** common spacings */
-
-        gap5: sg.cn("gap-5", [` { gap: 5px; }`]),
-        w100: sg.cn("w-100", [` { width: 100%; }`]),
-        h100: sg.cn("h-100", [` { height: 100%; }`]),
-
-        /** overflow management */
-
-        overflowXAuto: sg.cn("overflow-x-auto", [` { overflow-x: auto; }`]),
-        overflowYAuto: sg.cn("overflow-y-auto", [` { overflow-y: auto; }`]),
-        overflowHidden: sg.cn("overflow-hidden", [` { overflow: hidden; }`]),
-
-        /** hover utils */
-
-        hoverParent: sg.cn("hover-parent", [
-            ` .hover-target { display: none !important; }`,
-            ` .hover-target-inverse { display: inherit !important; }`,
-            `:hover .hover-target { display: inherit !important; }`,
-            `:hover .hover-target-inverse { display: none !important; }`,
-        ]),
-    };
-
-    return {
-        colours,
-        colourVars,
-        sizeVars,
-        cnStyle,
-        cnLayout,
-    };
+// Eventually, we may have more themes!
+export function updateTheme() {
+    currentTheme = mainTheme
+    setCssVars(currentTheme);
 }

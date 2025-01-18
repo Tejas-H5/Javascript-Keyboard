@@ -1,15 +1,283 @@
-// ---- initialize the 'framework'
+// DOM-utils v0.1.0 - @elTejasodomu
 
-export function initializeDomUtils(root: Insertable) {
-    // Insert some CSS styles that this framework uses for error handling and debugging.
-    newStyleGenerator(root.el).s(`
+// ---- Styling API - this actually needs to happen before the framework is initialized, so it's been moved to the top.
+
+const stlyeStringBuilder: string[] = [];
+const allClassNames = new Set<string>();
+
+/**
+ * A util allowing components to register styles that they need to function.
+ * All styles in the entire bundle are collected into one large string as soon as the JavaScript runs,
+ * and they will get added under a single DOM node when dom-utils is initialized.
+ *
+ * Using an object here instead of a global function, so that we can apply a prefix to every class added by a particular builder.
+ */
+export function newCssBuilder(prefix: string = "") {
+    return {
+        // makes a new style. for when you can't make a class.
+        s(string: string) {
+            stlyeStringBuilder.push(string);
+        },
+        /** Throws if this class name clashes with an existing one */
+        getClassName(className: string) {
+            let name = prefix + className;
+            if (allClassNames.has(name)) {
+                throw new Error("We've already made a class with this name: " + name + " - consider adding a prefix");
+            }
+            allClassNames.add(name);
+            return name;
+        },
+        // makes a new class, it's variants, and returns the class name
+        cn(className: string, styles: string[] | string): string {
+            const name = this.getClassName(className);
+
+            for (let style of styles) {
+                const finalStyle = `.${name}${style}`;
+                stlyeStringBuilder.push(finalStyle + "\n");
+            }
+
+            return name;
+        },
+    };
+}
+
+
+const sb = newCssBuilder();
+
+sb.s(`
 .catastrophic---error > * { display: none !important; }
 .catastrophic---error::before {
     content: var(--error-text);
     text-align: center;
 }
 .debug { border: 1px solid red; }
-`   );
+`);
+
+const hoverParent = sb.getClassName("hoverParent");
+const hoverTarget = sb.getClassName("hoverTarget");
+const cnHoverTargetInverse = sb.getClassName("hoverTargetInverse");
+
+sb.s(`
+.${hoverParent} .${hoverTarget} { display: none !important; }
+.${hoverParent} .${cnHoverTargetInverse} { display: inherit !important; }
+.${hoverParent}:hover ${hoverTarget}  { display: inherit !important; }
+.${hoverParent}:hover ${cnHoverTargetInverse}  { display: none !important; }
+`);
+
+// Some super common classes that I use in all my programs all the time.
+// It becomes a bit easier to make reuseable UI components  and keep them in sync accross projects
+// if their styling dependencies are all in dom-utils itself.
+export const cn = Object.freeze({
+    row: sb.cn("row", [` { display: flex; flex-direction: row; }`]),
+    col: sb.cn("col", [` { display: flex; flex-direction: column; }`]),
+    flexWrap: sb.cn("flexWrap", [` { display: flex; flex-flow: wrap; }`]),
+
+    /** The min-width and min-height here is the secret sauce. Now the flex containers won't keep overflowing lmao */
+    flex1: sb.cn("flex1", [` { flex: 1; min-width: 0; min-height: 0; }`]),
+    alignItemsCenter: sb.cn("alignItemsCenter", [` { align-items: center; }`]),
+    justifyContentLeft: sb.cn("justifyContentLeft", [` { justify-content: left; }`]),
+    justifyContentRight: sb.cn("justifyContentRight", [` { justify-content: right; }`]),
+    justifyContentCenter: sb.cn("justifyContentCenter", [` { justify-content: center; }`]),
+    justifyContentStart: sb.cn("justifyContentStart", [` { justify-content: start; }`]),
+    justifyContentEnd: sb.cn("justifyContentEnd", [` { justify-content: end; }`]),
+    alignItemsEnd: sb.cn("alignItemsEnd", [` { align-items: flex-end; }`]),
+    alignItemsStart: sb.cn("alignItemsStart", [` { align-items: flex-start; }`]),
+    alignItemsStretch: sb.cn("alignItemsStretch", [` { align-items: stretch; }`]),
+
+    /** positioning */
+    fixed: sb.cn("fixed", [` { position: fixed; }`]),
+    sticky: sb.cn("sticky", [` { position: sticky; }`]),
+    absolute: sb.cn("absolute", [` { position: absolute; }`]),
+    relative: sb.cn("relative", [` { position: relative; }`]),
+    absoluteFill: sb.cn("absoluteFill", [` { position: absolute; top: 0; right: 0; left: 0; bottom: 0; width: 100%; height: 100%; }`]),
+    borderBox: sb.cn("borderBox", [` { box-sizing: border-box; }`]),
+
+    /** displays */
+
+    inlineBlock: sb.cn("inlineBlock", [` { display: inline-block; }`]),
+    inline: sb.cn("inline", [` { display: inline; }`]),
+    flex: sb.cn("flex", [` { display: flex; }`]),
+    pointerEventsNone: sb.cn("pointerEventsNone", [` { pointer-events: none; }`]),
+    pointerEventsAll: sb.cn("pointerEventsAll", [` { pointer-events: all; }`]),
+
+    /** we have React.Fragment at home */
+    contents: sb.cn("contents", [` { display: contents; }`]),
+
+    /** text and text layouting */
+
+    textAlignCenter: sb.cn("textAlignCenter", [` { text-align: center; }`]),
+    textAlignRight: sb.cn("textAlignRight", [` { text-align: right; }`]),
+    textAlignLeft: sb.cn("textAlignLeft", [` { text-align: left; }`]),
+    pre: sb.cn("pre", [` { white-space: pre; }`]),
+    preWrap: sb.cn("preWrap", [` { white-space: pre-wrap; }`]),
+    noWrap: sb.cn("noWrap", [` { white-space: nowrap; }`]),
+    handleLongWords: sb.cn("handleLongWords", [` { overflow-wrap: anywhere; word-break: normal; }`]),
+    strikethrough: sb.cn("strikethrough", [` { text-decoration: line-through; text-decoration-color: currentColor; }`]),
+
+    /** common spacings */
+
+    gap5: sb.cn("gap5", [` { gap: 5px; }`]),
+    w100: sb.cn("w100", [` { width: 100%; }`]),
+    h100: sb.cn("h100", [` { height: 100%; }`]),
+
+    /** overflow management */
+
+    overflowXAuto: sb.cn("overflowXAuto", [` { overflow-x: auto; }`]),
+    overflowYAuto: sb.cn("overflowYAuto", [` { overflow-y: auto; }`]),
+    overflowAuto: sb.cn("overflowAuto", [` { overflow: auto; }`]),
+    overflowHidden: sb.cn("overflowHidden", [` { overflow: hidden; }`]),
+
+    /** hover utils */
+    hoverParent,
+    hoverTarget,
+});
+
+export function setCssVars(vars: Record<string, string | Color>, cssRoot?: HTMLElement) {
+    if (!cssRoot) {
+        cssRoot = document.querySelector(":root") as HTMLElement;
+    }
+
+    for (const k in vars) {
+        setCssVar(cssRoot, k, vars[k]);
+    }
+}
+
+export function setCssVar(cssRoot: HTMLElement, varName: string, value: string | Color) {
+    const fullVarName = `--${varName}`;
+    cssRoot.style.setProperty(fullVarName, "" + value);
+}
+
+export type Color = {
+    r: number; g: number; b: number; a: number;
+    toCssString(): string;
+    toString(): string;
+}
+
+export function newColor(r: number, g: number, b: number, a: number): Color {
+    return {
+        r, g, b, a,
+        toCssString() {
+            const { r, g, b, a} = this;
+            return `rgba(${Math.floor(r * 255)}, ${Math.floor(g * 255)}, ${Math.floor(b * 255)}, ${a})`;
+        },
+        toString() {
+            return this.toCssString();
+        },
+    };
+}
+
+export function newColorFromHex(hex: string): Color {
+    if (hex.startsWith("#")) {
+        hex = hex.substring(1);
+    }
+
+    if (hex.length === 3 || hex.length === 4) {
+        const r = hex[0];
+        const g = hex[1];
+        const b = hex[2];
+        const a = hex[3] as string | undefined;
+
+        return newColor(
+            parseInt("0x" + r + r) / 255,
+            parseInt("0x" + g + g) / 255,
+            parseInt("0x" + b + b) / 255,
+            a ? parseInt("0x" + a + a) / 255 : 1,
+        );
+    }
+
+    if (hex.length === 6 || hex.length === 8) {
+        const r = hex.substring(0, 2);
+        const g = hex.substring(2, 4);
+        const b = hex.substring(4, 6);
+        const a = hex.substring(6);
+
+        return newColor( 
+            parseInt("0x" + r) / 255,
+            parseInt("0x" + g) / 255,
+            parseInt("0x" + b)/ 255,
+            a ? parseInt("0x" + a) / 255 : 1,
+        );
+    }
+
+    throw new Error("invalid hex: " + hex);
+}
+
+/**
+ * Taken from https://gist.github.com/mjackson/5311256
+ *
+ * Converts an HSL color value to RGB. Conversion formula
+ * adapted from http://en.wikipedia.org/wiki/HSL_color_space.
+ * Assumes h, s, and l are contained in the set [0, 1] and
+ * returns r, g, and b in the set [0, 1].
+ *
+ * @param   Number  h       The hue
+ * @param   Number  s       The saturation
+ * @param   Number  l       The lightness
+ * @return  Array           The RGB representation
+ */
+export function newColorFromHsv(h: number, s: number, v: number): Color {
+    let r = 0, g = 0, b = 0;
+
+    if (s === 0) {
+        r = g = b = v; // achromatic
+        return newColor(r, g, b, 1);
+    }
+
+    function hue2rgb(p: number, q: number, t: number) {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    }
+
+    var q = v < 0.5 ? v * (1 + s) : v + s - v * s;
+    var p = 2 * v - q;
+
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+
+    return newColor(r, g, b, 1);
+}
+
+function lerp(a: number, b: number, factor: number) {
+    if (factor < 0) {
+        return a;
+    }
+
+    if (factor > 1) {
+        return b;
+    }
+
+    return a + (b - a) * factor;
+}
+
+/**
+ * NOTE: try to use a css transition on the colour style before you reach for this!
+ **/
+export function lerpColor(c1: Color, c2: Color, factor: number, dst: Color) {
+    dst.r = lerp(c1.r, c2.r, factor);
+    dst.g = lerp(c1.g, c2.g, factor);
+    dst.b = lerp(c1.b, c2.b, factor);
+    dst.a = lerp(c1.a, c2.a, factor);
+}
+
+
+
+// ---- initialize the 'framework'
+
+export function initializeDomUtils(root: Insertable) {
+    // Insert some CSS styles that this framework uses for error handling and debugging.
+
+    if (stlyeStringBuilder.length > 0) {
+        const text = stlyeStringBuilder.join("");
+        stlyeStringBuilder.length = 0;
+
+        const styleNode = el<HTMLStyleElement>("style", { type: "text/css" }, "\n\n" + text + "\n\n");
+        appendChild(root, styleNode);
+    }
 }
 
 // ---- DOM node and Insertable<T> creation
@@ -31,7 +299,7 @@ export function newInsertable<T extends ValidElement>(el: T): Insertable<T> {
 export function el<T extends HTMLElement>(
     type: string,
     attrs?: Attrs,
-    children?: InsertableInitializerList<T>,
+    children?: InsertableInitializerListOrItem<T>,
 ): Insertable<T> {
     const element = document.createElement(type) as T;
     return elInternal(element, attrs, children);
@@ -40,7 +308,7 @@ export function el<T extends HTMLElement>(
 function elInternal<T extends ValidElement>(
     element: T,
     attrs?: Attrs,
-    children?: InsertableInitializerList<T>,
+    children?: InsertableInitializerListOrItem<T>,
 ): Insertable<T> {
     const insertable = newInsertable<T>(element);
 
@@ -62,7 +330,7 @@ function elInternal<T extends ValidElement>(
  * Hint: the `g` element can be used to group SVG elements under 1 DOM node. It's basically the `div` of the SVG world, and
  * defers me from having to implement something like React fragments for 1 more day...
  */
-export function elSvg<T extends SVGElement>(type: string, attrs?: Attrs, children?: InsertableInitializerList<T>) {
+export function elSvg<T extends SVGElement>(type: string, attrs?: Attrs, children?: InsertableInitializerListOrItem<T>) {
     const xmlNamespace = "http://www.w3.org/2000/svg";
     const svgEl = document.createElementNS(xmlNamespace, type) as T;
     if (type === "svg") {
@@ -83,7 +351,7 @@ export function elSvg<T extends SVGElement>(type: string, attrs?: Attrs, childre
  *
  * NOTE: For svg elements, you'll need to use `elSvg`
  */
-export function div(attrs?: Attrs, children?: InsertableInitializerList<HTMLDivElement>) {
+export function div(attrs?: Attrs, children?: InsertableInitializerListOrItem<HTMLDivElement>) {
     return el<HTMLDivElement>("DIV", attrs, children);
 }
 
@@ -91,7 +359,7 @@ export function contentsDiv() {
     return div({ style: "display: contents !important;" });
 }
 
-export function span(attrs?: Attrs, children?: InsertableInitializerList<HTMLSpanElement>) {
+export function span(attrs?: Attrs, children?: InsertableInitializerListOrItem<HTMLSpanElement>) {
     return el<HTMLSpanElement>("SPAN", attrs, children);
 }
 
@@ -103,10 +371,18 @@ export function span(attrs?: Attrs, children?: InsertableInitializerList<HTMLSpa
 type Functionality<T extends ValidElement> = (parent: Insertable<T>) => void | Insertable<any>;
 type InsertableInitializerListItem<T extends ValidElement> = Insertable<ValidElement> | string | false | Functionality<T>;
 export type InsertableInitializerList<T extends ValidElement = HTMLElement> = InsertableInitializerListItem<T>[];
+export type InsertableInitializerListOrItem<T extends ValidElement = HTMLElement> = InsertableInitializerListItem<T>[] | InsertableInitializerListItem<T>;
 
 /** Use this to initialize an element's children later. Don't call it after a component has been rendered */
-export function addChildren<T extends ValidElement>(ins: Insertable<T>, children: InsertableInitializerList<T>): Insertable<T> {
+export function addChildren<T extends ValidElement>(
+    ins: Insertable<T>, 
+    children: InsertableInitializerListOrItem<T>
+): Insertable<T> {
     const element = ins.el;
+
+    if (!Array.isArray(children)) {
+        children = [children];
+    }
 
     for (let c of children) {
         if (c === false) {
@@ -202,7 +478,6 @@ export function setChildAtEl(mountPointEl: Element, child: Insertable<any>, i: n
     }
 
     mountPointEl.replaceChild(child.el, children[i]);
-    console.log("replaced child!");
 }
 
 /**
@@ -317,12 +592,10 @@ export function isVisibleEl(el: HTMLElement) {
  * Any name and string is fine, but I've hardcoded a few for autocomplete. 
  * A common bug is to type 'styles' instead of 'style' and wonder why the layout isn't working, for example.
  */
-type Attrs = { [qualifiedName: string]: string | undefined } & {
+type Attrs = Record<string, string | string[] | undefined> & {
     style?: string | Record<keyof HTMLElement["style"], string | null>;
-    class?: string;
-    href?: string;
-    src?: string;
-}
+    class?: string[];
+};
 
 export function setAttr<T extends ValidElement>(el: Insertable<T>, key: string, val: string | undefined, wrap = false) {
     if (val === undefined) {
@@ -352,7 +625,14 @@ export function getAttr<T extends ValidElement>(el: Insertable<T>, key: string) 
 
 export function setAttrs<T extends ValidElement, C extends Insertable<T>>(ins: C, attrs: Attrs, wrap = false): C {
     for (const attr in attrs) {
-        const val = attrs[attr];
+        let val = attrs[attr];
+        if (Array.isArray(val)) {
+            // I would have liked for this to only happen to the `class` attribute, but I 
+            // couldn't figure out the correct typescript type. AI was no help either btw.
+            // Also add a space, so that we can call `setAttrs` on the same component multiple times without breaking the class defs
+            val = val.join(" ") + " ";
+        }
+
         if (attr === "style" && typeof val === "object") {
             const styles = val as Record<keyof HTMLElement["style"], string | null>;
             for (const s in styles) {
@@ -595,7 +875,7 @@ export class RenderGroup<S = null> {
      * The component rerenders with {@link renderFn} each render.
      *
      * @example
-     * ```
+     * ```ts
      * function CExample(rg: RenderGroup<{ state: State }>) {
      *      return div({
      *          class: ....
@@ -764,7 +1044,7 @@ export class RenderGroup<S = null> {
      * It will rerender with {@link renderFn} each render.
      *
      * @example
-     * ```
+     * ```ts
      * function CExample(rg: RenderGroup<{ state: State }>) {
      *      return div({
      *          class: ....
@@ -834,7 +1114,7 @@ export class RenderGroup<S = null> {
      * 
      * Code here always runs before DOM render functions, and postRenderFunctions on this component.
      *
-     * ```
+     * ```ts
      * function App(rg: RenderGroup<GameState>) {
      *      let x = 0;
      *      let alpha = 0;
@@ -1052,6 +1332,7 @@ export function newComponent<T, U extends ValidElement, Si extends T>(
     const root = templateFn(rg);
     const component = new Component(root, rg.render.bind(rg), initialState, rg.templateName);
     rg.instantiatedRoot = root;
+    setAttr(root, "data-template-name", rg.templateName);
 
     if (component._s !== undefined) {
         component.renderWithCurrentState();
@@ -1118,64 +1399,6 @@ export function newListRenderer<R extends ValidElement, T, U extends ValidElemen
     };
 
     return renderer;
-}
-
-// ---- Styling API
-
-let styleGeneratorId = 0;
-let allClassNamesWeMade = new Set<string>();
-
-/**
- * NOTE: this should always be called at a global scope on a *per-module* basis, and never on a per-component basis.
- * Otherwise you'll just have a tonne of duplicate styles lying around in the DOM. 
- */
-export function newStyleGenerator(appendUnder? : ValidElement) {
-    if (!appendUnder) {
-        // Sometimes you will need to append styles under something that isn't the body...
-        appendUnder = document.body;
-    }
-
-    const root = el<HTMLStyleElement>("style", { type: "text/css" });
-
-    appendUnder.appendChild(root.el);
-
-    styleGeneratorId++;
-
-    const varFns = new Map<string, (() => string)>();
-
-    return {
-        // makes a new style. for when you can't make a class.
-        s(string: string) {
-            root.el.appendChild(
-                document.createTextNode("\n\n" + string + "\n\n")
-            );
-        },
-        cssVar(name: string, fn: () => string) {
-            varFns.set(name, fn);
-            return "var(--" + name + ")";
-        },
-        updateVars() {
-            for (const [cssVar, fn] of varFns) {
-                appendUnder.style.setProperty("--" + cssVar, fn());
-            }
-        },
-        // makes a new class, it's variants, and returns the class name
-        cn(className: string, styles: string[] | string): string {
-            let name = className;
-            while (allClassNamesWeMade.has(name)) {
-                name += "-1";
-            }
-
-            for (const style of styles) {
-                root.el.appendChild(
-                    document.createTextNode(`.${name}${style}\n`)
-                );
-            }
-
-            // allow joining class names with +
-            return name + " ";
-        }
-    };
 }
 
 

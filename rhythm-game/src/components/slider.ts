@@ -1,7 +1,7 @@
-import { div, el, RenderGroup, newStyleGenerator } from "src/utils/dom-utils";
+import { div, el, RenderGroup, newCssBuilder } from "src/utils/dom-utils";
 
-const sg = newStyleGenerator();
-const cnSlider = sg.cn("slider", [
+const cssb = newCssBuilder();
+const cnSlider = cssb.cn("slider", [
     " {}"
 ]);
 
@@ -17,7 +17,7 @@ export function Slider(rg: RenderGroup<{
         div({}, [ 
             rg.text((s) => s.label)
         ]),
-        el<HTMLInputElement>("INPUT", { type: "range", class: cnSlider, }, [
+        el<HTMLInputElement>("INPUT", { type: "range", class: [cnSlider], }, [
             rg.attr("min", (s) => "" + s.min),
             rg.attr("max", (s) => "" + s.max),
             rg.attr("step", (s) => "" + s.step),

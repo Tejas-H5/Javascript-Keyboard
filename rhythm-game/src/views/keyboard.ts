@@ -2,7 +2,8 @@ import "src/css/layout.css";
 import {
     div,
     RenderGroup,
-    span
+    span,
+    cn,
 } from "src/utils/dom-utils";
 import {
     getCurrentOscillatorGain,
@@ -16,7 +17,7 @@ import {
 } from "src/state/sequencer-state";
 import { InstrumentKey } from "src/state/keyboard-state";
 import { GlobalContext } from "./app";
-import { cn } from "src/dom-root";
+import { cssVars } from "./styling";
 
 
 export function Keyboard(rg: RenderGroup<GlobalContext>) {
@@ -41,7 +42,7 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
             }>) {
                 rg.skipErrorBoundary = true;
 
-                const keyMarkedColor = cn.playback;
+                const keyMarkedColor = cssVars.playback;
 
                 let t = 0;
                 let scale = 0;
@@ -52,15 +53,15 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
 
                 return div({}, [
                     div({
-                        class: cn.absolute,
+                        class: [cn.absolute],
                         style: `background-color: ${keyMarkedColor};`
                     }, [
                         rg.style("opacity", () => "" + t),
                     ]),
                     // This osu! style border kinda whack ngl.
                     div({
-                        class: cn.absolute,
-                        style: `border: 5px solid ${cn.fg}; opacity: 1;`
+                        class: [cn.absolute],
+                        style: `border: 5px solid ${cssVars.fg}; opacity: 1;`
                     }, [
                         rg.style("top", () => -scale + "px"),
                         rg.style("left", () => -scale + "px"),
@@ -107,14 +108,14 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
 
 
             return span({
-                class: cn.relative,
-                style: `font-family: monospace; outline: 1px solid ${cn.fg};` +
+                class: [cn.relative],
+                style: `font-family: monospace; outline: 1px solid ${cssVars.fg};` +
                     "display: inline-block; text-align: center; user-select: none;",
             }, [
                 rg.style("width", s => s.keySize + "px"),
                 rg.style("height", s => s.keySize + "px"),
                 rg.style("fontSize", s => (s.keySize / 2) + "px"),
-                rg.style("color", () => signal > 0.1 ? cn.bg : cn.fg),
+                rg.style("color", () => signal > 0.1 ? cssVars.bg : cssVars.fg),
                 rg.style("transform", () => `translate(${pressEffect}px, ${pressEffect}px)`),
                 rg.on("mousedown", handlePress),
                 rg.on("mouseup", handleRelease),
@@ -124,7 +125,7 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
                 div({
                     style: "position: absolute; top:0px; left: 0; right:0; bottom: 0;"
                 }, [
-                    rg.style("backgroundColor", () => hasNote ? cn.mg : cn.bg),
+                    rg.style("backgroundColor", () => hasNote ? cssVars.mg : cssVars.bg),
                 ]),
                 // letter bg
                 div({
@@ -182,11 +183,11 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
             ]);
         }
 
-        return div({ class: cn.row, style: "gap: 5px;" }, [
+        return div({ class: [cn.row], style: "gap: 5px;" }, [
             div({}, [
                 rg.style("width", s => (s.startOffset * s.keySize) + "px"),
             ]),
-            rg.list(div({ class: cn.row }), KeyboardKey, (getNext, s) => {
+            rg.list(div({ class: [cn.row] }), KeyboardKey, (getNext, s) => {
                 for (let i = 0; i < s.keys.length; i++) {
                     const key = getNext();
                     key.render({ 

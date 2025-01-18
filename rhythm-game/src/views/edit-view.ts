@@ -18,12 +18,13 @@ import {
     el,
     RenderGroup,
     setInputValue,
-    span
+    span,
+    cn,
 } from "src/utils/dom-utils";
 import { Sequencer } from "src/views/sequencer";
 import { recursiveShallowCopyRemovingComputedFields } from "src/utils/serialization-utils";
 import { GlobalContext, resetSequencer, setViewTestCurrentChart } from "./app";
-import { cn } from "src/dom-root";
+import { cnApp, cssVars } from "./styling";
 
 export function EditView(rg: RenderGroup<GlobalContext>) {
     rg.preRenderFn((s) => {
@@ -70,12 +71,12 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
         s.render();
     }
 
-    return div({ class: cn.absoluteFill + cn.row + cn.fixed }, [
-        div({ class: cn.col + cn.flex1 }, [
-            div({ class: cn.col + cn.flex1 }, [
-                div({ class: cn.row + cn.gap5 }, [
-                    div({ class: cn.flex1 }),
-                    span({ class: cn.b }, [
+    return div({ class: [cn.absoluteFill, cn.row, cn.fixed] }, [
+        div({ class: [cn.col, cn.flex1] }, [
+            div({ class: [cn.col, cn.flex1] }, [
+                div({ class: [cn.row, cn.gap5] }, [
+                    div({ class: [cn.flex1] }),
+                    span({ class: [cnApp.b] }, [
                         "Sequencer"
                     ]),
 
@@ -85,7 +86,7 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
                         rg => rg.text(s => s.ui.copied.items.length + " items copied")
                     ),
 
-                    div({ class: cn.flex1 }),
+                    div({ class: [cn.flex1] }),
                     rg.c(Button, c => c.render({
                         text: "Test",
                         onClick: testFromHere
@@ -104,7 +105,7 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
         ]),
         rg.if(
             s => s.ui.editView.sidebarOpen,
-            rg => div({ class: cn.col }, [
+            rg => div({ class: [cn.col] }, [
                 rg.c(LoadSavePanel, (c, s) => c.render(s))
             ])
         )
@@ -115,7 +116,7 @@ function LoadSavePanel(rg: RenderGroup<GlobalContext>) {
     function Item(rg: RenderGroup<{ ctx: GlobalContext; name: string; }>) {
         return div({}, [
             rg.text(s => s.name),
-            rg.style("backgroundColor", s => s.name === getCurrentSelectedChartName(s.ctx) ? cn.bg2 : ""),
+            rg.style("backgroundColor", s => s.name === getCurrentSelectedChartName(s.ctx) ? cssVars.bg2 : ""),
             rg.on("click", s => {
                 setInputValue(input, s.name);
                 s.ctx.render();
@@ -135,7 +136,7 @@ function LoadSavePanel(rg: RenderGroup<GlobalContext>) {
     });
 
     return div({ style: "width: 33vw" }, [
-        div({ class: cn.row, style: "gap: 10px" }, [
+        div({ class: [cn.row], style: "gap: 10px" }, [
             // dont want to accidentally load over my work. smh.
             rg.if(
                 s => (getCurrentSelectedChartName(s) in s.savedState.allSavedSongs),

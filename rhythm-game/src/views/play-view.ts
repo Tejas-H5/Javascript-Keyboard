@@ -1,6 +1,5 @@
-import { cn } from "src/dom-root";
 import { chooseItem } from "src/utils/array-utils";
-import { div, InsertableInitializerList, RenderGroup } from "src/utils/dom-utils";
+import { cn, div, InsertableInitializerList, RenderGroup } from "src/utils/dom-utils";
 import { GlobalContext, setViewEditChart } from "./app";
 import { Gameplay } from "./gameplay";
 
@@ -42,7 +41,7 @@ export function PlayView(rg: RenderGroup<GlobalContext>) {
         showResultsScreen = true;
     })
     // Rewind the track a bit, and then start from there
-    return div({ class: cn.flex1 + cn.col }, [
+    return div({ class: [cn.flex1, cn.col] }, [
         rg.if(() => !showResultsScreen, Gameplay),
         rg.else(ResultsScreen)
     ]);
@@ -65,11 +64,11 @@ function ResultsScreen(rg: RenderGroup<GlobalContext>) {
     });
 
     return div({ 
-        class: cn.flex1 + cn.row + cn.alignItemsCenter + cn.justifyContentCenter
+        class: [cn.flex1, cn.row, cn.alignItemsCenter, cn.justifyContentCenter]
     }, [
-        div({ class: cn.border1Solid, style: `width: 80%; height: 80%;` }, [
+        div({ style: `width: 80%; height: 80%; border: 1px solid currentColor;` }, [
             div({ 
-                class: cn.row + cn.alignItemsCenter + cn.justifyContentCenter, 
+                class: [cn.row, cn.alignItemsCenter, cn.justifyContentCenter],
                 style: `height: ${fontSize + baseFontSize}rem;` 
             }, [
                 rg.style("fontSize", () => fontSize + "rem"),
@@ -79,8 +78,8 @@ function ResultsScreen(rg: RenderGroup<GlobalContext>) {
     ]);
 }
 
-function AnimatedRow(rg: RenderGroup, children: InsertableInitializerList) {
-    return div({ class: cn.row + cn.justifyContentCenter }, [
+function AnimatedRow(rg: RenderGroup<GlobalContext>, children: InsertableInitializerList) {
+    return div({ class: [cn.row, cn.justifyContentCenter] }, [
         ...children
     ])
 }

@@ -12,16 +12,11 @@ import {
     NoteItem,
     NoteMapEntry
 } from "src/state/sequencer-state";
-import {
-    div,
-    RenderGroup,
-    span
-} from "src/utils/dom-utils";
+import { div, RenderGroup, span, lerpColor, newColor, cn } from "src/utils/dom-utils";
 import { inverseLerp } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
-import { cn } from "src/dom-root";
-import { lerpColor, newColor } from "src/utils/colour";
+import { cssVars, getCurrentTheme } from "./styling";
 
 const GAMEPLAY_LOOKAHEAD_BEATS = 2;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
@@ -81,11 +76,10 @@ export function Gameplay(rg: RenderGroup<GlobalContext>) {
     });
 
     return div({
-        class: cn.flex1 + cn.col + cn.alignItemsStretch + 
-            cn.justifyContentCenter + cn.overflowHidden
+        class: [cn.flex1, cn.col, cn.alignItemsStretch, cn.justifyContentCenter, cn.overflowHidden]
     }, [
-        div({ class: cn.flex1 + cn.row + cn.alignItemsStretch + cn.justifyContentCenter + cn.overflowHidden }, [
-            rg.list(div({ class: cn.contents }), VerticalThread, (getNext, s) => {
+        div({ class: [cn.flex1, cn.row, cn.alignItemsStretch, cn.justifyContentCenter, cn.overflowHidden] }, [
+            rg.list(div({ class: [cn.contents] }), VerticalThread, (getNext, s) => {
                 for (const thread of keysMap.values()) {
                     getNext().render({
                         ctx: s,
@@ -116,11 +110,11 @@ function VerticalThread(rg: RenderGroup<{
         owner = getCurrentOscillatorOwner(s.instrumentKey.index) 
         signal = getCurrentOscillatorGain(s.instrumentKey.index) 
 
-        backgroundColor = cn.bg;
+        const theme = getCurrentTheme();
         const hasPress = (owner === 0 && signal > 0.001);
 
-        const wantedBgColor = s.thread.length > 0 ? cn.bg2Literal : cn.bgLiteral;
-        const wantedFgColor = s.thread.length > 0 ? cn.fg2Literal : cn.errorLiteral;
+        const wantedBgColor = s.thread.length > 0 ? theme.bg2 : theme.bg;
+        const wantedFgColor = s.thread.length > 0 ? theme.fg2 : theme.error;
 
         lerpColor(wantedBgColor, wantedFgColor, hasPress ? signal : 0, currentBgColor);
         backgroundColor = currentBgColor.toCssString();
@@ -128,27 +122,27 @@ function VerticalThread(rg: RenderGroup<{
 
     function createLetter() {
         return span({ style: "transition: color 0.2s; height: 2ch;" }, [
-            rg.style("color", s => s.thread.length === 0 ? cn.bg2 : cn.fg),
+            rg.style("color", s => s.thread.length === 0 ? cssVars.bg2 : cssVars.fg),
             rg.text((s) => s.instrumentKey ? s.instrumentKey.text : "?"),
         ]);
     }
 
-    return div({ class: cn.row + cn.alignItemsStretch + cn.justifyContentStart }, [
+    return div({ class: [cn.row, cn.alignItemsStretch, cn.justifyContentStart] }, [
         rg.if(s => s.instrumentKey.isLeftmost, rg => rg &&
-            div({ style: `width: 2px; background: ${cn.fg}` })
+            div({ style: `width: 2px; background: ${cssVars.fg}` })
         ),
         div({ 
-            class: cn.col + cn.alignItemsCenter + cn.justifyContentCenter,
+            class: [cn.col, cn.alignItemsCenter, cn.justifyContentCenter],
             style: "width: 40px; font-size: 64px;" 
         }, [
             createLetter(),
-            div({ style: `width: 100%; height: 2px; background-color: ${cn.fg};` }),
+            div({ style: `width: 100%; height: 2px; background-color: ${cssVars.fg};` }),
             div({ 
-                class: cn.flex1 + cn.relative + cn.w100 + cn.overflowHidden, 
+                class: [cn.flex1, cn.relative, cn.w100, cn.overflowHidden], 
                 style: "transition: background-color 0.2s;" 
             }, [
                 rg.style("backgroundColor", () => backgroundColor),
-                rg.list(div({ class: cn.contents }), Bar, (getNext, s) => {
+                rg.list(div({ class: [cn.contents] }), Bar, (getNext, s) => {
                     for (const item of s.thread) {
                         getNext().render({
                             ctx: s.ctx,
@@ -159,11 +153,11 @@ function VerticalThread(rg: RenderGroup<{
                     }
                 }),
             ]),
-            div({ style: `width: 100%; height: 2px; background-color: ${cn.fg};` }),
+            div({ style: `width: 100%; height: 2px; background-color: ${cssVars.fg};` }),
             createLetter(),
         ]),
         rg.if(s => s.instrumentKey.isRightmost, rg => rg &&
-            div({ style: `width: 2px; background: ${cn.fg}` })
+            div({ style: `width: 2px; background: ${cssVars.fg}` })
         ),
     ]);
 }
@@ -207,7 +201,7 @@ function Bar(rg: RenderGroup<{
             animation = 0;
         }
 
-        color = animation > 0.5 ? "#FFFF00" : cn.fg;
+        color = animation > 0.5 ? "#FFFF00" : cssVars.fg;
         // color = animation < 0.5 ? "#FFFF00" : s.instrumentKey.cssColours.normal;
     });
 
@@ -217,7 +211,7 @@ function Bar(rg: RenderGroup<{
     }, [
         rg.style("bottom", () => bottomPercent + "%"),
         rg.style("height", () => heightPercent + "%"),
-        div({ style: `width: 100%; height: 100%; position: relative; background-color: ${cn.fg}` }, [
+        div({ style: `width: 100%; height: 100%; position: relative; background-color: ${cssVars.fg}` }, [
             div({
                 style: "position: absolute; left: 2px; right: 2px; top: 2px; bottom: 2px;" +
                     "transition: background-color 0.2s;"
