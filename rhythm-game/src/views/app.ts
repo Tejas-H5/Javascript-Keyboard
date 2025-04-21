@@ -38,7 +38,13 @@ import { EditView } from "src/views/edit-view";
 import { PlayView } from "src/views/play-view";
 import { StartupView } from "src/views/startup-view";
 import { cnApp } from "./styling";
-import { deleteChart, getChart, getOrCreateAutosavedChart, newSavedState, SavedState } from "src/state/saved-state";
+import {
+    deleteChart,
+    getChart,
+    getOrCreateAutosavedChart,
+    newSavedState,
+    SavedState,
+} from "src/state/saved-state";
 import {
     equalBeats,
     getBpm,
@@ -199,13 +205,6 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         return false;
     }
 
-    if (vAxis !== 0) {
-        // doesn't handle wrapping correctly.
-        // setCurrentLineIdx(sequencer, sequencer.currentSelectedLineIdx + vAxis);
-        // TODO: move thread selection thread up/down 
-        return true;
-    }
-
     let hasShiftLeft = key === "<" || key === ",";
     let hasShiftRight = key === ">" || key === ".";
     if (shiftPressed && (hasShiftLeft || hasShiftRight)) {
@@ -223,7 +222,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
     }
 
     if (shiftPressed && (vAxis !== 0)) {
-        const amount = vAxis > 0 ? 1 : 0;
+        const amount = vAxis > 0 ? 1 : -1;
         mutateSequencerTimeline(sequencer, () => {
             if (sequencer.isRangeSelecting) {
                 transposeSelectedItems(sequencer, amount)

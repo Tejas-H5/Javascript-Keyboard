@@ -596,22 +596,21 @@ export function shiftSelectedItems(sequencer: SequencerState, amount: number) {
     sequencer.rangeSelectEnd += amountBeats * sequencer.cursorDivisor;
 }
 
-export function shiftItemsAfterCursor(s: SequencerState, amount: number) {
+export function shiftItemsAfterCursor(s: SequencerState, subdivisions: number) {
     const cursorStart = getCursorStartBeats(s);
     const rightOfCursorIdx = getBeatIdxAfter(s._currentChart, cursorStart);
-    const amountBeats = getBeats(amount, s.cursorDivisor);
+    const amountBeats = getBeats(subdivisions, s.cursorDivisor);
     shiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, amountBeats);
 
     // TODO: move cursor around as well??
 }
 
-export function transposeSelectedItems(sequencer: SequencerState, amount: number) {
+export function transposeSelectedItems(sequencer: SequencerState, halfSteps: number) {
     const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
     if (startIdx === -1 || endIdx === -1) {
         return;
     }
 
-    const amountBeats = getBeats(amount, sequencer.cursorDivisor);
-    transposeItems(sequencer._currentChart, startIdx, endIdx, amountBeats);
+    transposeItems(sequencer._currentChart, startIdx, endIdx, halfSteps);
 }
 
