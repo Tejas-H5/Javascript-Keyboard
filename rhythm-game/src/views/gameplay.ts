@@ -4,12 +4,8 @@ import {
     KeyboardState
 } from "src/state/keyboard-state";
 import {
-    CommandItem,
-    getItemLengthBeats,
-    getItemStartBeats,
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
-    NoteItem,
     NoteMapEntry
 } from "src/state/sequencer-state";
 import { div, RenderGroup, span, lerpColor, newColor, cn } from "src/utils/dom-utils";
@@ -17,6 +13,12 @@ import { inverseLerp } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
 import { cssVars, getCurrentTheme } from "./styling";
+import { 
+    CommandItem,
+    getItemLengthBeats,
+    getItemStartBeats,
+    NoteItem,
+} from "./chart";
 
 const GAMEPLAY_LOOKAHEAD_BEATS = 2;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
@@ -62,8 +64,10 @@ export function Gameplay(rg: RenderGroup<GlobalContext>) {
     rg.preRenderFn(s => {
         start = getSequencerPlaybackOrEditingCursor(s.sequencer);
 
+        const tl = s.sequencer._currentChart.timeline;
+
         getTimelineMusicNoteThreads(
-            s.sequencer.timeline,
+            tl,
             start,
             start + GAMEPLAY_LOADAHEAD_BEATS,
             notesMap,
@@ -180,7 +184,7 @@ function Bar(rg: RenderGroup<{
         const itemStart = getItemStartBeats(s.item);
         const itemLength = getItemLengthBeats(s.item);
 
-        bottomPercent = 100 * inverseLerp(start, end, itemStart);
+        bottomPercent = 100 * inverseLerp(itemStart, start, end);
         heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
 
         if (bottomPercent <= 0) {

@@ -1,13 +1,12 @@
 export function filterInPlace<T>(arr: T[], predicate: (v: T, i: number) => boolean) {
+    let i2 = 0;
     for (let i = 0; i < arr.length; i++) {
-        if (!predicate(arr[i], i)) {
-            arr.splice(i, 1);
-            i--;
-        }
+        if (predicate(arr[i], i)) arr[i2++] = arr[i];
     }
+    arr.length = i2;
 }
 
-export function filterInPlace2<T, U extends T>(src: T[], dst: T[], predicate: (v: T, i: number) => v is U) {
+export function filteredCopy<T, U extends T>(src: T[], dst: T[], predicate: (v: T, i: number) => v is U) {
     dst.length = 0;
     for (let i = 0; i < src.length; i++) {
         if (predicate(src[i], i)) {
@@ -38,4 +37,10 @@ export function findLastIndexOf<T>(arr: T[], predicate: (v: T) => boolean) {
 /** t is a number between 0 and 1 */
 export function chooseItem<T>(arr: T[], t: number): T{
     return arr[Math.floor(t * arr.length)];
+}
+
+export function arrayAt<T>(arr: T[], i: number): T | undefined {
+    if (i < 0) return undefined;
+    if (i >= arr.length) return undefined;
+    return arr[i];
 }

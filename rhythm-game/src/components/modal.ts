@@ -1,21 +1,20 @@
-import { Insertable, RenderGroup, div, setChildAt, newCssBuilder } from "src/utils/dom-utils";
+import { DomUtilsChildren, RenderGroup, div, newCssBuilder } from "src/utils/dom-utils";
 import { cssVars } from "src/views/styling";
 
 const BG_COLOR = cssVars.bg;
 const UNDERLAY_COLOR = "rgba(0, 0, 0, 0.5)";
 
-const cssb = newCssBuilder("modal");
-
-const cnModal = cssb.cn("cnModal", [` { 
-    top: 0vh; left: 0vw; right: 0vw; bottom: 0vh; z-index: 9999; 
+const sg = newCssBuilder();
+const cnModal = sg.cn("cnModal", [` { 
+    top: 0; left: 0; right: 0; bottom: 0; z-index: 9999; 
     background-color: ${UNDERLAY_COLOR}; pointer-events: all; 
     position: fixed;
     display: flex; flex-direction: row; align-items: center; justify-content: center;
 }`]);
 
-export function Modal(rg: RenderGroup<{ onClose(): void; content: Insertable; }>) {
+export function Modal(rg: RenderGroup<{ onClose(): void; }>, children: DomUtilsChildren) {
     const bgRect = div({ style: `background-color: ${BG_COLOR}` }, [
-        rg.functionality((div, s) => setChildAt(div, s.content, 0)),
+        ...children,
     ]);
 
     const root = div({ class: [cnModal], }, [bgRect]);

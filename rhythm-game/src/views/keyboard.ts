@@ -27,20 +27,20 @@ export function Keyboard(rg: RenderGroup<GlobalContext>) {
         keySize: number;
         startOffset: number;
     }>) {
-        rg.skipErrorBoundary = true;
+        rg.root.errorContext.avoidErrorHandler = true;
 
         function KeyboardKey(rg: RenderGroup<{
             ctx: GlobalContext;
             key: InstrumentKey;
             keySize: number;
         }>) {
-            rg.skipErrorBoundary = true;
+            rg.root.errorContext.avoidErrorHandler = true;
 
             function ApproachSquare(rg: RenderGroup<{
                 currentTime: number;
                 keyTime: number;
             }>) {
-                rg.skipErrorBoundary = true;
+                rg.root.errorContext.avoidErrorHandler = true;
 
                 const keyMarkedColor = cssVars.playback;
 

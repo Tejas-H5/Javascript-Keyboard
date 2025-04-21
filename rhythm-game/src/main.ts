@@ -11,7 +11,7 @@ import {
     newInsertable
 } from "src/utils/dom-utils";
 import "./main.css";
-import { load, loadChart } from "./state/loading-saving-charts";
+import { loadSaveState, loadChart } from "./state/loading-saving-charts";
 import { stopPlaying } from "./state/playing-pausing";
 import { syncPlayback } from "./state/sequencer-state";
 import { App, GlobalContext, newGlobalContext, setViewPlayCurrentChart } from "./views/app";
@@ -24,8 +24,9 @@ let app: Component<GlobalContext, any> | undefined;
 function rerenderApp() {
     app?.render(globalContext);
 }
-const globalContext = newGlobalContext(rerenderApp);
-load(globalContext);
+
+const saveState = loadSaveState();
+const globalContext = newGlobalContext(rerenderApp, saveState);
 loadChart(globalContext, "test song");
 
 // initialize the app.

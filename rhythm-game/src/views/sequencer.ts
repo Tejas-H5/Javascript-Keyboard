@@ -5,14 +5,6 @@ import {
 } from "src/state/keyboard-state";
 import { previewNotes } from "src/state/playing-pausing";
 import {
-    BpmChange,
-    CommandItem,
-    divisorSnap,
-    getBeatsIndexes,
-    getBpm,
-    getCursorStartBeats,
-    getItemLengthBeats,
-    getItemStartBeats,
     getRangeSelectionEndBeats,
     getRangeSelectionStartBeats,
     getSelectionStartEndIndexes,
@@ -21,26 +13,36 @@ import {
     hasRangeSelection,
     isItemBeingPlayed,
     isItemRangeSelected,
-    isItemUnderCursor,
-    Measure,
     mutateSequencerTimeline,
-    newTimelineItemBpmChange,
-    NoteItem,
+    getCursorStartBeats,
     NoteMapEntry,
     SequencerState,
     setCursorDivisor,
-    TIMELINE_ITEM_BPM,
-    TIMELINE_ITEM_MEASURE,
-    TIMELINE_ITEM_NOTE,
-    TimelineItem
 } from "src/state/sequencer-state";
-import { filterInPlace2 } from "src/utils/array-utils";
+import { filteredCopy } from "src/utils/array-utils";
 import { unreachable } from "src/utils/asserts";
 import { cn, div, RenderGroup } from "src/utils/dom-utils";
 import { inverseLerp, lerp } from "src/utils/math-utils";
 import { compareMusicNotes, getNoteText, MusicNote } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
 import { cssVars } from "./styling";
+import { 
+    BpmChange,
+    CommandItem,
+    divisorSnap,
+    getBeatsIndexes,
+    getBpm,
+    getItemLengthBeats,
+    getItemStartBeats,
+    isItemUnderCursor,
+    Measure,
+    newTimelineItemBpmChange,
+    NoteItem,
+    TIMELINE_ITEM_BPM,
+    TIMELINE_ITEM_MEASURE,
+    TIMELINE_ITEM_NOTE,
+    TimelineItem
+} from "./chart";
 
 export function getMusicNoteText(n: MusicNote): string {
     if (n.sample) {
@@ -157,8 +159,10 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
             internalState.leftExtentAnimated = lerp(internalState.leftExtentAnimated, leftExtent, lerpFactor);
             internalState.rightExtentAnimated = lerp(internalState.rightExtentAnimated, rightExtent, lerpFactor);
 
+            const tl = s.sequencer._currentChart.timeline;
+
             [internalState.leftExtentIdx, internalState.rightExtentIdx] = getBeatsIndexes(
-                s.sequencer, 
+                s.sequencer._currentChart, 
                 internalState.leftExtentAnimated, 
                 internalState.rightExtentAnimated,
             );
@@ -166,7 +170,7 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
                 internalState.leftExtentIdx = 0;
             }
             if (internalState.rightExtentIdx === -1) {
-                internalState.rightExtentIdx = s.sequencer.timeline.length - 1;
+                internalState.rightExtentIdx = tl.length - 1;
             }
         }
 
@@ -182,21 +186,23 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
             lastCursorStartDivisor = divisor;
             invalidateCache = false;
 
+            const tl = s.sequencer._currentChart.timeline;
+
             getTimelineMusicNoteThreads(
-                s.sequencer.timeline,
+                tl,
                 internalState.leftExtentAnimated,
                 internalState.rightExtentAnimated,
                 internalState.notesMap,
                 internalState.commandsList
             );
 
-            filterInPlace2(
+            filteredCopy(
                 internalState.commandsList, 
                 internalState.bpmChanges, 
                 c => c.type === TIMELINE_ITEM_BPM
             );
 
-            filterInPlace2(
+            filteredCopy(
                 internalState.commandsList, 
                 internalState.measures, 
                 c => c.type === TIMELINE_ITEM_MEASURE
@@ -246,8 +252,8 @@ export function Sequencer(rg: RenderGroup<GlobalContext>) {
         const sequencer = s.sequencer;
         const lastBpmChange = sequencer._lastBpmChange;
         if (!lastBpmChange) {
-            mutateSequencerTimeline(sequencer, () => {
-                sequencer.timeline.push(newTimelineItemBpmChange(0, 4, newBpm));
+            mutateSequencerTimeline(sequencer, (tl) => {
+                tl.push(newTimelineItemBpmChange(0, 4, newBpm));
             });
             return;
         }
@@ -429,15 +435,15 @@ function SequencerRangeRect(rg: RenderGroup<{
         let max = Math.max(s.beatsA, s.beatsB);
 
         leftAbsolutePercent = inverseLerp(
+            min,
             s.internalState.leftExtentAnimated,
             s.internalState.rightExtentAnimated,
-            min,
         ) * 100;
 
         rightAbsolutePercent = inverseLerp(
+            max,
             s.internalState.rightExtentAnimated,
             s.internalState.leftExtentAnimated,
-            max,
         ) * 100;
     });
 
@@ -458,9 +464,9 @@ function SequencerVerticalLine(rg: RenderGroup<{
 
     rg.preRenderFn((s) => {
         absolutePercent = inverseLerp(
+            s.beats,
             s.internalState.leftExtentAnimated,
             s.internalState.rightExtentAnimated,
-            s.beats,
         ) * 100;
     });
 

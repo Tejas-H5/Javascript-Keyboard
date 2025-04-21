@@ -1,16 +1,14 @@
 import { Button } from "src/components/button";
-import { Slider } from "src/components/slider";
 import "src/css/layout.css";
 import "src/main.css";
 import { stopPlaying, } from "src/state/playing-pausing";
 import { 
     getCurrentSelectedChartName,
     loadChart,
-    saveAllCharts,
+    saveAllState,
 } from "src/state/loading-saving-charts";
 import {
     getCurrentPlayingTimeRelative,
-    getPlaybackDuration,
     recomputeState
 } from "src/state/sequencer-state";
 import {
@@ -22,29 +20,21 @@ import {
     cn,
 } from "src/utils/dom-utils";
 import { Sequencer } from "src/views/sequencer";
-import { recursiveShallowCopyRemovingComputedFields } from "src/utils/serialization-utils";
 import { GlobalContext, resetSequencer, setViewTestCurrentChart } from "./app";
 import { cnApp, cssVars } from "./styling";
+import { getChart } from "src/state/saved-state";
+import { getPlaybackDuration } from "./chart";
 
 export function EditView(rg: RenderGroup<GlobalContext>) {
     rg.preRenderFn((s) => {
         recomputeState(s.sequencer);
 
         const currentTime = getCurrentPlayingTimeRelative(s.sequencer);
-        const duration = getPlaybackDuration(s.sequencer);
+        const duration = getPlaybackDuration(s.sequencer._currentChart);
         if (currentTime > duration) {
             stopPlaying(s);
         }
     });
-
-    function newSliderTemplateFn(name: string, initialValue: number, fn: (val: number) => void) {
-        return rg.c(Slider, (c, s) => c.render({
-            label: name,
-            min: 0.01, max: 1, step: 0.01,
-            value: initialValue,
-            onChange(val) { fn(val); s.render(); },
-        }));
-    }
 
     function testFromHere() {
         const s = rg.s;
@@ -74,7 +64,7 @@ export function EditView(rg: RenderGroup<GlobalContext>) {
     return div({ class: [cn.absoluteFill, cn.row, cn.fixed] }, [
         div({ class: [cn.col, cn.flex1] }, [
             div({ class: [cn.col, cn.flex1] }, [
-                div({ class: [cn.row, cn.gap5] }, [
+                div({ class: [cn.row, cnApp.gap5] }, [
                     div({ class: [cn.flex1] }),
                     span({ class: [cnApp.b] }, [
                         "Sequencer"
@@ -139,7 +129,7 @@ function LoadSavePanel(rg: RenderGroup<GlobalContext>) {
         div({ class: [cn.row], style: "gap: 10px" }, [
             // dont want to accidentally load over my work. smh.
             rg.if(
-                s => (getCurrentSelectedChartName(s) in s.savedState.allSavedSongs),
+                s => !!getChart(s.savedState, getCurrentSelectedChartName(s)),
                 rg => rg.c(Button, (c, s) => c.render({
                     text: "Load",
                     onClick() {
@@ -154,18 +144,15 @@ function LoadSavePanel(rg: RenderGroup<GlobalContext>) {
                 rg => rg.c(Button, (c, s) => c.render({
                     text: "Save",
                     onClick() {
-                        const key = getCurrentSelectedChartName(s);
-                        const timelineSerialized = recursiveShallowCopyRemovingComputedFields(s.sequencer.timeline);
-                        s.savedState.allSavedSongs[key] = JSON.stringify(timelineSerialized);
-                        saveAllCharts(s);
+                        saveAllState(s);
                         s.render();
                     }
                 })),
             )
         ]),
         rg.list(div(), Item, (getNext, s) => {
-            for (const key in s.savedState.allSavedSongs) {
-                getNext().render({ ctx: s, name: key });
+            for (const chart of s.savedState.userCharts) {
+                getNext().render({ ctx: s, name: chart.name });
             }
         })
     ]);

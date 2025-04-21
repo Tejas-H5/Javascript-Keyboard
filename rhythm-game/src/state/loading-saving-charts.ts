@@ -1,34 +1,38 @@
 import { clamp } from "src/utils/math-utils";
-import {
-    mutateSequencerTimeline
-} from "./sequencer-state";
-import { recursiveShallowCopyRemovingComputedFields } from "src/utils/serialization-utils";
+import { autoMigrate, recursiveCloneNonComputedFields } from "src/utils/serialization-utils";
 import { GlobalContext } from "src/views/app";
+import { getChart, getChartIdx, getOrCreateAutosavedChart, newSavedState, SavedState } from "./saved-state";
 
-export function load(ctx: GlobalContext) {
-    const savedState = localStorage.getItem("savedState");
+const SAVED_STATE_KEY = "rhythmGameSavedState";
+
+export function loadSaveState(): SavedState {
+    const savedState = localStorage.getItem(SAVED_STATE_KEY);
     if (!savedState) {
-        return;
+        return newSavedState();
     }
 
-    ctx.savedState = JSON.parse(savedState);
-    ctx.ui.loadSave.loadedChartName = "autosaved";
+    const loadedState: SavedState = JSON.parse(savedState);;
+
+    // TODO: consider migrating the charts?
+    // for now, I just want to get the format of the charts correct, so that I never have to migrate them, ideally.
+    autoMigrate(loadedState, newSavedState);
+
+    return loadedState;
+
+    // ctx.savedState = loadedState;
+    // ctx.ui.loadSave.loadedChartName = "autosaved";
 }
 
 export function getCurrentSelectedChartName(ctx: GlobalContext) {
     return ctx.ui.loadSave.selectedChartName;
 }
 
-// TODO: save the individual chart...
-export function saveAllCharts(ctx: GlobalContext) {
-    const { sequencer, savedState } = ctx;
 
-    const serialzed = recursiveShallowCopyRemovingComputedFields(sequencer.timeline);
-    const currentTracks = JSON.stringify(serialzed);
+export function saveAllState(ctx: GlobalContext) {
+    const { savedState } = ctx;
+    const serialzed = recursiveCloneNonComputedFields(savedState);
 
-    savedState.allSavedSongs["autosaved"] = currentTracks;
-
-    localStorage.setItem("savedState", JSON.stringify(savedState));
+    localStorage.setItem(SAVED_STATE_KEY , JSON.stringify(serialzed));
     console.log("saved!");
 }
 
@@ -38,37 +42,30 @@ export function saveStateDebounced(ctx: GlobalContext) {
 
     clearTimeout(ui.saveStateTimeout);
     ui.saveStateTimeout = setTimeout(() => {
-        saveAllCharts(ctx);
+        saveAllState(ctx);
     }, 100);
 }
 
 export function moveLoadSaveSelection(ctx: GlobalContext, amount: number) {
     const ui = ctx.ui.loadSave;
 
-    const keys = Object.keys(ctx.savedState.allSavedSongs);
-    const idx = keys.indexOf(ui.selectedChartName);
+    const idx = getChartIdx(ctx.savedState, ui.selectedChartName);
     if (idx === -1) {
-        ui.selectedChartName = keys[0];
+        let autosaved = getOrCreateAutosavedChart(ctx.savedState);
+        ui.selectedChartName = autosaved.name;
         return;
     }
 
-    const newIdx = clamp(idx + amount, 0, keys.length - 1);
-    ui.selectedChartName = keys[newIdx];
+    const newIdx = clamp(idx + amount, 0, ctx.savedState.userCharts.length - 1);
+    ui.selectedChartName = ctx.savedState.userCharts[newIdx].name;
 }
 
 export function loadChart(ctx: GlobalContext, chartName: string) {
-    const ui = ctx.ui.loadSave;
-
-    if (!ctx.savedState.allSavedSongs[chartName]) {
+    const chart = getChart(ctx.savedState, chartName);
+    if (!chart) {
         return;
     }
 
-    const json = ctx.savedState.allSavedSongs[chartName];
-    ui.loadedChartName = chartName;
-    const tl = ctx.sequencer.timeline;
-    mutateSequencerTimeline(ctx.sequencer, () => {
-        tl.splice(0, tl.length);
-        tl.push(...JSON.parse(json));
-    });
+    ctx.sequencer._currentChart = chart;
 }
 

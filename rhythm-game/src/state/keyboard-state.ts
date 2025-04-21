@@ -110,13 +110,14 @@ export function newKeyboardState(): KeyboardState {
             keys.push(...pianoKeys);
 
             let noteIndexOffset = 0;
+            const BASE_NOTE = 40;
             for (let i = 0; i < pianoKeys.length; i++) {
                 for (let j = 0; j < pianoKeys[i].length; j++) {
                     const key = pianoKeys[i][j];
 
                     flatKeys.push(key);
 
-                    const noteIndex = 40 + noteIndexOffset;
+                    const noteIndex = BASE_NOTE + noteIndexOffset;
                     noteIndexOffset++;
 
                     key.noteText = getNoteText(noteIndex);

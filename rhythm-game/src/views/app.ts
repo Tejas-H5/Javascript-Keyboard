@@ -13,31 +13,22 @@ import {
     startPlaying,
     stopPlaying
 } from "src/state/playing-pausing";
-import { newSavedState, SavedState } from "src/state/saved-state";
 import {
     clearRangeSelection,
     deleteRange,
-    equalBeats,
     getBeats,
-    getBpm,
-    getBpmChangeItemBeforeBeats,
     getCursorStartBeats,
-    getItemIdxAtBeat,
-    getItemStartBeats,
     getSelectionStartEndIndexes,
     handleMovement,
     hasRangeSelection,
     mutateSequencerTimeline,
     newSequencerState,
-    newTimelineItemBpmChange,
-    newTimelineItemMeasure,
     SequencerState,
     setCursorDivisor,
     setTimelineNoteAtPosition,
     shiftItemsAfterCursor,
     shiftSelectedItems,
-    timelineHasNoteAtPosition,
-    timelineMeasureAtBeatsIdx
+    transposeSelectedItems,
 } from "src/state/sequencer-state";
 import { AppView, newUiState, UIState } from "src/state/ui-state";
 import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
@@ -47,6 +38,18 @@ import { EditView } from "src/views/edit-view";
 import { PlayView } from "src/views/play-view";
 import { StartupView } from "src/views/startup-view";
 import { cnApp } from "./styling";
+import { deleteChart, getChart, getOrCreateAutosavedChart, newSavedState, SavedState } from "src/state/saved-state";
+import {
+    equalBeats,
+    getBpm,
+    getBpmChangeItemBeforeBeats,
+    getItemIdxAtBeat,
+    getItemStartBeats,
+    newTimelineItemBpmChange,
+    newTimelineItemMeasure,
+    timelineHasNoteAtPosition,
+    timelineMeasureAtBeatsIdx,
+} from "./chart";
 
 
 export type GlobalContext = {
@@ -58,10 +61,12 @@ export type GlobalContext = {
     dt: DOMHighResTimeStamp;
 }
 
-export function newGlobalContext(renderFn: () => void): GlobalContext {
+export function newGlobalContext(renderFn: () => void, saveState: SavedState): GlobalContext {
+    const autosaved = getOrCreateAutosavedChart(saveState);
+
     return {
         keyboard: newKeyboardState(),
-        sequencer: newSequencerState(),
+        sequencer: newSequencerState(autosaved),
         ui: newUiState(),
         savedState: newSavedState(),
         render: renderFn,
@@ -179,10 +184,10 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 
         if (key === "Delete") {
             const name = getCurrentSelectedChartName(ctx);
-            if (name in ctx.savedState.allSavedSongs) {
+            if (getChart(ctx.savedState, name)) {
                 // TODO: real UI instead of confirm
                 if (confirm("You sure you want to delete " + name)) {
-                    delete ctx.savedState.allSavedSongs[name];
+                    deleteChart(ctx.savedState, name);
 
                     // NOTE: this only deletes the save file, but not the currently loaded chart's name
 
@@ -212,6 +217,17 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
             } else {
                 shiftItemsAfterCursor(sequencer, amount);
             }
+        });
+
+        return true;
+    }
+
+    if (shiftPressed && (vAxis !== 0)) {
+        const amount = vAxis > 0 ? 1 : 0;
+        mutateSequencerTimeline(sequencer, () => {
+            if (sequencer.isRangeSelecting) {
+                transposeSelectedItems(sequencer, amount)
+            } 
         });
 
         return true;
@@ -280,16 +296,17 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
     if (key === "Delete") {
         const [start, end] = getSelectionStartEndIndexes(sequencer);
         if (start !== -1 && end !== -1) {
-            mutateSequencerTimeline(sequencer, () => {
-                deleteRange(sequencer.timeline, start, end);
+            mutateSequencerTimeline(sequencer, (tl) => {
+                deleteRange(tl, start, end);
             });
             return true;
         }
 
-        const idx = getItemIdxAtBeat(sequencer, getCursorStartBeats(sequencer));
+        const chart = sequencer._currentChart;
+        const idx = getItemIdxAtBeat(chart, getCursorStartBeats(sequencer));
         if (idx !== -1) {
-            mutateSequencerTimeline(sequencer, () => {
-                deleteRange(sequencer.timeline, idx, idx);
+            mutateSequencerTimeline(sequencer, (tl) => {
+                deleteRange(tl, idx, idx);
             });
             return true;
         }
@@ -304,7 +321,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
         if (copyNotesToTempStore(ctx, startIdx, endIdx)) {
             mutateSequencerTimeline(sequencer, () => {
-                deleteRange(sequencer.timeline, startIdx, endIdx);
+                deleteRange(sequencer._currentChart.timeline, startIdx, endIdx);
             })
 
             return true;
@@ -346,16 +363,16 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 
     if (shiftPressed && (key === "M" || key === "m")) {
         const cursorStartBeats = getCursorStartBeats(sequencer);
-        const idx = timelineMeasureAtBeatsIdx(sequencer, cursorStartBeats);
+        const idx = timelineMeasureAtBeatsIdx(sequencer._currentChart, cursorStartBeats);
         if (idx === -1) {
             const start = sequencer.cursorStart;
             const divisor = sequencer.cursorDivisor;
             mutateSequencerTimeline(sequencer, () => {
-                sequencer.timeline.push(newTimelineItemMeasure(start, divisor));
+                sequencer._currentChart.timeline.push(newTimelineItemMeasure(start, divisor));
             });
         } else {
             mutateSequencerTimeline(sequencer, () => {
-                deleteRange(sequencer.timeline, idx, idx);
+                deleteRange(sequencer._currentChart.timeline, idx, idx);
             });
         }
         return true;
@@ -363,18 +380,18 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 
     if (shiftPressed && (key === "b" || key === "B")) {
         const start = getCursorStartBeats(sequencer);
-        const bpmChange = getBpmChangeItemBeforeBeats(sequencer, start);
+        const bpmChange = getBpmChangeItemBeforeBeats(sequencer._currentChart, start);
         if (bpmChange && equalBeats(start, getItemStartBeats(bpmChange))) {
-            mutateSequencerTimeline(sequencer, () => {
-                deleteRange(sequencer.timeline, bpmChange._index, bpmChange._index);
+            mutateSequencerTimeline(sequencer, (tl) => {
+                deleteRange(tl, bpmChange._index, bpmChange._index);
             });
         } else {
-            mutateSequencerTimeline(sequencer, () => {
+            mutateSequencerTimeline(sequencer, (tl) => {
                 const start = sequencer.cursorStart;
                 const divisor = sequencer.cursorDivisor;
                 const bpm = getBpm(bpmChange);
                 const newBpmChange = newTimelineItemBpmChange(start, divisor, bpm);
-                sequencer.timeline.push(newBpmChange);
+                tl.push(newBpmChange);
             });
         }
         return true;
@@ -389,13 +406,12 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 
         // insert notes into the sequencer
         {
-            mutateSequencerTimeline(sequencer, () => {
-                const tl = sequencer.timeline;
+            mutateSequencerTimeline(sequencer, (tl) => {
                 const pos = sequencer.cursorStart;
                 const divisor = sequencer.cursorDivisor;
                 const note = instrumentKey.musicNote;
 
-                const hasNote = timelineHasNoteAtPosition(tl, pos, divisor, note);
+                const hasNote = timelineHasNoteAtPosition(sequencer._currentChart, pos, divisor, note);
                 setTimelineNoteAtPosition(
                     tl,
                     pos,
@@ -473,7 +489,7 @@ function handleKeyUp(ctx: GlobalContext, keyPressState: KeyPressState): boolean 
 }
 
 export function resetSequencer(ctx: GlobalContext) {
-    ctx.sequencer = newSequencerState();
+    ctx.sequencer = newSequencerState(ctx.sequencer._currentChart);
 }
 
 export function copyNotesToTempStore(ctx: GlobalContext, startIdx: number, endIdx: number): boolean {
@@ -483,12 +499,14 @@ export function copyNotesToTempStore(ctx: GlobalContext, startIdx: number, endId
         return false;
     }
 
-    ui.copied.items = sequencer.timeline.slice(startIdx, endIdx + 1)
+    const tl = sequencer._currentChart.timeline;
+
+    ui.copied.items = tl.slice(startIdx, endIdx + 1)
         .map(deepCopyJSONSerializable);
 
     ui.copied.positionStart = Math.min(
         getCursorStartBeats(sequencer),
-        getItemStartBeats(sequencer.timeline[startIdx])
+        getItemStartBeats(tl[startIdx])
     );
 
     return true;
@@ -501,7 +519,7 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
         return false;
     }
 
-    mutateSequencerTimeline(sequencer, () => {
+    mutateSequencerTimeline(sequencer, (tl) => {
         const delta = getCursorStartBeats(sequencer) - ui.copied.positionStart;
         for (const item of ui.copied.items) {
             const newItem = deepCopyJSONSerializable(item);
@@ -512,7 +530,7 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
             const newBeats = beats + delta;
             newItem.start = newBeats * newItem.divisor;
 
-            sequencer.timeline.push(newItem);
+            tl.push(newItem);
         }
     });
 
@@ -521,10 +539,6 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
 
 
 export function setViewEditChart(ctx: GlobalContext) {
-    if (!ctx.ui.loadSave.loadedChartName) {
-        throw new Error("NO chart loaded!! bruh");
-    }
-
     setCurrentView(ctx, "editChart");
 }
 

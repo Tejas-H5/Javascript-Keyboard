@@ -1,27 +1,15 @@
 import { releaseAllKeys, ScheduledKeyPress, schedulePlayback, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
 import {
-    getBeatsIndexes,
-    getBpmChangeItemBeforeBeats,
     getCurrentPlayingBeats,
     getCursorStartBeats,
-    getItemEndBeats,
-    getItemStartBeats,
-    getItemStartTime,
-    getLastMeasureBeats,
     getRangeSelectionEndBeats,
     getRangeSelectionStartBeats,
-    getTrackExtent,
     hasRangeSelection,
-    NoteItem,
-    TIMELINE_ITEM_BPM,
-    TIMELINE_ITEM_MEASURE,
-    TIMELINE_ITEM_NOTE,
-    TimelineItem
 } from "src/state/sequencer-state";
 import { unreachable } from "src/utils/asserts";
-import { beatsToMs } from "src/utils/music-theory-utils";
 import { GlobalContext } from "src/views/app";
+import { getBeatsIndexes, getItemEndBeats, getItemEndTime, getItemStartTime, getLastMeasureBeats, getTimeForBeats, getTrackExtent, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/views/chart";
 
 
 export function stopPlaying({ sequencer }: GlobalContext, stopOnCursor = false) {
@@ -45,26 +33,37 @@ export function stopPlaying({ sequencer }: GlobalContext, stopOnCursor = false) 
 export function playFromLastMeasure(ctx: GlobalContext, options: PlayOptions = {}) {
     const { sequencer } = ctx;
 
+    const chart = sequencer._currentChart;
+
+    if (chart.timeline.length === 0) {
+        return;
+    }
+
     // Play from the last measure till the end
     const cursorStart = getCursorStartBeats(sequencer);
-    const lastMeasureStart = getLastMeasureBeats(sequencer, cursorStart);
-    const endBeats = getTrackExtent(sequencer);
+    const lastMeasureStart = getLastMeasureBeats(chart, cursorStart);
+    const endBeats = getTrackExtent(chart);
     startPlaying(ctx, lastMeasureStart, endBeats, options);
 }
 
 export function playFromCursor(ctx: GlobalContext, options: PlayOptions = {}) { 
     const { sequencer } = ctx;
 
-    // Play from the last measure till the end
+    const chart = sequencer._currentChart;
+    if (chart.timeline.length === 0) {
+        return;
+    }
+
     const cursorStart = getCursorStartBeats(sequencer);
-    const endBeats = getItemEndBeats(sequencer.timeline[sequencer.timeline.length - 1]);
+    const endBeats = getItemEndBeats(chart.timeline[chart.timeline.length - 1]);
     startPlaying(ctx, cursorStart, endBeats, options);
 }
 
 export function playCurrentRangeSelection(ctx: GlobalContext, options: PlayOptions = {}) {
     const { sequencer } = ctx;
 
-    if (sequencer.timeline.length === 0) {
+    const chart = sequencer._currentChart;
+    if (chart.timeline.length === 0) {
         return;
     }
 
@@ -89,8 +88,9 @@ export type PlayOptions = {
 
 // TODO: handle the 'error' when we haven't clicked any buttons yet so the browser prevents audio from playing
 export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: number, options: PlayOptions = {}) {
+    const chart = ctx.sequencer._currentChart;
     if (endBeats === undefined) {
-        endBeats = getTrackExtent(ctx.sequencer);
+        endBeats = getTrackExtent(chart);
     }
 
     let { speed = 1, isUserDriven = false } = options;
@@ -99,30 +99,20 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
 
     const { sequencer, keyboard } = ctx;
 
-    const [startIdx, endIdx] = getBeatsIndexes(sequencer, startBeats, endBeats);
+    const [startIdx, endIdx] = getBeatsIndexes(chart, startBeats, endBeats);
     if (startIdx === -1 || endIdx === -1) {
         return;
     }
 
-    const timeline = sequencer.timeline;
-    const firstItem: TimelineItem | undefined = timeline[startIdx];
-    if (!firstItem) {
-        return;
-    }
-
-    const startItem = timeline[startIdx];
-    const bpmChange = getBpmChangeItemBeforeBeats(sequencer, startBeats);
-    let cursorTime = 0;
-    if (bpmChange) {
-        const relativeBeats = startBeats - getItemStartBeats(bpmChange);
-        cursorTime = bpmChange._scheduledStart + beatsToMs(relativeBeats, bpmChange.bpm);
-    }
-    const leadInTime = startItem._scheduledStart - cursorTime;
+    const timeline = chart.timeline;
+    const firstItem = timeline[startIdx];
+    const startTime = getTimeForBeats(chart, startBeats);
+    const leadInTime = getItemStartTime(firstItem) - startTime;
 
     // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
 
     const scheduledKeyPresses: ScheduledKeyPress[] = [];
-    const startPlaybackFromTime = timeline[startIdx]._scheduledStart - leadInTime;
+    const startPlaybackFromTime = getItemStartTime(firstItem) - leadInTime;
 
     for (let i = startIdx; i < timeline.length && i <= endIdx; i++) {
         const item = timeline[i];
@@ -174,8 +164,8 @@ function pushNotePress(
     }
 
     scheduledKeyPresses.push({
-        time: item._scheduledStart - startPlaybackFromTime,
-        timeEnd: item._scheduledEnd - startPlaybackFromTime,
+        time: getItemStartTime(item) - startPlaybackFromTime,
+        timeEnd: getItemEndTime(item) - startPlaybackFromTime,
         keyId: key.index,
         noteIndex: n.noteIndex,
         sample: n.sample,

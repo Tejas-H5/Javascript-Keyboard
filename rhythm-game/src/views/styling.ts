@@ -75,6 +75,8 @@ export const cnApp = {
     inverted: cssb.cn("inverted", [` { color: ${cssVars.bg} ; background: ${cssVars.fg}; }`]),
 
     border1Solid: cssb.cn("border1Solid", [`{ border: 1px solid ${cssVars.fg}; }`]),
+
+    gap5: cssb.cn("gap5", [`{ gap: 5px; }`]),
 };
 
 setCssVars(mainTheme);

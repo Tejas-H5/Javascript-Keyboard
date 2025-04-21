@@ -2,6 +2,7 @@ import { Button } from "src/components/button";
 import { loadChart } from "src/state/loading-saving-charts";
 import { div, RenderGroup, cn } from "src/utils/dom-utils";
 import { GlobalContext, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "./app";
+import { RhythmGameChart } from "src/state/saved-state";
 
 export function ChartSelect(rg: RenderGroup<GlobalContext>) {
     function onClickBack() {
@@ -25,9 +26,8 @@ export function ChartSelect(rg: RenderGroup<GlobalContext>) {
             ]),
             div({ class: [cn.col], style: "width: 35%" }, [
                 rg.list(div({ class: [cn.contents] }), ChartSelectButton, (getNext, s) => {
-                    for (const chartName in s.savedState.allSavedSongs) {
-                        const chartJson = s.savedState.allSavedSongs[chartName];
-                        getNext().render({ ctx: s, chartName, chartJson});
+                    for (const chart of s.savedState.userCharts) {
+                        getNext().render({ ctx: s, chart });
                     }
                 }),
                 rg.else(
@@ -56,16 +56,15 @@ export function ChartSelect(rg: RenderGroup<GlobalContext>) {
 
 function ChartSelectButton(rg: RenderGroup<{
     ctx: GlobalContext;
-    chartName: string;
-    chartJson: string;
+    chart: RhythmGameChart;
 }>) {
     return div({
     }, [
         rg.c(Button, (c, s) => {
             c.render({
-                text: s.chartName,
+                text: s.chart.name,
                 onClick() {
-                    loadChart(s.ctx, s.chartName);
+                    loadChart(s.ctx, s.chart.name);
                     setViewPlayCurrentChart(s.ctx);
 
                     s.ctx.render();

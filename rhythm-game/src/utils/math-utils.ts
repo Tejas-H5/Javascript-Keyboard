@@ -20,7 +20,7 @@ export function lerp(a: number, b: number, t: number) {
     return a + (b - a) * t;
 }
 
-export function inverseLerp(start: number, end: number, value: number) {
+export function inverseLerp(value: number, start: number, end: number) {
     return (value - start) / (end - start);
 }
 
@@ -37,6 +37,9 @@ export function sqrMag(x: number, y: number): number {
 export function mag(x: number, y: number): number {
     return sqrMag(x, y) ** 0.5;
 }
+
+/////////////////////
+// NOTE: the utils below are specific to this game.
 
 export function within(a: number, b: number, tolerance: number) {
     return Math.abs(a - b) < tolerance;

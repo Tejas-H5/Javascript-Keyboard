@@ -57,6 +57,10 @@ export function msToBeats(ms: number, bpm: number): number {
     return ms * bpms;
 }
 
+// Each musical note has a frequency. The first or 0th musical note is a C0, which has a frequency of around 16.35hz.
+// Each note after C0 (in half-steps) multiplies this frequency by the 12th root of two.
+// TODO: source. because i did not make it up, actually
+
 export const C_0 = 16.35;;
 export const TWELVTH_ROOT_OF_TWO = 1.0594631;
 

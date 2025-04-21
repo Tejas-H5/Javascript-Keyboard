@@ -7,7 +7,7 @@ any specific level?
 
 ## How does it work?
 
-To explain it simply, each musical note has a frequency. The first or 0th musical note is a C0, which has a frequency of around 16.5hz. 
+Each musical note has a frequency. The first or 0th musical note is a C0, which has a frequency of around 16.5hz. 
 Each note after C0 (in half-steps) multiplies this frequency by the 12th root of two. 
 Other music systems may use different formulations, but they are out of the scope of this discussion.
 If we assign an 'index' to every key in our instrument, we can then get it's frequency with a formula like `C0 * Math.pow(twelvethRootOfTwo, i)`.
