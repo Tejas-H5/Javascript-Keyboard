@@ -61,10 +61,10 @@ export function imBeginLayout(flags: number = 0) {
     return root;
 }
 
-export const PX = 1;
-export const EM = 2;
-export const PERCENT = 3;
-export const NOT_SET = 4;
+export const PX = 10001;
+export const EM = 20001;
+export const PERCENT = 30001;
+export const NOT_SET = 40001;
 
 export type SizeUnits = typeof PX |
     typeof EM |
