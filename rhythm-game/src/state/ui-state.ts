@@ -1,6 +1,15 @@
-import { TimelineItem } from "./sequencer-state";
+import { TimelineItem } from "src/views/chart";
 
-export type AppView = "startup" | "chartSelect" | "playChart" | "editChart";
+export const APP_VIEW_STARTUP = 1;
+export const APP_VIEW_CHART_SELECT = 2;
+export const APP_VIEW_PLAY_CHART = 3;
+export const APP_VIEW_EDIT_CHART = 4;
+
+export type AppView = typeof APP_VIEW_STARTUP |
+    typeof APP_VIEW_CHART_SELECT |
+    typeof APP_VIEW_PLAY_CHART |
+    typeof APP_VIEW_EDIT_CHART;
+
 export type UIState = {
     currentView: AppView;
 
@@ -32,7 +41,7 @@ export type UIState = {
 
 export function newUiState(): UIState {
     return {
-        currentView: "startup",
+        currentView: APP_VIEW_STARTUP,
 
         chartSelect: {
             loadedCharts: [],

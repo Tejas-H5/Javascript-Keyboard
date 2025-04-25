@@ -3,38 +3,36 @@ import {
     getDspInfo,
     initDspLoopInterface
 } from "src/dsp/dsp-loop-interface";
-import {
-    appendChild,
-    Component,
-    initializeDomUtils,
-    newComponent,
-    newInsertable
-} from "src/utils/dom-utils";
+import { imState, initializeDomRootAnimiationLoop } from "src/utils/im-dom-utils";
 import "./main.css";
 import { loadSaveState, loadChart } from "./state/loading-saving-charts";
 import { stopPlaying } from "./state/playing-pausing";
 import { syncPlayback } from "./state/sequencer-state";
-import { App, GlobalContext, newGlobalContext, setViewPlayCurrentChart } from "./views/app";
-
-const domRoot = newInsertable(document.body);
-initializeDomUtils(domRoot);
-
-
-let app: Component<GlobalContext, any> | undefined;
-function rerenderApp() {
-    app?.render(globalContext);
-}
+import { imApp, newGlobalContext, setViewPlayCurrentChart } from "./views/app";
+import { initCnStyles } from "./utils/cn";
+import { imFpsCounterOutput, newFpsCounterState, startFpsCounter, stopFpsCounter } from "./components/fps-counter";
 
 const saveState = loadSaveState();
-const globalContext = newGlobalContext(rerenderApp, saveState);
+const globalContext = newGlobalContext(saveState);
 loadChart(globalContext, "test song");
+
+function renderRoot() {
+    const fps = imState(newFpsCounterState);
+    imFpsCounterOutput(fps, true);
+
+    startFpsCounter(fps);
+
+    imApp(globalContext);
+
+    stopFpsCounter(fps);
+}
+
+initCnStyles();
 
 // initialize the app.
 (async () => {
     await initDspLoopInterface({
         render: () => {
-            rerenderApp();
-
             const dspInfo = getDspInfo();
             const sequencer = globalContext.sequencer;
 
@@ -49,33 +47,6 @@ loadChart(globalContext, "test song");
     });
 
     // Our code only works after the audio context has loaded.
-    app = newComponent(App, globalContext);
-    appendChild(domRoot, app);
     setViewPlayCurrentChart(globalContext);
-
-    function onRender() {
-        if (!app) {
-            return;
-        }
-
-        app.renderWithCurrentState();
-    }
-
-    // render to the dom at the monitor's fps (!)
-    // (based??)
-    let lastTime = 0;
-    function renderFunc(time: DOMHighResTimeStamp) {
-        const dtMs = time - lastTime;
-        lastTime = time;
-
-        if (dtMs < 300) {
-            globalContext.dt = dtMs / 1000;
-            onRender();
-        }
-
-        requestAnimationFrame(renderFunc);
-    }
-    requestAnimationFrame(renderFunc);
-
-    rerenderApp();
+    initializeDomRootAnimiationLoop(renderRoot);
 })();

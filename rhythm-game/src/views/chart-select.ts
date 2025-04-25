@@ -1,75 +1,53 @@
-import { Button } from "src/components/button";
 import { loadChart } from "src/state/loading-saving-charts";
-import { div, RenderGroup, cn } from "src/utils/dom-utils";
+import { elementHasMouseClick, imBeginList, imEnd, imEndList, imTextSpan, nextListRoot, setInnerText } from "src/utils/im-dom-utils";
 import { GlobalContext, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "./app";
-import { RhythmGameChart } from "src/state/saved-state";
+import { imButton } from "./button";
+import { COL, EM, FLEX1, GAP5, H1, imBeginLayout, imBeginSpace, NOT_SET, PERCENT, ROW } from "./layout";
 
-export function ChartSelect(rg: RenderGroup<GlobalContext>) {
-    function onClickBack() {
-        setViewStartScreen(rg.s);
-    }
+export function ChartSelect(ctx: GlobalContext) {
+    imBeginLayout(FLEX1 | COL); {
+        imBeginLayout(FLEX1 | ROW); {
+            imBeginLayout(FLEX1 | COL | H1); {
+                setInnerText("Charts");
+            } imEnd();
 
-    function onClickEdit() {
-        setViewEditChart(rg.s);
-    }
-
-    function onClickPlay() {
-        setViewPlayCurrentChart(rg.s);
-    }
-
-    return div({ class: [cn.flex1, cn.col] }, [
-        div({ class: [cn.flex1, cn.row] }, [
-            div({ class: [cn.flex1, cn.col] }, [
-                div({ style: "font-size: 64px;" }, [
-                    "Charts"
-                ])
-            ]),
-            div({ class: [cn.col], style: "width: 35%" }, [
-                rg.list(div({ class: [cn.contents] }), ChartSelectButton, (getNext, s) => {
-                    for (const chart of s.savedState.userCharts) {
-                        getNext().render({ ctx: s, chart });
+            imBeginSpace(35, PERCENT, 0, NOT_SET, COL); {
+                imBeginList();
+                if (nextListRoot() && ctx.savedState.userCharts.length > 0) {
+                    imBeginList();
+                    for (const chart of ctx.savedState.userCharts) {
+                        nextListRoot();
+                        imBeginSpace(100, PERCENT, 2, EM); {
+                            imTextSpan(chart.name);
+                            if (elementHasMouseClick()) {
+                                loadChart(ctx, chart.name);
+                                setViewPlayCurrentChart(ctx);
+                            }
+                        } imEnd();
                     }
-                }),
-                rg.else(
-                    rg => rg && div({}, [
-                        "No songs yet! You'll need to make some yourself"
-                    ])
-                )
-            ]),
-        ]),
-        div({ class: [cn.row], style: "gap: 5px" }, [
-            rg.c(Button, c => c.render({
-                text: "Back",
-                onClick: onClickBack
-            })),
-            rg.c(Button, c => c.render({
-                text: "Play",
-                onClick: onClickPlay
-            })),
-            rg.c(Button, c => c.render({
-                text: "Edit",
-                onClick: onClickEdit
-            })),
-        ])
-    ]);
-}
-
-function ChartSelectButton(rg: RenderGroup<{
-    ctx: GlobalContext;
-    chart: RhythmGameChart;
-}>) {
-    return div({
-    }, [
-        rg.c(Button, (c, s) => {
-            c.render({
-                text: s.chart.name,
-                onClick() {
-                    loadChart(s.ctx, s.chart.name);
-                    setViewPlayCurrentChart(s.ctx);
-
-                    s.ctx.render();
+                    imEndList();
+                } else {
+                    nextListRoot();
+                    imBeginLayout(); {
+                        imTextSpan("No songs yet! You'll need to make some yourself");
+                    } imEnd();
                 }
-            });
-        }),
-    ]);
+                imEndList();
+            } imEnd();
+        } imEnd();
+        imBeginLayout(ROW | GAP5); {
+            if (imButton("Back")) {
+                setViewStartScreen(ctx);
+            }
+
+            if (imButton("Play")) {
+                setViewPlayCurrentChart(ctx);
+            }
+
+            if (imButton("Edit")) {
+                setViewEditChart(ctx);
+            }
+        } imEnd();
+    } imEnd();
 }
+

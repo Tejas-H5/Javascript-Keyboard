@@ -1,5 +1,7 @@
 // Using css was a mistake. Most styling should be available in javascript for the code to know about and use...
-import { newCssBuilder, newColorFromHex, setCssVars } from "src/utils/dom-utils";
+
+import { newCssBuilder, setCssVars } from "src/utils/cn";
+import { newColorFromHex } from "src/utils/colour";
 
 const mainTheme = Object.freeze({
     bg: newColorFromHex("#FFF"),
@@ -76,7 +78,10 @@ export const cnApp = {
 
     border1Solid: cssb.cn("border1Solid", [`{ border: 1px solid ${cssVars.fg}; }`]),
 
-    gap5: cssb.cn("gap5", [`{ gap: 5px; }`]),
+    gap5: cssb.cn("gap5", [` { gap: 5px; }`]),
+    gap10: cssb.cn("gap10", [` { gap: 10px; }`]),
+
+    h1: cssb.cn("header1", [` { font-size: 64px }`]),
 };
 
 setCssVars(mainTheme);

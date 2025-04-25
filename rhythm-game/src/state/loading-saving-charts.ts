@@ -27,6 +27,11 @@ export function getCurrentSelectedChartName(ctx: GlobalContext) {
     return ctx.ui.loadSave.selectedChartName;
 }
 
+export function loadAutosaved(ctx: GlobalContext) {
+    const autosaved = getOrCreateAutosavedChart(ctx.savedState);
+    ctx.ui.loadSave.loadedChartName = autosaved.name;
+
+}
 
 export function saveAllState(ctx: GlobalContext) {
     const { savedState } = ctx;

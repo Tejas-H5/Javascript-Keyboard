@@ -1,8 +1,9 @@
 import { chooseItem } from "src/utils/array-utils";
-import { cn, div, DomUtilsChildren, RenderGroup } from "src/utils/dom-utils";
 import { GlobalContext, setViewEditChart } from "./app";
-import { Gameplay } from "./gameplay";
 import { clamp } from "src/utils/math-utils";
+import { deltaTimeSeconds, getKeyEvents, imBeginList, imEnd, imEndList, imInit, imState, imTextDiv, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
+import { ALIGN_CENTER, COL, FLEX1, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, ROW, PERCENT, EM, NOT_SET, imBeginAbsolute, PX, RELATIVE } from "./layout";
+import { imGameplay } from "./gameplay";
 
 let MESSAGES = [
     "Nice!",
@@ -20,157 +21,162 @@ function randomizeMessage() {
     currentMessage = chooseItem(MESSAGES, Math.random());
 }
 
-export function PlayView(rg: RenderGroup<GlobalContext>) {
-    let showResultsScreen = false;
-
-    randomizeMessage();
-
-    rg.preRenderFn(s => {
-        const playView = s.ui.playView;
-        if (s.sequencer.isPlaying) {
-            // TODO: revert
-            // showResultsScreen = false;
-            showResultsScreen = true;
-            return;
-        } 
-
-        if (playView.isTesting) {
-            setViewEditChart(s);
-        } else {
-            showResultsScreen = true;
-            randomizeMessage();
-        }
-    });
-
-    // Rewind the track a bit, and then start from there
-    return div({ class: [cn.flex1, cn.col] }, [
-        rg.if(() => !showResultsScreen, Gameplay),
-        rg.else(ResultsScreen)
-    ]);
+function newPlayViewState() {
+    return {
+        showResultsScreen: false,
+    };
 }
 
-function ResultsScreen(rg: RenderGroup<GlobalContext>) {
-    let t = 0;
-    let fontSize = 0;
+export function PlayView(ctx: GlobalContext) {
+    const s = imState(newPlayViewState);
 
-    const baseFontSize = 4;
-    const wiggle = 0.6;
+    if (imInit()) {
+        randomizeMessage();
+    }
 
-    rg.preRenderFn(s => {
-        if (t < 100) {
-            t += s.dt;
+    const playView = ctx.ui.playView;
+    if (!ctx.sequencer.isPlaying) {
+        if (playView.isTesting) {
+            setViewEditChart(ctx);
+        } else {
+            s.showResultsScreen = true;
+            // TODO: the old code randomizes the message every frame???
+            // randomizeMessage();
         }
+    } else {
+        // TODO: revert
+        // showResultsScreen = false;
+        s.showResultsScreen = true;
+    }
 
-        fontSize = baseFontSize + wiggle * Math.sin(Math.PI * 2 * t);
-    });
-
-    document.addEventListener("keydown", (e) => {
-        if (e.key === 'R') {
-            t = 0;
+    imBeginLayout(FLEX1 | COL); {
+        imBeginList(); 
+        if (nextListRoot() && s.showResultsScreen) {
+            ResultsScreen();
+        } else {
+            nextListRoot();
+            imGameplay(ctx);
         }
-    });
+        imEndList();
+    } imEnd();
+}
+
+
+function newResultsScreenState() {
+    return {
+        t: 0,
+        fontSize: 0,
+        baseFontSize: 4,
+        wiggle: 0.6,
+    };
+}
+
+function ResultsScreen() {
+    const s = imState(newResultsScreenState);
+
+    const dt = deltaTimeSeconds();
+    if (s.t < 100) {
+        s.t += dt;
+    }
+
+    s.fontSize = s.baseFontSize + s.wiggle * Math.sin(Math.PI * 2 * s.t);
+
+    const { keyDown } = getKeyEvents();
+    if (keyDown && keyDown.key.toUpperCase() === "R") {
+        s.t = 0;
+    }
 
     const start = 0.3;
 
-    return div({ 
-        class: [cn.flex1, cn.row, cn.alignItemsCenter, cn.justifyContentCenter]
-    }, [
-        div({ style: `width: 80%; height: 80%; border: 1px solid currentColor;` }, [
-            div({ 
-                class: [cn.row, cn.alignItemsCenter, cn.justifyContentCenter],
-                style: `height: ${fontSize + baseFontSize}rem;` 
-            }, [
-                rg.style("fontSize", () => fontSize + "rem"),
-                currentMessage,
-            ]),
-            rg.cArgs(AnimatedRow, (c) => c.render({
-                t, inTime: start + 0.1, duration: 0.1, downAmount: 300,
-            }), [
-                div({ style: "width: 25%" }),
-                div({}, "Time taken:"),
-                div({ class: [cn.flex1] }),
-                rg.c(AnimatedNumber, (c, s) => c.render({
-                    targetNumber: 12132,
-                    t, inTime: start + 0.7, duration: 0.3,
-                })),
-                div({ style: "width: 25%" }),
-            ]),
-            rg.cArgs(AnimatedRow, (c, s) => c.render({
-                t, inTime: start + 0.3, duration: 0.1, downAmount: 300,
-            }), [
-                div({ style: "width: 25%" }),
-                div({}, "Hits"),
-                div({ class: [cn.flex1] }),
-                rg.c(AnimatedNumber, (c, s) => c.render({
-                    targetNumber: 12132,
-                    t, inTime: start + 1.1, duration: 0.3,
-                })),
-                div({ style: "width: 25%" }),
-            ]),
-            rg.cArgs(AnimatedRow, (c, s) => c.render({
-                t, inTime: start + 0.5, duration: 0.1, downAmount: 300,
-            }), [
-                div({ style: "width: 25%" }),
-                div({}, "Pauses"),
-                div({ class: [cn.flex1] }),
-                rg.c(AnimatedNumber, (c, s) => c.render({
-                    targetNumber: 12132,
-                    t, inTime: start + 1.4, duration: 0.3,
-                })),
-                div({ style: "width: 25%" }),
-            ])
-        ])
-    ]);
+    imBeginLayout(FLEX1 | ROW | ALIGN_CENTER | JUSTIFY_CENTER); {
+        imBeginSpace(80, PERCENT, 80, PERCENT); {
+            if (imInit()) {
+                setStyle("border", "1px solid currentColor");
+            }
+
+            imBeginSpace(
+                0, NOT_SET, 4, EM, 
+                ROW | ALIGN_CENTER | JUSTIFY_CENTER | RELATIVE
+            ); {
+                imBeginAbsolute(0, PX, 0, PX, 0, PX, 0, PX, ROW | ALIGN_CENTER | JUSTIFY_CENTER); {
+                    setStyle("fontSize", s.fontSize + "rem");
+                    setInnerText(currentMessage);
+                } imEnd();
+            } imEnd();
+
+            imBeginAnimatedRow(s.t, start + 0.1, 0.1, 300); {
+                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
+
+                imTextDiv("Time taken: "); 
+
+                imBeginLayout(FLEX1); imEnd();
+
+                imAnimatedNumber(12321, s.t, start + 0.7, 0.3);
+
+                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
+            } imEnd();
+            imBeginAnimatedRow(s.t, start + 0.3, 0.1, 300); {
+                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
+
+                imTextDiv("Hits: "); 
+
+                imBeginLayout(FLEX1); imEnd();
+
+                imAnimatedNumber(12321, s.t, start + 1.1, 0.3);
+
+                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
+            } imEnd();
+            imBeginAnimatedRow(s.t, start + 0.5, 0.1, 300); {
+                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
+
+                imTextDiv("Pauses: "); 
+
+                imBeginLayout(FLEX1); imEnd();
+
+                imAnimatedNumber(12321, s.t, start + 1.4, 0.3);
+
+                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
+            } imEnd();
+
+        } imEnd();
+    } imEnd();
 }
 
-function AnimatedRow(rg: RenderGroup<{
-    t: number;
-    inTime: number;
-    duration: number;
-    downAmount: number;
-}>, children: DomUtilsChildren) {
-    let t = 0;
-    rg.preRenderFn(s => {
-        if (s.t < s.inTime - 1) {
-            t = 0;
-            return;
-        }
 
-        t = clamp((s.t - s.inTime) / s.duration, 0, 1);
-    });
 
-    return div({ class: [cn.row, cn.justifyContentCenter] }, [
-        rg.style("opacity", () => t + ""),
-        rg.style("transform", s => {
-            const dy = s.downAmount * (1 - t);
-            return `translate(0, ${dy}px)`;
-        }),
-        ...children
-    ])
+function imBeginAnimatedRow(
+    t: number,
+    inTime: number,
+    duration: number,
+    downAmount: number
+) {
+    if (t < inTime - 1) {
+        t = 0;
+    }
+
+    t = clamp((t - inTime) / duration, 0, 1);
+
+    imBeginLayout(ROW | JUSTIFY_CENTER); {
+        setStyle("opacity", t + "");
+        setStyle("transform", `translate(0, ${downAmount * (1 - t)}px)`);
+    } // user specified end
 }
 
-function AnimatedNumber(rg: RenderGroup<{
-    targetNumber: number;
-    t: number;
-    inTime: number;
-    duration: number;
-}>) {
-    let number = 0;
-    let t = 0;
+function imAnimatedNumber(
+    targetNumber: number,
+    tIn: number,
+    inTime: number,
+    duration: number,
+) {
+    let t = clamp((tIn - inTime) / duration, 0, 1);
+    let number;
+    if (t <= 0) {
+        number = 0;
+    } else if (t >= 1) {
+        number = targetNumber;
+    } else {
+        number = Math.floor(targetNumber * t);
+    }
 
-    rg.preRenderFn(s => {
-        t = clamp((s.t - s.inTime) / s.duration, 0, 1);
-
-        if (t <= 0) {
-            number = 0;
-        } else if (t >= 1) {
-            number = s.targetNumber;
-        } else {
-            number = Math.floor(s.targetNumber * t);
-        }
-    });
-
-    return div({}, [
-        rg.text(() => number + ""),
-    ]);
+    imTextDiv(number + "");
 }

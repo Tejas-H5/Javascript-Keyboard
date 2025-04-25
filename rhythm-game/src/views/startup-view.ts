@@ -1,73 +1,48 @@
-import { Button } from "src/components/button";
-import { div, RenderGroup, cn } from "src/utils/dom-utils";
+import { deltaTimeSeconds, imEnd, imInit, imState, setInnerText, setStyle } from "src/utils/im-dom-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
+import { imButton } from "./button";
+import { ALIGN_CENTER, COL, FLEX1, imBeginAbsolute, imBeginLayout, NOT_SET, PERCENT, RELATIVE } from "./layout";
 
-export function StartupView(rg: RenderGroup<GlobalContext>) {
+function newStartupViewState() {
+    return { 
+        t: 0,
+        fontSize: 64,
+        animateScale: 13,
+        fontSizeAnimated: 0,
+
+        currentView: 0,
+    };
+}
+
+export function imStartupView(ctx: GlobalContext) {
     // TODO: better game name
-    const gameName = "Rhythm Keyboard!!"
+    const gameName = "Rhythm Keyboard!! (name subject to change)"
+    const s = imState(newStartupViewState);
 
-    let fontSize = 64;
-    let animateScale = 13;
-    let fontSizeAnimated = 0;
-    let t = 0;
+    const dt = deltaTimeSeconds();
+    s.t += dt;
+    if (s.t > 1) {
+        s.t = 0;
+    } 
+    s.fontSizeAnimated = s.fontSize + s.animateScale * Math.sin(s.t * 2 * Math.PI);
 
-    let currentView = 0;
+    imBeginLayout(FLEX1 | COL | ALIGN_CENTER | RELATIVE); {
+        imBeginLayout(FLEX1 | COL | ALIGN_CENTER | RELATIVE); {
+            setStyle("fontSize", s.fontSizeAnimated + "px");
+            setInnerText(gameName);
+        } imEnd();
+        imBeginAbsolute(
+            25, PERCENT, 0, NOT_SET,
+            25, PERCENT, 0, NOT_SET
+        ); {
+            if (imInit()) {
+                setStyle("fontSize", "24px");
+            }
 
-    rg.preRenderFn((s) => {
-        t += s.dt;
-        if (t > 1) {
-            t = 0;
-        }
-
-        fontSizeAnimated = fontSize + animateScale * Math.sin(t * 2 * Math.PI);
-    });
-
-    function onClickPlay() {
-        const s = rg.s;
-        setViewChartSelect(s);
-    }
-
-    const views: [string, () => void][] = [
-        ["Play", onClickPlay]
-    ];
-
-    return div({ class: [cn.flex1, cn.col, cn.alignItemsCenter, cn.relative] }, [
-        div({ class: [cn.col, cn.alignItemsCenter], style: "font-size: 64px;" }, [
-            rg.style("fontSize", () => fontSizeAnimated + "px"),
-            gameName,
-
-        ]),
-        div({
-            class: [cn.absolute],
-            style: "top: 25%; bottom: 25%; font-size: 24px;"
-        }, [
-            rg.list(div({ class: [cn.contents] }), MenuButton, (getNext, s) => {
-                for (let i = 0; i < views.length; i++) {
-                    const [text, handler] = views[i];
-                    getNext().render({
-                        ctx: s,
-                        text,
-                        onClick: handler,
-                        isSelected: i === currentView,
-                    });
-                }
-            })
-        ])
-    ]);
+            if (imButton("Play")) {
+                setViewChartSelect(ctx);
+            }
+        } imEnd();
+    } imEnd();
 }
 
-function MenuButton(rg: RenderGroup<{
-    ctx: GlobalContext;
-    text: string;
-    onClick(): void;
-    isSelected: boolean;
-}>) {
-
-    return rg.c(Button, (c, s) => {
-        c.render({
-            text: s.text,
-            onClick: s.onClick,
-            toggled: s.isSelected,
-        });
-    });
-}

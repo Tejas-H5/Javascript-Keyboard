@@ -1,7 +1,8 @@
-import { pressKey, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
+import { pressKey, releaseAllKeys, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     getCurrentSelectedChartName,
+    loadAutosaved,
     loadChart,
     moveLoadSaveSelection,
     saveStateDebounced,
@@ -30,13 +31,23 @@ import {
     shiftSelectedItems,
     transposeSelectedItems,
 } from "src/state/sequencer-state";
-import { AppView, newUiState, UIState } from "src/state/ui-state";
+import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
 import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
-import { cn, contentsDiv, div, isEditingTextSomewhereInDocument, RenderGroup } from "src/utils/dom-utils";
-import { ChartSelect } from "src/views/chart-select";
-import { EditView } from "src/views/edit-view";
-import { PlayView } from "src/views/play-view";
-import { StartupView } from "src/views/startup-view";
+import {
+    imBeginList,
+    imEnd,
+    imEndList,
+    imInit,
+    imTextSpan,
+    isEditingTextSomewhereInDocument,
+    nextListRoot,
+    getKeyEvents,
+    setClass,
+} from "src/utils/im-dom-utils";
+import { ChartSelect as imChartSelect } from "src/views/chart-select";
+import { EditView as imEditView } from "src/views/edit-view";
+import { PlayView as imPlayView } from "src/views/play-view";
+import { imStartupView } from "src/views/startup-view";
 import { cnApp } from "./styling";
 import {
     deleteChart,
@@ -56,6 +67,7 @@ import {
     timelineHasNoteAtPosition,
     timelineMeasureAtBeatsIdx,
 } from "./chart";
+import { ABSOLUTE, FIXED, H2, imBeginLayout, ROW } from "./layout";
 
 
 export type GlobalContext = {
@@ -67,7 +79,7 @@ export type GlobalContext = {
     dt: DOMHighResTimeStamp;
 }
 
-export function newGlobalContext(renderFn: () => void, saveState: SavedState): GlobalContext {
+export function newGlobalContext(saveState: SavedState): GlobalContext {
     const autosaved = getOrCreateAutosavedChart(saveState);
 
     return {
@@ -75,7 +87,8 @@ export function newGlobalContext(renderFn: () => void, saveState: SavedState): G
         sequencer: newSequencerState(autosaved),
         ui: newUiState(),
         savedState: newSavedState(),
-        render: renderFn,
+        // TODO: delete
+        render: () => {},
         dt: 0,
     };
 }
@@ -244,7 +257,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         }
 
         const speed = ctrlPressed ? 0.5 : 1;
-        const isUserDriven = ui.currentView === "playChart";
+        const isUserDriven = ui.currentView === APP_VIEW_PLAY_CHART;
         if (shiftPressed) {
             playFromLastMeasure(ctx, { speed, isUserDriven });
         } else {
@@ -446,21 +459,21 @@ function handleKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolea
 
     const { ui } = ctx;
 
-    if (ui.currentView === "startup") {
+    if (ui.currentView === APP_VIEW_STARTUP) {
         return handleStartupKeyDown(ctx, keyPressState);
     }
 
-    if (ui.currentView === "chartSelect") {
+    if (ui.currentView === APP_VIEW_CHART_SELECT) {
         return handleChartSelectKeyDown(ctx, keyPressState)
     }
 
     // There's a lot of overlap in the functionality of these two views
-    if (ui.currentView === "playChart" || ui.currentView === "editChart") {
+    if (ui.currentView === APP_VIEW_PLAY_CHART || ui.currentView === APP_VIEW_EDIT_CHART) {
         if (handlePlayChartOrEditChartKeyDown(ctx, keyPressState)) {
             return true;
         }
 
-        if (ui.currentView === "playChart") {
+        if (ui.currentView === APP_VIEW_PLAY_CHART) {
             return handlePlayChartKeyDown(ctx, keyPressState);
         }
 
@@ -538,36 +551,36 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
 
 
 export function setViewEditChart(ctx: GlobalContext) {
-    setCurrentView(ctx, "editChart");
+    setCurrentView(ctx, APP_VIEW_EDIT_CHART);
 }
 
 export function setViewTestCurrentChart(ctx: GlobalContext) {
     ctx.ui.playView.isTesting = true;
 
     if (!ctx.ui.loadSave.loadedChartName) {
-        throw new Error("NO chart loaded!! bruh");
+        loadAutosaved(ctx);
     }
 
     // dont reload the chart, just use the one we have now...
-    setCurrentView(ctx, "playChart");
+    setCurrentView(ctx, APP_VIEW_PLAY_CHART);
 }
 
 export function setViewPlayCurrentChart(ctx: GlobalContext) {
     ctx.ui.playView.isTesting = false;
 
     if (!ctx.ui.loadSave.loadedChartName) {
-        throw new Error("NO chart loaded!! bruh");
+        loadAutosaved(ctx);
     }
 
-    setCurrentView(ctx, "playChart");
+    setCurrentView(ctx, APP_VIEW_PLAY_CHART);
 }
 
 export function setViewChartSelect(ctx: GlobalContext) {
-    setCurrentView(ctx, "chartSelect");
+    setCurrentView(ctx, APP_VIEW_CHART_SELECT);
 }
 
 export function setViewStartScreen(ctx: GlobalContext) {
-    setCurrentView(ctx, "startup");
+    setCurrentView(ctx, APP_VIEW_STARTUP);
 }
 
 function setCurrentView(ctx: GlobalContext, view: AppView) {
@@ -581,11 +594,11 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
     // run code while exiting a view
     {
         switch (ctx.ui.currentView) {
-            case "editChart":
+            case APP_VIEW_EDIT_CHART:
                 editView.lastCursorStart = sequencer.cursorStart;
                 editView.lastCursorDivisor = sequencer.cursorDivisor;
                 break;
-            case "playChart":
+            case APP_VIEW_PLAY_CHART:
                 stopPlaying(ctx);
                 setScheduledPlaybackVolume(1);
                 break;
@@ -597,17 +610,17 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
     // run code while entering a view
     {
         switch (ctx.ui.currentView) {
-            case "editChart":
+            case APP_VIEW_EDIT_CHART:
                 if (editView.lastCursorDivisor !== 0) {
                     sequencer.cursorStart = editView.lastCursorStart;
                     sequencer.cursorDivisor = editView.lastCursorDivisor;
                 }
                 break;
-            case "chartSelect":
+            case APP_VIEW_CHART_SELECT:
                 editView.lastCursorStart = 0;
                 editView.lastCursorDivisor = 0;
                 break;
-            case "playChart":
+            case APP_VIEW_PLAY_CHART:
                 let startFromBeats: number;
                 if (playView.isTesting) {
                     startFromBeats = getBeats(editView.lastCursorStart, editView.lastCursorDivisor);
@@ -623,13 +636,14 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
 }
 
 type KeyPressState = {
-    key: string,
+    key: string;
     ctrlPressed: boolean,
     shiftPressed: boolean,
     isRepeat: boolean
 
     vAxis: number;
     hAxis: number;
+
     startTestingPressed: boolean;
     isPlayPausePressed: boolean;
 };
@@ -673,66 +687,48 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
     }
     dst.hAxis = hAxis;
 }
-
 // Contains ALL logic
-let instantiated = false;
-export function App(rg: RenderGroup<GlobalContext>) {
-    if (!instantiated) {
-        instantiated = true;
-    } else {
-        throw new Error("Can't instantiate the app twice!");
+export function imApp(ctx: GlobalContext) {
+    const { ui } = ctx;
+
+    const keyPressState = newKeyPressState();
+    const keyReleaseState = newKeyPressState();
+    
+    const { keyDown, keyUp, blur } = getKeyEvents();
+    if (keyDown) {
+        getKeyPressState(keyDown, keyPressState);
+        if (handleKeyDown(ctx, keyPressState)) {
+            keyDown.preventDefault();
+        }
+    }
+    if (keyUp) {
+        getKeyPressState(keyUp, keyReleaseState);
+        if (handleKeyUp(ctx, keyReleaseState)) {
+            keyUp.preventDefault();
+        }
+    }
+    if (blur) {
+        releaseAllKeys();
     }
 
-    let ctx: GlobalContext;
-
-    rg.preRenderFn(s => ctx = s);
-
-    // Add global event handlers.
-    const keyPressState = newKeyPressState();
-    document.addEventListener("keydown", (e) => {
-        getKeyPressState(e, keyPressState);
-        if (handleKeyDown(ctx, keyPressState)) {
-            e.preventDefault();
-            ctx.render();
+    imBeginLayout(ABSOLUTE | FIXED | ROW); {
+        if (imInit()) {
+            setClass(cnApp.normalFont);
         }
-    })
 
-
-    const keyReleaseState = newKeyPressState();
-    document.addEventListener("keyup", (e) => {
-        getKeyPressState(e, keyReleaseState);
-        if (handleKeyUp(ctx, keyReleaseState)) {
-            e.preventDefault();
-            ctx.render();
+        imBeginList(); 
+        nextListRoot(ui.currentView);
+        switch(ui.currentView) { 
+            case APP_VIEW_STARTUP: { imStartupView(ctx); } break;
+            case APP_VIEW_CHART_SELECT: { imChartSelect(ctx); } break;
+            case APP_VIEW_PLAY_CHART: { imPlayView(ctx); } break;
+            case APP_VIEW_EDIT_CHART: { imEditView(ctx); } break;
+            default: {
+                imBeginLayout(H2); {
+                    imTextSpan(`TODO: implement ${ui.currentView} ...`);
+                } imEnd();
+            } break;
         }
-    });
-
-    document.addEventListener("blur", () => {
-        ctx.render();
-    })
-
-    document.addEventListener("mousemove", () => {
-        if (ctx.sequencer.currentHoveredTimelineItemIdx !== -1) {
-            ctx.sequencer.currentHoveredTimelineItemIdx = -1;
-            ctx.render();
-        }
-    });
-
-    window.addEventListener("resize", () => {
-        ctx.render();
-    });
-
-    return div({
-        class: [cn.absoluteFill, cn.row, cn.fixed, cnApp.normalFont],
-    }, [
-        rg.switch(contentsDiv(), s => s.ui.currentView, {
-            startup: StartupView,
-            chartSelect: ChartSelect,
-            playChart: PlayView,
-            editChart: EditView,
-        }),
-        rg.else(rg => div({}, [
-            rg.text(s => `TODO: implement ${s.ui.currentView} ...`),
-        ]))
-    ])
+        imEndList();
+    } imEnd();
 }

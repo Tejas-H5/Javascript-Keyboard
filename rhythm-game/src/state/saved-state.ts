@@ -39,3 +39,4 @@ export function getOrCreateAutosavedChart(state: SavedState): RhythmGameChart {
 
     return autosaved;
 }
+

@@ -8,17 +8,19 @@ import {
     getTimelineMusicNoteThreads,
     NoteMapEntry
 } from "src/state/sequencer-state";
-import { div, RenderGroup, span, lerpColor, newColor, cn } from "src/utils/dom-utils";
+import { lerpColor, newColor } from "src/utils/colour";
+import { deltaTimeSeconds, imBeginList, imEnd, imEndList, imInit, imState, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
 import { inverseLerp } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
-import { cssVars, getCurrentTheme } from "./styling";
-import { 
+import {
     CommandItem,
     getItemLengthBeats,
     getItemStartBeats,
     NoteItem,
 } from "./chart";
+import { ALIGN_CENTER, ALIGN_STRETCH, COL, EM, FLEX1, H1, imBeginAbsolute, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, JUSTIFY_START, NOT_SET, OVERFLOW_HIDDEN, PERCENT, PX, RELATIVE, ROW } from "./layout";
+import { cssVars, getCurrentTheme } from "./styling";
 
 const GAMEPLAY_LOOKAHEAD_BEATS = 2;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
@@ -52,178 +54,195 @@ export function notesMapToKeysMap(
     }
 }
 
-
-export function Gameplay(rg: RenderGroup<GlobalContext>) {
-    let start = 0;
-    let midpoint = 0;
-
-    const notesMap = new Map<string, NoteMapEntry>();
-    const keysMap = new Map<string, KeysMapEntry>();
-    const commandsList: CommandItem[] = [];
-
-    rg.preRenderFn(s => {
-        start = getSequencerPlaybackOrEditingCursor(s.sequencer);
-
-        const tl = s.sequencer._currentChart.timeline;
-
-        getTimelineMusicNoteThreads(
-            tl,
-            start,
-            start + GAMEPLAY_LOADAHEAD_BEATS,
-            notesMap,
-            commandsList
-        );
-
-        notesMapToKeysMap(s.keyboard, notesMap, keysMap);
-
-        midpoint = Math.floor(keysMap.size / 2);
-    });
-
-    return div({
-        class: [cn.flex1, cn.col, cn.alignItemsStretch, cn.justifyContentCenter, cn.overflowHidden]
-    }, [
-        div({ class: [cn.flex1, cn.row, cn.alignItemsStretch, cn.justifyContentCenter, cn.overflowHidden] }, [
-            rg.list(div({ class: [cn.contents] }), VerticalThread, (getNext, s) => {
-                for (const thread of keysMap.values()) {
-                    getNext().render({
-                        ctx: s,
-                        thread: thread._items,
-                        start,
-                        instrumentKey: thread.instrumentKey,
-                    })
-                }
-            }),
-        ]),
-    ]);
+function newBarState() {
+    return { animation: 0 };
 }
 
-function VerticalThread(rg: RenderGroup<{
-    ctx: GlobalContext;
-    thread: NoteItem[];
+function newVerticalNoteThreadState() {
+    return { 
+        backgroundColor: "",
+        currentBgColor: newColor(0, 0, 0, 1),
+    };
+}
+
+type GameplayState = {
     start: number;
-    instrumentKey: InstrumentKey;
-}>) {
-    let signal = 0;
-    let owner = 0;
-    let backgroundColor = "";
+    midpoint: number;
+    notesMap: Map<string, NoteMapEntry>;
+    keysMap: Map<string, KeysMapEntry>;
+    commandsList: CommandItem[];
+};
 
-    const currentBgColor = newColor(0, 0, 0, 1);
+function newGameplayState(): GameplayState {
+    return {
+        start: 0,
+        midpoint: 0,
+        notesMap: new Map(),
+        keysMap: new Map(),
+        commandsList: [],
+    };
+}
+
+export function imGameplay(ctx: GlobalContext) {
+    const s = imState(newGameplayState);
+
+    s.start = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
+
+    const tl = ctx.sequencer._currentChart.timeline;
+
+    getTimelineMusicNoteThreads(
+        tl, s.start, s.start + GAMEPLAY_LOADAHEAD_BEATS,
+        s.notesMap, s.commandsList
+    );
+
+    notesMapToKeysMap(ctx.keyboard, s.notesMap, s.keysMap);
+
+    s.midpoint = Math.floor(s.keysMap.size / 2);
 
 
-    rg.preRenderFn(s => {
-        owner = getCurrentOscillatorOwner(s.instrumentKey.index) 
-        signal = getCurrentOscillatorGain(s.instrumentKey.index) 
+    imBeginLayout(FLEX1 | COL | ALIGN_STRETCH | JUSTIFY_CENTER | OVERFLOW_HIDDEN); {
+        imBeginLayout(FLEX1 | ROW | ALIGN_STRETCH | JUSTIFY_CENTER | OVERFLOW_HIDDEN); {
+            imBeginList();
+            for (const val of s.keysMap.values()) {
+                const thread = val._items;
+                const instrumentKey = val.instrumentKey;
 
-        const theme = getCurrentTheme();
-        const hasPress = (owner === 0 && signal > 0.001);
+                const sGameplay = s;
 
-        const wantedBgColor = s.thread.length > 0 ? theme.bg2 : theme.bg;
-        const wantedFgColor = s.thread.length > 0 ? theme.fg2 : theme.error;
+                // Vertical note
+                nextListRoot(); {
+                    const s = imState(newVerticalNoteThreadState);
 
-        lerpColor(wantedBgColor, wantedFgColor, hasPress ? signal : 0, currentBgColor);
-        backgroundColor = currentBgColor.toCssString();
-    });
+                    const owner = getCurrentOscillatorOwner(instrumentKey.index)
+                    const signal = getCurrentOscillatorGain(instrumentKey.index)
 
-    function createLetter() {
-        return span({ style: "transition: color 0.2s; height: 2ch;" }, [
-            rg.style("color", s => s.thread.length === 0 ? cssVars.bg2 : cssVars.fg),
-            rg.text((s) => s.instrumentKey ? s.instrumentKey.text : "?"),
-        ]);
-    }
+                    const theme = getCurrentTheme();
+                    const hasPress = (owner === 0 && signal > 0.001);
 
-    return div({ class: [cn.row, cn.alignItemsStretch, cn.justifyContentStart] }, [
-        rg.if(s => s.instrumentKey.isLeftmost, rg => rg &&
-            div({ style: `width: 2px; background: ${cssVars.fg}` })
-        ),
-        div({ 
-            class: [cn.col, cn.alignItemsCenter, cn.justifyContentCenter],
-            style: "width: 40px; font-size: 64px;" 
-        }, [
-            createLetter(),
-            div({ style: `width: 100%; height: 2px; background-color: ${cssVars.fg};` }),
-            div({ 
-                class: [cn.flex1, cn.relative, cn.w100, cn.overflowHidden], 
-                style: "transition: background-color 0.2s;" 
-            }, [
-                rg.style("backgroundColor", () => backgroundColor),
-                rg.list(div({ class: [cn.contents] }), Bar, (getNext, s) => {
-                    for (const item of s.thread) {
-                        getNext().render({
-                            ctx: s.ctx,
-                            instrumentKey: s.instrumentKey,
-                            item, 
-                            start: s.start,
-                        });
+                    const wantedBgColor = thread.length > 0 ? theme.bg2 : theme.bg;
+                    const wantedFgColor = thread.length > 0 ? theme.fg2 : theme.error;
+                    lerpColor(wantedBgColor, wantedFgColor, hasPress ? signal : 0, s.currentBgColor);
+                    const backgroundColor = s.currentBgColor.toCssString();
+
+                    const imLetter = () => {
+                        imBeginSpace(0, NOT_SET, 2, EM); {
+                            setStyle("color", thread.length === 0 ? cssVars.bg2 : cssVars.fg);
+                            setInnerText(instrumentKey ? instrumentKey.text : "?");
+                        } imEnd();
                     }
-                }),
-            ]),
-            div({ style: `width: 100%; height: 2px; background-color: ${cssVars.fg};` }),
-            createLetter(),
-        ]),
-        rg.if(s => s.instrumentKey.isRightmost, rg => rg &&
-            div({ style: `width: 2px; background: ${cssVars.fg}` })
-        ),
-    ]);
-}
 
-function Bar(rg: RenderGroup<{
-    ctx: GlobalContext;
-    instrumentKey: InstrumentKey;
-    item: NoteItem;
-    start: number;
-}>) {
-    let heightPercent = 0;
-    let bottomPercent = 0;
+                    imBeginLayout(ROW | ALIGN_STRETCH | JUSTIFY_START); {
 
-    let animation = 0;
-    let color = "";
+                        imBeginList(); 
+                        if (nextListRoot() && instrumentKey.isLeftmost) {
+                            imBeginSpace(2, PX, 0, NOT_SET); {
+                                imInit() && setStyle("background", cssVars.fg);
+                            } imEnd();
+                        } 
+                        imEndList();
 
-    rg.preRenderFn(s => {
-        const start = s.start;
-        const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
-        const itemStart = getItemStartBeats(s.item);
-        const itemLength = getItemLengthBeats(s.item);
+                        imBeginSpace(40, PX, 0, NOT_SET, COL | ALIGN_CENTER | JUSTIFY_CENTER | H1); {
+                            imLetter();
+                        } imEnd();
+                        imBeginSpace(100, PERCENT, 2, PX); {
+                            imInit() && setStyle("backgroundColor", cssVars.fg);
 
-        bottomPercent = 100 * inverseLerp(itemStart, start, end);
-        heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
+                            imBeginSpace(100, PERCENT, 0, NOT_SET, FLEX1 | RELATIVE | OVERFLOW_HIDDEN); {
+                                if (imInit()) {
+                                    setStyle("transition", "background-color 0.2s");
+                                }
 
-        if (bottomPercent <= 0) {
-            // prevent the bar from going past the midpoint line
-            heightPercent += bottomPercent;
-            bottomPercent = 0;
+                                setStyle("backgroundColor", backgroundColor);
 
-        }
+                                imBeginList(); 
+                                for (let i = 0; i < thread.length; i++) {
+                                    const item = thread[i];
 
-        if (bottomPercent < 0.1) {
-            // give user an indication that they should care about the fact that this bar has reached the bottm.
-            // hopefully they'll see the keyboard letter just below it, and try pressing it.
-            animation += s.ctx.dt;
-            if (animation > 1) {
-                animation = 0;
+                                    const start = sGameplay.start;
+
+                                    nextListRoot(); {
+                                        const s = imState(newBarState);
+
+                                        const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
+                                        const itemStart = getItemStartBeats(item);
+                                        const itemLength = getItemLengthBeats(item);
+
+                                        const dt = deltaTimeSeconds();
+
+                                        let bottomPercent = 100 * inverseLerp(itemStart, start, end);
+                                        let heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
+
+                                        if (bottomPercent <= 0) {
+                                            // prevent the bar from going past the midpoint line
+                                            heightPercent += bottomPercent;
+                                            bottomPercent = 0;
+
+                                        }
+
+                                        if (bottomPercent < 0.1) {
+                                            // give user an indication that they should care about the fact that this bar has reached the bottm.
+                                            // hopefully they'll see the keyboard letter just below it, and try pressing it.
+                                            s.animation += dt;
+                                            if (s.animation > 1) {
+                                                s.animation = 0;
+                                            }
+                                        } else {
+                                            s.animation = 0;
+                                        }
+
+                                        const color = s.animation > 0.5 ? "#FFFF00" : cssVars.fg;
+                                        // color = animation < 0.5 ? "#FFFF00" : s.instrumentKey.cssColours.normal;
+
+                                        imBeginAbsolute(
+                                            0, NOT_SET, 0, PX,
+                                            0, NOT_SET, 0, PX,
+                                        ); {
+                                            if (imInit()) {
+                                                setStyle("color", "transparent");
+                                            }
+
+                                            setStyle("bottom", bottomPercent + "%");
+                                            setStyle("height", heightPercent + "%");
+
+                                            imBeginSpace(100, PERCENT, 100, PERCENT, RELATIVE); {
+                                                if (imInit()) {
+                                                    setStyle("backgroundColor", cssVars.fg);
+                                                }
+
+                                                imBeginAbsolute(
+                                                    2, PX, 2, PX,
+                                                    2, PX, 2, PX
+                                                ); {
+                                                    if (imInit()) {
+                                                        setStyle("transition", "transition: background-color 0.2s;");
+                                                    }
+
+                                                    setStyle("backgroundColor", color);
+                                                } imEnd();
+                                            } imEnd();
+
+                                        } imEnd();
+                                    }
+                                }
+                                imEndList();
+                            } imEnd();
+                        } imEnd();
+                        imBeginList(); 
+
+                        if (nextListRoot() && instrumentKey.isRightmost) {
+                            imBeginSpace(2, PX, 0, NOT_SET); {
+                                imInit() && setStyle("background", cssVars.fg);
+                            } imEnd();
+                        }
+                        imEndList();
+
+                        imLetter();
+
+                    } imEnd();
+                }
             }
-        } else {
-            animation = 0;
-        }
-
-        color = animation > 0.5 ? "#FFFF00" : cssVars.fg;
-        // color = animation < 0.5 ? "#FFFF00" : s.instrumentKey.cssColours.normal;
-    });
-
-    return div({
-        style: "position: absolute; left: 0; right: 0; z-index: 10;" +
-            "color: transparent;"
-    }, [
-        rg.style("bottom", () => bottomPercent + "%"),
-        rg.style("height", () => heightPercent + "%"),
-        div({ style: `width: 100%; height: 100%; position: relative; background-color: ${cssVars.fg}` }, [
-            div({
-                style: "position: absolute; left: 2px; right: 2px; top: 2px; bottom: 2px;" +
-                    "transition: background-color 0.2s;"
-            }, [
-                rg.style("backgroundColor", () => color),
-            ])
-        ])
-    ]);
+            imEndList();
+        } imEnd();
+    } imEnd();
 }
-
 

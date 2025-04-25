@@ -1,160 +1,123 @@
-import { Button } from "src/components/button";
 import "src/css/layout.css";
 import "src/main.css";
-import { stopPlaying, } from "src/state/playing-pausing";
-import { 
+import {
     getCurrentSelectedChartName,
-    loadChart,
-    saveAllState,
+    loadChart
 } from "src/state/loading-saving-charts";
+import { stopPlaying, } from "src/state/playing-pausing";
+import { getChart } from "src/state/saved-state";
 import {
     getCurrentPlayingTimeRelative,
     recomputeState
 } from "src/state/sequencer-state";
-import {
-    div,
-    el,
-    RenderGroup,
-    setInputValue,
-    span,
-    cn,
-} from "src/utils/dom-utils";
-import { Sequencer } from "src/views/sequencer";
+import { elementHasMouseClick, imBeginEl, imBeginList, imEnd, imEndList, imInit, imMemo, imTextDiv, nextListRoot, setInnerText, setInputValue, setStyle } from "src/utils/im-dom-utils";
+import { imSequencer } from "src/views/sequencer";
 import { GlobalContext, resetSequencer, setViewTestCurrentChart } from "./app";
-import { cnApp, cssVars } from "./styling";
-import { getChart } from "src/state/saved-state";
+import { imButton } from "./button";
 import { getPlaybackDuration } from "./chart";
+import { BOLD, COL, FIXED, FLEX1, GAP10, GAP5, imBeginLayout, imBeginSpace, NOT_SET, PERCENT, ROW, setStyleFlags } from "./layout";
+import { cssVars } from "./styling";
 
-export function EditView(rg: RenderGroup<GlobalContext>) {
-    rg.preRenderFn((s) => {
-        recomputeState(s.sequencer);
+export function EditView(ctx: GlobalContext) {
+    const { sequencer, ui } = ctx;
+    const editView = ui.editView;
 
-        const currentTime = getCurrentPlayingTimeRelative(s.sequencer);
-        const duration = getPlaybackDuration(s.sequencer._currentChart);
-        if (currentTime > duration) {
-            stopPlaying(s);
+    recomputeState(sequencer);
+
+    const currentTime = getCurrentPlayingTimeRelative(sequencer);
+    const duration = getPlaybackDuration(sequencer._currentChart);
+    if (currentTime > duration) {
+        stopPlaying(ctx);
+    }
+
+    imBeginLayout(FIXED | ROW); {
+        imBeginLayout(COL | GAP5 | FLEX1); {
+            imBeginLayout(ROW | GAP5); {
+                imBeginLayout(FLEX1); imEnd();
+
+                imBeginLayout(BOLD); { setInnerText("Sequencer"); } imEnd();
+
+                // TODO: put this in a better place
+                imBeginList();
+                const numCopied = ui.copied.items.length;
+                if (nextListRoot() && numCopied > 0) {
+                    imTextDiv(numCopied + " items copied");
+                }
+                imEndList();
+
+                imBeginLayout(FLEX1); imEnd();
+
+                if (imButton("Test")) {
+                    setViewTestCurrentChart(ctx);
+                }
+
+                if (imButton("Clear All")) {
+                    resetSequencer(ctx);
+                }
+
+                if (imButton((editView.sidebarOpen ? ">" : "<") + "Load/Save")) {
+                    editView.sidebarOpen = !editView.sidebarOpen;
+                }
+            } imEnd();
+
+            imSequencer(ctx);
+        } imEnd();
+        imBeginList();
+        if (nextListRoot() && editView.sidebarOpen) {
+            // Load save panel
+            const name = getCurrentSelectedChartName(ctx);
+            const chart = getChart(ctx.savedState, name)
+
+            let input: HTMLInputElement;
+
+            imBeginSpace(33, PERCENT, 0, NOT_SET); {
+                imBeginLayout(ROW | GAP10); {
+                    imBeginLayout(FLEX1); {
+                        input = imBeginEl(newInput).root; {
+                            if (imInit()) {
+                                setStyle("width", "100%");
+                                setStyle("height", "100%");
+                            }
+
+                            if (imMemo(input.value)) {
+                                ui.loadSave.selectedChartName = input.value;
+                            }
+                        } imEnd();
+                    } imEnd();
+
+                    imBeginList();
+                    if (nextListRoot() && chart) {
+                        if (imButton("Load")) {
+                            loadChart(ctx, name);
+                        }
+                    }
+                    if (nextListRoot()) {
+                        if (imButton("Save")) {
+                            // TODO: add saving back. lmao. 
+                        }
+                    }
+                    imEndList();
+                } imEnd();
+
+                imBeginList();
+                for (const chart of ctx.savedState.userCharts) {
+                    nextListRoot();
+                    imBeginLayout(); {
+                        setInnerText(chart.name);
+                        setStyle("backgroundColor", chart.name === name ? cssVars.bg2 : "");
+
+                        if (elementHasMouseClick()) {
+                            setInputValue(input, chart.name);
+                        }
+                    } imEnd();
+                }
+                imEndList();
+            } imEnd();
         }
-    });
-
-    function testFromHere() {
-        const s = rg.s;
-
-        setViewTestCurrentChart(s);
-
-        s.render();
-    }
-
-    function clearSequencer() {
-        if (confirm("Are you sure you want to clear your progress?")) {
-            const s = rg.s;
-            resetSequencer(s);
-            s.render();
-        }
-    }
-
-    function toggleLoadSaveSiderbar() {
-        const s = rg.s;
-        const ui = s.ui.editView;
-        ui.sidebarOpen = !ui.sidebarOpen;
-        // needs it twice for some reason...
-        s.render();
-        s.render();
-    }
-
-    return div({ class: [cn.absoluteFill, cn.row, cn.fixed] }, [
-        div({ class: [cn.col, cn.flex1] }, [
-            div({ class: [cn.col, cn.flex1] }, [
-                div({ class: [cn.row, cnApp.gap5] }, [
-                    div({ class: [cn.flex1] }),
-                    span({ class: [cnApp.b] }, [
-                        "Sequencer"
-                    ]),
-
-                    // TODO: put this in a better place
-                    rg.if(
-                        s => s.ui.copied.items.length > 0,
-                        rg => rg.text(s => s.ui.copied.items.length + " items copied")
-                    ),
-
-                    div({ class: [cn.flex1] }),
-                    rg.c(Button, c => c.render({
-                        text: "Test",
-                        onClick: testFromHere
-                    })),
-                    rg.c(Button, c => c.render({
-                        text: "Clear All",
-                        onClick: clearSequencer
-                    })),
-                    rg.c(Button, (c, s) => c.render({
-                        text: (s.ui.editView.sidebarOpen ? ">" : "<") + "Load/Save",
-                        onClick: toggleLoadSaveSiderbar
-                    }))
-                ]),
-                rg.c(Sequencer, (c, s) => c.render(s)),
-            ])
-        ]),
-        rg.if(
-            s => s.ui.editView.sidebarOpen,
-            rg => div({ class: [cn.col] }, [
-                rg.c(LoadSavePanel, (c, s) => c.render(s))
-            ])
-        )
-    ])
+        imEndList();
+    } imEnd();
 }
 
-function LoadSavePanel(rg: RenderGroup<GlobalContext>) {
-    function Item(rg: RenderGroup<{ ctx: GlobalContext; name: string; }>) {
-        return div({}, [
-            rg.text(s => s.name),
-            rg.style("backgroundColor", s => s.name === getCurrentSelectedChartName(s.ctx) ? cssVars.bg2 : ""),
-            rg.on("click", s => {
-                setInputValue(input, s.name);
-                s.ctx.render();
-            })
-        ]);
-    }
-
-    const input = el<HTMLInputElement>("INPUT", { style: "width: 100%", placeholder: "enter name here" }, [
-        rg.on("input", (s) => {
-            s.ui.loadSave.selectedChartName = input.el.value;
-            s.render();
-        })
-    ]);
-
-    rg.preRenderFn(s => {
-        setInputValue(input, getCurrentSelectedChartName(s));
-    });
-
-    return div({ style: "width: 33vw" }, [
-        div({ class: [cn.row], style: "gap: 10px" }, [
-            // dont want to accidentally load over my work. smh.
-            rg.if(
-                s => !!getChart(s.savedState, getCurrentSelectedChartName(s)),
-                rg => rg.c(Button, (c, s) => c.render({
-                    text: "Load",
-                    onClick() {
-                        loadChart(s, s.ui.loadSave.selectedChartName);
-                        s.render();
-                    }
-                })),
-            ),
-            input,
-            rg.if(
-                s => !!getCurrentSelectedChartName(s),
-                rg => rg.c(Button, (c, s) => c.render({
-                    text: "Save",
-                    onClick() {
-                        saveAllState(s);
-                        s.render();
-                    }
-                })),
-            )
-        ]),
-        rg.list(div(), Item, (getNext, s) => {
-            for (const chart of s.savedState.userCharts) {
-                getNext().render({ ctx: s, name: chart.name });
-            }
-        })
-    ]);
+function newInput() {
+    return document.createElement("input");
 }
-
