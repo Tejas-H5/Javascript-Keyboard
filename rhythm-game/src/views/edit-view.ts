@@ -10,13 +10,14 @@ import {
     getCurrentPlayingTimeRelative,
     recomputeState
 } from "src/state/sequencer-state";
-import { elementHasMouseClick, imBeginEl, imBeginList, imEnd, imEndList, imInit, imMemo, imTextDiv, nextListRoot, setInnerText, setInputValue, setStyle } from "src/utils/im-dom-utils";
+import { elementHasMouseClick, imBeginEl, imBeginList, imEnd, imEndList, imInit, imMemo, imTextDiv, imTextSpan, nextListRoot, setInnerText, setInputValue, setStyle } from "src/utils/im-dom-utils";
 import { imSequencer } from "src/views/sequencer";
 import { GlobalContext, resetSequencer, setViewTestCurrentChart } from "./app";
 import { imButton } from "./button";
 import { getPlaybackDuration } from "./chart";
 import { BOLD, COL, FIXED, FLEX1, GAP10, GAP5, imBeginLayout, imBeginSpace, NOT_SET, PERCENT, ROW, setStyleFlags } from "./layout";
 import { cssVars } from "./styling";
+import { assert } from "src/utils/assert";
 
 export function EditView(ctx: GlobalContext) {
     const { sequencer, ui } = ctx;
@@ -35,7 +36,13 @@ export function EditView(ctx: GlobalContext) {
             imBeginLayout(ROW | GAP5); {
                 imBeginLayout(FLEX1); imEnd();
 
-                imBeginLayout(BOLD); { setInnerText("Sequencer"); } imEnd();
+                imBeginLayout(BOLD); { 
+                    imTextSpan("Currently editing [");
+                    imTextSpan(sequencer._currentChart.name);
+                    imTextSpan("]");
+
+                    assert(ctx.savedState.userCharts.indexOf(sequencer._currentChart) !== -1);
+                } imEnd();
 
                 // TODO: put this in a better place
                 imBeginList();

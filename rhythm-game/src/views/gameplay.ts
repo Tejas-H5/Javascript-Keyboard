@@ -125,14 +125,18 @@ export function imGameplay(ctx: GlobalContext) {
                     const backgroundColor = s.currentBgColor.toCssString();
 
                     const imLetter = () => {
-                        imBeginSpace(0, NOT_SET, 2, EM); {
-                            setStyle("color", thread.length === 0 ? cssVars.bg2 : cssVars.fg);
-                            setInnerText(instrumentKey ? instrumentKey.text : "?");
+                        imBeginSpace(40, PX, 0, NOT_SET, COL | ALIGN_CENTER | JUSTIFY_CENTER | H1); {
+                            imBeginLayout(); {
+                                if (imInit()) {
+                                    setStyle("height", "2ch");
+                                }
+                                setStyle("color", thread.length === 0 ? cssVars.bg2 : cssVars.fg);
+                                setInnerText(instrumentKey ? instrumentKey.text : "?");
+                            } imEnd();
                         } imEnd();
                     }
 
-                    imBeginLayout(ROW | ALIGN_STRETCH | JUSTIFY_START); {
-
+                    imBeginLayout(COL | ALIGN_STRETCH | JUSTIFY_START); {
                         imBeginList(); 
                         if (nextListRoot() && instrumentKey.isLeftmost) {
                             imBeginSpace(2, PX, 0, NOT_SET); {
@@ -141,100 +145,95 @@ export function imGameplay(ctx: GlobalContext) {
                         } 
                         imEndList();
 
-                        imBeginSpace(40, PX, 0, NOT_SET, COL | ALIGN_CENTER | JUSTIFY_CENTER | H1); {
-                            imLetter();
-                        } imEnd();
+                        imLetter();
+
                         imBeginSpace(100, PERCENT, 2, PX); {
                             imInit() && setStyle("backgroundColor", cssVars.fg);
+                        } imEnd();
 
-                            imBeginSpace(100, PERCENT, 0, NOT_SET, FLEX1 | RELATIVE | OVERFLOW_HIDDEN); {
-                                if (imInit()) {
-                                    setStyle("transition", "background-color 0.2s");
-                                }
+                        imBeginSpace(100, PERCENT, 0, NOT_SET, FLEX1 | RELATIVE | OVERFLOW_HIDDEN); {
+                            if (imInit()) {
+                                setStyle("transition", "background-color 0.2s");
+                            }
 
-                                setStyle("backgroundColor", backgroundColor);
+                            setStyle("backgroundColor", backgroundColor);
 
-                                imBeginList(); 
-                                for (let i = 0; i < thread.length; i++) {
-                                    const item = thread[i];
+                            imBeginList();
+                            for (let i = 0; i < thread.length; i++) {
+                                const item = thread[i];
 
-                                    const start = sGameplay.start;
+                                const start = sGameplay.start;
 
-                                    nextListRoot(); {
-                                        const s = imState(newBarState);
+                                nextListRoot(); {
+                                    const s = imState(newBarState);
 
-                                        const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
-                                        const itemStart = getItemStartBeats(item);
-                                        const itemLength = getItemLengthBeats(item);
+                                    const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
+                                    const itemStart = getItemStartBeats(item);
+                                    const itemLength = getItemLengthBeats(item);
 
-                                        const dt = deltaTimeSeconds();
+                                    const dt = deltaTimeSeconds();
 
-                                        let bottomPercent = 100 * inverseLerp(itemStart, start, end);
-                                        let heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
+                                    let bottomPercent = 100 * inverseLerp(itemStart, start, end);
+                                    let heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
 
-                                        if (bottomPercent <= 0) {
-                                            // prevent the bar from going past the midpoint line
-                                            heightPercent += bottomPercent;
-                                            bottomPercent = 0;
+                                    if (bottomPercent <= 0) {
+                                        // prevent the bar from going past the midpoint line
+                                        heightPercent += bottomPercent;
+                                        bottomPercent = 0;
 
-                                        }
+                                    }
 
-                                        if (bottomPercent < 0.1) {
-                                            // give user an indication that they should care about the fact that this bar has reached the bottm.
-                                            // hopefully they'll see the keyboard letter just below it, and try pressing it.
-                                            s.animation += dt;
-                                            if (s.animation > 1) {
-                                                s.animation = 0;
-                                            }
-                                        } else {
+                                    if (bottomPercent < 0.1) {
+                                        // give user an indication that they should care about the fact that this bar has reached the bottm.
+                                        // hopefully they'll see the keyboard letter just below it, and try pressing it.
+                                        s.animation += dt;
+                                        if (s.animation > 1) {
                                             s.animation = 0;
                                         }
+                                    } else {
+                                        s.animation = 0;
+                                    }
 
-                                        const color = s.animation > 0.5 ? "#FFFF00" : cssVars.fg;
-                                        // color = animation < 0.5 ? "#FFFF00" : s.instrumentKey.cssColours.normal;
+                                    const color = s.animation > 0.5 ? "#FFFF00" : cssVars.fg;
+                                    // color = animation < 0.5 ? "#FFFF00" : s.instrumentKey.cssColours.normal;
 
-                                        imBeginAbsolute(
-                                            0, NOT_SET, 0, PX,
-                                            0, NOT_SET, 0, PX,
-                                        ); {
+                                    imBeginAbsolute(
+                                        0, NOT_SET, 0, PX,
+                                        0, NOT_SET, 0, PX,
+                                    ); {
+                                        if (imInit()) {
+                                            setStyle("color", "transparent");
+                                        }
+
+                                        setStyle("bottom", bottomPercent + "%");
+                                        setStyle("height", heightPercent + "%");
+
+                                        imBeginSpace(100, PERCENT, 100, PERCENT, RELATIVE); {
                                             if (imInit()) {
-                                                setStyle("color", "transparent");
+                                                setStyle("backgroundColor", cssVars.fg);
                                             }
 
-                                            setStyle("bottom", bottomPercent + "%");
-                                            setStyle("height", heightPercent + "%");
-
-                                            imBeginSpace(100, PERCENT, 100, PERCENT, RELATIVE); {
+                                            imBeginAbsolute(
+                                                2, PX, 2, PX,
+                                                2, PX, 2, PX
+                                            ); {
                                                 if (imInit()) {
-                                                    setStyle("backgroundColor", cssVars.fg);
+                                                    setStyle("transition", "transition: background-color 0.2s;");
                                                 }
 
-                                                imBeginAbsolute(
-                                                    2, PX, 2, PX,
-                                                    2, PX, 2, PX
-                                                ); {
-                                                    if (imInit()) {
-                                                        setStyle("transition", "transition: background-color 0.2s;");
-                                                    }
-
-                                                    setStyle("backgroundColor", color);
-                                                } imEnd();
+                                                setStyle("backgroundColor", color);
                                             } imEnd();
-
                                         } imEnd();
-                                    }
-                                }
-                                imEndList();
-                            } imEnd();
-                        } imEnd();
-                        imBeginList(); 
 
-                        if (nextListRoot() && instrumentKey.isRightmost) {
-                            imBeginSpace(2, PX, 0, NOT_SET); {
-                                imInit() && setStyle("background", cssVars.fg);
-                            } imEnd();
-                        }
-                        imEndList();
+                                    } imEnd();
+                                }
+                            }
+                            imEndList();
+                        } imEnd();
+
+                        imBeginSpace(100, PERCENT, 2, PX); {
+                            imInit() && setStyle("backgroundColor", cssVars.fg);
+                        } imEnd();
 
                         imLetter();
 

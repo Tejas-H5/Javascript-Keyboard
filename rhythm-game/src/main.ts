@@ -5,7 +5,7 @@ import {
 } from "src/dsp/dsp-loop-interface";
 import { imState, initializeDomRootAnimiationLoop } from "src/utils/im-dom-utils";
 import "./main.css";
-import { loadSaveState, loadChart } from "./state/loading-saving-charts";
+import { loadSaveState } from "./state/loading-saving-charts";
 import { stopPlaying } from "./state/playing-pausing";
 import { syncPlayback } from "./state/sequencer-state";
 import { imApp, newGlobalContext, setViewPlayCurrentChart } from "./views/app";
@@ -14,7 +14,6 @@ import { imFpsCounterOutput, newFpsCounterState, startFpsCounter, stopFpsCounter
 
 const saveState = loadSaveState();
 const globalContext = newGlobalContext(saveState);
-loadChart(globalContext, "test song");
 
 function renderRoot() {
     const fps = imState(newFpsCounterState);

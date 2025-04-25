@@ -68,7 +68,7 @@ export function moveLoadSaveSelection(ctx: GlobalContext, amount: number) {
 export function loadChart(ctx: GlobalContext, chartName: string) {
     const chart = getChart(ctx.savedState, chartName);
     if (!chart) {
-        return;
+        throw new Error("this chart dont exist yet lil bro");
     }
 
     ctx.sequencer._currentChart = chart;

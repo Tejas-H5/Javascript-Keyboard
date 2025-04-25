@@ -15,6 +15,12 @@ import {
     stopPlaying
 } from "src/state/playing-pausing";
 import {
+    deleteChart,
+    getChart,
+    getOrCreateAutosavedChart,
+    SavedState
+} from "src/state/saved-state";
+import {
     clearRangeSelection,
     deleteRange,
     getBeats,
@@ -34,6 +40,7 @@ import {
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
 import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
 import {
+    getKeyEvents,
     imBeginList,
     imEnd,
     imEndList,
@@ -41,21 +48,12 @@ import {
     imTextSpan,
     isEditingTextSomewhereInDocument,
     nextListRoot,
-    getKeyEvents,
-    setClass,
+    setClass
 } from "src/utils/im-dom-utils";
 import { ChartSelect as imChartSelect } from "src/views/chart-select";
 import { EditView as imEditView } from "src/views/edit-view";
 import { PlayView as imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
-import { cnApp } from "./styling";
-import {
-    deleteChart,
-    getChart,
-    getOrCreateAutosavedChart,
-    newSavedState,
-    SavedState,
-} from "src/state/saved-state";
 import {
     equalBeats,
     getBpm,
@@ -68,6 +66,7 @@ import {
     timelineMeasureAtBeatsIdx,
 } from "./chart";
 import { ABSOLUTE, FIXED, H2, imBeginLayout, ROW } from "./layout";
+import { cnApp } from "./styling";
 
 
 export type GlobalContext = {
@@ -86,7 +85,7 @@ export function newGlobalContext(saveState: SavedState): GlobalContext {
         keyboard: newKeyboardState(),
         sequencer: newSequencerState(autosaved),
         ui: newUiState(),
-        savedState: newSavedState(),
+        savedState: saveState,
         // TODO: delete
         render: () => {},
         dt: 0,
@@ -143,7 +142,7 @@ function handlePlayChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 
     const instrumentKey = getKeyForKeyboardKey(keyboard, key);
     if (instrumentKey) {
-        pressKey(instrumentKey.index, instrumentKey.musicNote);
+        pressKey(instrumentKey.index, instrumentKey.musicNote, keyPressState.isRepeat);
         return true;
     }
 
@@ -413,7 +412,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
     if (instrumentKey) {
         // play the instrument
         {
-            pressKey(instrumentKey.index, instrumentKey.musicNote);
+            pressKey(instrumentKey.index, instrumentKey.musicNote, isRepeat);
         }
 
         // insert notes into the sequencer

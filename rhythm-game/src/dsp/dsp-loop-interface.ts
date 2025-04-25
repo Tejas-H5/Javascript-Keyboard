@@ -85,7 +85,12 @@ export function getCurrentOscillatorOwner(id: number): number {
     return block[2];
 }
 
-export function pressKey(id: number, note: MusicNote) {
+// we keep forgetting to ignore repeats, so I've made it an argument to this method.
+export function pressKey(id: number, note: MusicNote, isRepeat: boolean) {
+    if (isRepeat) {
+        return false;
+    }
+
     resumeAudio();
 
     setCurrentOscillatorGain(id, 1);

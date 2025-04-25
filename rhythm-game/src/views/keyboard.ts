@@ -93,7 +93,7 @@ export function imKeyboard(ctx: GlobalContext) {
 
                             if (elementHasMouseDown() && !s.pressed) {
                                 s.pressed = true;
-                                pressKey(key.index, key.musicNote);
+                                pressKey(key.index, key.musicNote, false);
                             }
                             if (s.pressed && (!elementHasMouseHover() || !elementHasMouseDown())) {
                                 s.pressed = false;

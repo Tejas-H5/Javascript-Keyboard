@@ -116,7 +116,7 @@ type SequencerUIState = {
     measures: Measure[];
 };
 
-function newSequencerState(): SequencerUIState {
+function newSequencerUIState(): SequencerUIState {
     return {
         lastCursorStartBeats: -1,
         lastCursorStartDivisor: -1,
@@ -150,7 +150,7 @@ export function imSequencer(ctx: GlobalContext) {
     const sequencer = ctx.sequencer;
     const isRangeSelecting = hasRangeSelection(sequencer);
 
-    const s = imState(newSequencerState);
+    const s = imState(newSequencerUIState);
 
     const cursorStartBeats = getSequencerPlaybackOrEditingCursor(sequencer);
     const divisor = sequencer.cursorDivisor;

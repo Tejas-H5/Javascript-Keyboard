@@ -812,13 +812,17 @@ function imEndInternal(
     }
 }
 
-// TODO: replace imEndList with just imEnd somehow. 
 export function imEndList() {
     if (currentRoot) {
         imEnd();
     }
 
+    // NOTE: the main reason why I won't make a third ITEM_COMPONENT_FENCE 
+    // to detect an incorrect number of calls to begin() and end() methods, is because
+    // most UI components will interlace imBeginList() and imEl() methods frequently enough that
+    // this assertion here or the one in imEnd() will already catch this bug most of the time.
     const l = getCurrentListRendererInternal();
+
     imEndInternal(l, undefined);
 }
 

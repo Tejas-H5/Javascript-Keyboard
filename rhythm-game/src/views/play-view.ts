@@ -38,15 +38,12 @@ export function PlayView(ctx: GlobalContext) {
     if (!ctx.sequencer.isPlaying) {
         if (playView.isTesting) {
             setViewEditChart(ctx);
-        } else {
+        } else if (!s.showResultsScreen) {
             s.showResultsScreen = true;
-            // TODO: the old code randomizes the message every frame???
-            // randomizeMessage();
+            randomizeMessage();
         }
     } else {
-        // TODO: revert
-        // showResultsScreen = false;
-        s.showResultsScreen = true;
+        s.showResultsScreen = false;
     }
 
     imBeginLayout(FLEX1 | COL); {
