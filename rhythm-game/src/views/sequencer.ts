@@ -40,9 +40,9 @@ import {
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
     TimelineItem
-} from "./chart";
+} from "src/state/sequencer-chart";
 import { deltaTimeSeconds, disableIm, enableIm, imBeginList, imEnd, imEndList, imInit, imMemo, imState, imTextSpan, nextListRoot, setClass, setInnerText, setStyle } from "src/utils/im-dom-utils";
-import { ABSOLUTE, COL, FLEX1, imBeginAbsolute, imBeginLayout, imBeginPadding, imBeginSpace, JUSTIFY_CENTER, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "./layout";
+import { ABSOLUTE, ALIGN_CENTER, ALIGN_STRETCH, COL, FLEX1, GAP5, imBeginAbsolute, imBeginLayout, imBeginPadding, imBeginSpace, JUSTIFY_CENTER, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "./layout";
 import { imButton } from "./button";
 import { cn } from "src/utils/cn";
 
@@ -254,7 +254,6 @@ export function imSequencer(ctx: GlobalContext) {
                 for (const note of notes.items) {
                     if (isItemUnderCursor(note, cursorStartBeats)) {
                         if (!s.itemsUnderCursor.has(note)) {
-                            console.log("playing note: ", note.note.noteIndex);
                             s.notesToPlay.push(note);
                         }
 
@@ -580,7 +579,7 @@ function getNextDivisor(val: number) {
 
 // allows someone to specifically select a number between 1 and 16
 function imDivisionInput(val: number) {
-    imBeginLayout(ROW | JUSTIFY_CENTER); {
+    imBeginLayout(ROW | ALIGN_CENTER | GAP5); {
         if (imButton("<")) {
             val = getPrevDivisor(val);
         }
@@ -590,6 +589,7 @@ function imDivisionInput(val: number) {
 
         imBeginLayout(FLEX1); imEnd();
 
+        imTextSpan("Divisor: ");
         imTextSpan("1 / " + val);
 
         imBeginLayout(FLEX1); imEnd();
@@ -607,7 +607,7 @@ function imDivisionInput(val: number) {
 
 
 function imBpmInput(value: number): number {
-    imBeginLayout(ROW | JUSTIFY_CENTER); {
+    imBeginLayout(ROW | ALIGN_CENTER | GAP5); {
         if (imButton("<")) {
             value -= 10;
         }
@@ -617,6 +617,7 @@ function imBpmInput(value: number): number {
 
         imBeginLayout(FLEX1); imEnd();
 
+        imTextSpan("BPM: ");
         imTextSpan(value.toFixed(1) + "");
 
         imBeginLayout(FLEX1); imEnd();

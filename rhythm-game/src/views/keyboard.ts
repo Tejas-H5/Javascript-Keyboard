@@ -10,7 +10,7 @@ import {
 } from "src/state/sequencer-state";
 import { elementHasMouseDown, elementHasMouseHover, imBeginList, imEnd, imEndList, imInit, imStateInline, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
 import { GlobalContext } from "./app";
-import { timelineHasNoteAtPosition } from "./chart";
+import { timelineHasNoteAtPosition } from "src/state/sequencer-chart";
 import { GAP5, imBeginAbsolute, imBeginLayout, imBeginSpace, NOT_SET, PX, ROW } from "./layout";
 import { cssVars } from "./styling";
 

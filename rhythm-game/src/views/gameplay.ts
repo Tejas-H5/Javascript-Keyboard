@@ -18,7 +18,7 @@ import {
     getItemLengthBeats,
     getItemStartBeats,
     NoteItem,
-} from "./chart";
+} from "src/state/sequencer-chart";
 import { ALIGN_CENTER, ALIGN_STRETCH, COL, FLEX1, H1, imBeginAbsolute, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, JUSTIFY_START, NOT_SET, OVERFLOW_HIDDEN, PERCENT, PX, RELATIVE, ROW } from "./layout";
 import { cssVars, getCurrentTheme } from "./styling";
 

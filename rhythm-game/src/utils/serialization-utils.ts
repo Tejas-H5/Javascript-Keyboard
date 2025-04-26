@@ -1,6 +1,3 @@
-import { newTimelineItemNote } from "src/views/chart";
-import { assert } from "./assert";
-
 /**
  * Recursively clones a JSON-serializable plain object, assuming that
  * all properties starting with '_' are computed, i.e not the ground truth, and

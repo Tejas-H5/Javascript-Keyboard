@@ -113,7 +113,6 @@ export function releaseKey(noteIndex: number, note: MusicNote) {
 }
 
 export function schedulePlayback(presses: ScheduledKeyPress[]) {
-    console.log("scheduling playback", presses);
     resumeAudio();
     audioLoopDispatch({ scheduleKeys: presses });
 }

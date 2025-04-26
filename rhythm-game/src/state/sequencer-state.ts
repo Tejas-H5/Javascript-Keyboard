@@ -2,14 +2,14 @@ import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
 import { filterInPlace, findLastIndexOf } from "src/utils/array-utils";
 import { unreachable } from "src/utils/asserts";
 import { compareMusicNotes, getNoteHashKey, MusicNote, noteEquals, rebaseBeats } from "src/utils/music-theory-utils";
-import { BpmChange, CommandItem, fixTimeline, getBeatIdxAfter, getBeatsForTime, getBeatsIndexes, getBpmChangeItemBeforeBeats, getItemEndBeats, getItemEndTime, getItemIdxAtBeat, getItemStartBeats, getItemStartTime, getTimeForBeats, gtBeats, gteBeats, ltBeats, lteBeats, newTimelineItemNote, NoteItem, RhythmGameChart, shiftItems, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, TimelineItem, transposeItems } from "src/views/chart";
+import { BpmChange, CommandItem, fixTimeline, getBeatIdxAfter, getBeatsForTime, getBeatsIndexes, getBpmChangeItemBeforeBeats, getItemEndBeats, getItemEndTime, getItemIdxAtBeat, getItemStartBeats, getItemStartTime, getTimeForBeats, gtBeats, gteBeats, ltBeats, lteBeats, newTimelineItemNote, NoteItem, SequencerChart, shiftItems, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, TimelineItem, transposeItems } from "src/state/sequencer-chart";
 
 export const SEQUENCER_ROW_COLS = 8;
 
 
 
 export type SequencerState = {
-    _currentChart: RhythmGameChart;
+    _currentChart: SequencerChart;
     _timelineTempBuffer: TimelineItem[];
     _nonOverlappingItems: NoteItem[][];
     _visitedBuffer: boolean[];
@@ -272,7 +272,7 @@ export function isItemPlaying(state: SequencerState, item: TimelineItem): boolea
     return getItemStartTime(item) <= currentTime && currentTime <= getItemEndTime(item);
 }
 
-export function newSequencerState(currentChart: RhythmGameChart): SequencerState {
+export function newSequencerState(currentChart: SequencerChart): SequencerState {
     const sequencer: SequencerState = {
         _currentChart: currentChart,
         _timelineTempBuffer: [],

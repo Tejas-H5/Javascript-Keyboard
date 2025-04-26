@@ -57,11 +57,10 @@ import {
     newChart,
     newTimelineItemBpmChange,
     newTimelineItemMeasure,
-    RhythmGameChart,
-    shiftItems,
+    SequencerChart,
     timelineHasNoteAtPosition,
     timelineMeasureAtBeatsIdx,
-} from "./chart";
+} from "src/state/sequencer-chart";
 import { ABSOLUTE, FIXED, H2, imBeginLayout, ROW } from "./layout";
 import { cnApp } from "./styling";
 import { clamp } from "src/utils/math-utils";
@@ -486,7 +485,7 @@ export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
     }
 }
 
-export function setCurrentChart(ctx: GlobalContext, chart: RhythmGameChart) {
+export function setCurrentChart(ctx: GlobalContext, chart: SequencerChart) {
     const sequencer = ctx.sequencer;
     sequencer._currentChart.cursorDivisor = sequencer.cursorDivisor;
     sequencer._currentChart.cursorStart = sequencer.cursorStart;

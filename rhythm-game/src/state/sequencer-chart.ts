@@ -1,19 +1,17 @@
-// TODO: move to src/state/
-
 import { beatsToMs, compareMusicNotes, getNoteHashKey, msToBeats, MusicNote, noteEquals } from "src/utils/music-theory-utils";
 import { arrayAt, findLastIndexOf } from "src/utils/array-utils";
 import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "src/utils/math-utils";
 import { unreachable } from "src/utils/asserts";
 import { assert } from "src/utils/assert";
 
-export type RhythmGameChart = {
+export type SequencerChart = {
     name: string;
     timeline: TimelineItem[];
     cursorStart: number;
     cursorDivisor: number;
 }
 
-export function newChart(name: string = ""): RhythmGameChart {
+export function newChart(name: string = ""): SequencerChart {
     return {
         name,
         timeline: [],
@@ -103,7 +101,7 @@ export function getBeats(numerator: number, divisor: number): number {
     return numerator / divisor;
 }
 
-export function getBpmChangeItemBeforeBeats(chart: RhythmGameChart, beats: number): BpmChange | undefined {
+export function getBpmChangeItemBeforeBeats(chart: SequencerChart, beats: number): BpmChange | undefined {
     const timeline = chart.timeline;
 
     const idx = findLastIndexOf(timeline, item =>
@@ -122,7 +120,7 @@ export function getBpmChangeItemBeforeBeats(chart: RhythmGameChart, beats: numbe
     return item;
 }
 
-export function getBeatIdxAfter(chart: RhythmGameChart, beats: number) {
+export function getBeatIdxAfter(chart: SequencerChart, beats: number) {
     const timeline = chart.timeline;
     const startIdx = timeline.findIndex(
         item => gteBeats(getItemStartBeats(item), beats),
@@ -130,7 +128,7 @@ export function getBeatIdxAfter(chart: RhythmGameChart, beats: number) {
     return startIdx;
 }
 
-export function getBeatIdxBefore(chart: RhythmGameChart, beats: number) {
+export function getBeatIdxBefore(chart: SequencerChart, beats: number) {
     const timeline = chart.timeline;
     const endIdx = findLastIndexOf(
         timeline,
@@ -139,7 +137,7 @@ export function getBeatIdxBefore(chart: RhythmGameChart, beats: number) {
     return endIdx;
 }
 
-export function getBeatsIndexes(chart: RhythmGameChart, startBeats: number, endBeats: number): [number, number] {
+export function getBeatsIndexes(chart: SequencerChart, startBeats: number, endBeats: number): [number, number] {
     const min = Math.min(startBeats, endBeats);
     const max = Math.max(startBeats, endBeats);
 
@@ -155,7 +153,7 @@ export function getBeatsIndexes(chart: RhythmGameChart, startBeats: number, endB
 
 
 
-export function getItemIdxAtBeat(chart: RhythmGameChart, beats: number, type?: TimelineItemType) {
+export function getItemIdxAtBeat(chart: SequencerChart, beats: number, type?: TimelineItemType) {
     const timeline = chart.timeline;
 
     for (let i = 0; i < timeline.length; i++) {
@@ -172,12 +170,12 @@ export function getItemIdxAtBeat(chart: RhythmGameChart, beats: number, type?: T
     return -1;
 }
 
-export function timelineMeasureAtBeatsIdx(chart: RhythmGameChart, beats: number): number {
+export function timelineMeasureAtBeatsIdx(chart: SequencerChart, beats: number): number {
     return getItemIdxAtBeat(chart, beats, TIMELINE_ITEM_MEASURE);
 }
 
 export function timelineHasNoteAtPosition(
-    chart: RhythmGameChart,
+    chart: SequencerChart,
     position: number,
     divisor: number,
     note: MusicNote,
@@ -207,7 +205,7 @@ export function timelineHasNoteAtPosition(
 }
 
 
-export function getNoteItemAtBeats(chart: RhythmGameChart, beats: number): NoteItem | null {
+export function getNoteItemAtBeats(chart: SequencerChart, beats: number): NoteItem | null {
     const timeline = chart.timeline;
 
     const idx = getItemIdxAtBeat(chart, beats);
@@ -225,7 +223,7 @@ export function getNoteItemAtBeats(chart: RhythmGameChart, beats: number): NoteI
 
 
 
-export function getPlaybackDuration(chart: RhythmGameChart): number {
+export function getPlaybackDuration(chart: SequencerChart): number {
     const timeline = chart.timeline;
     if (timeline.length === 0) {
         return 0;
@@ -306,7 +304,7 @@ export function getItemEndBeats(item: TimelineItem): number {
 
 
 
-export function fixTimeline(chart: RhythmGameChart, timelineTemp: TimelineItem[]) {
+export function fixTimeline(chart: SequencerChart, timelineTemp: TimelineItem[]) {
     const timeline = chart.timeline;
 
     // re-sort the timeline
@@ -458,7 +456,7 @@ export function fixTimeline(chart: RhythmGameChart, timelineTemp: TimelineItem[]
 }
 
 
-export function deleteAtIdx(chart: RhythmGameChart, idx: number) {
+export function deleteAtIdx(chart: SequencerChart, idx: number) {
     const timeline = chart.timeline;
 
     if (idx < 0 || idx >= timeline.length) {
@@ -485,7 +483,7 @@ export function getBpmBeats(bpmChange: BpmChange | undefined): number {
 }
 
 
-export function getLastMeasureBeats(chart: RhythmGameChart, beats: number): number {
+export function getLastMeasureBeats(chart: SequencerChart, beats: number): number {
     const timeline = chart.timeline;
 
     const idx = findLastIndexOf(timeline, item =>
@@ -505,7 +503,7 @@ export function getLastMeasureBeats(chart: RhythmGameChart, beats: number): numb
 }
 
 
-export function getBeatsForTime(chart: RhythmGameChart, time: number): number {
+export function getBeatsForTime(chart: SequencerChart, time: number): number {
     const timeline = chart.timeline;
 
     const lastBpmIdx = getPrevItemIndexForTime(timeline, time, -1, TIMELINE_ITEM_BPM);
@@ -524,7 +522,7 @@ export function getBeatsForTime(chart: RhythmGameChart, time: number): number {
 }
 
 
-export function getTimeForBeats(chart: RhythmGameChart, beats: number): number {
+export function getTimeForBeats(chart: SequencerChart, beats: number): number {
     const bpmChange = getBpmChangeItemBeforeBeats(chart, beats);
     const bpmTime = getBpmTime(bpmChange);
     const bpm = getBpm(bpmChange);
@@ -540,7 +538,7 @@ export function divisorSnap(beats: number, divisor: number): number {
 }
 
 export function transposeItems(
-    chart: RhythmGameChart,
+    chart: SequencerChart,
     startIdx: number,
     endIdx: number,
     halfSteps: number,
@@ -562,7 +560,7 @@ export function transposeItems(
 
 
 export function shiftItems(
-    chart: RhythmGameChart,
+    chart: SequencerChart,
     startIdx: number, endIdx: number,
     amountBeats: number,
 ) {
@@ -579,7 +577,7 @@ export function shiftItems(
 
 
 // TODO: rename -getChartExtent
-export function getTrackExtent(chart: RhythmGameChart): number {
+export function getTrackExtent(chart: SequencerChart): number {
     const timeline = chart.timeline;
     if (timeline.length === 0) {
         return 0;

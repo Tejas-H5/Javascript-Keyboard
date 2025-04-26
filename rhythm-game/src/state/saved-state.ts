@@ -1,8 +1,8 @@
-import { newChart, RhythmGameChart } from "src/views/chart";
+import { newChart, SequencerChart } from "src/state/sequencer-chart";
 
 
 export type SavedState = {
-    userCharts: RhythmGameChart[];
+    userCharts: SequencerChart[];
 }
 
 export function newSavedState(): SavedState {
@@ -16,13 +16,13 @@ export function getChartIdx(state: SavedState, name: string): number {
     return idx;
 }
 
-export function getChart(state: SavedState, name: string): RhythmGameChart | null {
+export function getChart(state: SavedState, name: string): SequencerChart | null {
     const idx = getChartIdx(state, name);
     if (idx === -1) return null;
     return state.userCharts[idx];
 }
 
-export function getOrCreateFirstChart(state: SavedState): RhythmGameChart {
+export function getOrCreateFirstChart(state: SavedState): SequencerChart {
     if (state.userCharts.length > 0) {
         return state.userCharts[0];
     }

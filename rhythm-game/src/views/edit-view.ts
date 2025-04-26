@@ -10,7 +10,7 @@ import { elementHasMouseClick, imBeginList, imEnd, imEndList, imInit, imMemo, im
 import { imSequencer } from "src/views/sequencer";
 import { GlobalContext, resetSequencer, setViewTestCurrentChart } from "./app";
 import { imButton } from "./button";
-import { getPlaybackDuration } from "./chart";
+import { getPlaybackDuration } from "src/state/sequencer-chart";
 import { ALIGN_STRETCH, BOLD, COL, FIXED, FLEX1, GAP5, imBeginLayout, imBeginSpace, NOT_SET, PERCENT, ROW } from "./layout";
 import { cssVars } from "./styling";
 import { imBeginInput } from "src/components/text-input";

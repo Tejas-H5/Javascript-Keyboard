@@ -1,4 +1,4 @@
-import { RhythmGameChart, TimelineItem } from "src/views/chart";
+import { SequencerChart, TimelineItem } from "src/state/sequencer-chart";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;

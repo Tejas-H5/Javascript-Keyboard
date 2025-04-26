@@ -1,7 +1,7 @@
 import { typeGuard } from "src/utils/assert";
-import { autoMigrate, autoMigrateInternal, recursiveCloneNonComputedFields } from "src/utils/serialization-utils";
+import { autoMigrate, recursiveCloneNonComputedFields } from "src/utils/serialization-utils";
 import { GlobalContext } from "src/views/app";
-import { newChart, newTimelineItemBpmChangeDefault, newTimelineItemMeasureDefault, newTimelineItemNoteDefault, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/views/chart";
+import { newChart, newTimelineItemBpmChangeDefault, newTimelineItemMeasureDefault, newTimelineItemNoteDefault, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
 import { newSavedState, SavedState } from "./saved-state";
 
 const SAVED_STATE_KEY = "rhythmGameSavedState";
