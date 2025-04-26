@@ -19,7 +19,7 @@ import {
     getItemStartBeats,
     NoteItem,
 } from "./chart";
-import { ALIGN_CENTER, ALIGN_STRETCH, COL, EM, FLEX1, H1, imBeginAbsolute, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, JUSTIFY_START, NOT_SET, OVERFLOW_HIDDEN, PERCENT, PX, RELATIVE, ROW } from "./layout";
+import { ALIGN_CENTER, ALIGN_STRETCH, COL, FLEX1, H1, imBeginAbsolute, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, JUSTIFY_START, NOT_SET, OVERFLOW_HIDDEN, PERCENT, PX, RELATIVE, ROW } from "./layout";
 import { cssVars, getCurrentTheme } from "./styling";
 
 const GAMEPLAY_LOOKAHEAD_BEATS = 2;

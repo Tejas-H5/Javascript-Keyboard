@@ -1,27 +1,24 @@
 import "src/css/layout.css";
 import "src/main.css";
-import {
-    getCurrentSelectedChartName,
-    loadChart
-} from "src/state/loading-saving-charts";
 import { stopPlaying, } from "src/state/playing-pausing";
-import { getChart } from "src/state/saved-state";
 import {
     getCurrentPlayingTimeRelative,
     recomputeState
 } from "src/state/sequencer-state";
-import { elementHasMouseClick, imBeginEl, imBeginList, imEnd, imEndList, imInit, imMemo, imTextDiv, imTextSpan, nextListRoot, setInnerText, setInputValue, setStyle } from "src/utils/im-dom-utils";
+import { assert } from "src/utils/assert";
+import { elementHasMouseClick, imBeginList, imEnd, imEndList, imInit, imMemo, imOn, imTextDiv, imTextSpan, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
 import { imSequencer } from "src/views/sequencer";
 import { GlobalContext, resetSequencer, setViewTestCurrentChart } from "./app";
 import { imButton } from "./button";
 import { getPlaybackDuration } from "./chart";
-import { BOLD, COL, FIXED, FLEX1, GAP10, GAP5, imBeginLayout, imBeginSpace, NOT_SET, PERCENT, ROW, setStyleFlags } from "./layout";
+import { ALIGN_STRETCH, BOLD, COL, FIXED, FLEX1, GAP5, imBeginLayout, imBeginSpace, NOT_SET, PERCENT, ROW } from "./layout";
 import { cssVars } from "./styling";
-import { assert } from "src/utils/assert";
+import { imBeginInput } from "src/components/text-input";
 
 export function EditView(ctx: GlobalContext) {
     const { sequencer, ui } = ctx;
-    const editView = ui.editView;
+
+    const loadSaveModal = ui.loadSave.modal;
 
     recomputeState(sequencer);
 
@@ -62,63 +59,92 @@ export function EditView(ctx: GlobalContext) {
                     resetSequencer(ctx);
                 }
 
-                if (imButton((editView.sidebarOpen ? ">" : "<") + "Load/Save")) {
-                    editView.sidebarOpen = !editView.sidebarOpen;
+                if (imButton((loadSaveModal.open ? ">" : "<") + "Load/Save")) {
+                    loadSaveModal.open = !loadSaveModal.open;
                 }
             } imEnd();
 
             imSequencer(ctx);
         } imEnd();
         imBeginList();
-        if (nextListRoot() && editView.sidebarOpen) {
+        if (nextListRoot() && loadSaveModal.open) {
             // Load save panel
-            const name = getCurrentSelectedChartName(ctx);
-            const chart = getChart(ctx.savedState, name)
 
-            let input: HTMLInputElement;
-
-            imBeginSpace(33, PERCENT, 0, NOT_SET); {
-                imBeginLayout(ROW | GAP10); {
-                    imBeginLayout(FLEX1); {
-                        input = imBeginEl(newInput).root; {
-                            if (imInit()) {
-                                setStyle("width", "100%");
-                                setStyle("height", "100%");
-                            }
-
-                            if (imMemo(input.value)) {
-                                ui.loadSave.selectedChartName = input.value;
-                            }
-                        } imEnd();
-                    } imEnd();
-
-                    imBeginList();
-                    if (nextListRoot() && chart) {
-                        if (imButton("Load")) {
-                            loadChart(ctx, name);
-                        }
-                    }
-                    if (nextListRoot()) {
-                        if (imButton("Save")) {
-                            // TODO: add saving back. lmao. 
-                        }
-                    }
-                    imEndList();
-                } imEnd();
-
+            imBeginSpace(33, PERCENT, 0, NOT_SET, COL | ALIGN_STRETCH); {
                 imBeginList();
-                for (const chart of ctx.savedState.userCharts) {
+                for (let i = 0; i <= ctx.savedState.userCharts.length; i++) {
                     nextListRoot();
-                    imBeginLayout(); {
-                        setInnerText(chart.name);
-                        setStyle("backgroundColor", chart.name === name ? cssVars.bg2 : "");
+                    imBeginLayout(ROW); {
+                        const chart = i < ctx.savedState.userCharts.length ? ctx.savedState.userCharts[i] : null;
+                        const isFocused = i === loadSaveModal.idx;
 
-                        if (elementHasMouseClick()) {
-                            setInputValue(input, chart.name);
+                        const shouldRename = isFocused && loadSaveModal.isRenaming && chart;
+                        const shouldRenameChanged = imMemo(shouldRename);
+
+                        setStyle("backgroundColor", isFocused ? cssVars.bg2 : "");
+
+                        imBeginList();
+                        if (nextListRoot() && shouldRename) {
+                            const input = imBeginInput({
+                                value: chart.name,
+                                placeholder: "enter new name",
+                                autoSize: false,
+                            }); {
+                                if (imInit()) {
+                                    setStyle("width", "100%");
+                                }
+
+                                if (shouldRenameChanged) {
+                                    input.root.focus();
+                                    input.root.selectionStart = 0;
+                                    input.root.selectionEnd = chart.name.length;
+                                }
+
+                                const inputEvent = imOn("input");
+                                if (inputEvent) {
+                                    chart.name = input.root.value;
+                                }
+
+                                const keyDown = imOn("keydown");
+                                if (keyDown) {
+                                    if (keyDown.key === "Enter" || keyDown.key === "Escape") {
+                                        loadSaveModal.isRenaming = false;
+                                    }
+                                }
+                            } imEnd();
+                        } else {
+                            nextListRoot()
+                            imBeginLayout(); {
+                                let name;
+                                if (chart === null) {
+                                    name = "[+ new chart]";
+                                } else {
+                                    name = chart.name || "untitled"
+                                }
+
+                                setInnerText(name);
+
+                                if (elementHasMouseClick()) {
+                                    // TODO: fix up mouse interactions
+                                    // if (chart) {
+                                    //     setCurrentChart(ctx, chart);
+                                    // } else {
+                                    //     const newChart = addNewUserChart(ctx);
+                                    //     setCurrentChart(ctx, newChart);
+                                    // }
+                                }
+                            } imEnd();
                         }
+                        imEndList();
                     } imEnd();
                 }
                 imEndList();
+
+                imBeginLayout(FLEX1); imEnd();
+
+                imBeginLayout(); {
+                    setInnerText("[R] to rename");
+                } imEnd();
             } imEnd();
         }
         imEndList();

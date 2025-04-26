@@ -8,7 +8,7 @@ import "./main.css";
 import { loadSaveState } from "./state/loading-saving-charts";
 import { stopPlaying } from "./state/playing-pausing";
 import { syncPlayback } from "./state/sequencer-state";
-import { imApp, newGlobalContext, setViewPlayCurrentChart } from "./views/app";
+import { imApp, newGlobalContext, setViewEditChart } from "./views/app";
 import { initCnStyles } from "./utils/cn";
 import { imFpsCounterOutput, newFpsCounterState, startFpsCounter, stopFpsCounter } from "./components/fps-counter";
 
@@ -46,6 +46,6 @@ initCnStyles();
     });
 
     // Our code only works after the audio context has loaded.
-    setViewPlayCurrentChart(globalContext);
+    setViewEditChart(globalContext);
     initializeDomRootAnimiationLoop(renderRoot);
 })();

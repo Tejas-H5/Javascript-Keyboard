@@ -1,10 +1,4 @@
-import { pressKey, releaseAllKeys, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
-import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
-    getCurrentSelectedChartName,
-    loadAutosaved,
-    loadChart,
-    moveLoadSaveSelection,
     saveStateDebounced,
 } from "src/state/loading-saving-charts";
 import {
@@ -15,9 +9,8 @@ import {
     stopPlaying
 } from "src/state/playing-pausing";
 import {
-    deleteChart,
-    getChart,
-    getOrCreateAutosavedChart,
+    getChartIdx,
+    getOrCreateFirstChart,
     SavedState
 } from "src/state/saved-state";
 import {
@@ -38,6 +31,7 @@ import {
     transposeSelectedItems,
 } from "src/state/sequencer-state";
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
+import { assert } from "src/utils/assert";
 import { deepCopyJSONSerializable } from "src/utils/deep-copy-json";
 import {
     getKeyEvents,
@@ -60,13 +54,20 @@ import {
     getBpmChangeItemBeforeBeats,
     getItemIdxAtBeat,
     getItemStartBeats,
+    newChart,
     newTimelineItemBpmChange,
     newTimelineItemMeasure,
+    RhythmGameChart,
+    shiftItems,
     timelineHasNoteAtPosition,
     timelineMeasureAtBeatsIdx,
 } from "./chart";
 import { ABSOLUTE, FIXED, H2, imBeginLayout, ROW } from "./layout";
 import { cnApp } from "./styling";
+import { clamp } from "src/utils/math-utils";
+import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
+import { pressKey, releaseAllKeys, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
+import { arraySwap } from "src/utils/array-utils";
 
 
 export type GlobalContext = {
@@ -75,21 +76,24 @@ export type GlobalContext = {
     ui: UIState;
     savedState: SavedState;
     render(): void;
-    dt: DOMHighResTimeStamp;
 }
 
-export function newGlobalContext(saveState: SavedState): GlobalContext {
-    const autosaved = getOrCreateAutosavedChart(saveState);
+export function newGlobalContext(saveState: SavedState) {
+    const firstChart = getOrCreateFirstChart(saveState);
 
-    return {
+    const ctx: GlobalContext = {
         keyboard: newKeyboardState(),
-        sequencer: newSequencerState(autosaved),
+        sequencer: newSequencerState(firstChart),
         ui: newUiState(),
         savedState: saveState,
         // TODO: delete
         render: () => {},
-        dt: 0,
     };
+
+    ctx.sequencer.cursorStart = ctx.sequencer._currentChart.cursorStart;
+    ctx.sequencer.cursorDivisor = ctx.sequencer._currentChart.cursorDivisor;
+
+    return ctx;
 }
 
 function handleStartupKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
@@ -171,50 +175,81 @@ function handleChartSelectKeyDown(ctx: GlobalContext, keyPressState: KeyPressSta
 
 function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
     const {
-        key, ctrlPressed, shiftPressed, vAxis, isRepeat,
+        key, keyUpper, ctrlPressed, shiftPressed, altPressed, vAxis, isRepeat,
         startTestingPressed, isPlayPausePressed
     } = keyPressState;
 
-    const { ui, sequencer, keyboard } = ctx;
+    const { ui, sequencer, keyboard, savedState } = ctx;
 
-    if (key === "S" && ctrlPressed && shiftPressed) {
-        ui.editView.sidebarOpen = !ui.editView.sidebarOpen;
+    const loadSaveModal = ui.loadSave.modal;
+
+    // I'm already using arrow keys to navigate the editor. may as well allow my left hand to open this on it's own
+    let hasOpenSaveChartsSidebar = keyUpper === "S" && ctrlPressed;
+
+    if (hasOpenSaveChartsSidebar && !loadSaveModal.open) {
+        loadSaveModal.open = true;
+        loadSaveModal.isRenaming = false;
+        loadSaveModal.idx = ctx.savedState.userCharts.indexOf(sequencer._currentChart);
         return true;
-    }
+    } 
 
-    if (ui.editView.sidebarOpen) {
-        if (vAxis !== 0) {
-            moveLoadSaveSelection(ctx, vAxis);
-            return true;
-        }
+    if (loadSaveModal.open) {
+        let handled = false;
+        let closeSaveModal = false;
 
-        if (key === "Enter") {
-            loadChart(ctx, ui.loadSave.selectedChartName);
-            playAll(ctx, { speed: 1 });
-            return true;
-        }
+        const idx = loadSaveModal.idx;
+        assert(idx >= 0 && idx <= savedState.userCharts.length);
+        const chart = idx < savedState.userCharts.length ? savedState.userCharts[idx] : null;
 
-        if (key === "Escape") {
-            ctx.ui.editView.sidebarOpen = false;
-            stopPlaying(ctx);
-            return true;
-        }
+        if (loadSaveModal.isRenaming) {
+            // the input component over there will handle these.
+        } else {
+            if (vAxis !== 0) {
+                const prevIdx = loadSaveModal.idx;
 
-        if (key === "Delete") {
-            const name = getCurrentSelectedChartName(ctx);
-            if (getChart(ctx.savedState, name)) {
-                // TODO: real UI instead of confirm
-                if (confirm("You sure you want to delete " + name)) {
-                    deleteChart(ctx.savedState, name);
+                setCurrentChartIdx(ctx, loadSaveModal.idx + vAxis);
 
-                    // NOTE: this only deletes the save file, but not the currently loaded chart's name
-
-                    return true;
+                if (altPressed) {
+                    arraySwap(savedState.userCharts, loadSaveModal.idx, prevIdx);
                 }
+
+                handled = true;
+            } else if (key === "Enter") {
+                if (chart) {
+                    setCurrentChart(ctx, chart);
+                    playAll(ctx);
+                } else {
+                    const chart = addNewUserChart(ctx);
+                    setCurrentChart(ctx, chart);
+                }
+
+                handled = true;
+            } else if (key === "Escape" || hasOpenSaveChartsSidebar) {
+                closeSaveModal = true;
+                handled = true;
+            } else if (key === "Delete" && chart) {
+                if (savedState.userCharts.length > 1) {
+                    if (confirm("You sure you want to delete " + chart.name)) {
+                        // NOTE: this only deletes the save file, but not the currently loaded chart's name
+                        deleteChart(ctx, chart.name);
+                    }
+                }
+
+                handled = true;
+            } else if (keyUpper === "R" && chart) {
+                loadSaveModal.isRenaming = true;
+                handled = true;
             }
         }
 
-        return false;
+        if (closeSaveModal) {
+            loadSaveModal.open = false;
+            stopPlaying(ctx);
+        }
+
+        if (handled) {
+            return true;
+        }
     }
 
     let hasShiftLeft = key === "<" || key === ",";
@@ -409,7 +444,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
     }
 
     const instrumentKey = getKeyForKeyboardKey(keyboard, key);
-    if (instrumentKey) {
+    if (instrumentKey && !shiftPressed && !altPressed && !ctrlPressed) {
         // play the instrument
         {
             pressKey(instrumentKey.index, instrumentKey.musicNote, isRepeat);
@@ -442,16 +477,67 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
     return false;
 }
 
+
+export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
+    const loadSaveModal = ctx.ui.loadSave.modal;
+    loadSaveModal.idx = clamp(i, 0, ctx.savedState.userCharts.length);
+    if (loadSaveModal.idx < ctx.savedState.userCharts.length) {
+        setCurrentChart(ctx, ctx.savedState.userCharts[loadSaveModal.idx]);
+    }
+}
+
+export function setCurrentChart(ctx: GlobalContext, chart: RhythmGameChart) {
+    const sequencer = ctx.sequencer;
+    sequencer._currentChart.cursorDivisor = sequencer.cursorDivisor;
+    sequencer._currentChart.cursorStart = sequencer.cursorStart;
+
+    mutateSequencerTimeline(sequencer, () => {
+        sequencer._currentChart = chart;
+        sequencer.cursorStart = chart.cursorStart;
+        sequencer.cursorDivisor = chart.cursorDivisor;
+    });
+
+    assert(ctx.savedState.userCharts.indexOf(chart) !== -1);
+}
+
+export function deleteChart(ctx: GlobalContext, name: string) {
+    const { savedState, sequencer } = ctx;
+
+    let idx = getChartIdx(savedState, name);
+    if (idx === -1) return null;
+
+    savedState.userCharts.splice(idx, 1);
+
+    const loadSaveModal = ctx.ui.loadSave.modal;
+    loadSaveModal.idx = clamp(loadSaveModal.idx, 0, savedState.userCharts.length - 1);
+
+    if (idx === savedState.userCharts.length) {
+        idx--;
+    }
+
+    if (idx < 0) {
+        sequencer._currentChart = getOrCreateFirstChart(savedState);
+    } else {
+        sequencer._currentChart = savedState.userCharts[idx];
+    }
+}
+
+export function addNewUserChart(ctx: GlobalContext) {
+    const result = newChart("new chart");
+    ctx.savedState.userCharts.push(result);
+    return result;
+}
+
 function handleKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
-    const { key, ctrlPressed, shiftPressed } = keyPressState;
+    const { keyUpper, ctrlPressed, shiftPressed } = keyPressState;
 
     if (
         // allow typing into text fields
         isEditingTextSomewhereInDocument() ||
         // allow inspecting the element
-        (key === "I" && ctrlPressed && shiftPressed) ||
+        (keyUpper === "I" && ctrlPressed && shiftPressed) ||
         // allow refreshing page
-        (key === "R" && ctrlPressed)
+        (keyUpper === "R" && ctrlPressed)
     ) {
         return false;
     }
@@ -556,20 +642,12 @@ export function setViewEditChart(ctx: GlobalContext) {
 export function setViewTestCurrentChart(ctx: GlobalContext) {
     ctx.ui.playView.isTesting = true;
 
-    if (!ctx.ui.loadSave.loadedChartName) {
-        loadAutosaved(ctx);
-    }
-
     // dont reload the chart, just use the one we have now...
     setCurrentView(ctx, APP_VIEW_PLAY_CHART);
 }
 
 export function setViewPlayCurrentChart(ctx: GlobalContext) {
     ctx.ui.playView.isTesting = false;
-
-    if (!ctx.ui.loadSave.loadedChartName) {
-        loadAutosaved(ctx);
-    }
 
     setCurrentView(ctx, APP_VIEW_PLAY_CHART);
 }
@@ -636,8 +714,10 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
 
 type KeyPressState = {
     key: string;
+    keyUpper: string;
     ctrlPressed: boolean,
     shiftPressed: boolean,
+    altPressed: boolean;
     isRepeat: boolean
 
     vAxis: number;
@@ -650,8 +730,10 @@ type KeyPressState = {
 function newKeyPressState(): KeyPressState {
     return {
         key: "",
+        keyUpper: "",
         ctrlPressed: false,
         shiftPressed: false,
+        altPressed: false,
         isRepeat: false,
         vAxis: 0,
         hAxis: 0,
@@ -663,8 +745,10 @@ function newKeyPressState(): KeyPressState {
 function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
     const key = e.key;
     dst.key = key;
+    dst.keyUpper = key.toUpperCase();
     dst.ctrlPressed = e.ctrlKey || e.metaKey;
     dst.shiftPressed = e.shiftKey;
+    dst.altPressed = e.altKey;
     dst.isRepeat = e.repeat;
 
     dst.startTestingPressed = dst.shiftPressed && (key === "T" || key === 't');

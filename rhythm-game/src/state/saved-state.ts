@@ -22,21 +22,14 @@ export function getChart(state: SavedState, name: string): RhythmGameChart | nul
     return state.userCharts[idx];
 }
 
-export function deleteChart(state: SavedState, name: string) {
-    const idx = getChartIdx(state, name);
-    if (idx === -1) return null;
-    state.userCharts.splice(idx, 1);
-}
-
-export const AUTOSAVED_NAME = "autosaved";
-export function getOrCreateAutosavedChart(state: SavedState): RhythmGameChart {
-    let autosaved = getChart(state, AUTOSAVED_NAME);
-
-    if (!autosaved) {
-        autosaved = newChart(AUTOSAVED_NAME);
-        state.userCharts.push(autosaved);
+export function getOrCreateFirstChart(state: SavedState): RhythmGameChart {
+    if (state.userCharts.length > 0) {
+        return state.userCharts[0];
     }
 
-    return autosaved;
+    const first = newChart("First chart");
+    state.userCharts.push(first);
+
+    return first;
 }
 

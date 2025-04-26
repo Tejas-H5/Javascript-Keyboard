@@ -185,5 +185,6 @@ export function previewNotes(ctx: GlobalContext, notes: NoteItem[]) {
         pushNotePress(scheduledKeyPresses, keyboard, note, minTime);
     }
 
+    updatePlaySettings(s => s.isUserDriven = false);
     schedulePlayback(scheduledKeyPresses);
 }

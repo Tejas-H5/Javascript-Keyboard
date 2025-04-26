@@ -4,10 +4,22 @@ import { beatsToMs, compareMusicNotes, getNoteHashKey, msToBeats, MusicNote, not
 import { arrayAt, findLastIndexOf } from "src/utils/array-utils";
 import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "src/utils/math-utils";
 import { unreachable } from "src/utils/asserts";
+import { assert } from "src/utils/assert";
 
 export type RhythmGameChart = {
     name: string;
     timeline: TimelineItem[];
+    cursorStart: number;
+    cursorDivisor: number;
+}
+
+export function newChart(name: string = ""): RhythmGameChart {
+    return {
+        name,
+        timeline: [],
+        cursorStart: 0,
+        cursorDivisor: 4,
+    }
 }
 
 type BaseTimelineItem = {
@@ -21,11 +33,15 @@ export function newTimelineItemBpmChange(start: number, divisor: number, bpm: nu
     return {
         type: TIMELINE_ITEM_BPM,
         bpm,
-        start, 
-        divisor, 
+        start,
+        divisor,
         _scheduledStart: 0,
         _index: 0,
     };
+}
+
+export function newTimelineItemBpmChangeDefault() {
+    return newTimelineItemBpmChange(0, 4, DEFAULT_BPM);
 }
 
 export const TIMELINE_ITEM_BPM = 1;
@@ -57,13 +73,6 @@ export type CommandItem = BpmChange | Measure;
 
 export type TimelineItem = NoteItem | CommandItem;
 export type TimelineItemType = TimelineItem["type"];
-
-export function newChart(name: string): RhythmGameChart {
-    return {
-        name,
-        timeline: [],
-    }
-}
 
 export function equalBeats(beatsA: number, beatsB: number): boolean {
     return within(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS);
@@ -124,7 +133,7 @@ export function getBeatIdxAfter(chart: RhythmGameChart, beats: number) {
 export function getBeatIdxBefore(chart: RhythmGameChart, beats: number) {
     const timeline = chart.timeline;
     const endIdx = findLastIndexOf(
-        timeline, 
+        timeline,
         (item) => lteBeats(getItemStartBeats(item), beats)
     );
     return endIdx;
@@ -531,9 +540,9 @@ export function divisorSnap(beats: number, divisor: number): number {
 }
 
 export function transposeItems(
-    chart: RhythmGameChart, 
-    startIdx: number, 
-    endIdx: number, 
+    chart: RhythmGameChart,
+    startIdx: number,
+    endIdx: number,
     halfSteps: number,
 ) {
     if (startIdx === -1 || endIdx === -1) {
@@ -553,8 +562,8 @@ export function transposeItems(
 
 
 export function shiftItems(
-    chart: RhythmGameChart, 
-    startIdx: number, endIdx: number, 
+    chart: RhythmGameChart,
+    startIdx: number, endIdx: number,
     amountBeats: number,
 ) {
     if (startIdx === -1 || endIdx === -1) {
@@ -592,7 +601,13 @@ export function newTimelineItemMeasure(start: number, divisor: number): Measure 
     }
 }
 
+export function newTimelineItemMeasureDefault() {
+    return newTimelineItemMeasure(0, 4);
+}
+
 export function newTimelineItemNote(musicNote: MusicNote, start: number, len: number, divisor: number): NoteItem {
+    assert(!!musicNote.sample || musicNote.noteIndex !== undefined);
+
     return {
         type: TIMELINE_ITEM_NOTE,
         start,
@@ -603,4 +618,8 @@ export function newTimelineItemNote(musicNote: MusicNote, start: number, len: nu
         _index: 0,
         _scheduledEnd: 0,
     };
+}
+
+export function newTimelineItemNoteDefault() {
+    return newTimelineItemNote({ noteIndex: 0 }, 0, 1, 4);
 }

@@ -116,7 +116,7 @@ type SequencerUIState = {
     measures: Measure[];
 };
 
-function newSequencerUIState(): SequencerUIState {
+function newSequencerState(): SequencerUIState {
     return {
         lastCursorStartBeats: -1,
         lastCursorStartDivisor: -1,
@@ -150,7 +150,7 @@ export function imSequencer(ctx: GlobalContext) {
     const sequencer = ctx.sequencer;
     const isRangeSelecting = hasRangeSelection(sequencer);
 
-    const s = imState(newSequencerUIState);
+    const s = imState(newSequencerState);
 
     const cursorStartBeats = getSequencerPlaybackOrEditingCursor(sequencer);
     const divisor = sequencer.cursorDivisor;
@@ -188,14 +188,20 @@ export function imSequencer(ctx: GlobalContext) {
             s.rightExtentIdx = tl.length - 1;
         }
     }
+    enableIm();
+
+    const currentChartChanged = imMemo(sequencer._currentChart);
 
     // Recompute the non-overlapping items in the sequencer timeline as needed
     if (
         s.lastCursorStartBeats !== cursorStartBeats
         || s.lastCursorStartDivisor !== divisor
         || s.lastUpdatedTime !== sequencer._timelineLastUpdated
+        || currentChartChanged
         || s.invalidateCache
     ) {
+        disableIm();
+
         s.lastUpdatedTime = sequencer._timelineLastUpdated;
         s.lastCursorStartBeats = cursorStartBeats;
         s.lastCursorStartDivisor = divisor;
@@ -260,7 +266,6 @@ export function imSequencer(ctx: GlobalContext) {
             previewNotes(ctx, s.notesToPlay);
         }
     }
-
     enableIm();
 
     imBeginPadding(

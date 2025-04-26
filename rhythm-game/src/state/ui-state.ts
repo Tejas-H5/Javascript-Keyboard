@@ -1,4 +1,4 @@
-import { TimelineItem } from "src/views/chart";
+import { RhythmGameChart, TimelineItem } from "src/views/chart";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -19,8 +19,12 @@ export type UIState = {
 
     loadSave: {
         saveStateTimeout: number;
-        selectedChartName: string;
-        loadedChartName: string;
+
+        modal: {
+            open: boolean;
+            idx: number;
+            isRenaming: boolean;
+        }
     }
 
     copied: {
@@ -29,7 +33,6 @@ export type UIState = {
     }
 
     editView: {
-        sidebarOpen: boolean;
         lastCursorStart: number;
         lastCursorDivisor: number;
     }
@@ -41,6 +44,7 @@ export type UIState = {
 
 export function newUiState(): UIState {
     return {
+        // NOTE: program breaks if we don't start from here
         currentView: APP_VIEW_STARTUP,
 
         chartSelect: {
@@ -49,8 +53,12 @@ export function newUiState(): UIState {
 
         loadSave: {
             saveStateTimeout: 0,
-            loadedChartName: "",
-            selectedChartName: "",
+
+            modal: {
+                isRenaming: false,
+                open: false,
+                idx: 0,
+            }
         },
 
         copied: {
@@ -59,7 +67,6 @@ export function newUiState(): UIState {
         },
 
         editView: {
-            sidebarOpen: false,
             lastCursorStart: 0,
             lastCursorDivisor: 0,
         },

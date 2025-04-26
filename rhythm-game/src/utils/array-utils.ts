@@ -44,3 +44,15 @@ export function arrayAt<T>(arr: T[], i: number): T | undefined {
     if (i >= arr.length) return undefined;
     return arr[i];
 }
+
+export function arraySwap(arr: unknown[], i: number, j: number) {
+    if (i < 0) return;
+    if (i >= arr.length) return;
+    if (j < 0) return;
+    if (j >= arr.length) return;
+    if (i === j) return;
+
+    const temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+}

@@ -1,6 +1,5 @@
-import { loadChart } from "src/state/loading-saving-charts";
 import { elementHasMouseClick, imBeginList, imEnd, imEndList, imTextSpan, nextListRoot, setInnerText } from "src/utils/im-dom-utils";
-import { GlobalContext, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "./app";
+import { GlobalContext, setCurrentChart, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "./app";
 import { imButton } from "./button";
 import { COL, EM, FLEX1, GAP5, H1, imBeginLayout, imBeginSpace, NOT_SET, PERCENT, ROW } from "./layout";
 
@@ -20,7 +19,7 @@ export function ChartSelect(ctx: GlobalContext) {
                         imBeginSpace(100, PERCENT, 2, EM); {
                             imTextSpan(chart.name);
                             if (elementHasMouseClick()) {
-                                loadChart(ctx, chart.name);
+                                setCurrentChart(ctx, chart);
                                 setViewPlayCurrentChart(ctx);
                             }
                         } imEnd();

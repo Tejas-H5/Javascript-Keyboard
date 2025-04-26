@@ -761,6 +761,8 @@ function imEndInternal(
     r: UIRoot | undefined,
 ) {
     if (l) {
+        // close out this list renderer.
+        
         itemsRendered += l.builders.length;
         if (l.keys) {
             itemsRendered += l.keys.size;
@@ -781,6 +783,8 @@ function imEndInternal(
             }
         }
     } else if (r) {
+        // close out this UI Root.
+        //
         if (!isDerived(r)) {
             deferClickEventToParentInternal(r);
         }
@@ -796,6 +800,7 @@ function imEndInternal(
         }
     }
 
+    // fix the `current` variables
     currentStack.pop();
     if (currentStack.length === 0) {
         currentRoot = undefined;
@@ -947,6 +952,12 @@ function newMemoState(): { last: unknown } {
 
 /**
  * Returns true if it was different to the previous value.
+ * ```ts
+ * if (imMemo(val)) {
+ *      // do expensive thing with val here
+ *      setStyle("backgroundColor", getColor(val));
+ * }
+ * ```
  */
 export function imMemo(val: unknown): boolean {
     const ref = imState(newMemoState);
@@ -1148,7 +1159,7 @@ export function initializeDomRootAnimiationLoop(renderFn: () => void, renderRoot
     requestAnimationFrame(animation);
 }
 
-export type KeyboardState = {
+export type ImKeyboardState = {
     // We need to use this approach instead of a buffered approach like `keysPressed: string[]`, so that a user
     // may call `preventDefault` on the html event as needed.
     keyDown: KeyboardEvent | null;
@@ -1156,20 +1167,20 @@ export type KeyboardState = {
     blur: boolean;
 };
 
-function resetKeyboardState(keyEvent: KeyboardState) {
+function resetKeyboardState(keyEvent: ImKeyboardState) {
     keyEvent.keyDown = null;
     keyEvent.keyUp = null;
     keyEvent.blur = false;
 }
 
 
-const keyboardEvents: KeyboardState = {
+const keyboardEvents: ImKeyboardState = {
     keyDown: null,
     keyUp: null,
     blur: false,
 };
 
-export type MouseState = {
+export type ImMouseState = {
     lastX: number;
     lastY: number;
 
@@ -1196,7 +1207,7 @@ export type MouseState = {
     hoverElementOriginal: object | null;
 };
 
-function resetMouseState(mouse: MouseState, clearPersistedStateAsWell: boolean) {
+function resetMouseState(mouse: ImMouseState, clearPersistedStateAsWell: boolean) {
     mouse.dX = 0;
     mouse.dY = 0;
     mouse.lastX = mouse.X;
@@ -1217,7 +1228,7 @@ function resetMouseState(mouse: MouseState, clearPersistedStateAsWell: boolean) 
     }
 }
 
-const mouse: MouseState = {
+const mouse: ImMouseState = {
     lastX: 0,
     lastY: 0,
 
