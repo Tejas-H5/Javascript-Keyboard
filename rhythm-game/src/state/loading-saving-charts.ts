@@ -1,4 +1,4 @@
-import { typeGuard } from "src/utils/assert";
+import { unreachable } from "src/utils/assert";
 import { autoMigrate, recursiveCloneNonComputedFields } from "src/utils/serialization-utils";
 import { GlobalContext } from "src/views/app";
 import { newChart, newTimelineItemBpmChangeDefault, newTimelineItemMeasureDefault, newTimelineItemNoteDefault, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
@@ -30,7 +30,7 @@ export function loadSaveState(): SavedState {
             } else if (item.type === TIMELINE_ITEM_MEASURE) {
                 chart.timeline[i] = autoMigrate(item, newTimelineItemMeasureDefault);
             } else {
-                typeGuard(item);
+                unreachable(item);
             }
         }
     }
@@ -42,6 +42,8 @@ export function loadSaveState(): SavedState {
 }
 
 export function saveAllState(ctx: GlobalContext) {
+    return;
+
     const { savedState } = ctx;
     const serialzed = recursiveCloneNonComputedFields(savedState);
 

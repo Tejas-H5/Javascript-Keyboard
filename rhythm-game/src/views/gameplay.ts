@@ -88,10 +88,9 @@ export function imGameplay(ctx: GlobalContext) {
 
     s.start = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
 
-    const tl = ctx.sequencer._currentChart.timeline;
-
+    const chart = ctx.sequencer._currentChart;
     getTimelineMusicNoteThreads(
-        tl, s.start, s.start + GAMEPLAY_LOADAHEAD_BEATS,
+        chart, s.start, s.start + GAMEPLAY_LOADAHEAD_BEATS,
         s.notesMap, s.commandsList
     );
 

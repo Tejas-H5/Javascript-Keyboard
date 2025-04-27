@@ -1,8 +1,8 @@
 import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
-import { filterInPlace, findLastIndexOf } from "src/utils/array-utils";
-import { unreachable } from "src/utils/asserts";
+import { findLastIndexOf } from "src/utils/array-utils";
+import { unreachable } from "src/utils/assert";
 import { compareMusicNotes, getNoteHashKey, MusicNote, noteEquals, rebaseBeats } from "src/utils/music-theory-utils";
-import { BpmChange, CommandItem, fixTimeline, getBeatIdxAfter, getBeatsForTime, getBeatsIndexes, getBpmChangeItemBeforeBeats, getItemEndBeats, getItemEndTime, getItemIdxAtBeat, getItemStartBeats, getItemStartTime, getTimeForBeats, gtBeats, gteBeats, ltBeats, lteBeats, newTimelineItemNote, NoteItem, SequencerChart, shiftItems, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, TimelineItem, transposeItems } from "src/state/sequencer-chart";
+import { TimelineItemBpmChange, CommandItem, getBeatIdxAfter, getBeatsForTime, getBeatsIndexes, getBpmChangeItemBeforeBeats, getItemEndBeats, getItemEndTime, getItemIdxAtBeat, getItemStartBeats, getItemStartTime, getTimeForBeats, gtBeats, gteBeats, ltBeats, lteBeats, newTimelineItemNote, NoteItem, SequencerChart, sequencerChartRemoveItems, sequencerChartShiftItems, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, TimelineItem, transposeItems, sequencerChartInsertItems, getBeatIdxBefore } from "src/state/sequencer-chart";
 
 export const SEQUENCER_ROW_COLS = 8;
 
@@ -13,11 +13,10 @@ export type SequencerState = {
     _timelineTempBuffer: TimelineItem[];
     _nonOverlappingItems: NoteItem[][];
     _visitedBuffer: boolean[];
-    _timelineLastUpdated: number;
 
     cursorStart: number;
     cursorDivisor: number;
-    _lastBpmChange: BpmChange | undefined;
+    _lastBpmChange: TimelineItemBpmChange | undefined;
 
     isRangeSelecting: boolean;
     rangeSelectStart: number;
@@ -93,30 +92,6 @@ export function setIsRangeSelecting(state: SequencerState, value: boolean) {
     }
 }
 
-
-// Un-callbackify
-export function mutateSequencerTimeline(state: SequencerState, fn: (tl: TimelineItem[]) => void) {
-    fn(state._currentChart.timeline);
-
-    // Perform expensive recomputations whenever we mutate the timeline rather than per frame
-    
-    fixTimeline(state._currentChart, state._timelineTempBuffer);
-
-    // recompute the non-overlapping threads. 
-    // We can't do this for a specific window, because we don't want things from one thread to move to other threads.
-    {
-        getTimelineNonOverappingThreads(
-            state._currentChart.timeline,
-            0,
-            state._currentChart.timeline.length - 1,
-            state._nonOverlappingItems,
-            state._visitedBuffer,
-        );
-    }
-
-    state._timelineLastUpdated = Date.now();
-}
-
 export function setCursorBeats(state: SequencerState, dividedBeats: number) {
     state.cursorStart = dividedBeats;
 }
@@ -144,100 +119,116 @@ export function getCurrentItemIdx(state: SequencerState): number {
 }
 
 
-// This method mutates the timeline, and relies
-// on the postprocessing function to fix up it's mess
+// This method will insert a note with a particular length into an arbitrary position.
+// if onOrOff is true, it will coalesce itself with any items of the same note.
+// else, it union-differences itself from any notes of the same note. (there will only be one such note if all you do is call `setTimelineNoteAtPosition` all the time)
 export function setTimelineNoteAtPosition(
-    timeline: TimelineItem[],
-    position: number,
-    divisor: number,
+    chart: SequencerChart,
+    pos: number, divisor: number,
     note: MusicNote,
     len: number,
     onOrOff: boolean,
 ) {
+    const timeline = chart.timeline;
+
     if (onOrOff) {
-        // no longer sorted! postprocessing will take care of this.
-        timeline.push(newTimelineItemNote(note, position, len, divisor));
-        return;
+        const rangeStartBeats = getBeats(pos, divisor);
+        const rangeEndBeats = getBeats(pos + len, divisor);
+
+        const notesToRemove: NoteItem[] = [];
+
+        let newNoteStartBeats = rangeStartBeats;
+        let newNoteEndBeats = rangeEndBeats;
+        for (const item of timeline) {
+            if (item.type !== TIMELINE_ITEM_NOTE) continue;
+            if (!noteEquals(item.note, note)) continue;
+
+            const itemStartBeats = getItemStartBeats(item);
+            const itemEndBeats = getItemEndBeats(item);
+
+            // ignore notes that are not even in the range
+            if (ltBeats(itemEndBeats, rangeStartBeats)) continue;
+            if (gtBeats(itemStartBeats, rangeEndBeats)) break;
+
+            if (ltBeats(itemStartBeats, newNoteStartBeats)) {
+                newNoteStartBeats = itemStartBeats;
+            } else if (gtBeats(itemEndBeats, newNoteEndBeats)) {
+                newNoteEndBeats = itemEndBeats;
+            }
+
+            notesToRemove.push(item);
+        }
+
+        sequencerChartRemoveItems(chart, notesToRemove);
+
+        const newNoteStart = newNoteStartBeats * divisor;
+        const newNoteLen = (newNoteEndBeats - newNoteStartBeats) * divisor;
+        const newNote = newTimelineItemNote(note, newNoteStart, newNoteLen, divisor);
+
+        sequencerChartInsertItems(chart, [newNote]);
+    } else {
+        const rangeStartBeats = getBeats(pos, divisor);
+        const rangeEndBeats = getBeats(pos + len, divisor);
+
+        const notesToAdd: NoteItem[] = [];
+        const notesToRemove: NoteItem[] = [];
+
+        for (const item of timeline) {
+            if (item.type !== TIMELINE_ITEM_NOTE) continue;
+            if (!noteEquals(item.note, note)) continue;
+
+            const itemStartBeats = getItemStartBeats(item);
+            const itemEndBeats = getItemEndBeats(item);
+
+            // ignore notes that are not even in the range
+            if (ltBeats(itemEndBeats, rangeStartBeats)) continue;
+            if (gtBeats(itemStartBeats, rangeEndBeats)) break;
+
+            if (lteBeats(rangeStartBeats, itemStartBeats) && lteBeats(itemStartBeats, rangeEndBeats)) {
+                //    |------|
+                //  |xxxxxxxxxxx|
+                // => nothing - delete this item
+                notesToRemove.push(item);
+                continue;
+            } 
+
+            //    |-----------------------|  |  |--------------|      |      |-----------|
+            //           |xxxxxxxxxxx|       |         |xxxxxxxxxxx|  | |xxxxxxxxxxx|
+            // => |------|           |----|  |  |------|              |             |----|
+            // Turns out that all three cases can behandled by putting two if-statements one after the other
+
+            const trimEndOfPrevNote = ltBeats(itemStartBeats, rangeStartBeats);
+            const trimStartOfLastNote = ltBeats(itemStartBeats, rangeStartBeats);
+            if (trimEndOfPrevNote || trimStartOfLastNote) {
+                notesToRemove.push(item);
+            }
+
+            if (trimEndOfPrevNote) {
+                // TODO: is there a better way ?
+                const newStart = item.start;
+                const divisor = item.divisor;
+                const newNoteStartBeats = itemStartBeats;
+                const newNoteEndBeats = rangeStartBeats;
+                const deltaBeats = newNoteEndBeats - newNoteStartBeats;
+                const newLen = deltaBeats * divisor;
+                notesToAdd.push(newTimelineItemNote(item.note, newStart, newLen, divisor));
+            }
+
+            if (trimStartOfLastNote) {
+                // TODO: is there a better way ?
+                const newStart = pos + len;
+                // const divisor = divisor;
+                const newNoteStartBeats = rangeEndBeats;
+                const newNoteEndBeats = itemEndBeats;
+                const deltaBeats = newNoteEndBeats - newNoteStartBeats;
+                const newLen = deltaBeats * divisor;
+                notesToAdd.push(newTimelineItemNote(item.note, newStart, newLen, divisor));
+            }
+        }
+
+        sequencerChartRemoveItems(chart, notesToRemove);
+        sequencerChartInsertItems(chart, notesToAdd);
     }
-
-    const rangeStartBeats = getBeats(position, divisor);
-    const rangeEndBeats = getBeats(position + len, divisor);
-
-    const notesToAdd: NoteItem[] = [];
-
-    filterInPlace(timeline, (item) => {
-        if (item.type !== TIMELINE_ITEM_NOTE) {
-            return true;
-        }
-
-        if (!noteEquals(item.note, note)) {
-            return true;
-        }
-
-        const itemStart = getItemStartBeats(item);
-        const itemEnd = getItemEndBeats(item);
-
-        // keep notes below or above the bounds
-        if (
-            gtBeats(itemStart, rangeEndBeats)
-            || ltBeats(itemEnd, rangeStartBeats)
-        ) {
-            return true;
-        }
-
-        // Some notes will start before the range and end after the range - they need to be split into two notes.
-        if (
-            ltBeats(itemStart, rangeStartBeats)
-            && gtBeats(itemEnd, rangeEndBeats)
-        ) {
-            // postprocessing will take care of these too...
-            notesToAdd.push(newTimelineItemNote(
-                item.note, 
-                item.start, 
-                (rangeStartBeats - itemStart) * item.divisor, 
-                item.divisor
-            ));
-
-            notesToAdd.push(newTimelineItemNote(
-                item.note, 
-                rangeEndBeats * item.divisor, 
-                (itemEnd - rangeEndBeats) * item.divisor,
-                item.divisor
-            ));
-            return false;
-        }
-
-        // delete notes completely within the bounds
-        if (
-            lteBeats(itemEnd, rangeEndBeats)
-            && gteBeats(itemStart, rangeStartBeats)
-        ) {
-            return false;
-        }
-
-        // trim notes that start before the bounds and end inside the bounds, or vice versa
-        if (
-            gtBeats(itemEnd, rangeStartBeats)
-            && ltBeats(itemStart, rangeStartBeats)
-        ) {
-            item.len = (rangeStartBeats - itemStart) * item.divisor;
-            return true;
-        }
-
-        if (
-            ltBeats(itemStart, rangeEndBeats)
-            && gtBeats(itemEnd, rangeEndBeats)
-        ) {
-            item.len = (itemEnd - rangeEndBeats) * item.divisor;
-            item.start = rangeEndBeats * item.divisor;
-            return true;
-        }
-
-
-        return true;
-    });
-
-    timeline.push(...notesToAdd);
 }
 
 
@@ -254,8 +245,9 @@ export function sortNotes(notes: MusicNote[]) {
     return notes.sort(compareMusicNotes);
 }
 
-export function deleteRange(timeline: TimelineItem[], start: number, end: number) {
-    timeline.splice(start, end - start + 1);
+export function deleteRange(chart: SequencerChart, start: number, end: number) {
+    const toRemove = chart.timeline.slice(start, end + 1);
+    sequencerChartRemoveItems(chart, toRemove);
 }
 
 
@@ -298,7 +290,6 @@ export function newSequencerState(currentChart: SequencerChart): SequencerState 
         playingTimeout: 0,
         reachedLastNote: false,
 
-        _timelineLastUpdated: 0,
         _lastBpmChange: undefined,
     };
 
@@ -428,27 +419,25 @@ export type NoteMapEntry = {
 };
 
 export function getTimelineMusicNoteThreads(
-    timeline: TimelineItem[],
+    chart: SequencerChart,
     startBeats: number,
     endBeats: number,
     dstNotesMap: Map<string, NoteMapEntry>,
     dstCommandsList: CommandItem[],
 ) {
+    const timeline = chart.timeline;
+
     dstCommandsList.length = 0;
     for (const val of dstNotesMap.values()) {
         val.items.length = 0;
     }
 
-    let start = findLastIndexOf(timeline, item => 
-        lteBeats(getItemStartTime(item), startBeats)
-    );
+    let start = getBeatIdxBefore(chart, startBeats);
     if (start === -1) {
         start = 0;
     }
 
-    let end = timeline.findIndex(item => 
-        gteBeats(getItemStartBeats(item), endBeats)
-    );
+    let end = getBeatIdxAfter(chart, endBeats);
     if (end === -1) {
         end = timeline.length -1
     }
@@ -590,7 +579,7 @@ export function shiftSelectedItems(sequencer: SequencerState, amount: number) {
     }
 
     const amountBeats = getBeats(amount, sequencer.cursorDivisor);
-    shiftItems(sequencer._currentChart, startIdx, endIdx, amountBeats);
+    sequencerChartShiftItems(sequencer._currentChart, startIdx, endIdx, amountBeats);
 
     sequencer.rangeSelectStart += amountBeats * sequencer.cursorDivisor;
     sequencer.rangeSelectEnd += amountBeats * sequencer.cursorDivisor;
@@ -600,7 +589,8 @@ export function shiftItemsAfterCursor(s: SequencerState, subdivisions: number) {
     const cursorStart = getCursorStartBeats(s);
     const rightOfCursorIdx = getBeatIdxAfter(s._currentChart, cursorStart);
     const amountBeats = getBeats(subdivisions, s.cursorDivisor);
-    shiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, amountBeats);
+
+    sequencerChartShiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, amountBeats);
 
     // TODO: move cursor around as well??
 }

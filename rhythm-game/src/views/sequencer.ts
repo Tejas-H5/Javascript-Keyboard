@@ -12,20 +12,19 @@ import {
     hasRangeSelection,
     isItemBeingPlayed,
     isItemRangeSelected,
-    mutateSequencerTimeline,
     getCursorStartBeats,
     NoteMapEntry,
     setCursorDivisor,
     SequencerState,
 } from "src/state/sequencer-state";
 import { filteredCopy } from "src/utils/array-utils";
-import { unreachable } from "src/utils/asserts";
+import { unreachable } from "src/utils/assert";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { compareMusicNotes, getNoteText, MusicNote } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
 import { cssVars } from "./styling";
 import { 
-    BpmChange,
+    TimelineItemBpmChange,
     CommandItem,
     divisorSnap,
     getBeatsIndexes,
@@ -33,16 +32,18 @@ import {
     getItemLengthBeats,
     getItemStartBeats,
     isItemUnderCursor,
-    Measure,
+    TimelineItemMeasure,
     newTimelineItemBpmChange,
     NoteItem,
+    sequencerChartInsertItems,
+    sequencerChartRemoveItems,
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
     TimelineItem
 } from "src/state/sequencer-chart";
 import { deltaTimeSeconds, disableIm, enableIm, imBeginList, imEnd, imEndList, imInit, imMemo, imState, imTextSpan, nextListRoot, setClass, setInnerText, setStyle } from "src/utils/im-dom-utils";
-import { ABSOLUTE, ALIGN_CENTER, ALIGN_STRETCH, COL, FLEX1, GAP5, imBeginAbsolute, imBeginLayout, imBeginPadding, imBeginSpace, JUSTIFY_CENTER, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "./layout";
+import { ABSOLUTE, ALIGN_CENTER, COL, FLEX1, GAP5, imBeginAbsolute, imBeginLayout, imBeginPadding, imBeginSpace, JUSTIFY_CENTER, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "./layout";
 import { imButton } from "./button";
 import { cn } from "src/utils/cn";
 
@@ -112,8 +113,8 @@ type SequencerUIState = {
     notesMap: Map<string, NoteMapEntry>;
     noteOrder: NoteMapEntry[];
     commandsList: CommandItem[]
-    bpmChanges: BpmChange[];
-    measures: Measure[];
+    bpmChanges: TimelineItemBpmChange[];
+    measures: TimelineItemMeasure[];
 };
 
 function newSequencerState(): SequencerUIState {
@@ -148,6 +149,7 @@ function newSequencerState(): SequencerUIState {
  */
 export function imSequencer(ctx: GlobalContext) {
     const sequencer = ctx.sequencer;
+    const chart = sequencer._currentChart;
     const isRangeSelecting = hasRangeSelection(sequencer);
 
     const s = imState(newSequencerState);
@@ -196,13 +198,13 @@ export function imSequencer(ctx: GlobalContext) {
     if (
         s.lastCursorStartBeats !== cursorStartBeats
         || s.lastCursorStartDivisor !== divisor
-        || s.lastUpdatedTime !== sequencer._timelineLastUpdated
+        || s.lastUpdatedTime !== sequencer._currentChart._timelineLastUpdated
         || currentChartChanged
         || s.invalidateCache
     ) {
         disableIm();
 
-        s.lastUpdatedTime = sequencer._timelineLastUpdated;
+        s.lastUpdatedTime = sequencer._currentChart._timelineLastUpdated;
         s.lastCursorStartBeats = cursorStartBeats;
         s.lastCursorStartDivisor = divisor;
         s.invalidateCache = false;
@@ -210,7 +212,7 @@ export function imSequencer(ctx: GlobalContext) {
         const tl = sequencer._currentChart.timeline;
 
         getTimelineMusicNoteThreads(
-            tl,
+            chart,
             s.leftExtentAnimated,
             s.rightExtentAnimated,
             s.notesMap,
@@ -294,23 +296,21 @@ export function imSequencer(ctx: GlobalContext) {
             // bpm input
             // TODO: clean this up.
             {
-                const lastBpmChange = sequencer._lastBpmChange;
+                let lastBpmChange = sequencer._lastBpmChange;
                 const value = imBpmInput(getBpm(lastBpmChange));
-                if (imMemo(value)) {
-                    if (!lastBpmChange) {
-                        mutateSequencerTimeline(sequencer, (tl) => {
-                            tl.push(newTimelineItemBpmChange(0, 4, value));
-                        });
+                if (value !== null) {
+                    if (lastBpmChange) {
+                        sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange]);
+                        lastBpmChange.bpm = value;
                     } else {
-                        mutateSequencerTimeline(sequencer, () => {
-                            lastBpmChange.bpm = value;
-                        });
+                        lastBpmChange = newTimelineItemBpmChange(0, 4, value);
                     }
+                    sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange]);
                 }
             }
 
             const newCursorDivisor = imDivisionInput(sequencer.cursorDivisor);
-            if (imMemo(newCursorDivisor)) {
+            if (newCursorDivisor !== null) {
                 setCursorDivisor(sequencer, newCursorDivisor);
             }
 
@@ -469,7 +469,7 @@ function imSequencerNotesUI(
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
                 nextListRoot(); {
-                    const text = getItemSequencerText(ctx.keyboard, item);
+                    const text = item._index + " " + getItemSequencerText(ctx.keyboard, item);
 
                     // debug code
                     // const durationText = s.item.type === TIMELINE_ITEM_NOTE ? (":" + s.item.len.toFixed(2)) : "";
@@ -578,13 +578,15 @@ function getNextDivisor(val: number) {
 
 
 // allows someone to specifically select a number between 1 and 16
-function imDivisionInput(val: number) {
+function imDivisionInput(val: number): number | null {
+    let result: number | null = null;
+
     imBeginLayout(ROW | ALIGN_CENTER | GAP5); {
         if (imButton("<")) {
-            val = getPrevDivisor(val);
+            result =  getPrevDivisor(val);
         }
         if (imButton("-")) {
-            val = clamp(val - 1, 1, 16);
+            result = clamp(val - 1, 1, 16);
         }
 
         imBeginLayout(FLEX1); imEnd();
@@ -595,24 +597,26 @@ function imDivisionInput(val: number) {
         imBeginLayout(FLEX1); imEnd();
 
         if (imButton("+")) {
-            val = clamp(val + 1, 1, 16);
+            result = clamp(val + 1, 1, 16);
         }
         if (imButton(">")) {
-            val = getNextDivisor(val);
+            result = getNextDivisor(val);
         }
     } imEnd();
 
-    return val;
+    return result;
 }
 
 
-function imBpmInput(value: number): number {
+function imBpmInput(value: number): number | null {
+    let result: number | null = null;
+
     imBeginLayout(ROW | ALIGN_CENTER | GAP5); {
         if (imButton("<")) {
-            value -= 10;
+            result = value - 10;
         }
         if (imButton("-")) {
-            value -= 1;
+            result = value -=1;
         }
 
         imBeginLayout(FLEX1); imEnd();
@@ -623,13 +627,13 @@ function imBpmInput(value: number): number {
         imBeginLayout(FLEX1); imEnd();
 
         if (imButton("+")) {
-            value += 1;
+            result = value + 1;
         }
         if (imButton(">")) {
-            value += 10;
+            result = value + 10;
         }
     } imEnd();
 
-    return value;
+    return result;
 }
 

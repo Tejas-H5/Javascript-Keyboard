@@ -14,6 +14,6 @@ export function assert(value: unknown): asserts value {
     }
 }
 
-export function typeGuard(s: never) {
+export function unreachable(s: never): never {
     assert(false);
 }

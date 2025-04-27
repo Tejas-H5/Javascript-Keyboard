@@ -7,7 +7,7 @@ import {
     getRangeSelectionStartBeats,
     hasRangeSelection,
 } from "src/state/sequencer-state";
-import { unreachable } from "src/utils/asserts";
+import { unreachable } from "src/utils/assert";
 import { GlobalContext } from "src/views/app";
 import { getBeatsIndexes, getItemEndBeats, getItemEndTime, getItemStartTime, getLastMeasureBeats, getTimeForBeats, getTrackExtent, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
 
