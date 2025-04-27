@@ -37,7 +37,7 @@ export function compareMusicNotes(a: MusicNote, b: MusicNote): number {
     return 0;
 }
 
-export function noteEquals(a: MusicNote, b: MusicNote): boolean {
+export function notesEqual(a: MusicNote, b: MusicNote): boolean {
     return (!!a.sample && a.sample === b.sample) ||
         (!!a.noteIndex && a.noteIndex === b.noteIndex);
 }

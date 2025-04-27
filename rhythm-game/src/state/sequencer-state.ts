@@ -1,7 +1,6 @@
 import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
-import { findLastIndexOf } from "src/utils/array-utils";
 import { unreachable } from "src/utils/assert";
-import { compareMusicNotes, getNoteHashKey, MusicNote, noteEquals, rebaseBeats } from "src/utils/music-theory-utils";
+import { compareMusicNotes, getNoteHashKey, MusicNote, notesEqual, rebaseBeats } from "src/utils/music-theory-utils";
 import { TimelineItemBpmChange, CommandItem, getBeatIdxAfter, getBeatsForTime, getBeatsIndexes, getBpmChangeItemBeforeBeats, getItemEndBeats, getItemEndTime, getItemIdxAtBeat, getItemStartBeats, getItemStartTime, getTimeForBeats, gtBeats, gteBeats, ltBeats, lteBeats, newTimelineItemNote, NoteItem, SequencerChart, sequencerChartRemoveItems, sequencerChartShiftItems, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, TimelineItem, transposeItems, sequencerChartInsertItems, getBeatIdxBefore } from "src/state/sequencer-chart";
 
 export const SEQUENCER_ROW_COLS = 8;
@@ -98,8 +97,9 @@ export function setCursorBeats(state: SequencerState, dividedBeats: number) {
 
 export function setCursorDivisor(state: SequencerState, newDivisor: number) {
     if (state.isRangeSelecting) {
-        // this breaks selection, so I've disabled it for now.
-        return;
+        // this breaks selection, so we've gotta clear it for now.
+        // TODO: verify that this is still the case
+        clearRangeSelection(state, false);
     }
 
     // Should verify that this works
@@ -141,7 +141,7 @@ export function setTimelineNoteAtPosition(
         let newNoteEndBeats = rangeEndBeats;
         for (const item of timeline) {
             if (item.type !== TIMELINE_ITEM_NOTE) continue;
-            if (!noteEquals(item.note, note)) continue;
+            if (!notesEqual(item.note, note)) continue;
 
             const itemStartBeats = getItemStartBeats(item);
             const itemEndBeats = getItemEndBeats(item);
@@ -175,7 +175,7 @@ export function setTimelineNoteAtPosition(
 
         for (const item of timeline) {
             if (item.type !== TIMELINE_ITEM_NOTE) continue;
-            if (!noteEquals(item.note, note)) continue;
+            if (!notesEqual(item.note, note)) continue;
 
             const itemStartBeats = getItemStartBeats(item);
             const itemEndBeats = getItemEndBeats(item);

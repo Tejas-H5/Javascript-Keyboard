@@ -56,12 +56,14 @@ import {
     newChart,
     newTimelineItemBpmChange,
     newTimelineItemMeasure,
+    redoEdit,
     SequencerChart,
     sequencerChartInsertItems,
     sequencerChartRemoveItems,
     sortAndIndexTimeline,
     timelineHasNoteAtPosition,
     timelineMeasureAtBeatsIdx,
+    undoEdit,
 } from "src/state/sequencer-chart";
 import { ABSOLUTE, FIXED, H2, imBeginLayout, ROW } from "./layout";
 import { cnApp } from "./styling";
@@ -277,6 +279,22 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         return true;
     }
 
+
+    if (keyUpper === "Z" && ctrlPressed) {
+        if (shiftPressed) {
+            redoSequencerEdit(ctx);
+        } else {
+            undoSequencerEdit(ctx);
+        } 
+        return true;
+    }
+
+    if (keyUpper === "Y" && ctrlPressed) {
+        redoSequencerEdit(ctx);
+        return true;
+    }
+
+
     if (isRepeat) {
         return false;
     }
@@ -351,12 +369,12 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         }
     }
 
-    if ((key === "C" || key === "c") && ctrlPressed) {
+    if ((keyUpper === "C") && ctrlPressed) {
         const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
         return copyNotesToTempStore(ctx, startIdx, endIdx);
     }
 
-    if ((key === "X" || key === "x") && ctrlPressed) {
+    if ((keyUpper === "X") && ctrlPressed) {
         const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
         if (copyNotesToTempStore(ctx, startIdx, endIdx)) {
             deleteRange(chart, startIdx, endIdx);
@@ -366,7 +384,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         return false;
     }
 
-    if ((key === "V" || key === 'v') && ctrlPressed) {
+    if ((keyUpper === "V") && ctrlPressed) {
         pasteNotesFromTempStore(ctx);
         return false;
     }
@@ -476,7 +494,7 @@ export function setCurrentChart(ctx: GlobalContext, chart: SequencerChart) {
     sequencer._currentChart = chart;
     sequencer.cursorStart = chart.cursorStart;
     sequencer.cursorDivisor = chart.cursorDivisor;
-    sortAndIndexTimeline(sequencer._currentChart.timeline);
+    sortAndIndexTimeline(sequencer._currentChart);
 
     assert(ctx.savedState.userCharts.indexOf(chart) !== -1);
 }
@@ -588,6 +606,17 @@ export function copyNotesToTempStore(ctx: GlobalContext, startIdx: number, endId
 
     return true;
 }
+
+export function undoSequencerEdit(ctx: GlobalContext) {
+    const chart = ctx.sequencer._currentChart;
+    undoEdit(chart);
+}
+
+export function redoSequencerEdit(ctx: GlobalContext) {
+    const chart = ctx.sequencer._currentChart;
+    redoEdit(chart);
+}
+
 
 export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
     const { ui, sequencer } = ctx;

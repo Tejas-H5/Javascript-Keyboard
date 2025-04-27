@@ -2,7 +2,7 @@ import { arrayAt, filterInPlace, findLastIndexOf } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { unreachable } from "src/utils/assert";
 import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "src/utils/math-utils";
-import { beatsToMs, compareMusicNotes, getNoteHashKey, msToBeats, MusicNote, noteEquals } from "src/utils/music-theory-utils";
+import { beatsToMs, compareMusicNotes, getNoteHashKey, msToBeats, MusicNote, notesEqual } from "src/utils/music-theory-utils";
 
 export type SequencerChart = {
     name: string;
@@ -13,13 +13,14 @@ export type SequencerChart = {
     _timelineLastUpdated: number;
     _tempBuffer: TimelineItem[];
     _undoBuffer: { 
+        enabled: boolean;
         items: TimelineMutation[];
         idx: number;
     }
 }
 
-const MUTATION_INSERT = 1;
-const MUTATION_REMOVE = 2;
+export const MUTATION_INSERT = 1;
+export const MUTATION_REMOVE = 2;
 
 type TimelineMutation = {
     t: typeof MUTATION_INSERT | typeof MUTATION_REMOVE;
@@ -35,10 +36,19 @@ export function newChart(name: string = ""): SequencerChart {
 
         _timelineLastUpdated: 0,
         _tempBuffer: [],
-        _undoBuffer: { items: [], idx: -1 }
+        _undoBuffer: { items: [], idx: -1, enabled: true }
     }
 }
 
+
+
+export function undoEdit(chart: SequencerChart) {
+    traverseUndoBuffer(chart, false);
+}
+
+export function redoEdit(chart: SequencerChart) {
+    traverseUndoBuffer(chart, true);
+}
 
 export function newTimelineItemBpmChange(start: number, divisor: number, bpm: number): TimelineItemBpmChange {
     return {
@@ -48,6 +58,7 @@ export function newTimelineItemBpmChange(start: number, divisor: number, bpm: nu
         divisor,
         _scheduledStart: 0,
         _index: 0,
+        _shouldDelete: false,
     };
 }
 
@@ -67,6 +78,7 @@ type BaseTimelineItem = {
     divisor: number;
     _scheduledStart: number;
     _index: number;
+    _shouldDelete: boolean;
 };
 export type NoteItem = BaseTimelineItem & {
     type: typeof TIMELINE_ITEM_NOTE;
@@ -212,7 +224,7 @@ export function timelineHasNoteAtPosition(
             continue;
         }
 
-        if (!noteEquals(item.note, note)) {
+        if (!notesEqual(item.note, note)) {
             continue;
         }
 
@@ -330,27 +342,71 @@ export function sequencerChartInsertItems(chart: SequencerChart, itemsToInsert: 
 
     itemsToInsert = itemsToInsert.filter(item => !isDegenerateItem(item));
 
-    sortAndIndexTimeline(chart.timeline);
+    sortAndIndexTimeline(chart);
 
     chart.timeline.push(...itemsToInsert);
 
-    sortAndIndexTimeline(chart.timeline);
+    sortAndIndexTimeline(chart);
 
     const items = itemsToInsert.map(copyTimelineItem);
     pushUndoBuffer(chart, { t: MUTATION_INSERT, items });
 }
 
 function pushUndoBuffer(chart: SequencerChart, m: TimelineMutation) {
-    chart._undoBuffer.idx++;
-    chart._timelineLastUpdated = Date.now();
+    const undoBuffer = chart._undoBuffer;
+    if (!undoBuffer.enabled) return;
 
-    const shouldTruncate = chart._undoBuffer.idx !== chart._undoBuffer.items.length;
+    undoBuffer.idx++;
+
+    const shouldTruncate = undoBuffer.idx !== undoBuffer.items.length;
+    assert(undoBuffer.idx <= undoBuffer.items.length);
     if (shouldTruncate) {
-        chart._undoBuffer.items[chart._undoBuffer.idx] = m;
-        chart._undoBuffer.items.length = chart._undoBuffer.idx + 1;
+        undoBuffer.items[undoBuffer.idx] = m;
+        undoBuffer.items.length = undoBuffer.idx + 1;
     } else {
-        chart._undoBuffer.items.push(m);
+        undoBuffer.items.push(m);
     }
+}
+
+
+// NOTE: There is a bug in the undo system! it isn't always deterministic, and I have literally no idea why. 
+function traverseUndoBuffer(chart: SequencerChart, forwards: boolean) {
+    const undoBuffer = chart._undoBuffer;
+
+    undoBuffer.enabled = false;
+
+    if (forwards) {
+        if (undoBuffer.idx < undoBuffer.items.length - 1) {
+            undoBuffer.idx++;
+
+            const mutationToRedo = undoBuffer.items[undoBuffer.idx];
+
+            switch (mutationToRedo.t) {
+                case MUTATION_INSERT: {
+                    sequencerChartInsertItems(chart, mutationToRedo.items);
+                } break;
+                case MUTATION_REMOVE: {
+                    sequencerChartRemoveItems(chart, mutationToRedo.items);
+                } break;
+            }
+        }
+    } else {
+        if (undoBuffer.idx >= 0) {
+            const mutationToUndo = undoBuffer.items[undoBuffer.idx];
+            switch (mutationToUndo.t) {
+                case MUTATION_INSERT: {
+                    sequencerChartRemoveItems(chart, mutationToUndo.items);
+                } break;
+                case MUTATION_REMOVE: {
+                    sequencerChartInsertItems(chart, mutationToUndo.items);
+                } break;
+            }
+
+            undoBuffer.idx--;
+        }
+    }
+
+    undoBuffer.enabled = true;
 }
 
 function filterDegenerateItems(chart: SequencerChart) {
@@ -417,16 +473,26 @@ function isDegenerateItem(item: TimelineItem) {
 export function sequencerChartRemoveItems(chart: SequencerChart, items: TimelineItem[]) {
     if (items.length === 0) return;
 
-    sortAndIndexTimeline(chart.timeline);
+    sortAndIndexTimeline(chart);
+    for (const item of chart.timeline) {
+        item._shouldDelete = false;
+    }
 
     const removed = items.map(copyTimelineItem);
 
     for (const item of items) {
-        item._index = -1;
-    }
-    filterInPlace(chart.timeline, (item) => item._index !== -1);
+        const idx = item._index;
 
-    sortAndIndexTimeline(chart.timeline);
+        // get the real item - items may be a clone
+        assert(idx >= 0 && idx < chart.timeline.length);
+        const actualItem = chart.timeline[idx];
+        assert(timelineItemsEqual(actualItem, item));
+
+        actualItem._shouldDelete = true;
+    }
+    filterInPlace(chart.timeline, (item) => !item._shouldDelete);
+
+    sortAndIndexTimeline(chart);
 
     pushUndoBuffer(chart, { t: MUTATION_REMOVE, items: removed });
 }
@@ -438,7 +504,10 @@ function reindexTimeline(timeline: TimelineItem[]) {
     }
 }
 
-export function sortAndIndexTimeline(timeline: TimelineItem[]) {
+export function sortAndIndexTimeline(chart: SequencerChart) {
+    chart._timelineLastUpdated = Date.now();
+    const timeline = chart.timeline;
+
     timeline.sort((a, b) => {
         const delta = getItemStartBeats(a) - getItemStartBeats(b);
         if (Math.abs(delta) > CURSOR_ITEM_TOLERANCE_BEATS) {
@@ -677,6 +746,7 @@ export function newTimelineItemNoteDefault() {
     return newTimelineItemNote({ noteIndex: 0 }, 0, 1, 4);
 }
 
+// TODO (javescript maintainers): add structs to the language, its a no brainer
 export function copyTimelineItem<T extends TimelineItem>(item: T): T {
     let result: T;
     switch (item.type) {
@@ -693,4 +763,21 @@ export function copyTimelineItem<T extends TimelineItem>(item: T): T {
     }
     result._index = item._index;
     return result;
+}
+
+
+// TODO (javescript maintainers): add structs to the language, its a no brainer
+export function timelineItemsEqual<T extends TimelineItem>(a: T, b: T): boolean {
+    switch (a.type) {
+        case TIMELINE_ITEM_NOTE: 
+            return b.type === TIMELINE_ITEM_NOTE && a.start === b.start && a.divisor === b.divisor &&
+                notesEqual(a.note, b.note) &&
+                a.len === b.len;
+        case TIMELINE_ITEM_MEASURE: 
+            return b.type === TIMELINE_ITEM_MEASURE && a.start === b.start && a.divisor === b.divisor;
+        case TIMELINE_ITEM_BPM: 
+            return b.type === TIMELINE_ITEM_BPM && a.start === b.start && a.divisor === b.divisor &&
+                a.bpm === b.bpm;
+        default: unreachable(a);
+    }
 }
