@@ -699,17 +699,14 @@ export function sequencerChartShiftItems(
 }
 
 
-// TODO: rename -getChartExtent
-export function getTrackExtent(chart: SequencerChart): number {
+export function getChartExtent(chart: SequencerChart): number {
     const timeline = chart.timeline;
     if (timeline.length === 0) {
         return 0;
     }
 
     const lastItem = timeline[timeline.length - 1];
-    // +1 for good luck - it's used to find a bound that must alawys include the last note, 
-    // that we can play every note
-    return getItemEndBeats(lastItem) + 1;
+    return getItemEndBeats(lastItem);
 }
 
 export function newTimelineItemMeasure(start: number, divisor: number): TimelineItemMeasure {

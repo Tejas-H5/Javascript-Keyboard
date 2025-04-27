@@ -35,6 +35,8 @@ export type SequencerState = {
     scheduledKeyPresses: ScheduledKeyPress[];
     scheduledKeyPressesFirstItemStart: number;
     scheduledKeyPressesPlaybackSpeed: number;
+
+    notesToPreview: NoteItem[];
 };
 
 
@@ -137,6 +139,7 @@ export function setTimelineNoteAtPosition(
 
         const notesToRemove: NoteItem[] = [];
 
+        let isNoteValid = true;
         let newNoteStartBeats = rangeStartBeats;
         let newNoteEndBeats = rangeEndBeats;
         for (const item of timeline) {
@@ -150,6 +153,14 @@ export function setTimelineNoteAtPosition(
             if (ltBeats(itemEndBeats, rangeStartBeats)) continue;
             if (gtBeats(itemStartBeats, rangeEndBeats)) break;
 
+            if (lteBeats(itemStartBeats, rangeStartBeats) && lteBeats(rangeEndBeats, itemEndBeats)) {
+                //    |-----------|
+                //      |++++++|
+                // => |-----------|  (don't add this note)
+                isNoteValid = false;
+                continue;
+            } 
+
             if (ltBeats(itemStartBeats, newNoteStartBeats)) {
                 newNoteStartBeats = itemStartBeats;
             } else if (gtBeats(itemEndBeats, newNoteEndBeats)) {
@@ -161,11 +172,13 @@ export function setTimelineNoteAtPosition(
 
         sequencerChartRemoveItems(chart, notesToRemove);
 
-        const newNoteStart = newNoteStartBeats * divisor;
-        const newNoteLen = (newNoteEndBeats - newNoteStartBeats) * divisor;
-        const newNote = newTimelineItemNote(note, newNoteStart, newNoteLen, divisor);
+        if (isNoteValid) {
+            const newNoteStart = newNoteStartBeats * divisor;
+            const newNoteLen = (newNoteEndBeats - newNoteStartBeats) * divisor;
+            const newNote = newTimelineItemNote(note, newNoteStart, newNoteLen, divisor);
 
-        sequencerChartInsertItems(chart, [newNote]);
+            sequencerChartInsertItems(chart, [newNote]);
+        }
     } else {
         const rangeStartBeats = getBeats(pos, divisor);
         const rangeEndBeats = getBeats(pos + len, divisor);
@@ -290,6 +303,8 @@ export function newSequencerState(currentChart: SequencerChart): SequencerState 
         playingTimeout: 0,
         reachedLastNote: false,
 
+        notesToPreview: [],
+
         _lastBpmChange: undefined,
     };
 
@@ -335,8 +350,6 @@ export function handleMovement(
     isCtrlPressed: boolean,
     isShiftPressed: boolean,
 ) {
-    setIsRangeSelecting(sequencer, isShiftPressed);
-
     if (isCtrlPressed) {
         // pressing ctrl to move by exactly 1 beat
         amount *= sequencer.cursorDivisor;
@@ -344,10 +357,20 @@ export function handleMovement(
 
     const cursorBeats = sequencer.cursorStart;
     const newStart = cursorBeats + amount;
-    setCursorBeats(sequencer, newStart);
 
+    handleMovementAbsolute(sequencer, newStart, isCtrlPressed, isShiftPressed);
+}
+
+export function handleMovementAbsolute(
+    sequencer: SequencerState,
+    newCursorPos: number,
+    isCtrlPressed: boolean,
+    isShiftPressed: boolean,
+) {
+    setIsRangeSelecting(sequencer, isShiftPressed);
+    setCursorBeats(sequencer, newCursorPos);
     if (sequencer.isRangeSelecting) {
-        sequencer.rangeSelectEnd = newStart;
+        sequencer.rangeSelectEnd = newCursorPos;
     }
 }
 
@@ -416,33 +439,30 @@ export function isItemRangeSelected(sequencer: SequencerState, item: TimelineIte
 export type NoteMapEntry = { 
     musicNote: MusicNote; 
     items: NoteItem[];
+    firstItem: NoteItem | null;
+    previewItems: NoteItem[];
 };
 
+// NOTE: Our date model might be wrong. 
+// This might need to become the core datastructure, rather than a derived view.
 export function getTimelineMusicNoteThreads(
-    chart: SequencerChart,
+    sequencer: SequencerState,
     startBeats: number,
     endBeats: number,
     dstNotesMap: Map<string, NoteMapEntry>,
     dstCommandsList: CommandItem[],
 ) {
+    const chart = sequencer._currentChart;
     const timeline = chart.timeline;
 
     dstCommandsList.length = 0;
     for (const val of dstNotesMap.values()) {
         val.items.length = 0;
+        val.previewItems.length = 0;
+        val.firstItem = null;
     }
 
-    let start = getBeatIdxBefore(chart, startBeats);
-    if (start === -1) {
-        start = 0;
-    }
-
-    let end = getBeatIdxAfter(chart, endBeats);
-    if (end === -1) {
-        end = timeline.length -1
-    }
-
-    for (let i = start; i <= end; i++) {
+    for (let i = 0; i < timeline.length; i++) {
         const item = timeline[i];
         const itemStart = getItemStartBeats(item);
         const itemEnd = getItemEndBeats(item);
@@ -463,17 +483,28 @@ export function getTimelineMusicNoteThreads(
 
         if (item.type === TIMELINE_ITEM_NOTE) {
             const key = getNoteHashKey(item.note);
-            const entry = dstNotesMap.get(key) ?? { musicNote: item.note, items: [] };
+            const entry = dstNotesMap.get(key) ?? { musicNote: item.note, items: [], previewItems: [], firstItem: null };
 
             entry.musicNote = item.note;
+            if (entry.firstItem === null) entry.firstItem = item;
             entry.items.push(item);
 
             dstNotesMap.set(key, entry);
-
             continue;
         }
 
         unreachable(item);
+    }
+
+    for (const item of sequencer.notesToPreview) {
+        const key = getNoteHashKey(item.note);
+        const entry = dstNotesMap.get(key) ?? { musicNote: item.note, items: [], previewItems: [], firstItem: null };
+
+        entry.musicNote = item.note;
+        if (entry.firstItem === null) entry.firstItem = item;
+        entry.previewItems.push(item);
+
+        dstNotesMap.set(key, entry);
     }
 }
 

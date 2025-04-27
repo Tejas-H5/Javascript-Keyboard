@@ -1,4 +1,4 @@
-import { releaseAllKeys, ScheduledKeyPress, schedulePlayback, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
 import {
     getCurrentPlayingBeats,
@@ -9,7 +9,7 @@ import {
 } from "src/state/sequencer-state";
 import { unreachable } from "src/utils/assert";
 import { GlobalContext } from "src/views/app";
-import { getBeatsIndexes, getItemEndBeats, getItemEndTime, getItemStartTime, getLastMeasureBeats, getTimeForBeats, getTrackExtent, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
+import { getBeatsIndexes, getItemEndBeats, getItemEndTime, getItemStartTime, getLastMeasureBeats, getTimeForBeats, getChartExtent, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
 
 
 export function stopPlaying({ sequencer }: GlobalContext, stopOnCursor = false) {
@@ -42,7 +42,10 @@ export function playFromLastMeasure(ctx: GlobalContext, options: PlayOptions = {
     // Play from the last measure till the end
     const cursorStart = getCursorStartBeats(sequencer);
     const lastMeasureStart = getLastMeasureBeats(chart, cursorStart);
-    const endBeats = getTrackExtent(chart);
+
+    // +1 for good luck - it's used to find a bound that must alawys include the last note,
+    // that we can play every note
+    const endBeats = getChartExtent(chart) + 1;
     startPlaying(ctx, lastMeasureStart, endBeats, options);
 }
 
@@ -90,7 +93,7 @@ export type PlayOptions = {
 export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: number, options: PlayOptions = {}) {
     const chart = ctx.sequencer._currentChart;
     if (endBeats === undefined) {
-        endBeats = getTrackExtent(chart);
+        endBeats = getChartExtent(chart) + 1;
     }
 
     let { speed = 1, isUserDriven = false } = options;
@@ -174,6 +177,8 @@ function pushNotePress(
 
 // Plays notes without setting the sequencer's isPlaying = true.
 export function previewNotes(ctx: GlobalContext, notes: NoteItem[]) {
+    if (isAnythingPlaying()) return;
+
     let minTime = Number.POSITIVE_INFINITY;
     for (const note of notes) {
         minTime = Math.min(minTime, getItemStartTime(note));

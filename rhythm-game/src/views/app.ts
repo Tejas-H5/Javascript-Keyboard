@@ -1,3 +1,5 @@
+import { pressKey, releaseAllKeys, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
+import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     saveStateDebounced,
 } from "src/state/loading-saving-charts";
@@ -14,12 +16,33 @@ import {
     SavedState
 } from "src/state/saved-state";
 import {
+    copyTimelineItem,
+    equalBeats,
+    getBpm,
+    getBpmChangeItemBeforeBeats,
+    getChartExtent,
+    getItemStartBeats,
+    newChart,
+    newTimelineItemBpmChange,
+    newTimelineItemMeasure,
+    newTimelineItemNote,
+    redoEdit,
+    SequencerChart,
+    sequencerChartInsertItems,
+    sequencerChartRemoveItems,
+    sortAndIndexTimeline,
+    timelineHasNoteAtPosition,
+    timelineMeasureAtBeatsIdx,
+    undoEdit
+} from "src/state/sequencer-chart";
+import {
     clearRangeSelection,
     deleteRange,
     getBeats,
     getCursorStartBeats,
     getSelectionStartEndIndexes,
     handleMovement,
+    handleMovementAbsolute,
     hasRangeSelection,
     newSequencerState,
     SequencerState,
@@ -30,6 +53,7 @@ import {
     transposeSelectedItems,
 } from "src/state/sequencer-state";
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
+import { arraySwap, filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import {
     getKeyEvents,
@@ -42,35 +66,14 @@ import {
     nextListRoot,
     setClass
 } from "src/utils/im-dom-utils";
+import { clamp } from "src/utils/math-utils";
+import { notesEqual } from "src/utils/music-theory-utils";
 import { ChartSelect as imChartSelect } from "src/views/chart-select";
 import { EditView as imEditView } from "src/views/edit-view";
 import { PlayView as imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
-import {
-    copyTimelineItem,
-    equalBeats,
-    getBpm,
-    getBpmChangeItemBeforeBeats,
-    getItemIdxAtBeat,
-    getItemStartBeats,
-    newChart,
-    newTimelineItemBpmChange,
-    newTimelineItemMeasure,
-    redoEdit,
-    SequencerChart,
-    sequencerChartInsertItems,
-    sequencerChartRemoveItems,
-    sortAndIndexTimeline,
-    timelineHasNoteAtPosition,
-    timelineMeasureAtBeatsIdx,
-    undoEdit,
-} from "src/state/sequencer-chart";
 import { ABSOLUTE, FIXED, H2, imBeginLayout, ROW } from "./layout";
 import { cnApp } from "./styling";
-import { clamp } from "src/utils/math-utils";
-import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
-import { pressKey, releaseAllKeys, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
-import { arraySwap } from "src/utils/array-utils";
 
 
 export type GlobalContext = {
@@ -92,6 +95,8 @@ export function newGlobalContext(saveState: SavedState) {
         // TODO: delete
         render: () => {},
     };
+
+    setCurrentChart(ctx, ctx.sequencer._currentChart);
 
     ctx.sequencer.cursorStart = ctx.sequencer._currentChart.cursorStart;
     ctx.sequencer.cursorDivisor = ctx.sequencer._currentChart.cursorDivisor;
@@ -355,20 +360,6 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         return true;
     }
 
-    if (key === "Delete") {
-        const [start, end] = getSelectionStartEndIndexes(sequencer);
-        if (start !== -1 && end !== -1) {
-            deleteRange(chart, start, end);
-            return true;
-        }
-
-        const idx = getItemIdxAtBeat(chart, getCursorStartBeats(sequencer));
-        if (idx !== -1) {
-            deleteRange(chart, idx, idx);
-            return true;
-        }
-    }
-
     if ((keyUpper === "C") && ctrlPressed) {
         const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
         return copyNotesToTempStore(ctx, startIdx, endIdx);
@@ -396,7 +387,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         }
 
         if (hasRangeSelection(sequencer)) {
-            clearRangeSelection(sequencer, true);
+            clearRangeSelection(sequencer, false);
             return true;
         }
 
@@ -411,12 +402,52 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
             handleMovement(sequencer, 1, false, false);
         }
 
-        // TODO: extend currently held notes by 1 as well
+        // Add the previewed notes to the sequencer, push forwards
+        for (const note of sequencer.notesToPreview) {
+            setTimelineNoteAtPosition(chart, note.start, note.divisor, note.note, 1, true);
+            note.start++;
+        }
 
         return true;
     }
 
-    if (shiftPressed && (key === "M" || key === "m")) {
+    if (key === "Delete") {
+        const [start, end] = getSelectionStartEndIndexes(sequencer);
+        if (start !== -1 && end !== -1) {
+            deleteRange(chart, start, end);
+            clearRangeSelection(sequencer, false);
+            return true;
+        }
+
+        // Remove the previewed notes to the sequencer, push forwards.
+        // Technically, the preview is the exact opposite feedback we are supposed to give the user here.
+        // But this method of deleting notes seems good enough to offset that fact for now
+        if (sequencer.notesToPreview.length > 0) {
+            if (shiftPressed) {
+                handleMovement(sequencer, -1, false, false);
+            } else {
+                handleMovement(sequencer, 1, false, false);
+            }
+
+            for (const note of sequencer.notesToPreview) {
+                setTimelineNoteAtPosition(chart, note.start, note.divisor, note.note, 1, false);
+                note.start++;
+            }
+        }
+    }
+
+    if (key === "Home") {
+        handleMovementAbsolute(sequencer, 0, ctrlPressed, shiftPressed);
+        return true;
+    }
+
+    if (key === "End") {
+        const end = getChartExtent(chart) * sequencer.cursorDivisor;
+        handleMovementAbsolute(sequencer, end, ctrlPressed, shiftPressed);
+        return true;
+    }
+
+    if (shiftPressed && (keyUpper === "M")) {
         const cursorStartBeats = getCursorStartBeats(sequencer);
         const idx = timelineMeasureAtBeatsIdx(chart, cursorStartBeats);
         if (idx === -1) {
@@ -430,7 +461,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         return true;
     }
 
-    if (shiftPressed && (key === "b" || key === "B")) {
+    if (shiftPressed && (keyUpper === "B")) {
         const start = getCursorStartBeats(sequencer);
         const bpmChange = getBpmChangeItemBeforeBeats(chart, start);
         if (bpmChange && equalBeats(start, getItemStartBeats(bpmChange))) {
@@ -457,18 +488,29 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
             const pos = sequencer.cursorStart;
             const divisor = sequencer.cursorDivisor;
             const note = instrumentKey.musicNote;
-
             const hasNote = timelineHasNoteAtPosition(chart, pos, divisor, note);
-            setTimelineNoteAtPosition(
-                chart,
-                pos,
-                divisor,
-                note,
-                1,
-                !hasNote
-            );
 
-            saveStateDebounced(ctx);
+            if (!isRepeat) {
+                sequencer.notesToPreview.push(newTimelineItemNote(
+                    instrumentKey.musicNote, 
+                    pos,
+                    1,
+                    divisor, 
+                ));
+            }
+
+            if (0) {
+                setTimelineNoteAtPosition(
+                    chart,
+                    pos,
+                    divisor,
+                    note,
+                    1,
+                    !hasNote
+                );
+
+                saveStateDebounced(ctx);
+            }
         }
 
         return true;
@@ -577,6 +619,10 @@ function handleKeyUp(ctx: GlobalContext, keyPressState: KeyPressState): boolean 
 
     const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, key);
     if (instrumentKey) {
+        filterInPlace(ctx.sequencer.notesToPreview, note => {
+            return !notesEqual(note.note, instrumentKey.musicNote);
+        });
+
         releaseKey(instrumentKey.index, instrumentKey.musicNote);
         return true;
     }
@@ -800,6 +846,7 @@ export function imApp(ctx: GlobalContext) {
     }
     if (blur) {
         releaseAllKeys();
+        ctx.sequencer.notesToPreview.length = 0;
     }
 
     imBeginLayout(ABSOLUTE | FIXED | ROW); {

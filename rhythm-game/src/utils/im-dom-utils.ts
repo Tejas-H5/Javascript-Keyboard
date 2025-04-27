@@ -1,4 +1,4 @@
-// *IM* DOM-utils v0.1.008 - @Tejas-H5
+// *IM* DOM-utils v0.1.009 - @Tejas-H5
 // A variation on DOM-utils with the immediate-mode API isntead of the normal one. I'm still deciding which one I will continue to use.
 // Right now, this one seems better, but the other one has a 'proven' track record of actually working.
 // But in a matter of hours/days, I was able to implement features in this framework that I wasn't able to for months/years in the other one...
@@ -973,6 +973,7 @@ export function imMemoArray(...val: unknown[]): boolean {
     let changed = false;
     if (val.length !== arr.length) {
         changed = true;
+        arr.length = val.length;
     }
 
     for (let i = 0; i < val.length; i++) {

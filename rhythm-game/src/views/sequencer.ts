@@ -4,27 +4,6 @@ import {
 } from "src/state/keyboard-state";
 import { previewNotes } from "src/state/playing-pausing";
 import {
-    getRangeSelectionEndBeats,
-    getRangeSelectionStartBeats,
-    getSelectionStartEndIndexes,
-    getSequencerPlaybackOrEditingCursor,
-    getTimelineMusicNoteThreads,
-    hasRangeSelection,
-    isItemBeingPlayed,
-    isItemRangeSelected,
-    getCursorStartBeats,
-    NoteMapEntry,
-    setCursorDivisor,
-    SequencerState,
-} from "src/state/sequencer-state";
-import { filteredCopy } from "src/utils/array-utils";
-import { unreachable } from "src/utils/assert";
-import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
-import { compareMusicNotes, getNoteText, MusicNote } from "src/utils/music-theory-utils";
-import { GlobalContext } from "./app";
-import { cssVars } from "./styling";
-import { 
-    TimelineItemBpmChange,
     CommandItem,
     divisorSnap,
     getBeatsIndexes,
@@ -32,7 +11,6 @@ import {
     getItemLengthBeats,
     getItemStartBeats,
     isItemUnderCursor,
-    TimelineItemMeasure,
     newTimelineItemBpmChange,
     NoteItem,
     sequencerChartInsertItems,
@@ -41,13 +19,34 @@ import {
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
     TimelineItem,
-    timelineItemsEqual,
+    TimelineItemBpmChange,
+    TimelineItemMeasure,
     timelineItemToString
 } from "src/state/sequencer-chart";
-import { deltaTimeSeconds, disableIm, enableIm, imBeginList, imBeginSpan, imEnd, imEndList, imInit, imMemo, imState, imTextSpan, nextListRoot, setClass, setInnerText, setStyle } from "src/utils/im-dom-utils";
-import { ABSOLUTE, ALIGN_CENTER, COL, FLEX1, GAP5, imBeginAbsolute, imBeginLayout, imBeginPadding, imBeginSpace, INLINE_BLOCK, JUSTIFY_CENTER, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "./layout";
-import { imButton } from "./button";
+import {
+    getCursorStartBeats,
+    getRangeSelectionEndBeats,
+    getRangeSelectionStartBeats,
+    getSelectionStartEndIndexes,
+    getSequencerPlaybackOrEditingCursor,
+    getTimelineMusicNoteThreads,
+    hasRangeSelection,
+    isItemBeingPlayed,
+    isItemRangeSelected,
+    NoteMapEntry,
+    SequencerState,
+    setCursorDivisor,
+} from "src/state/sequencer-state";
+import { filteredCopy } from "src/utils/array-utils";
+import { assert, unreachable } from "src/utils/assert";
 import { cn } from "src/utils/cn";
+import { deltaTimeSeconds, disableIm, enableIm, imBeginList, imEnd, imEndList, imInit, imMemo, imMemoArray, imState, imTextSpan, nextListRoot, setClass, setInnerText, setStyle } from "src/utils/im-dom-utils";
+import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
+import { compareMusicNotes, getNoteText, MusicNote } from "src/utils/music-theory-utils";
+import { GlobalContext } from "./app";
+import { imButton } from "./button";
+import { ABSOLUTE, ALIGN_CENTER, COL, FLEX1, GAP5, imBeginAbsolute, imBeginLayout, imBeginPadding, imBeginSpace, INLINE_BLOCK, JUSTIFY_CENTER, JUSTIFY_END, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "./layout";
+import { cssVars } from "./styling";
 
 
 export function getMusicNoteText(n: MusicNote): string {
@@ -159,9 +158,8 @@ export function imSequencer(ctx: GlobalContext) {
     const cursorStartBeats = getSequencerPlaybackOrEditingCursor(sequencer);
     const divisor = sequencer.cursorDivisor;
 
-    disableIm();
-
     // Compute animation factors every frame without memoization
+    disableIm();
     {
         const lerpFactor = 20 * deltaTimeSeconds();
 
@@ -194,15 +192,17 @@ export function imSequencer(ctx: GlobalContext) {
     }
     enableIm();
 
+    const previewItemsChanged = imMemoArray(...sequencer.notesToPreview);
     const currentChartChanged = imMemo(sequencer._currentChart);
 
     // Recompute the non-overlapping items in the sequencer timeline as needed
     if (
-        s.lastCursorStartBeats !== cursorStartBeats
-        || s.lastCursorStartDivisor !== divisor
-        || s.lastUpdatedTime !== sequencer._currentChart._timelineLastUpdated
-        || currentChartChanged
-        || s.invalidateCache
+        s.lastCursorStartBeats !== cursorStartBeats ||
+        s.lastCursorStartDivisor !== divisor ||
+        s.lastUpdatedTime !== sequencer._currentChart._timelineLastUpdated ||
+        currentChartChanged ||
+        previewItemsChanged ||
+        s.invalidateCache
     ) {
         disableIm();
 
@@ -211,15 +211,23 @@ export function imSequencer(ctx: GlobalContext) {
         s.lastCursorStartDivisor = divisor;
         s.invalidateCache = false;
 
-        const tl = sequencer._currentChart.timeline;
-
         getTimelineMusicNoteThreads(
-            chart,
-            s.leftExtentAnimated,
-            s.rightExtentAnimated,
+            sequencer,
+            s.leftExtent,
+            s.rightExtent,
             s.notesMap,
             s.commandsList
         );
+
+        if (sequencer.notesToPreview.length > 0) {
+            console.log("Squencer has notes");
+        }
+
+        for (const [k, v] of s.notesMap) {
+            if (v.previewItems.length > 0) {
+                console.log("Has preview items", k, v.firstItem);
+            }
+        }
 
         filteredCopy(
             s.commandsList,
@@ -236,9 +244,14 @@ export function imSequencer(ctx: GlobalContext) {
         // recompute the note order
         s.noteOrder.length = 0;
         for (const entry of s.notesMap.values()) {
-            if (entry.items.length === 0) {
+            if (entry.firstItem === null) {
                 continue;
             }
+
+            if (entry.previewItems.length > 0) {
+                console.log("preview items for sure!");
+            }
+
             s.noteOrder.push(entry);
         }
         s.noteOrder.sort((a, b) => {
@@ -375,6 +388,10 @@ export function imSequencer(ctx: GlobalContext) {
                         setStyle("backgroundColor", `rgba(0, 0, 255, 0.25)`);
                     }
                 } imEnd();
+
+                // range select lines
+                imSequencerVerticalLine(s, getRangeSelectionStartBeats(sequencer), cssVars.mg, 3);
+                imSequencerVerticalLine(s, getRangeSelectionEndBeats(sequencer), cssVars.mg, 3);
             }
             imEndList();
             imBeginList(); {
@@ -385,16 +402,11 @@ export function imSequencer(ctx: GlobalContext) {
 
                 // grid lines
                 for (let x = start; x < end; x += 1 / sequencer.cursorDivisor) {
+                    if (x < 0) continue;
+
                     nextListRoot();
                     imSequencerVerticalLine(s, x, cssVars.bg2, 1);
                 }
-
-                // range select lines
-                nextListRoot();
-                imSequencerVerticalLine(s, getRangeSelectionStartBeats(sequencer), cssVars.mg, 3);
-
-                nextListRoot();
-                imSequencerVerticalLine(s, getRangeSelectionEndBeats(sequencer), cssVars.mg, 3);
 
                 // cursor start vertical line
                 nextListRoot();
@@ -416,21 +428,31 @@ export function imSequencer(ctx: GlobalContext) {
                     setStyle("borderTop", `1px solid ${cssVars.fg}`);
                 }
 
-                imSequencerNotesUI("bpm", s.bpmChanges, ctx, s);
-                imSequencerNotesUI("measures", s.measures, ctx, s);
+                imSequencerNotesUI("bpm", s.bpmChanges, null,ctx, s);
+                imSequencerNotesUI("measures", s.measures, null, ctx, s);
 
                 imBeginList(); 
                 for (const entry of s.noteOrder) {
+                    assert(entry.firstItem);
+
                     nextListRoot();
-                    const text = getItemSequencerText(ctx.keyboard, entry.items[0]);
-                    imSequencerNotesUI(text, entry.items, ctx, s);
+                    const text = getItemSequencerText(ctx.keyboard, entry.firstItem);
+                    imSequencerNotesUI(text, entry.items, entry.previewItems, ctx, s);
                 }
                 imEndList();
             } imEnd();
         } imEnd();
         imBeginLayout(ROW | JUSTIFY_CENTER); {
             const text = timelinePosToString(sequencer.cursorStart, sequencer.cursorDivisor);
+            imBeginLayout(FLEX1); imEnd();
             imTextSpan(text);
+            imBeginLayout(FLEX1 | ROW | JUSTIFY_END); {
+                imBeginList();
+                if (nextListRoot() && sequencer.notesToPreview.length > 0) {
+                    imTextSpan("TAB -> commit, DEL -> delete");
+                }
+                imEndList();
+            } imEnd();
         } imEnd();
         imBeginLayout(ROW); {
             imBeginList();
@@ -475,13 +497,17 @@ function imSequencerVerticalLine(
 }
 
 function imSequencerNotesUI(
-    text: string,
-    items: TimelineItem[],
-    ctx: GlobalContext,
-    s: SequencerUIState,
+    text: string, 
+    items: TimelineItem[], 
+    previewItems: TimelineItem[] | null, 
+    ctx: GlobalContext, 
+    s: SequencerUIState
 ) {
+    let count = items.length;
+    if (previewItems) count += previewItems.length;
+
     imBeginList();
-    if (nextListRoot() && items.length > 0) {
+    if (nextListRoot() && count > 0) {
         imBeginPadding(
             10, PX, 3, PX, 
             10, PX, 3, PX, 
@@ -490,67 +516,75 @@ function imSequencerNotesUI(
             imTextSpan(text);
 
             imBeginList();
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
+            for (const item of items) {
                 nextListRoot(); {
-                    const text = item._index + " " + getItemSequencerText(ctx.keyboard, item);
-
-                    // debug code
-                    // const durationText = s.item.type === TIMELINE_ITEM_NOTE ? (":" + s.item.len.toFixed(2)) : "";
-                    // text = timelinePosToString(s.item.start, s.item.divisor) + ":" + durationText + " " + text;
-
-                    const left = s.leftExtentAnimated;
-                    const right = s.rightExtentAnimated;
-                    const extentSize = right - left;
-
-                    const leftPercent = 100 * (getItemStartBeats(item) - left) / extentSize;
-                    const MIN_WIDTH_PERCENT = 1;
-                    let width;
-                    if (item.type === TIMELINE_ITEM_NOTE) {
-                        width = Math.max(100 * getItemLengthBeats(item) / extentSize, MIN_WIDTH_PERCENT);
-                    } else {
-                        width = MIN_WIDTH_PERCENT;
+                    const text = getItemSequencerText(ctx.keyboard, item);
+                    imSequencerTrackTimelineItem(text, item, ctx, s);
+                }
+            }
+            imEndList();
+            imBeginList();
+            if (previewItems) {
+                for (const item of previewItems) {
+                    nextListRoot(); {
+                        const text = getItemSequencerText(ctx.keyboard, item);
+                        imSequencerTrackTimelineItem(text, item, ctx, s);
                     }
-
-                    let isUnderCursor = false;
-                    let isBeingPlayed = false;
-
-                    if (item.type === TIMELINE_ITEM_NOTE) {
-                        const { sequencer } = ctx;
-                        const cursorStart = getCursorStartBeats(sequencer);
-
-                        if (hasRangeSelection(sequencer)) {
-                            isUnderCursor = isItemRangeSelected(sequencer, item);
-                        } else {
-                            isUnderCursor = isItemUnderCursor(item, cursorStart);
-                        }
-
-                        isBeingPlayed = isItemBeingPlayed(sequencer, item);
-                    }
-
-                    imBeginAbsolute(
-                        0, PX, leftPercent, PERCENT,
-                        0, NOT_SET, 0, NOT_SET,
-                        ABSOLUTE
-                    ); {
-                        if (imInit()) {
-                            setClass(cn.noWrap);
-                            setStyle("overflowX", "clip");
-                            setStyle("padding", "3px 10px");
-                            setStyle("border", `1px solid ${cssVars.fg}`);
-                            setStyle("boxSizing", "border-box");
-                        }
-
-                        setStyle("backgroundColor", isBeingPlayed ? cssVars.playback : isUnderCursor ? cssVars.bg2 : cssVars.bg);
-                        setStyle("width", width + "%");
-                        setInnerText(text);
-                    } imEnd();
                 }
             }
             imEndList();
         } imEnd();
     }
     imEndList();
+}
+
+function imSequencerTrackTimelineItem(text: string, item: TimelineItem, ctx: GlobalContext, s: SequencerUIState) {
+    const left = s.leftExtentAnimated;
+    const right = s.rightExtentAnimated;
+    const extentSize = right - left;
+
+    const leftPercent = 100 * (getItemStartBeats(item) - left) / extentSize;
+    const MIN_WIDTH_PERCENT = 1;
+    let width;
+    if (item.type === TIMELINE_ITEM_NOTE) {
+        width = Math.max(100 * getItemLengthBeats(item) / extentSize, MIN_WIDTH_PERCENT);
+    } else {
+        width = MIN_WIDTH_PERCENT;
+    }
+
+    let isUnderCursor = false;
+    let isBeingPlayed = false;
+
+    if (item.type === TIMELINE_ITEM_NOTE) {
+        const { sequencer } = ctx;
+        const cursorStart = getCursorStartBeats(sequencer);
+
+        if (hasRangeSelection(sequencer)) {
+            isUnderCursor = isItemRangeSelected(sequencer, item);
+        } else {
+            isUnderCursor = isItemUnderCursor(item, cursorStart);
+        }
+
+        isBeingPlayed = isItemBeingPlayed(sequencer, item);
+    }
+
+    imBeginAbsolute(
+        0, PX, leftPercent, PERCENT,
+        0, NOT_SET, 0, NOT_SET,
+        ABSOLUTE
+    ); {
+        if (imInit()) {
+            setClass(cn.noWrap);
+            setStyle("overflowX", "clip");
+            setStyle("padding", "3px 10px");
+            setStyle("border", `1px solid ${cssVars.fg}`);
+            setStyle("boxSizing", "border-box");
+        }
+
+        setStyle("backgroundColor", isBeingPlayed ? cssVars.playback : isUnderCursor ? cssVars.bg2 : cssVars.bg);
+        setStyle("width", width + "%");
+        setInnerText(text);
+    } imEnd();
 }
 
 

@@ -88,9 +88,8 @@ export function imGameplay(ctx: GlobalContext) {
 
     s.start = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
 
-    const chart = ctx.sequencer._currentChart;
     getTimelineMusicNoteThreads(
-        chart, s.start, s.start + GAMEPLAY_LOADAHEAD_BEATS,
+        ctx.sequencer, s.start, s.start + GAMEPLAY_LOADAHEAD_BEATS,
         s.notesMap, s.commandsList
     );
 
@@ -98,14 +97,12 @@ export function imGameplay(ctx: GlobalContext) {
 
     s.midpoint = Math.floor(s.keysMap.size / 2);
 
-
     imBeginLayout(FLEX1 | COL | ALIGN_STRETCH | JUSTIFY_CENTER | OVERFLOW_HIDDEN); {
         imBeginLayout(FLEX1 | ROW | ALIGN_STRETCH | JUSTIFY_CENTER | OVERFLOW_HIDDEN); {
             imBeginList();
             for (const val of s.keysMap.values()) {
                 const thread = val._items;
                 const instrumentKey = val.instrumentKey;
-
                 const sGameplay = s;
 
                 // Vertical note

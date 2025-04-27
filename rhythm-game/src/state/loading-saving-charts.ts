@@ -36,14 +36,9 @@ export function loadSaveState(): SavedState {
     }
 
     return loadedState;
-
-    // ctx.savedState = loadedState;
-    // ctx.ui.loadSave.loadedChartName = "autosaved";
 }
 
 export function saveAllState(ctx: GlobalContext) {
-    return;
-
     const { savedState } = ctx;
     const serialzed = recursiveCloneNonComputedFields(savedState);
 

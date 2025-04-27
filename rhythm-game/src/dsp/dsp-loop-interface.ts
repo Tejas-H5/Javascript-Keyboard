@@ -75,6 +75,12 @@ export function getCurrentOscillatorGain(id: number): number {
     return block[1];
 }
 
+
+export function isAnythingPlaying() {
+    const info = getDspInfo();
+    return info.currentlyPlaying.some(block => block[1] > 0 && block[2] === 0);
+}
+
 // 0 -> user. 
 // 1 -> Not implement yet, but  it will be (track_idx + 1) - you'll need to do id - 1 to get the track index
 export function getCurrentOscillatorOwner(id: number): number {
@@ -87,9 +93,7 @@ export function getCurrentOscillatorOwner(id: number): number {
 
 // we keep forgetting to ignore repeats, so I've made it an argument to this method.
 export function pressKey(id: number, note: MusicNote, isRepeat: boolean) {
-    if (isRepeat) {
-        return false;
-    }
+    if (isRepeat) return false;
 
     resumeAudio();
 

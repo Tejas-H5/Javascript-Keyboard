@@ -1,6 +1,8 @@
+import { imBeginInput } from "src/components/text-input";
 import "src/css/layout.css";
 import "src/main.css";
 import { stopPlaying, } from "src/state/playing-pausing";
+import { getPlaybackDuration } from "src/state/sequencer-chart";
 import {
     getCurrentPlayingTimeRelative,
     recomputeState
@@ -8,12 +10,10 @@ import {
 import { assert } from "src/utils/assert";
 import { elementHasMouseClick, imBeginList, imEnd, imEndList, imInit, imMemo, imOn, imTextDiv, imTextSpan, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
 import { imSequencer } from "src/views/sequencer";
-import { GlobalContext, resetSequencer, setViewTestCurrentChart } from "./app";
+import { GlobalContext, setViewTestCurrentChart } from "./app";
 import { imButton } from "./button";
-import { getPlaybackDuration } from "src/state/sequencer-chart";
 import { ALIGN_STRETCH, BOLD, COL, FIXED, FLEX1, GAP5, imBeginLayout, imBeginSpace, NOT_SET, PERCENT, ROW } from "./layout";
 import { cssVars } from "./styling";
-import { imBeginInput } from "src/components/text-input";
 
 export function EditView(ctx: GlobalContext) {
     const { sequencer, ui } = ctx;
@@ -53,10 +53,6 @@ export function EditView(ctx: GlobalContext) {
 
                 if (imButton("Test")) {
                     setViewTestCurrentChart(ctx);
-                }
-
-                if (imButton("Clear All")) {
-                    resetSequencer(ctx);
                 }
 
                 if (imButton((loadSaveModal.open ? ">" : "<") + "Load/Save")) {

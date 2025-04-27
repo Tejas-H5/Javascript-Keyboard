@@ -59,7 +59,7 @@ export type DspLoopMessage = 1337 | {
 
 export type DspInfo = {
     // [keyId, signal strength, owner]
-    currentlyPlaying: [number, number, number][];
+    currentlyPlaying: [keyId: number, signal: number, owner: number][];
     scheduledPlaybackTime: number;
     isPaused: boolean;
 }
@@ -278,14 +278,29 @@ export function registerDspLoopClass() {
                     let allUserNotes = true;
                     for (let i = trackPlayback.scheduledPlaybackCurrentIdx; i < trackPlayback.scheduleKeys.length; i++) {
                         const nextItem = trackPlayback.scheduleKeys[i];
-                        if (nextItem.time > nextScheduledPlaybackTime) {
+                        if (nextScheduledPlaybackTime < nextItem.time) {
                             // dont care abt things we've scheduled that aren't here yet..
                             break;
                         }
 
-                        const thing = this.getPlayingSample(nextItem.keyId) || this.getPlayingOscillator(nextItem.keyId);
-                        if (!thing || !thing.state.manuallyPressed) {
+                        const sample = this.getPlayingSample(nextItem.keyId);
+                        const osc = this.getPlayingOscillator(nextItem.keyId);
+                        if (!sample && !osc) {
                             allUserNotes = false;
+                        } else if (sample) {
+                            if (!sample.state.manuallyPressed) {
+                                allUserNotes = false;
+                            } 
+                        } else if (osc) {
+                            if (!osc.state.manuallyPressed) {
+                                allUserNotes = false;
+                            } else if (osc.inputs.signal < OSC_GAIN_AWAKE_THRESHOLD) {
+                                // This oscilator was released, so not really user input anymore
+                                allUserNotes = false;
+                            }
+                        }
+
+                        if (!allUserNotes) {
                             break;
                         }
                     }
