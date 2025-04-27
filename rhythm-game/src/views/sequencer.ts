@@ -47,6 +47,7 @@ import { GlobalContext } from "./app";
 import { imButton } from "./button";
 import { ABSOLUTE, ALIGN_CENTER, COL, FLEX1, GAP5, imBeginAbsolute, imBeginLayout, imBeginPadding, imBeginSpace, INLINE_BLOCK, JUSTIFY_CENTER, JUSTIFY_END, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "./layout";
 import { cssVars } from "./styling";
+import { isSaving } from "src/state/loading-saving-charts";
 
 
 export function getMusicNoteText(n: MusicNote): string {
@@ -430,7 +431,13 @@ export function imSequencer(ctx: GlobalContext) {
         } imEnd();
         imBeginLayout(ROW | JUSTIFY_CENTER); {
             const text = timelinePosToString(sequencer.cursorStart, sequencer.cursorDivisor);
-            imBeginLayout(FLEX1); imEnd();
+            imBeginLayout(FLEX1); {
+                imBeginList();
+                if (nextListRoot() && isSaving(ctx)) {
+                    imTextSpan("Saving...");
+                }
+                imEndList();
+            } imEnd();
             imTextSpan(text);
             imBeginLayout(FLEX1 | ROW | JUSTIFY_END); {
                 imBeginList();

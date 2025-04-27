@@ -53,6 +53,11 @@ export function saveStateDebounced(ctx: GlobalContext) {
     clearTimeout(ui.saveStateTimeout);
     ui.saveStateTimeout = setTimeout(() => {
         saveAllState(ctx);
+        ui.saveStateTimeout = 0;
     }, 100);
+}
+
+export function isSaving(ctx: GlobalContext) {
+    return !!ctx.ui.loadSave.saveStateTimeout;
 }
 

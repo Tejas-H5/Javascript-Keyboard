@@ -12,7 +12,7 @@ import {
 } from "src/state/playing-pausing";
 import {
     getChartIdx,
-    getOrCreateFirstChart,
+    getOrCreateCurrentChart,
     SavedState
 } from "src/state/saved-state";
 import {
@@ -61,6 +61,7 @@ import {
     imEnd,
     imEndList,
     imInit,
+    imMemo,
     imTextSpan,
     isEditingTextSomewhereInDocument,
     nextListRoot,
@@ -85,7 +86,7 @@ export type GlobalContext = {
 }
 
 export function newGlobalContext(saveState: SavedState) {
-    const firstChart = getOrCreateFirstChart(saveState);
+    const firstChart = getOrCreateCurrentChart(saveState);
 
     const ctx: GlobalContext = {
         keyboard: newKeyboardState(),
@@ -507,8 +508,6 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
                     1,
                     !hasNote
                 );
-
-                saveStateDebounced(ctx);
             }
         }
 
@@ -522,9 +521,16 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
     const loadSaveModal = ctx.ui.loadSave.modal;
     loadSaveModal.idx = clamp(i, 0, ctx.savedState.userCharts.length);
-    if (loadSaveModal.idx < ctx.savedState.userCharts.length) {
-        setCurrentChart(ctx, ctx.savedState.userCharts[loadSaveModal.idx]);
+
+    if (loadSaveModal.idx >= ctx.savedState.userCharts.length) {
+        return;
     }
+
+    setCurrentChart(ctx, ctx.savedState.userCharts[loadSaveModal.idx]);
+
+    ctx.savedState.lastUserChartIdx = loadSaveModal.idx;
+
+    saveStateDebounced(ctx);
 }
 
 export function setCurrentChart(ctx: GlobalContext, chart: SequencerChart) {
@@ -556,7 +562,7 @@ export function deleteChart(ctx: GlobalContext, name: string) {
     }
 
     if (idx < 0) {
-        sequencer._currentChart = getOrCreateFirstChart(savedState);
+        sequencer._currentChart = getOrCreateCurrentChart(savedState);
     } else {
         sequencer._currentChart = savedState.userCharts[idx];
     }
@@ -846,6 +852,10 @@ export function imApp(ctx: GlobalContext) {
     if (blur) {
         releaseAllKeys();
         ctx.sequencer.notesToPreview.length = 0;
+    }
+
+    if (imMemo(ctx.sequencer._currentChart._timelineLastUpdated)) {
+        saveStateDebounced(ctx);
     }
 
     imBeginLayout(ABSOLUTE | FIXED | ROW); {
