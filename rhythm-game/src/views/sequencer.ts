@@ -40,10 +40,12 @@ import {
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
-    TimelineItem
+    TimelineItem,
+    timelineItemsEqual,
+    timelineItemToString
 } from "src/state/sequencer-chart";
-import { deltaTimeSeconds, disableIm, enableIm, imBeginList, imEnd, imEndList, imInit, imMemo, imState, imTextSpan, nextListRoot, setClass, setInnerText, setStyle } from "src/utils/im-dom-utils";
-import { ABSOLUTE, ALIGN_CENTER, COL, FLEX1, GAP5, imBeginAbsolute, imBeginLayout, imBeginPadding, imBeginSpace, JUSTIFY_CENTER, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "./layout";
+import { deltaTimeSeconds, disableIm, enableIm, imBeginList, imBeginSpan, imEnd, imEndList, imInit, imMemo, imState, imTextSpan, nextListRoot, setClass, setInnerText, setStyle } from "src/utils/im-dom-utils";
+import { ABSOLUTE, ALIGN_CENTER, COL, FLEX1, GAP5, imBeginAbsolute, imBeginLayout, imBeginPadding, imBeginSpace, INLINE_BLOCK, JUSTIFY_CENTER, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "./layout";
 import { imButton } from "./button";
 import { cn } from "src/utils/cn";
 
@@ -317,6 +319,28 @@ export function imSequencer(ctx: GlobalContext) {
             imBeginLayout(FLEX1); imEnd();
 
         } imEnd();
+        if (0) {
+            // Debug visualizer for the undo buffer
+            imBeginLayout(); {
+                imBeginList();
+                let i = 0;
+                for (const item of chart._undoBuffer.items) {
+                    nextListRoot();
+
+                    imBeginPadding(0, NOT_SET, 30, PX, 0, NOT_SET, 0, NOT_SET, INLINE_BLOCK); {
+                        imTextSpan(chart._undoBuffer.idx === i ? ">" : "");
+                        imTextSpan("Entry " + (i++) + ": ");
+                        imBeginList();
+                        for (const tlItem of item.items) {
+                            nextListRoot();
+                            imTextSpan(timelineItemToString(tlItem));
+                        }
+                        imEndList();
+                    } imEnd();
+                }
+                imEndList();
+            } imEnd();
+        }
         imBeginLayout(FLEX1 | RELATIVE); {
             if (imInit()) {
                 setStyle("overflowY", "auto");

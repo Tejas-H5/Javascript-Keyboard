@@ -24,6 +24,7 @@ export const JUSTIFY_START = 1 << 18;
 export const JUSTIFY_END = 1 << 19;
 export const BOLD = 1 << 20;
 export const GAP10 = 1 << 21;
+export const INLINE_BLOCK = 1 << 22;
 
 export function setStyleFlags(flags: number) {
     setClass(cn.row, (flags & ROW));
@@ -48,6 +49,7 @@ export function setStyleFlags(flags: number) {
     setClass(cn.justifyContentEnd, (flags & JUSTIFY_END));
     setClass(cnApp.b, (flags & BOLD));
     setClass(cnApp.gap10, (flags & GAP10));
+    setClass(cn.inlineBlock, (flags & INLINE_BLOCK));
 }
 
 

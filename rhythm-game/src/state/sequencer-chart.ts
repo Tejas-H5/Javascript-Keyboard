@@ -3,6 +3,7 @@ import { assert } from "src/utils/assert";
 import { unreachable } from "src/utils/assert";
 import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "src/utils/math-utils";
 import { beatsToMs, compareMusicNotes, getNoteHashKey, msToBeats, MusicNote, notesEqual } from "src/utils/music-theory-utils";
+import { getMusicNoteText } from "src/views/sequencer";
 
 export type SequencerChart = {
     name: string;
@@ -338,17 +339,17 @@ export function getItemEndBeats(item: TimelineItem): number {
 }
 
 export function sequencerChartInsertItems(chart: SequencerChart, itemsToInsert: TimelineItem[]) {
-    if (itemsToInsert.length === 0) return;
-
     itemsToInsert = itemsToInsert.filter(item => !isDegenerateItem(item));
 
-    sortAndIndexTimeline(chart);
-
-    chart.timeline.push(...itemsToInsert);
+    if (itemsToInsert.length === 0) return;
 
     sortAndIndexTimeline(chart);
 
-    const items = itemsToInsert.map(copyTimelineItem);
+    const itemsToInsertCopy = itemsToInsert.map(copyTimelineItem);
+    chart.timeline.push(...itemsToInsertCopy);
+    sortAndIndexTimeline(chart);
+    const items = itemsToInsertCopy.map(copyTimelineItem);
+
     pushUndoBuffer(chart, { t: MUTATION_INSERT, items });
 }
 
@@ -369,7 +370,6 @@ function pushUndoBuffer(chart: SequencerChart, m: TimelineMutation) {
 }
 
 
-// NOTE: There is a bug in the undo system! it isn't always deterministic, and I have literally no idea why. 
 function traverseUndoBuffer(chart: SequencerChart, forwards: boolean) {
     const undoBuffer = chart._undoBuffer;
 
@@ -391,7 +391,7 @@ function traverseUndoBuffer(chart: SequencerChart, forwards: boolean) {
             }
         }
     } else {
-        if (undoBuffer.idx >= 0) {
+        if (undoBuffer.idx >= 0 && undoBuffer.items.length > 0) {
             const mutationToUndo = undoBuffer.items[undoBuffer.idx];
             switch (mutationToUndo.t) {
                 case MUTATION_INSERT: {
@@ -401,7 +401,6 @@ function traverseUndoBuffer(chart: SequencerChart, forwards: boolean) {
                     sequencerChartInsertItems(chart, mutationToUndo.items);
                 } break;
             }
-
             undoBuffer.idx--;
         }
     }
@@ -720,6 +719,7 @@ export function newTimelineItemMeasure(start: number, divisor: number): Timeline
         divisor,
         _scheduledStart: 0,
         _index: 0,
+        _shouldDelete: false,
     }
 }
 
@@ -739,6 +739,7 @@ export function newTimelineItemNote(musicNote: MusicNote, start: number, len: nu
         _scheduledStart: 0,
         _index: 0,
         _scheduledEnd: 0,
+        _shouldDelete: false,
     };
 }
 
@@ -779,5 +780,17 @@ export function timelineItemsEqual<T extends TimelineItem>(a: T, b: T): boolean 
             return b.type === TIMELINE_ITEM_BPM && a.start === b.start && a.divisor === b.divisor &&
                 a.bpm === b.bpm;
         default: unreachable(a);
+    }
+}
+
+export function timelineItemToString<T extends TimelineItem>(item: T): string {
+    switch (item.type) {
+        case TIMELINE_ITEM_NOTE: 
+            return "Note: " + item._index + " " + getMusicNoteText(item.note);
+        case TIMELINE_ITEM_MEASURE: 
+            return "Measure: " + item._index;
+        case TIMELINE_ITEM_BPM: 
+            return "BPM: " + item._index + " " + item.bpm;
+        default: unreachable(item);
     }
 }
