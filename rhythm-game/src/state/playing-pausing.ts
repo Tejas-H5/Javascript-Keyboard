@@ -1,5 +1,6 @@
 import { isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
+import { getBeatIdxAfter, getChartExtent, getItemEndBeats, getItemEndTime, getItemStartBeats, getItemStartTime, getLastMeasureBeats, getTimeForBeats, gtBeats, ltBeats, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
 import {
     getCurrentPlayingBeats,
     getCursorStartBeats,
@@ -9,7 +10,6 @@ import {
 } from "src/state/sequencer-state";
 import { unreachable } from "src/utils/assert";
 import { GlobalContext } from "src/views/app";
-import { getBeatsIndexes, getItemEndBeats, getItemEndTime, getItemStartTime, getLastMeasureBeats, getTimeForBeats, getChartExtent, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
 
 
 export function stopPlaying({ sequencer }: GlobalContext, stopOnCursor = false) {
@@ -102,13 +102,13 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
 
     const { sequencer, keyboard } = ctx;
 
-    const [startIdx, endIdx] = getBeatsIndexes(chart, startBeats, endBeats);
-    if (startIdx === -1 || endIdx === -1) {
+    const firstItemAfterStartBeatIdx = getBeatIdxAfter(chart, startBeats);
+    if (firstItemAfterStartBeatIdx === -1) {
         return;
     }
 
     const timeline = chart.timeline;
-    const firstItem = timeline[startIdx];
+    const firstItem = timeline[firstItemAfterStartBeatIdx];
     const startTime = getTimeForBeats(chart, startBeats);
     const leadInTime = getItemStartTime(firstItem) - startTime;
 
@@ -117,8 +117,14 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
     const scheduledKeyPresses: ScheduledKeyPress[] = [];
     const startPlaybackFromTime = getItemStartTime(firstItem) - leadInTime;
 
-    for (let i = startIdx; i < timeline.length && i <= endIdx; i++) {
+    for (let i = 0; i < timeline.length; i++) {
         const item = timeline[i];
+        const itemStart = getItemStartBeats(item);
+        const itemEnd = getItemEndBeats(item);
+
+        if (ltBeats(itemEnd, startBeats)) continue;
+        if (gtBeats(itemStart, endBeats)) break;
+
         if (item.type === TIMELINE_ITEM_BPM || item.type === TIMELINE_ITEM_MEASURE) {
             // can't be played.
             continue;
@@ -144,8 +150,6 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
     sequencer.scheduledKeyPressesPlaybackSpeed = speed;
 
     sequencer.startPlayingTime = Date.now() + leadInTime;
-    sequencer.startPlayingIdx = startIdx;
-    sequencer.endPlayingIdx = endIdx;
     sequencer.isPlaying = true;
     sequencer.isPaused = false;
 

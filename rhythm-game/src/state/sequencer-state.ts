@@ -27,8 +27,6 @@ export type SequencerState = {
     isPaused: boolean;
     pausedTime: number;
     startPlayingTime: number; // this is the time IRL we started playing, not the time along the timeline.seq
-    startPlayingIdx: number;
-    endPlayingIdx: number;
 
     playingTimeout: number;
     reachedLastNote: boolean;
@@ -197,7 +195,7 @@ export function setTimelineNoteAtPosition(
             if (ltBeats(itemEndBeats, rangeStartBeats)) continue;
             if (gtBeats(itemStartBeats, rangeEndBeats)) break;
 
-            if (lteBeats(rangeStartBeats, itemStartBeats) && lteBeats(itemStartBeats, rangeEndBeats)) {
+            if (lteBeats(rangeStartBeats, itemStartBeats) && lteBeats(itemEndBeats, rangeEndBeats)) {
                 //    |------|
                 //  |xxxxxxxxxxx|
                 // => nothing - delete this item
@@ -211,7 +209,7 @@ export function setTimelineNoteAtPosition(
             // Turns out that all three cases can behandled by putting two if-statements one after the other
 
             const trimEndOfPrevNote = ltBeats(itemStartBeats, rangeStartBeats);
-            const trimStartOfLastNote = ltBeats(itemStartBeats, rangeStartBeats);
+            const trimStartOfLastNote = ltBeats(rangeEndBeats, itemEndBeats);
             if (trimEndOfPrevNote || trimStartOfLastNote) {
                 notesToRemove.push(item);
             }
@@ -289,8 +287,6 @@ export function newSequencerState(currentChart: SequencerChart): SequencerState 
         isPaused: false,
         pausedTime: 0,
         startPlayingTime: 0,
-        startPlayingIdx: 0,
-        endPlayingIdx: 0,
         currentHoveredTimelineItemIdx: -1,
 
         isRangeSelecting: false,
@@ -413,16 +409,8 @@ export function isItemBeingPlayed(sequencer: SequencerState, item: TimelineItem)
         return false;
     }
 
-    if (item._index < sequencer.startPlayingIdx) {
-        return false;
-    }
-    if (item._index > sequencer.endPlayingIdx) {
-        return false;
-    }
-
     const playbackTime = getCurrentPlayingTime(sequencer);
-    return getItemStartTime(item) <= playbackTime &&
-        playbackTime <= getItemEndTime(item);
+    return getItemStartTime(item) <= playbackTime && playbackTime <= getItemEndTime(item);
 }
 
 export function isItemRangeSelected(sequencer: SequencerState, item: TimelineItem): boolean {
@@ -466,12 +454,8 @@ export function getTimelineMusicNoteThreads(
         const item = timeline[i];
         const itemStart = getItemStartBeats(item);
         const itemEnd = getItemEndBeats(item);
-        if (ltBeats(itemEnd, startBeats)) {
-            continue;
-        }
-        if (gtBeats(itemStart, endBeats)) {
-            break;
-        }
+        if (ltBeats(itemEnd, startBeats)) continue;
+        if (gtBeats(itemStart, endBeats)) break;
 
         if (
             item.type === TIMELINE_ITEM_BPM || 

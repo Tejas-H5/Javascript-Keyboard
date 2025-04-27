@@ -454,8 +454,7 @@ function filterDegenerateItems(chart: SequencerChart) {
 
 function isDegenerateItem(item: TimelineItem) {
     if (item.type === TIMELINE_ITEM_NOTE) {
-        // zero-length notes
-        if (within(getItemLengthBeats(item), 0, CURSOR_ITEM_TOLERANCE_BEATS)) {
+        if (equalBeats(getItemLengthBeats(item), 0)) {
             return true;
         }
     }

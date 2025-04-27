@@ -192,6 +192,7 @@ export function imSequencer(ctx: GlobalContext) {
     }
     enableIm();
 
+    // TODO: check if this actually creates GC pressure.
     const previewItemsChanged = imMemoArray(...sequencer.notesToPreview);
     const currentChartChanged = imMemo(sequencer._currentChart);
 
@@ -219,16 +220,6 @@ export function imSequencer(ctx: GlobalContext) {
             s.commandsList
         );
 
-        if (sequencer.notesToPreview.length > 0) {
-            console.log("Squencer has notes");
-        }
-
-        for (const [k, v] of s.notesMap) {
-            if (v.previewItems.length > 0) {
-                console.log("Has preview items", k, v.firstItem);
-            }
-        }
-
         filteredCopy(
             s.commandsList,
             s.bpmChanges,
@@ -247,11 +238,6 @@ export function imSequencer(ctx: GlobalContext) {
             if (entry.firstItem === null) {
                 continue;
             }
-
-            if (entry.previewItems.length > 0) {
-                console.log("preview items for sure!");
-            }
-
             s.noteOrder.push(entry);
         }
         s.noteOrder.sort((a, b) => {
@@ -449,7 +435,7 @@ export function imSequencer(ctx: GlobalContext) {
             imBeginLayout(FLEX1 | ROW | JUSTIFY_END); {
                 imBeginList();
                 if (nextListRoot() && sequencer.notesToPreview.length > 0) {
-                    imTextSpan("TAB -> commit, DEL -> delete");
+                    imTextSpan("TAB -> place, DEL or ~ -> delete");
                 }
                 imEndList();
             } imEnd();

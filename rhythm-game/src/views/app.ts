@@ -300,6 +300,46 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
     }
 
 
+    if (key === "Tab") {
+        let amnt;
+        if (shiftPressed) { amnt = -1; } else { amnt = 1; }
+        handleMovement(sequencer, amnt, false, false);
+
+        // Add the previewed notes to the sequencer, push forwards
+        for (const note of sequencer.notesToPreview) {
+            setTimelineNoteAtPosition(chart, note.start, note.divisor, note.note, 1, true);
+            note.start += amnt;
+        }
+
+        return true;
+    }
+
+    if (key === "Delete" || key === "`" || key === "~") {
+        if (hasRangeSelection(sequencer)) {
+            const [start, end] = getSelectionStartEndIndexes(sequencer);
+            if (start !== -1 && end !== -1) {
+                deleteRange(chart, start, end);
+                clearRangeSelection(sequencer, false);
+                return true;
+            }
+        }
+
+        // Remove the previewed notes to the sequencer, push forwards.
+        // Technically, the preview is the exact opposite feedback we are supposed to give the user here.
+        // But this method of deleting notes seems good enough to offset that fact for now
+        if (sequencer.notesToPreview.length > 0) {
+            let amnt;
+            if (shiftPressed) { amnt = -1; } else { amnt = 1; }
+            handleMovement(sequencer, amnt, false, false);
+
+            for (const note of sequencer.notesToPreview) {
+                setTimelineNoteAtPosition(chart, note.start, note.divisor, note.note, 1, false);
+                note.start += amnt;
+            }
+        }
+    }
+
+
     if (isRepeat) {
         return false;
     }
@@ -393,47 +433,6 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 
         setViewChartSelect(ctx);
         return true;
-    }
-
-    if (key === "Tab") {
-        if (shiftPressed) {
-            handleMovement(sequencer, -1, false, false);
-        } else {
-            handleMovement(sequencer, 1, false, false);
-        }
-
-        // Add the previewed notes to the sequencer, push forwards
-        for (const note of sequencer.notesToPreview) {
-            setTimelineNoteAtPosition(chart, note.start, note.divisor, note.note, 1, true);
-            note.start++;
-        }
-
-        return true;
-    }
-
-    if (key === "Delete") {
-        const [start, end] = getSelectionStartEndIndexes(sequencer);
-        if (start !== -1 && end !== -1) {
-            deleteRange(chart, start, end);
-            clearRangeSelection(sequencer, false);
-            return true;
-        }
-
-        // Remove the previewed notes to the sequencer, push forwards.
-        // Technically, the preview is the exact opposite feedback we are supposed to give the user here.
-        // But this method of deleting notes seems good enough to offset that fact for now
-        if (sequencer.notesToPreview.length > 0) {
-            if (shiftPressed) {
-                handleMovement(sequencer, -1, false, false);
-            } else {
-                handleMovement(sequencer, 1, false, false);
-            }
-
-            for (const note of sequencer.notesToPreview) {
-                setTimelineNoteAtPosition(chart, note.start, note.divisor, note.note, 1, false);
-                note.start++;
-            }
-        }
     }
 
     if (key === "Home") {
