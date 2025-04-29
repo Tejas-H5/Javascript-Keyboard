@@ -132,15 +132,15 @@ export function imGameplay(ctx: GlobalContext) {
                         } imEnd();
                     }
 
-                    imBeginLayout(COL | ALIGN_STRETCH | JUSTIFY_START); {
-                        imBeginList(); 
-                        if (nextListRoot() && instrumentKey.isLeftmost) {
-                            imBeginSpace(2, PX, 0, NOT_SET); {
-                                imInit() && setStyle("background", cssVars.fg);
-                            } imEnd();
-                        } 
-                        imEndList();
+                    imBeginList();
+                    if (nextListRoot() && instrumentKey.isLeftmost) {
+                        imBeginSpace(2, PX, 0, NOT_SET); {
+                            imInit() && setStyle("background", cssVars.fg);
+                        } imEnd();
+                    }
+                    imEndList();
 
+                    imBeginLayout(COL | ALIGN_STRETCH | JUSTIFY_START); {
                         imLetter();
 
                         imBeginSpace(100, PERCENT, 2, PX); {
@@ -234,6 +234,14 @@ export function imGameplay(ctx: GlobalContext) {
                         imLetter();
 
                     } imEnd();
+
+                    imBeginList();
+                    if (nextListRoot() && instrumentKey.isRightmost) {
+                        imBeginSpace(2, PX, 0, NOT_SET); {
+                            imInit() && setStyle("background", cssVars.fg);
+                        } imEnd();
+                    }
+                    imEndList();
                 }
             }
             imEndList();

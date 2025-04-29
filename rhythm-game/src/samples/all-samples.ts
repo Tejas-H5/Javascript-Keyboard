@@ -1,3 +1,5 @@
+// TODO: replace these with procedural samples.
+
 import { crash1 } from "./crash1";
 import { crash2 } from "./crash2";
 import { hat1 } from "./hat1";

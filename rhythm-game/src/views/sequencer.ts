@@ -6,7 +6,8 @@ import { previewNotes } from "src/state/playing-pausing";
 import {
     CommandItem,
     divisorSnap,
-    getBeatsIndexes,
+    getBeatIdxBefore,
+    getBeatsIndexesInclusive,
     getBpm,
     getItemLengthBeats,
     getItemStartBeats,
@@ -112,6 +113,7 @@ type SequencerUIState = {
     rightExtent: number;
     rightExtentAnimated: number;
     rightExtentIdx: number;
+    cursorIdx: number;
     notesMap: Map<string, NoteMapEntry>;
     noteOrder: NoteMapEntry[];
     commandsList: CommandItem[]
@@ -138,6 +140,7 @@ function newSequencerState(): SequencerUIState {
         rightExtent: 0,
         rightExtentAnimated: 0,
         rightExtentIdx: 0,
+        cursorIdx: 0,
         notesMap: new Map(),
         noteOrder: [],
         commandsList: [],
@@ -179,7 +182,9 @@ export function imSequencer(ctx: GlobalContext) {
 
         const tl = sequencer._currentChart.timeline;
 
-        [s.leftExtentIdx, s.rightExtentIdx] = getBeatsIndexes(
+        s.cursorIdx = getBeatIdxBefore(chart, cursorStartBeats);
+
+        [s.leftExtentIdx, s.rightExtentIdx] = getBeatsIndexesInclusive(
             sequencer._currentChart,
             s.leftExtentAnimated,
             s.rightExtentAnimated,
@@ -246,7 +251,7 @@ export function imSequencer(ctx: GlobalContext) {
         });
 
         // check if we've got any new things in the set, and then play them.
-        if (!sequencer.isPlaying) {
+        {
             for (const note of s.itemsUnderCursor) {
                 if (!isItemUnderCursor(note, cursorStartBeats)) {
                     s.itemsUnderCursor.delete(note);
@@ -266,7 +271,9 @@ export function imSequencer(ctx: GlobalContext) {
                 }
             }
 
-            previewNotes(ctx, s.notesToPlay);
+            if (!sequencer.isPlaying) {
+                previewNotes(ctx, s.notesToPlay);
+            }
         }
     }
     enableIm();
@@ -392,7 +399,8 @@ export function imSequencer(ctx: GlobalContext) {
                     if (x < 0) continue;
 
                     nextListRoot();
-                    imSequencerVerticalLine(s, x, cssVars.bg2, 1);
+                    const thickness = Math.abs(x % 1) < 0.0001 ? 2 : 1;
+                    imSequencerVerticalLine(s, x, cssVars.bg2, thickness);
                 }
 
                 // cursor start vertical line
@@ -430,7 +438,8 @@ export function imSequencer(ctx: GlobalContext) {
             } imEnd();
         } imEnd();
         imBeginLayout(ROW | JUSTIFY_CENTER); {
-            const text = timelinePosToString(sequencer.cursorStart, sequencer.cursorDivisor);
+            const idxText = "note " + s.cursorIdx;
+            const timelinePosText = timelinePosToString(sequencer.cursorStart, sequencer.cursorDivisor);
             imBeginLayout(FLEX1); {
                 imBeginList();
                 if (nextListRoot() && isSaving(ctx)) {
@@ -438,7 +447,7 @@ export function imSequencer(ctx: GlobalContext) {
                 }
                 imEndList();
             } imEnd();
-            imTextSpan(text);
+            imTextSpan(idxText + " | " + timelinePosText);
             imBeginLayout(FLEX1 | ROW | JUSTIFY_END); {
                 imBeginList();
                 if (nextListRoot() && sequencer.notesToPreview.length > 0) {

@@ -172,7 +172,7 @@ export function getBeatIdxBefore(chart: SequencerChart, beats: number) {
     return endIdx;
 }
 
-export function getBeatsIndexes(chart: SequencerChart, startBeats: number, endBeats: number): [number, number] {
+export function getBeatsIndexesInclusive(chart: SequencerChart, startBeats: number, endBeats: number): [number, number] {
     const min = Math.min(startBeats, endBeats);
     const max = Math.max(startBeats, endBeats);
 
@@ -184,6 +184,10 @@ export function getBeatsIndexes(chart: SequencerChart, startBeats: number, endBe
     }
 
     return [startIdx, endIdx];
+}
+
+export function getBeatsIndexesExclusive(chart: SequencerChart, startBeats: number, endBeats: number): [number, number] {
+    return getBeatsIndexesInclusive(chart, startBeats, endBeats  - 0.001);
 }
 
 

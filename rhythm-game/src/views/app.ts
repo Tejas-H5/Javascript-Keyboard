@@ -267,7 +267,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
     if (shiftPressed && (hasShiftLeft || hasShiftRight)) {
         const amount = hasShiftRight ? 1 : -1;
 
-        if (sequencer.isRangeSelecting) {
+        if (hasRangeSelection(sequencer)) {
             shiftSelectedItems(sequencer, amount)
         } else {
             shiftItemsAfterCursor(sequencer, amount);
@@ -278,7 +278,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 
     if (shiftPressed && (vAxis !== 0)) {
         const amount = vAxis > 0 ? 1 : -1;
-        if (sequencer.isRangeSelecting) {
+        if (hasRangeSelection(sequencer)) {
             transposeSelectedItems(sequencer, amount)
         } 
 
@@ -815,17 +815,17 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
 
     let vAxis = 0;
     if (key === "ArrowUp") {
-        vAxis = -1;
-    } else if (key === "ArrowDown") {
         vAxis = 1;
+    } else if (key === "ArrowDown") {
+        vAxis = -1;
     }
     dst.vAxis = vAxis;
 
     let hAxis = 0;
     if (key === "ArrowRight") {
-        hAxis = -1;
-    } else if (key === "ArrowLeft") {
         hAxis = 1;
+    } else if (key === "ArrowLeft") {
+        hAxis = -1;
     }
     dst.hAxis = hAxis;
 }

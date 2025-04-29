@@ -4,7 +4,7 @@
 // NOTE: seems like web workers are invoked as soon as they are createad
 export function newWebWorker(args: any[], fn: Function, options? : NewFunctionUrlOptions) {
     // create the web worker dynamically
-    const blobURL = newFunctionUrl(args, fn, options);
+    const blobURL = newFunctionUrl([], args, fn, options);
     const worker = new Worker( blobURL );
     URL.revokeObjectURL( blobURL );
     return worker;
@@ -16,12 +16,39 @@ export type NewFunctionUrlOptions = {
     includeEsBuildPolyfills: boolean;
 };
 
-// This is a hack that allows usage of web-workers in a single-file-app that can be downloaded and ran locally.
-export function newFunctionUrl(args: any[], fn: Function, options? : NewFunctionUrlOptions) {
-    // make a function that we can pass in some constants to
-    const argsToString = args.map(a => a.toString()).join(",");
 
-    let src = '(' + fn.toString() + `)(${argsToString})`;
+export type UrlFnDependency = Function | {
+    name: string;
+    value: any; // this gets stringified
+};
+
+// This is a hack that allows usage of web-workers in a single-file-app that can be downloaded and ran locally.
+// This is otherwise not possible with Vite web worker imports.
+export function newFunctionUrl(
+    /** functions get stringified directly. Be sure that they are named the same in {@link fn} as they are here */
+    dependencies: UrlFnDependency[], 
+    args: any[], 
+    fn: Function, 
+    options? : NewFunctionUrlOptions
+) {
+    // make a function that we can pass in some constants to
+    const argsToString = args.join(",");
+
+    let src = `
+
+function main() {
+// These dependencies were passed on externally, and stringified in an automated manner
+${dependencies.map(a => {
+    if(typeof a === "function") return a.toString();
+    return `var ${a.name} = ${a.value};`
+}).join("\n\n")}
+
+// This is the actual code we want to run. It too was staringified in an automated manner
+(${fn.toString()})(${argsToString});
+
+}
+main();
+`
 
     if (options?.includeEsBuildPolyfills) {
         // These are copy-pasted, and may change in the future if we update vite.
@@ -32,5 +59,8 @@ export function newFunctionUrl(args: any[], fn: Function, options? : NewFunction
     }
 
     const fnBlob =  new Blob([ src ], { type: 'application/javascript' });
+
+    console.log(src)
+
     return URL.createObjectURL(fnBlob);
 }

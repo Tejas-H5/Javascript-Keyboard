@@ -1,6 +1,5 @@
-import { newFunctionUrl } from "src/utils/web-workers";
 import { MusicNote } from "src/utils/music-theory-utils";
-import { DspInfo, DspLoopMessage, DSPPlaySettings, registerDspLoopClass } from "./dsp-loop";
+import { DspInfo, DspLoopMessage, DSPPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
 import { getAllSamples } from "src/samples/all-samples";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
@@ -160,14 +159,14 @@ export async function initDspLoopInterface({
     render(): void;
 }) {
     // registers the DSP loop. we must communicate with this thread through a Port thinggy
-    const url = newFunctionUrl([], registerDspLoopClass, {
-        includeEsBuildPolyfills: true
-    });
+    const url = getDspLoopClassUrl();
     await audioCtx.audioWorklet.addModule(url);
     // URL.revokeObjectURL(url);
     const dspLoopNode = new AudioWorkletNode(audioCtx, "dsp-loop");
     dspLoopNode.onprocessorerror = (e) => {
-        console.error("dsp process error:", e);
+        // @ts-expect-error it does exist tho
+        const message = e.message;
+        console.error("dsp process error:", message, e);
     }
     dspLoopNode.connect(audioCtx.destination);
     dspPort = dspLoopNode.port;

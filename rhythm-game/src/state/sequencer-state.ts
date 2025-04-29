@@ -1,7 +1,7 @@
 import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
 import { unreachable } from "src/utils/assert";
 import { compareMusicNotes, getNoteHashKey, MusicNote, notesEqual, rebaseBeats } from "src/utils/music-theory-utils";
-import { TimelineItemBpmChange, CommandItem, getBeatIdxAfter, getBeatsForTime, getBeatsIndexes, getBpmChangeItemBeforeBeats, getItemEndBeats, getItemEndTime, getItemIdxAtBeat, getItemStartBeats, getItemStartTime, getTimeForBeats, gtBeats, gteBeats, ltBeats, lteBeats, newTimelineItemNote, NoteItem, SequencerChart, sequencerChartRemoveItems, sequencerChartShiftItems, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, TimelineItem, transposeItems, sequencerChartInsertItems, getBeatIdxBefore } from "src/state/sequencer-chart";
+import { TimelineItemBpmChange, CommandItem, getBeatIdxAfter, getBeatsForTime, getBeatsIndexesInclusive, getBpmChangeItemBeforeBeats, getItemEndBeats, getItemEndTime, getItemIdxAtBeat, getItemStartBeats, getItemStartTime, getTimeForBeats, gtBeats, gteBeats, ltBeats, lteBeats, newTimelineItemNote, NoteItem, SequencerChart, sequencerChartRemoveItems, sequencerChartShiftItems, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, TimelineItem, transposeItems, sequencerChartInsertItems, getBeatIdxBefore, getBeatsIndexesExclusive } from "src/state/sequencer-chart";
 
 export const SEQUENCER_ROW_COLS = 8;
 
@@ -66,7 +66,7 @@ export function hasRangeSelection(state: SequencerState) {
 export function getSelectionStartEndIndexes(state: SequencerState): [number, number] {
     const a = getRangeSelectionStartBeats(state);
     const b = getRangeSelectionEndBeats(state);
-    return getBeatsIndexes(state._currentChart, a, b);
+    return getBeatsIndexesExclusive(state._currentChart, a, b);
 }
 
 export function clearRangeSelection(state: SequencerState, goBackToStart: boolean) {
