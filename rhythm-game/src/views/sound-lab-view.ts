@@ -1,0 +1,302 @@
+import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
+import { dspProcess, dspReceiveMessage, newDspState } from "src/dsp/dsp-loop";
+import { getCurrentPlaySettings, getDspInfo, pressKey } from "src/dsp/dsp-loop-interface";
+import { getKeyForKeyboardKey } from "src/state/keyboard-state";
+import { imEnd, imMemo, imState, imStateInline, imTextSpan } from "src/utils/im-dom-utils";
+import { inverseLerp, lerp, max, min } from "src/utils/math-utils";
+import { getNoteIndex } from "src/utils/music-theory-utils";
+import { GlobalContext, setViewChartSelect } from "./app";
+import { imKeyboard } from "./keyboard";
+import { COL, FIXED, FLEX1, H3, imBeginLayout, JUSTIFY_CENTER, ROW } from "./layout";
+import { getCurrentTheme } from "./styling";
+import { assert } from "src/utils/assert";
+
+
+function getExtentX(plot: PlotState): number {
+    const { originalExtentX: originalExtent, zoom } = plot;
+    return originalExtent / zoom;
+}
+
+function getExtentY(plot: PlotState): number {
+    const { originalExtentY: originalExtent, zoom } = plot;
+    return originalExtent / zoom;
+}
+
+function getDim(plot: PlotState): number {
+    const { width, height } = plot;
+    return max(width, height);
+}
+
+function getOtherDim(plot: PlotState): number {
+    const { width, height } = plot;
+    return min(width, height);
+}
+
+function getMaxDim(plot: PlotState): number {
+    const { width, height } = plot;
+    return max(width, height);
+}
+
+function getMinDim(plot: PlotState): number {
+    const { width, height } = plot;
+    return max(width, height);
+}
+
+function getCanvasElementX(plot: PlotState, x: number): number {
+    const { posX } = plot;
+    const extent = getExtentX(plot);
+    const x0Extent = posX - extent;
+    const x1Extent = posX + extent;
+    return (inverseLerp(x, x0Extent, x1Extent) * getDim(plot));
+}
+
+
+function screenToCanvas(plot: PlotState, val: number): number {
+    return val * plot.dpi;
+}
+
+function canvasToScreen(plot: PlotState, val: number): number {
+    return val / plot.dpi;
+}
+
+function getCanvasElementY(plot: PlotState, y: number): number {
+    const { posY } = plot;
+    const extent = getExtentY(plot);
+    const y0Extent = posY - extent;
+    const y1Extent = posY + extent;
+
+    const dim = getDim(plot);
+    const other = getOtherDim(plot);
+    const diff = dim - other;
+
+    return (inverseLerp(y, y0Extent, y1Extent) * dim - (diff / 2));
+}
+
+function getPlotX(plot: PlotState, x: number): number {
+    const { posX } = plot;
+    const extent = getExtentX(plot);
+    const x0Extent = posX - extent;
+    const x1Extent = posX + extent;
+
+    return lerp(x0Extent, x1Extent, (x / getDim(plot)));
+}
+
+function getPlotLength(plot: PlotState, l: number): number {
+    return getPlotX(plot, l) - getPlotX(plot, 0);
+}
+
+function getCanvasElementLength(plot: PlotState, l: number): number {
+    return getCanvasElementX(plot, l) - getCanvasElementX(plot, 0);
+}
+
+function getPlotY(plot: PlotState, y: number): number {
+    const { posY } = plot;
+    const extent = getExtentY(plot);
+    const y0Extent = posY - extent;
+    const y1Extent = posY + extent;
+
+    const dim = getDim(plot);
+    const other = getOtherDim(plot);
+    const diff = dim - other;
+
+
+    // NOTE: needs to be an exact inverse of getCanvasElementY
+    // for zooming in and out to work properly
+    return lerp(y0Extent, y1Extent, (((y) + (diff / 2)) / getDim(plot)));
+}
+
+function isPointOnScreen(plot: PlotState, x: number, y: number) {
+    const { posX, posY } = plot;
+
+    const extentX = getExtentX(plot);
+    const extentY = getExtentY(plot);
+
+    const y0Extent = posY - extentY;
+    const y1Extent = posY + extentY;
+    const x0Extent = posX - extentX;
+    const x1Extent = posX + extentX;
+
+    return (x >= x0Extent && x <= x1Extent) &&
+        (y >= y0Extent && y <= y1Extent);
+}
+
+type PlotState = {
+    autofit: boolean;
+    overlay: boolean;
+    posX: number;
+    posY: number;
+    originalExtentX: number;
+    originalExtentY: number;
+    zoom: number;
+    width: number;
+    height: number;
+    dpi: number;
+    maximized: boolean;
+    isPanning: boolean;
+    canZoom: boolean;
+    scrollY: number;
+}
+
+
+function newPlotState(): PlotState {
+    return {
+        scrollY: 0,
+        overlay: true,
+        autofit: true,
+        posX: 0,
+        posY: 0,
+        zoom: 1,
+        originalExtentX: 0,
+        originalExtentY: 0,
+        width: 0,
+        height: 0,
+        dpi: 0,
+        maximized: false,
+        isPanning: false,
+        canZoom: false,
+    };
+}
+
+
+export function imSoundLab(ctx: GlobalContext) {
+    const state = imStateInline(() => {
+        return {
+            dsp: newDspState(),
+            output: [[new Float32Array()]],
+            t: 0,
+        }
+    });
+
+    let soundPlayed = false;
+
+    if (ctx.keyPressState) {
+        const { key } = ctx.keyPressState;
+
+        let handled = false;
+
+        if (key === "Escape") {
+            setViewChartSelect(ctx);
+            handled = true;
+        } else if (key === "ArrowLeft") {
+            state.t--;
+            handled = true;
+        } else if (key === "ArrowRight") {
+            state.t++;
+            handled = true;
+        }
+
+        if (!handled) {
+            const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, key);
+            if (instrumentKey) {
+                if (!ctx.keyPressState.isRepeat) {
+                    pressKey(instrumentKey.index, instrumentKey.musicNote, ctx.keyPressState.isRepeat);
+                    soundPlayed = true;
+                }
+                handled = true;
+            }
+        }
+
+        if (handled) {
+            ctx.keyPressState.e.preventDefault();
+            ctx.keyPressState = null;
+        }
+    }
+
+    const info = getDspInfo();
+    const sampleRate = info.sampleRate;
+    const sampleRateChanged = imMemo(sampleRate);
+    const tChanged = imMemo(state.t);
+    const infoCurrentlyPlayingLengthChanged = imMemo(info.currentlyPlaying.length);
+
+    const NUM_FLOATS = 1000;
+
+    if (
+        sampleRateChanged ||
+        tChanged ||
+        soundPlayed ||
+        soundPlayed ||
+        infoCurrentlyPlayingLengthChanged
+    ) {
+        if (sampleRate !== 1) {
+
+            console.log("new dsp loaded");
+
+            // output[something idk what it is][channel][sample] lmao
+            state.output = [[new Float32Array(NUM_FLOATS)]];
+            state.dsp = newDspState();
+
+            state.dsp.sampleRate = sampleRate;
+
+            for (const [keyId] of info.currentlyPlaying) {
+                const key = ctx.keyboard.flatKeys[keyId];
+                assert(key.index === keyId);
+
+                if (key.musicNote.noteIndex !== undefined) {
+                    dspReceiveMessage(state.dsp, {
+                        playSettings: getCurrentPlaySettings(),
+                        setOscilatorSignal: [keyId, {
+                            noteIndex: key.musicNote.noteIndex,
+                            signal: 1
+                        }]
+                    });
+                }
+            }
+
+            for (let i = 0; i <= state.t; i++) {
+                dspProcess(state.dsp, state.output);
+            }
+        }
+    }
+
+    imBeginLayout(FIXED | COL); {
+        imBeginLayout(H3 | ROW | JUSTIFY_CENTER); {
+            imTextSpan("Sound lab t=" + state.t + " sample=" + state.t * NUM_FLOATS);
+        } imEnd();
+        imBeginLayout(FIXED | COL); {
+            imBeginLayout(FLEX1); {
+                const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(); {
+                    const plotState = imState(newPlotState);
+                    plotState.width = width;
+                    plotState.height = height;
+                    plotState.dpi = dpi;
+
+                    ctx.clearRect(0, 0, width, height);
+
+                    const samples = state.output[0][0];
+                    plotState.posX = samples.length / 2;
+                    plotState.posY = 0;
+                    plotState.originalExtentX = samples.length;
+                    plotState.originalExtentY = 4;
+
+                    let x0 = 0;
+                    let y0 = samples[0];
+                    const x0Plot = getCanvasElementX(plotState, x0);
+                    const y0Plot = getCanvasElementY(plotState, y0);
+                    ctx.beginPath(); {
+                        ctx.moveTo(x0Plot, y0Plot);
+                        const theme = getCurrentTheme();
+                        ctx.strokeStyle = theme.fg.toString();
+                        ctx.lineWidth = 2;
+                        for (let i = 1; i < samples.length; i++) {
+                            const x1 = i;
+                            const y1 = samples[i];
+
+                            const x1Plot = getCanvasElementX(plotState, x1);
+                            const y1Plot = getCanvasElementY(plotState, y1);
+
+                            ctx.lineTo(x1Plot, y1Plot);
+
+                            x0 = x1; y0 = y1;
+                        }
+                        ctx.stroke();
+                    }
+                    ctx.closePath();
+
+                } imEndCanvasRenderingContext2D();
+            } imEnd();
+            imBeginLayout(FLEX1 | ROW | JUSTIFY_CENTER); {
+                imKeyboard(ctx);
+            } imEnd();
+        } imEnd();
+    } imEnd();
+}

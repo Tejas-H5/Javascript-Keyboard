@@ -46,6 +46,10 @@ export function ChartSelect(ctx: GlobalContext) {
             if (imButton("Edit")) {
                 setViewEditChart(ctx);
             }
+
+            if (imButton("The lab")) {
+                setViewEditChart(ctx);
+            }
         } imEnd();
     } imEnd();
 }

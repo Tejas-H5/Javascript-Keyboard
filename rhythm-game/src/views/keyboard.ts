@@ -13,6 +13,7 @@ import { GlobalContext } from "./app";
 import { timelineHasNoteAtPosition } from "src/state/sequencer-chart";
 import { GAP5, imBeginAbsolute, imBeginLayout, imBeginSpace, NOT_SET, PX, ROW } from "./layout";
 import { cssVars } from "./styling";
+import { APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART } from "src/state/ui-state";
 
 
 // TODO: KEYBOARD_OFFSETS
@@ -63,7 +64,9 @@ export function imKeyboard(ctx: GlobalContext) {
                         const signal = getCurrentOscillatorGain(key.index);
 
                         const sequencer = ctx.sequencer;
-                        const hasNote = timelineHasNoteAtPosition(
+
+                        const isEditOrPlay = ctx.ui.currentView === APP_VIEW_EDIT_CHART || ctx.ui.currentView === APP_VIEW_PLAY_CHART;
+                        const hasNote = isEditOrPlay && timelineHasNoteAtPosition(
                             sequencer._currentChart,
                             sequencer.cursorStart, sequencer.cursorDivisor,
                             key.musicNote,
@@ -71,10 +74,7 @@ export function imKeyboard(ctx: GlobalContext) {
 
                         const PRESS_EFFECT = 5;
 
-                        // later, this press effect should use the signal when actually playing.
-                        const pressEffect = PRESS_EFFECT *
-                            // Math.max(signal, hasNote ? 1 : 0);
-                            (hasNote ? 1 : 0);
+                        const pressEffect = PRESS_EFFECT * Math.max(signal, hasNote ? 1 : 0);
 
                         imBeginLayout(); {
                             if (imInit()) {

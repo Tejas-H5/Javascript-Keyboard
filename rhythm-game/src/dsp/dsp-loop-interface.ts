@@ -17,6 +17,7 @@ const audioCtx = new AudioContext()
 const playSettings: DSPPlaySettings = {
     attack: 0.01,
     decay: 0.5,
+    attackVolume: 0.5,
     sustainVolume: 0.5,
     sustain: 0.25,
     isUserDriven: false,
@@ -26,6 +27,7 @@ const dspInfo: DspInfo = {
     currentlyPlaying: [],
     scheduledPlaybackTime: 0,
     isPaused: false,
+    sampleRate: 1,
 };
 let scheduledVolume = 1;
 
@@ -36,6 +38,10 @@ function unreachable() {
 export function updatePlaySettings(fn: (s: DSPPlaySettings) => void) {
     fn(playSettings);
     audioLoopDispatch({ playSettings });
+}
+
+export function getCurrentPlaySettings() {
+    return playSettings;
 }
 
 export function setScheduledPlaybackVolume(value: number) {
@@ -203,8 +209,12 @@ export async function initDspLoopInterface({
             rerender = true;
         }
 
-        if (data.isPaused !== undefined && data.isPaused !== dspInfo.isPaused) {
+        if (data.isPaused !== undefined) {
             dspInfo.isPaused = data.isPaused;
+        }
+
+        if (data.sampleRate !== undefined) {
+            dspInfo.sampleRate = data.sampleRate;
         }
 
         if (rerender) {

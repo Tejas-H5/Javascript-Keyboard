@@ -61,8 +61,8 @@ export function msToBeats(ms: number, bpm: number): number {
 // Each note after C0 (in half-steps) multiplies this frequency by the 12th root of two.
 // TODO: source. because i did not make it up, actually
 
-export const C_0 = 16.35;;
-export const TWELVTH_ROOT_OF_TWO = 1.0594631;
+export const C_0 = 16.35;
+export const TWELVTH_ROOT_OF_TWO = Math.pow(2, 1/12);
 
 export function getNoteFrequency(index: number) {
     return C_0 * Math.pow(TWELVTH_ROOT_OF_TWO, index);

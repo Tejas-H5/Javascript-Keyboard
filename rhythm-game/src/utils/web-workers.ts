@@ -60,7 +60,5 @@ main();
 
     const fnBlob =  new Blob([ src ], { type: 'application/javascript' });
 
-    console.log(src)
-
     return URL.createObjectURL(fnBlob);
 }

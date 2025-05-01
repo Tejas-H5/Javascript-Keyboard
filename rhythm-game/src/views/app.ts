@@ -52,7 +52,7 @@ import {
     shiftSelectedItems,
     transposeSelectedItems,
 } from "src/state/sequencer-state";
-import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
+import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
 import { arraySwap, filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import {
@@ -75,6 +75,7 @@ import { PlayView as imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
 import { ABSOLUTE, FIXED, H2, imBeginLayout, ROW } from "./layout";
 import { cnApp } from "./styling";
+import { imSoundLab } from "./sound-lab-view";
 
 
 export type GlobalContext = {
@@ -82,6 +83,7 @@ export type GlobalContext = {
     sequencer: SequencerState;
     ui: UIState;
     savedState: SavedState;
+    keyPressState: KeyPressState | null;
     render(): void;
 }
 
@@ -93,6 +95,7 @@ export function newGlobalContext(saveState: SavedState) {
         sequencer: newSequencerState(firstChart),
         ui: newUiState(),
         savedState: saveState,
+        keyPressState: null,
         // TODO: delete
         render: () => {},
     };
@@ -163,10 +166,15 @@ function handlePlayChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 }
 
 function handleChartSelectKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
-    const { key } = keyPressState;
+    const { key, keyUpper } = keyPressState;
 
-    if (key === "E" || key === "e") {
+    if (keyUpper === "E") {
         setViewEditChart(ctx);
+        return true;
+    }
+
+    if (keyUpper === "L") {
+        setViewSoundLab(ctx);
         return true;
     }
 
@@ -517,6 +525,11 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
     return false;
 }
 
+function handleSoundLabKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
+    // NOTE: has been moved into the component
+    return false;
+}
+
 
 export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
     const loadSaveModal = ctx.ui.loadSave.modal;
@@ -611,6 +624,10 @@ function handleKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolea
         return handleEditChartKeyDown(ctx, keyPressState);
     }
 
+    if (ui.currentView === APP_VIEW_SOUND_LAB) {
+        return handleSoundLabKeyDown(ctx, keyPressState);
+    }
+
     throw new Error("Unhandled view - " + ui.currentView);
 }
 
@@ -698,6 +715,10 @@ export function setViewEditChart(ctx: GlobalContext) {
     setCurrentView(ctx, APP_VIEW_EDIT_CHART);
 }
 
+export function setViewSoundLab(ctx: GlobalContext) {
+    setCurrentView(ctx, APP_VIEW_SOUND_LAB);
+}
+
 export function setViewTestCurrentChart(ctx: GlobalContext) {
     ctx.ui.playView.isTesting = true;
 
@@ -772,6 +793,8 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
 }
 
 type KeyPressState = {
+    e: KeyboardEvent;
+
     key: string;
     keyUpper: string;
     ctrlPressed: boolean,
@@ -786,8 +809,9 @@ type KeyPressState = {
     isPlayPausePressed: boolean;
 };
 
-function newKeyPressState(): KeyPressState {
+function newKeyPressState(e: KeyboardEvent): KeyPressState {
     return {
+        e,
         key: "",
         keyUpper: "",
         ctrlPressed: false,
@@ -833,17 +857,20 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
 export function imApp(ctx: GlobalContext) {
     const { ui } = ctx;
 
-    const keyPressState = newKeyPressState();
-    const keyReleaseState = newKeyPressState();
-    
     const { keyDown, keyUp, blur } = getKeyEvents();
+
+    ctx.keyPressState = null;
+
     if (keyDown) {
+        const keyPressState = newKeyPressState(keyDown);
+        ctx.keyPressState = keyPressState;
         getKeyPressState(keyDown, keyPressState);
         if (handleKeyDown(ctx, keyPressState)) {
             keyDown.preventDefault();
         }
     }
     if (keyUp) {
+        const keyReleaseState = newKeyPressState(keyUp);
         getKeyPressState(keyUp, keyReleaseState);
         if (handleKeyUp(ctx, keyReleaseState)) {
             keyUp.preventDefault();
@@ -870,6 +897,7 @@ export function imApp(ctx: GlobalContext) {
             case APP_VIEW_CHART_SELECT: { imChartSelect(ctx); } break;
             case APP_VIEW_PLAY_CHART: { imPlayView(ctx); } break;
             case APP_VIEW_EDIT_CHART: { imEditView(ctx); } break;
+            case APP_VIEW_SOUND_LAB: { imSoundLab(ctx); } break;
             default: {
                 imBeginLayout(H2); {
                     imTextSpan(`TODO: implement ${ui.currentView} ...`);
