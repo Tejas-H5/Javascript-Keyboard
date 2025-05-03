@@ -616,7 +616,7 @@ function imStateInternal<T>(supplier: () => T, skipSupplierCheck: boolean): T {
 
     const r = getCurrentRoot();
 
-    let result: T | undefined;
+    let result: T;
     const items = r.items;
     const idx = ++r.itemsIdx;
     if (idx < items.length) {
@@ -784,9 +784,21 @@ function imEndInternal(
         }
     } else if (r) {
         // close out this UI Root.
-        //
-        if (!isDerived(r)) {
-            deferClickEventToParentInternal(r);
+        
+        if (isDerived(r)) {
+            // Defer the mouse events upwards, so that parent elements can handle it if they want
+            const el = r.root;
+            const parent = el.parentNode;
+
+            if (mouse.clickedElement === el) {
+                mouse.clickedElement = parent;
+            }
+            if (mouse.lastClickedElement === el) {
+                mouse.lastClickedElement = parent;
+            }
+            if (mouse.hoverElement === el) {
+                mouse.hoverElement = parent;
+            }
         }
 
         itemsRendered += r.items.length;
@@ -1301,21 +1313,6 @@ export function getHoveredElement() {
 export function deferClickEventToParent() {
 }
 
-function deferClickEventToParentInternal(r: UIRoot) {
-    const el = r.root;
-    const parent = el.parentNode;
-
-    if (mouse.clickedElement === el) {
-        mouse.clickedElement = parent;
-    }
-    if (mouse.lastClickedElement === el) {
-        mouse.lastClickedElement = parent;
-    }
-    if (mouse.hoverElement === el) {
-        mouse.hoverElement = parent;
-    }
-}
-
 function setClickedElement(el: object | null) {
     mouse.clickedElement = el;
     mouse.lastClickedElement = el;
@@ -1383,7 +1380,7 @@ function initializeImEvents() {
         keyboardEvents.keyUp = e;
         doRender();
     });
-    document.addEventListener("blur", () => {
+    window.addEventListener("blur", () => {
         resetMouseState(mouse, true);
 
         resetKeyboardState(keyboardEvents);

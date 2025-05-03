@@ -5,11 +5,12 @@
 
 import { newFunctionUrl } from "src/utils/web-workers";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
-import { clamp, lerp, max, min, moveTowards } from "src/utils/math-utils";
+import { clamp, derivativeF32, lerp, max, min, moveTowards } from "src/utils/math-utils";
 import { C_0, getNoteFrequency, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
+import { NoteMapEntry } from "src/state/sequencer-state";
 
 export type DSPPlaySettings = {
     attack: number;
@@ -75,19 +76,6 @@ export type DspInfo = {
 
 const OSC_GAIN_AWAKE_THRESHOLD = 0.001;
 
-function normalize(output: Float32Array) {
-    let maxSample = 0;
-    for (let i = 0; i < output.length; i++) {
-        maxSample = max(maxSample, output[i]);
-    }
-
-    if (maxSample > 1) {
-        for (let i = 0; i < output.length; i++) {
-            output[i] = output[i] / maxSample;
-        }
-    }
-}
-
 export function updateOscillator(osc: PlayingOscillator, s: DspState) {
     const sampleRate = s.sampleRate;
     const { attack, attackVolume, decay, sustain, sustainVolume } = s.playSettings;
@@ -131,12 +119,50 @@ export function updateOscillator(osc: PlayingOscillator, s: DspState) {
         let val = 0;
         let total = 0;
 
-        let n = 3;
-        for (let i = 1; i <= n; i++) {
-            // if (i % 2 === 0) continue;
+        let n = 4;
+        let sign = 1;
 
-            let m = 1 / (i * i * i);
-            let x = m * sin(t * f * i)
+        for (let i = 1; i <= n; i++) {
+            if (i % 2 === 0) continue;
+
+            if (1) {
+
+                let m = 1 / (i);
+
+                const f2 = f * (i) ;
+                let x = m * sin(t * f2);
+
+                // x *= sign;
+                // sign = -sign;
+
+                val += x;
+                total += m;
+            }
+        }
+
+        state.value = val * state.gain / total;
+    }
+}
+
+
+/**
+
+// Funnni
+{
+        const t = state.time;
+        const f = state._frequency;
+
+        let val = 0;
+        let total = 0;
+
+        let n = 10;
+        for (let i = 1; i <= n; i++) {
+
+            let m = 1 
+
+            const f2 = f * (1+ i) / (1 + t);
+
+            let x = m * sin(t * f2)
 
             // x *= sign;
             // sign = -sign;
@@ -147,7 +173,35 @@ export function updateOscillator(osc: PlayingOscillator, s: DspState) {
 
         state.value = val * state.gain / total;
     }
-}
+
+// computer noises
+    {
+        const t = state.time;
+        const f = state._frequency;
+
+        let val = 0;
+        let total = 0;
+
+        let n = 10;
+        for (let i = 1; i <= n; i++) {
+
+            let m = 1 
+
+            const f2 = Math.pow(f, i);
+
+            let x = m * sin(t * f2)
+
+            // x *= sign;
+            // sign = -sign;
+
+            val += x;
+            total += m;
+        }
+
+        state.value = val * state.gain / total;
+    }
+
+*/
 
 function updateSample(osc: PlayingSampleFile, allSamples: Record<string, number[]>) {
     const { inputs, state } = osc;
@@ -196,6 +250,20 @@ function getMessageForMainThread(s: DspState, signals = true) {
 
 function sin(t: number) {
     return Math.sin(t * Math.PI * 2);
+}
+
+function absMin(a: number, b: number) {
+    if (Math.abs(a) > Math.abs(b)) {
+        return b;
+    }
+    return a;
+}
+
+function absMax(a: number, b: number) {
+    if (Math.abs(a) < Math.abs(b)) {
+        return b;
+    }
+    return a;
 }
 
 function sawtooth(t: number) {
@@ -472,6 +540,10 @@ function getOrCreatePlayingOscillator(s: DspState, id: number): PlayingOscillato
     const newOsc = newPlayingOscilator();
     s.playingOscillators.push([id, newOsc]);
     newOsc.state.time = 0;
+    // Keep every single oscilator in-phase to avoid interference artifacts
+    if (s.playingOscillators.length > 0) {
+        newOsc.state.time = s.playingOscillators[0][1].state.time;
+    }
 
     return newOsc;
 }
@@ -513,7 +585,7 @@ export function dspProcess(s: DspState, outputs: Float32Array[][]) {
         output[0][i] = processSample(s);
     }
     // it doesn't work too good, actually :(
-    // normalize(output[0]);
+    // normalizeIfGreaterThanOne(output[0]);
 
     // copy first channel outputs to other outputs
     for (let ch = 1; ch < output.length; ch++) {
@@ -605,6 +677,20 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
     }
 }
 
+export function normalizeIfGreaterThanOne(output: Float32Array) {
+    let maxSample = 0;
+    for (let i = 0; i < output.length; i++) {
+        maxSample = max(maxSample, output[i]);
+    }
+
+    if (maxSample > 1) {
+        for (let i = 0; i < output.length; i++) {
+            output[i] = output[i] / maxSample;
+        }
+    }
+}
+
+
 // If a particular note or sample was scheduled, we can give a user ownership of that note as soon as they 
 // send a signal to it manually
 function giveUserOwnership(n: PlayingOscillator | PlayingSampleFile) {
@@ -631,6 +717,8 @@ export function getDspLoopClassUrl(): string {
         setRngSeed,
         step,
         sin,
+        absMin,
+        absMax,
         sawtooth,
         triangle,
         square,
@@ -638,6 +726,8 @@ export function getDspLoopClassUrl(): string {
         getPlayingOscillator,
         giveUserOwnership,
         dspProcess,
+        normalizeIfGreaterThanOne,
+        derivativeF32,
         processSample,
         getOrCreatePlayingSample,
         getOrCreatePlayingOscillator,

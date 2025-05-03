@@ -60,3 +60,39 @@ export function lessThanOrEqualTo(a: number, b: number, tolerance: number) {
 export function greaterThanOrEqualTo(a: number, b: number, tolerance: number) {
     return a > b - tolerance;
 }
+
+export function normalizeNegativeOneOneF32(output: Float32Array) {
+    let maxSample = 0;
+    for (let i = 0; i < output.length; i++) {
+        maxSample = max(maxSample, Math.abs(output[i]));
+    }
+
+    for (let i = 0; i < output.length; i++) {
+        output[i] = output[i] / maxSample;
+    }
+}
+
+export function arrayMax(output: Float32Array) {
+    let maxSample = -Infinity;
+    for (let i = 0; i < output.length; i++) {
+        maxSample = max(maxSample, output[i]);
+    }
+
+    return maxSample;
+}
+
+export function arrayMin(output: Float32Array) {
+    let minSample = Infinity;
+    for (let i = 0; i < output.length; i++) {
+        minSample = min(minSample, output[i]);
+    }
+
+    return minSample;
+}
+
+export function derivativeF32(src: Float32Array, dst: Float32Array) {
+    for (let i = 1; i < dst.length; i++) {
+        dst[i] = src[i] - src[i - 1];
+    }
+    dst[0] = dst[1];
+}

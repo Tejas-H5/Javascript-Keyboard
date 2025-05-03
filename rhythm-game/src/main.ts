@@ -8,7 +8,7 @@ import "./main.css";
 import { loadSaveState } from "./state/loading-saving-charts";
 import { stopPlaying } from "./state/playing-pausing";
 import { syncPlayback } from "./state/sequencer-state";
-import { imApp, newGlobalContext, setViewEditChart, setViewSoundLab } from "./views/app";
+import { imApp, newGlobalContext, setViewSoundLab } from "./views/app";
 import { initCnStyles } from "./utils/cn";
 import { imFpsCounterOutput, newFpsCounterState, startFpsCounter, stopFpsCounter } from "./components/fps-counter";
 
