@@ -16,7 +16,7 @@ export type ScheduledKeyPress = {
 const audioCtx = new AudioContext()
 const playSettings: DSPPlaySettings = {
     attack: 0.01,
-    decay: 0.5,
+    decay: 0.01,
     attackVolume: 0.5,
     sustainVolume: 0.5,
     sustain: 0.25,

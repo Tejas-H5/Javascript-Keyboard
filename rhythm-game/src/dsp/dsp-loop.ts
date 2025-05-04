@@ -5,7 +5,7 @@
 
 import { newFunctionUrl } from "src/utils/web-workers";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
-import { clamp, derivativeF32, lerp, max, min, moveTowards } from "src/utils/math-utils";
+import { clamp, derivative, lerp, max, min, moveTowards } from "src/utils/math-utils";
 import { C_0, getNoteFrequency, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
@@ -727,7 +727,7 @@ export function getDspLoopClassUrl(): string {
         giveUserOwnership,
         dspProcess,
         normalizeIfGreaterThanOne,
-        derivativeF32,
+        derivative,
         processSample,
         getOrCreatePlayingSample,
         getOrCreatePlayingOscillator,

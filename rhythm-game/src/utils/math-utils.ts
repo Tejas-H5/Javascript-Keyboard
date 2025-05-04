@@ -72,7 +72,7 @@ export function normalizeNegativeOneOneF32(output: Float32Array) {
     }
 }
 
-export function arrayMax(output: Float32Array) {
+export function arrayMax(output: number[] | Float32Array) {
     let maxSample = -Infinity;
     for (let i = 0; i < output.length; i++) {
         maxSample = max(maxSample, output[i]);
@@ -81,7 +81,7 @@ export function arrayMax(output: Float32Array) {
     return maxSample;
 }
 
-export function arrayMin(output: Float32Array) {
+export function arrayMin(output: number[] | Float32Array) {
     let minSample = Infinity;
     for (let i = 0; i < output.length; i++) {
         minSample = min(minSample, output[i]);
@@ -90,7 +90,7 @@ export function arrayMin(output: Float32Array) {
     return minSample;
 }
 
-export function derivativeF32(src: Float32Array, dst: Float32Array) {
+export function derivative(src: number[] | Float32Array, dst: number[] | Float32Array) {
     for (let i = 1; i < dst.length; i++) {
         dst[i] = src[i] - src[i - 1];
     }

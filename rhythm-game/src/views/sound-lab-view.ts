@@ -1,16 +1,15 @@
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
+import { imRangeSlider, newRangeSliderState } from "src/components/range-slider";
 import { dspProcess, dspReceiveMessage, newDspState } from "src/dsp/dsp-loop";
 import { getCurrentPlaySettings, getDspInfo, pressKey } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { assert } from "src/utils/assert";
-import { disableIm, enableIm, imEnd, imInit, imMemo, imMemoArray, imState, imStateInline, imTextSpan, setStyle } from "src/utils/im-dom-utils";
-import { arrayMax, arrayMin, clamp, derivativeF32, inverseLerp, lerp, max, min, normalizeNegativeOneOneF32 } from "src/utils/math-utils";
-import { GlobalContext, setViewChartSelect, setViewStartScreen } from "./app";
+import { disableIm, enableIm, imEnd, imInit, imMemo, imState, imStateInline, imTextSpan, isExcessEventRender, setStyle } from "src/utils/im-dom-utils";
+import { arrayMax, arrayMin, derivative, inverseLerp, lerp, max, min } from "src/utils/math-utils";
+import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
-import { COL, FIXED, FLEX1, H3, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, NOT_SET, PERCENT, PX, ROW } from "./layout";
+import { COL, EM, FIXED, FLEX1, H3, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, PERCENT, PX, ROW } from "./layout";
 import { cssVars, getCurrentTheme } from "./styling";
-import { normalizePath } from "vite";
-import { getNoteIndex } from "src/utils/music-theory-utils";
 
 
 function getExtentX(plot: PlotState): number {
@@ -160,35 +159,59 @@ function newPlotState(): PlotState {
 
 
 function drawSamples(
-    samples: Float32Array,
+    samples: number[] | Float32Array,
     plotState: PlotState,
     ctx: CanvasRenderingContext2D,
+    startIdx?: number,
+    len?: number,
 ) {
+    if (startIdx === undefined) {
+        startIdx = 0;
+    }
+
+    if (len === undefined) {
+        len = samples.length;
+    }
+
+    let endIdx = startIdx + len - 1;
+    if (endIdx >= samples.length) endIdx = samples.length - 1;
+    if (startIdx < 0) startIdx = 0;
+
+    len = endIdx - startIdx + 1;
+
     disableIm();
 
     const max = arrayMax(samples);
     const min = arrayMin(samples);
-    plotState.posX = samples.length / 2;
+    plotState.posX = startIdx + len / 2;
     plotState.posY = (min + max) / 2;
-    plotState.originalExtentX = samples.length / 2;
-    plotState.originalExtentY = max - min;
+    plotState.originalExtentX = len / 2;
+    plotState.originalExtentY = 2 * (max - min);
 
-    let x0 = 0;
-    let y0 = samples[0];
+    let x0 = startIdx;
+    let y0 = samples[startIdx];
+    let lastPlotX = 0, lastPlotY = 0;
     const x0Plot = getCanvasElementX(plotState, x0);
     const y0Plot = getCanvasElementY(plotState, y0);
 
     ctx.beginPath(); {
-        ctx.moveTo(x0Plot, y0Plot);
-        for (let i = 1; i < samples.length; i++) {
+        ctx.moveTo(Math.floor(x0Plot), Math.floor(y0Plot));
+        for (let i = startIdx + 1; i < startIdx + len; i++) {
             const x1 = i;
             const y1 = samples[i];
 
-            const x1Plot = getCanvasElementX(plotState, x1);
-            const y1Plot = getCanvasElementY(plotState, y1);
+            let x1Plot = getCanvasElementX(plotState, x1);
+            let y1Plot = getCanvasElementY(plotState, y1);
 
-            ctx.lineTo(x1Plot, y1Plot);
+            x1Plot = Math.floor(x1Plot);
+            y1Plot = Math.floor(y1Plot);
+            
+            if (x1Plot !== lastPlotX || y1Plot !== lastPlotY) {
+                ctx.lineTo(x1Plot, y1Plot);
+            }
 
+            lastPlotX = x1Plot;
+            lastPlotY = y1Plot;
             x0 = x1; y0 = y1;
         }
         ctx.stroke();
@@ -198,24 +221,30 @@ function drawSamples(
     enableIm();
 }
 
-type Vec2 = { x: number; y: number; };
-
-
 export function imSoundLab(ctx: GlobalContext) {
     const MIN_ZOOM = 100;
 
     const state = imStateInline(() => {
         return {
             dsp: newDspState(),
+            sample: 0,
+            allSamples: [0],
+            allSamplesStartIdx: 0,
+            allSamplesLength: 1,
+            derivative: [0],
+            frequencies: [0],
             output: [[new Float32Array()]],
-            derivative: new Float32Array(),
-            frequencies: new Float32Array(),
-            t: 0,
-            numSamples: 1000,
         }
     });
 
     let soundPlayed = false;
+
+    // The DSP we're running here is purely for visuals.
+    // It is the exact same code that runs in the DSP loop, but in slow motion.
+    const playbackFps = 240;
+    const numSamples = Math.floor((1 / playbackFps) * state.dsp.sampleRate);
+
+    const isPlaying = state.dsp.playingOscillators.length > 0;
 
     if (ctx.keyPressState) {
         const { key } = ctx.keyPressState;
@@ -225,21 +254,7 @@ export function imSoundLab(ctx: GlobalContext) {
         if (key === "Escape") {
             setViewChartSelect(ctx);
             handled = true;
-        } else if (key === "ArrowLeft") {
-            state.t--;
-            handled = true;
-        } else if (key === "ArrowRight") {
-            state.t++;
-            handled = true;
-        } else if (key === "ArrowUp") {
-            state.numSamples += 1000;
-            handled = true;
-        } else if (key === "ArrowDown") {
-            state.numSamples -= 1000;
-            handled = true;
-        }
-
-        state.numSamples = max(state.numSamples, MIN_ZOOM);
+        } 
 
         if (!handled) {
             const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, key);
@@ -261,128 +276,203 @@ export function imSoundLab(ctx: GlobalContext) {
     const info = getDspInfo();
     const sampleRate = info.sampleRate;
     const sampleRateChanged = imMemo(sampleRate);
-    const tChanged = imMemo(state.t);
-    const numFloatsChanged = imMemo(state.numSamples);
-    const infoCurrentlyPlayingChanged = imMemo(info.currentlyPlaying.length);
-
+    const infoCurrentlyPlaying = info.currentlyPlaying.length;
+    const infoCurrentlyPlayingChanged = imMemo(infoCurrentlyPlaying);
 
     if (
         sampleRateChanged ||
-        tChanged ||
-        numFloatsChanged ||
         soundPlayed ||
+        infoCurrentlyPlayingChanged ||
         soundPlayed ||
         infoCurrentlyPlayingChanged
     ) {
         if (sampleRate !== 1) {
+            if (infoCurrentlyPlaying) {
+                console.log("new dsp loaded");
 
-            console.log("new dsp loaded");
 
-            // n/2 is because of the nyquist theorem
-            const numFrequencies = Math.floor(state.numSamples / 2);
+                // output[something idk what it is][channel][sample] lmao
+                const outputSamples = new Float32Array(Math.max(MIN_ZOOM, numSamples));
+                state.output = [[outputSamples]];
 
-            // output[something idk what it is][channel][sample] lmao
-            const outputSamples = new Float32Array(Math.max(MIN_ZOOM, state.numSamples));
-            state.output = [[outputSamples]];
-            state.derivative = new Float32Array(outputSamples.length);
-            state.frequencies = new Float32Array(numFrequencies);
-            state.dsp = newDspState();
+                state.dsp = newDspState();
+                state.dsp.sampleRate = sampleRate;
+                dspReceiveMessage(state.dsp, {
+                    playSettings: getCurrentPlaySettings(),
+                });
 
-            state.dsp.sampleRate = sampleRate;
-
-            for (const [keyId] of info.currentlyPlaying) {
-                const key = ctx.keyboard.flatKeys[keyId];
-                assert(key.index === keyId);
-
-                if (key.musicNote.noteIndex !== undefined) {
-                    dspReceiveMessage(state.dsp, {
-                        playSettings: getCurrentPlaySettings(),
-                        setOscilatorSignal: [keyId, {
-                            noteIndex: key.musicNote.noteIndex,
-                            signal: 1
-                        }]
-                    });
+                // sr / 2 bc of nyquist theorem
+                const frequencies: number[] = [];
+                for (let i = 0; i < sampleRate / 2; i++) {
+                    frequencies.push(0);
                 }
+                state.frequencies = frequencies;
+                state.allSamples.length = 0;
+                state.sample = 0;
+                state.derivative.length = 0;
             }
+        }
+    }
 
-            for (let i = 0; i <= state.t; i++) {
-                dspProcess(state.dsp, state.output);
+    // compute one frame of the dsp 
+    {
+        for (const [keyId] of info.currentlyPlaying) {
+            const key = ctx.keyboard.flatKeys[keyId];
+            assert(key.index === keyId);
+
+            if (key.musicNote.noteIndex !== undefined) {
+                dspReceiveMessage(state.dsp, {
+                    setOscilatorSignal: [keyId, {
+                        noteIndex: key.musicNote.noteIndex,
+                        signal: 1
+                    }]
+                });
             }
+        }
+
+        for (const [id, osc] of state.dsp.playingOscillators) {
+            if (!info.currentlyPlaying.find(block => block[0] === id)) {
+                dspReceiveMessage(state.dsp, {
+                    setOscilatorSignal: [id, {
+                        noteIndex: osc.inputs.noteIndex,
+                        signal: 0
+                    }]
+                });
+            }
+        }
+
+        // Only step the DSP if we have things playing
+        if (isPlaying) {
+            state.sample += numSamples;
+
+            dspProcess(state.dsp, state.output);
 
             const samples = state.output[0][0];
-            derivativeF32(samples, state.derivative);
-            // derivativeF32(state.derivative, state.derivative);
-
-            
-            // Goat FT video: https://www.youtube.com/watch?v=spUNpyF58BY
-            // TODO: fast fourier transform
-            for (let fIdx = 1; fIdx < state.frequencies.length; fIdx++) {
-                let a = 0;
-
-                const f = fIdx / state.dsp.sampleRate;
-                const dA = Math.PI * 2 * f;
-
-                let x = 0, y = 0;
-                for (let i = 0; i < samples.length; i++) {
-                    const dx = samples[i] * Math.cos(a);
-                    const dy = samples[i] * Math.sin(a);
-                    a += dA;
-
-                    x += dx;
-                    y += dy;
-                }
-
-                state.frequencies[fIdx] = x;
+            for (const f of samples) {
+                state.allSamples.push(f);
             }
 
+            derivative(state.allSamples, state.derivative);
+        }
+    }
+
+    const idxChanged = imMemo(state.allSamplesStartIdx);
+    const lenChanged = imMemo(state.allSamplesLength);
+    const numFrequencies = Math.min(state.allSamplesLength, 5000);
+    // compute frequencies of what we're looking at
+    if (idxChanged || lenChanged) {
+        const samples = state.allSamples;
+        state.frequencies.length
+
+        // Goat FT video: https://www.youtube.com/watch?v=spUNpyF58BY
+        // TODO: fast fourier transform
+        for (let fIdx = 1; fIdx < numFrequencies; fIdx++) {
+            let a = 0;
+
+            const f = fIdx / state.dsp.sampleRate;
+            const dA = Math.PI * 2 * f;
+
+            let x = 0, y = 0;
+            for (let i = 0; i < state.allSamplesLength; i++) {
+                const idx = state.allSamplesStartIdx + i;
+                if (idx >= samples.length) break;
+
+                const dx = samples[idx] * Math.cos(a);
+                const dy = samples[idx] * Math.sin(a);
+                a += dA;
+
+                assert(!isNaN(dx));
+                x += dx;
+                y += dy;
+            }
+
+            state.frequencies[fIdx] = x;
         }
     }
 
     imBeginLayout(FIXED | COL); {
         imBeginLayout(H3 | ROW | JUSTIFY_CENTER); {
-            imTextSpan("Sound lab t=" + state.t + " sample " + state.t * state.numSamples + " -> " + (state.t + 1) * state.numSamples);
+            imTextSpan(
+                "Sound lab t=" + (state.sample / state.dsp.sampleRate).toPrecision(3) + 
+                    " sample " + state.sample + " -> " + (state.sample + numSamples)
+            );
         } imEnd();
         imBeginLayout(COL | FLEX1); {
             imBeginLayout(ROW | FLEX1); {
-                imBeginLayout(FLEX1); {
-                    const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(); {
-                        const plotState = imState(newPlotState);
-                        plotState.width = width;
-                        plotState.height = height;
-                        plotState.dpi = dpi;
+                imBeginLayout(FLEX1 | COL); {
+                    imBeginLayout(FLEX1); {
+                        const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(); {
+                            const plotState = imState(newPlotState);
 
-                        ctx.clearRect(0, 0, width, height);
+                            const widthChanged = imMemo(width);
+                            const heightChanged = imMemo(height);
+                            const dpiChanged = imMemo(dpi);
+                            const resize = widthChanged || heightChanged || dpiChanged;
+                            if (resize) {
+                                plotState.width = width;
+                                plotState.height = height;
+                                plotState.dpi = dpi;
+                            }
 
-                        const samples = state.output[0][0];
+                            if (!isExcessEventRender() || resize) {
+                                ctx.clearRect(0, 0, width, height);
 
-                        const theme = getCurrentTheme();
-                        ctx.strokeStyle = theme.fg.toString();
-                        ctx.lineWidth = 2;
-                        drawSamples(samples, plotState, ctx);
+                                // const samples = state.output[0][0];
+                                const samples = state.allSamples;
 
-                        ctx.strokeStyle = "green";
-                        ctx.lineWidth = 2;
-                        drawSamples(state.derivative, plotState, ctx);
+                                const theme = getCurrentTheme();
+                                ctx.strokeStyle = theme.fg.toString();
+                                ctx.lineWidth = 2;
+                                drawSamples(samples, plotState, ctx, state.allSamplesStartIdx, state.allSamplesLength);
 
-                    } imEndCanvasRenderingContext2D();
+                                ctx.strokeStyle = "green";
+                                ctx.lineWidth = 2;
+                                drawSamples(state.derivative, plotState, ctx, state.allSamplesStartIdx, state.allSamplesLength);
+                            }
+
+                        } imEndCanvasRenderingContext2D();
+                    } imEnd();
+
+                    const rangeSlider = imState(newRangeSliderState);
+
+                    rangeSlider.min = 0;
+                    rangeSlider.max = state.allSamples.length;
+                    rangeSlider.minRangeSize = 500;
+
+                    imRangeSlider(rangeSlider);
+
+                    state.allSamplesStartIdx = rangeSlider.startValue;
+                    state.allSamplesLength = rangeSlider.endValue - rangeSlider.startValue + 1;
+
                 } imEnd();
+
                 imBeginSpace(2, PX, 100, PERCENT); {
                     if (imInit()) {
-                        setStyle("backgroundColor", cssVars.fg);
+                        setStyle("backgroundColor", cssVars.bg);
                     }
                 } imEnd();
+
                 imBeginLayout(FLEX1); {
-                    const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(); {
+                    const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D();  {
                         const plotState = imState(newPlotState);
-                        plotState.width = width;
-                        plotState.height = height;
-                        plotState.dpi = dpi;
+                        const widthChanged = imMemo(width);
+                        const heightChanged = imMemo(height);
+                        const dpiChanged = imMemo(dpi);
 
-                        ctx.clearRect(0, 0, width, height);
+                        const resize = widthChanged || heightChanged || dpiChanged;
+                        if (resize) {
+                            plotState.width = width;
+                            plotState.height = height;
+                            plotState.dpi = dpi;
+                        }
 
-                        ctx.strokeStyle = "blue";
-                        ctx.lineWidth = 2;
-                        drawSamples(state.frequencies, plotState, ctx);
+                        if (resize || !isExcessEventRender()) {
+                            ctx.clearRect(0, 0, width, height);
+
+                            ctx.strokeStyle = "blue";
+                            ctx.lineWidth = 2;
+                            drawSamples(state.frequencies, plotState, ctx, 0, numFrequencies);
+                        }
 
                     } imEndCanvasRenderingContext2D();
                 } imEnd();

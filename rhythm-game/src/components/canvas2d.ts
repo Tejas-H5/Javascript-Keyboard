@@ -12,7 +12,7 @@ export function imBeginCanvasRenderingContext2D() {
 
     imBeginSpace(100, PERCENT, 100, PERCENT, RELATIVE);
 
-    const { rect } = imTrackSize();
+    const { size: rect } = imTrackSize();
     const canvasRoot = imBeginEl(newCanvasElement);
 
     const canvas = canvasRoot.root;

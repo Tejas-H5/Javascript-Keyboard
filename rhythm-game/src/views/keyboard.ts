@@ -8,7 +8,7 @@ import "src/main.css";
 import {
     getCurrentPlayingTimeRelative,
 } from "src/state/sequencer-state";
-import { elementHasMouseDown, elementHasMouseHover, imBeginList, imEnd, imEndList, imInit, imStateInline, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
+import { elementHasMouseDown, elementHasMouseHover, imBeginList, imEnd, imEndList, imInit, imMemo, imStateInline, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
 import { GlobalContext } from "./app";
 import { timelineHasNoteAtPosition } from "src/state/sequencer-chart";
 import { GAP5, imBeginAbsolute, imBeginLayout, imBeginSpace, NOT_SET, PX, ROW } from "./layout";
@@ -62,6 +62,7 @@ export function imKeyboard(ctx: GlobalContext) {
                         });
 
                         const signal = getCurrentOscillatorGain(key.index);
+                        const PRESS_EFFECT = 5;
 
                         const sequencer = ctx.sequencer;
 
@@ -71,8 +72,6 @@ export function imKeyboard(ctx: GlobalContext) {
                             sequencer.cursorStart, sequencer.cursorDivisor,
                             key.musicNote,
                         );
-
-                        const PRESS_EFFECT = 5;
 
                         const pressEffect = PRESS_EFFECT * Math.max(signal, hasNote ? 1 : 0);
 
@@ -85,11 +84,19 @@ export function imKeyboard(ctx: GlobalContext) {
                                 setStyle("userSelect", "none");
                             }
 
-                            setStyle("width", keySize + "px");
-                            setStyle("height", keySize + "px");
-                            setStyle("fontSize", (keySize / 2) + "px");
-                            setStyle("color", signal > 0.1 ? cssVars.bg : cssVars.fg);
-                            setStyle("transform", `translate(${pressEffect}px, ${pressEffect}px)`);
+                            if (imMemo(keySize)) {
+                                setStyle("width", keySize + "px");
+                                setStyle("height", keySize + "px");
+                                setStyle("fontSize", (keySize / 2) + "px");
+                            }
+                            
+                            if (imMemo(signal)) {
+                                setStyle("color", signal > 0.1 ? cssVars.bg : cssVars.fg);
+                            }
+
+                            if (imMemo(pressEffect)) {
+                                setStyle("transform", `translate(${pressEffect}px, ${pressEffect}px)`);
+                            }
 
                             if (elementHasMouseDown() && !s.pressed) {
                                 s.pressed = true;
@@ -102,15 +109,21 @@ export function imKeyboard(ctx: GlobalContext) {
 
                             // indicator that shows if it's pressed on the sequencer
                             imBeginAbsolute(0, PX, 0, PX, 0, PX, 0, PX); {
-                                setStyle("backgroundColor", hasNote ? cssVars.mg : cssVars.bg);
+                                if (imMemo(hasNote)) {
+                                    setStyle("backgroundColor", hasNote ? cssVars.mg : cssVars.bg);
+                                }
                             } imEnd();
                             // letter bg
                             imBeginAbsolute(0, PX, 0, PX, 0, PX, 0, PX); {
-                                setStyle("backgroundColor", `rgba(0, 0, 0, ${signal})`);
+                                if (imMemo(signal)) {
+                                    setStyle("backgroundColor", `rgba(0, 0, 0, ${signal})`);
+                                }
                             } imEnd();
                             // letter text
                             imBeginAbsolute(5, PX, 0, PX, 0, NOT_SET, 0, PX); {
-                                setInnerText(key.text);
+                                if (imMemo(key.text)) {
+                                    setInnerText(key.text);
+                                }
                             } imEnd();
                             // note text
                             imBeginAbsolute(0, NOT_SET, 0, PX, 5, PX, 0, PX); {
@@ -118,9 +131,14 @@ export function imKeyboard(ctx: GlobalContext) {
                                     setStyle("textAlign", "right");
                                 }
 
-                                setStyle("fontSize", (keySize / 4) + "px");
-                                setStyle("paddingRight", (keySize / 10) + "px");
-                                setInnerText(key.noteText);
+                                if (imMemo(keySize)) {
+                                    setStyle("fontSize", (keySize / 4) + "px");
+                                    setStyle("paddingRight", (keySize / 10) + "px");
+                                }
+
+                                if (imMemo(key.noteText)) {
+                                    setInnerText(key.noteText);
+                                }
                             } imEnd();
                             // approach square(s)
                             imBeginList();
@@ -157,7 +175,9 @@ export function imKeyboard(ctx: GlobalContext) {
                                             if (imInit()) {
                                                 setStyle("backgroundColor", cssVars.playback);
                                             }
-                                            setStyle("opacity", t + "");
+                                            if (imMemo(t)) {
+                                                setStyle("opacity", t + "");
+                                            }
                                         } imEnd();
                                         // This osu! style border kinda whack ngl.
                                         imBeginAbsolute(-scale, PX, -scale, PX, scale, PX, scale, PX); {
