@@ -10,6 +10,8 @@ import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
 import { COL, EM, FIXED, FLEX1, H3, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, PERCENT, PX, ROW } from "./layout";
 import { cssVars, getCurrentTheme } from "./styling";
+import { dft, fft, resizeNumberArray } from "src/utils/fft";
+import { newArray } from "src/utils/array-utils";
 
 
 function getExtentX(plot: PlotState): number {
@@ -186,7 +188,7 @@ function drawSamples(
     plotState.posX = startIdx + len / 2;
     plotState.posY = (min + max) / 2;
     plotState.originalExtentX = len / 2;
-    plotState.originalExtentY = 2 * (max - min);
+    plotState.originalExtentY = -2 * (max - min);
 
     let x0 = startIdx;
     let y0 = samples[startIdx];
@@ -227,12 +229,19 @@ export function imSoundLab(ctx: GlobalContext) {
     const state = imStateInline(() => {
         return {
             dsp: newDspState(),
-            sample: 0,
             allSamples: [0],
             allSamplesStartIdx: 0,
             allSamplesLength: 1,
+            frequenciesStartIdx: 0,
+            frequenciesLength: 0,
+            signalFftWindow: [0],
             derivative: [0],
+            frequenciesReal: [0],
+            frequenciesIm: [0],
+            frequenciesReal2: [0],
+            frequenciesIm2: [0],
             frequencies: [0],
+            frequencies2: [0],
             output: [[new Float32Array()]],
         }
     });
@@ -276,7 +285,7 @@ export function imSoundLab(ctx: GlobalContext) {
     const info = getDspInfo();
     const sampleRate = info.sampleRate;
     const sampleRateChanged = imMemo(sampleRate);
-    const infoCurrentlyPlaying = info.currentlyPlaying.length;
+    const infoCurrentlyPlaying = info.currentlyPlaying.length > 0;
     const infoCurrentlyPlayingChanged = imMemo(infoCurrentlyPlaying);
 
     if (
@@ -287,10 +296,7 @@ export function imSoundLab(ctx: GlobalContext) {
         infoCurrentlyPlayingChanged
     ) {
         if (sampleRate !== 1) {
-            if (infoCurrentlyPlaying) {
-                console.log("new dsp loaded");
-
-
+            if (infoCurrentlyPlayingChanged && infoCurrentlyPlaying) {
                 // output[something idk what it is][channel][sample] lmao
                 const outputSamples = new Float32Array(Math.max(MIN_ZOOM, numSamples));
                 state.output = [[outputSamples]];
@@ -301,14 +307,12 @@ export function imSoundLab(ctx: GlobalContext) {
                     playSettings: getCurrentPlaySettings(),
                 });
 
-                // sr / 2 bc of nyquist theorem
-                const frequencies: number[] = [];
-                for (let i = 0; i < sampleRate / 2; i++) {
-                    frequencies.push(0);
-                }
-                state.frequencies = frequencies;
+                // divide by 2 bc of nyquist theorem
+                const numFrequencies = Math.floor(sampleRate / 2);
+                state.frequencies = newArray(numFrequencies, () => 0);
+                state.frequenciesReal = newArray(numFrequencies, () => 0);
+                state.frequenciesIm = newArray(numFrequencies, () => 0);
                 state.allSamples.length = 0;
-                state.sample = 0;
                 state.derivative.length = 0;
             }
         }
@@ -343,8 +347,6 @@ export function imSoundLab(ctx: GlobalContext) {
 
         // Only step the DSP if we have things playing
         if (isPlaying) {
-            state.sample += numSamples;
-
             dspProcess(state.dsp, state.output);
 
             const samples = state.output[0][0];
@@ -358,43 +360,41 @@ export function imSoundLab(ctx: GlobalContext) {
 
     const idxChanged = imMemo(state.allSamplesStartIdx);
     const lenChanged = imMemo(state.allSamplesLength);
-    const numFrequencies = Math.min(state.allSamplesLength, 5000);
+    const numFrequencies = Math.min(state.allSamplesLength, 1000);
+    const numFrequenciesToView = Math.floor(numFrequencies / 2);
     // compute frequencies of what we're looking at
     if (idxChanged || lenChanged) {
-        const samples = state.allSamples;
-        state.frequencies.length
+        resizeNumberArray(state.signalFftWindow, state.allSamplesLength);
+        for (let i = 0; i < state.allSamplesLength; i++) {
+            const idx = i + state.allSamplesStartIdx;
+            if (idx >= state.allSamples.length) break;
 
-        // Goat FT video: https://www.youtube.com/watch?v=spUNpyF58BY
-        // TODO: fast fourier transform
-        for (let fIdx = 1; fIdx < numFrequencies; fIdx++) {
-            let a = 0;
+            state.signalFftWindow[i] = state.allSamples[idx];
+        }
 
-            const f = fIdx / state.dsp.sampleRate;
-            const dA = Math.PI * 2 * f;
+        dft(state.signalFftWindow, state.frequenciesReal, state.frequenciesIm);
+        fft(state.signalFftWindow, state.frequenciesReal2, state.frequenciesIm2);
 
-            let x = 0, y = 0;
-            for (let i = 0; i < state.allSamplesLength; i++) {
-                const idx = state.allSamplesStartIdx + i;
-                if (idx >= samples.length) break;
+        for (let i = 0; i < numFrequenciesToView; i++) {
+            const r = state.frequenciesReal[i];
+            const im = state.frequenciesIm[i];
+            const mag = Math.sqrt(r * r + im * im);
+            state.frequencies[i] = mag;
+        }
 
-                const dx = samples[idx] * Math.cos(a);
-                const dy = samples[idx] * Math.sin(a);
-                a += dA;
-
-                assert(!isNaN(dx));
-                x += dx;
-                y += dy;
-            }
-
-            state.frequencies[fIdx] = x;
+        for (let i = 0; i < numFrequenciesToView; i++) {
+            const r = state.frequenciesReal2[i];
+            const im = state.frequenciesIm2[i];
+            const mag = Math.sqrt(r * r + im * im);
+            state.frequencies2[i] = mag;
         }
     }
 
     imBeginLayout(FIXED | COL); {
         imBeginLayout(H3 | ROW | JUSTIFY_CENTER); {
             imTextSpan(
-                "Sound lab t=" + (state.sample / state.dsp.sampleRate).toPrecision(3) + 
-                    " sample " + state.sample + " -> " + (state.sample + numSamples)
+                "Sound lab t=" + (state.allSamplesStartIdx / state.dsp.sampleRate).toPrecision(3) + 
+                    " sample " + state.allSamplesStartIdx + " -> " + (state.allSamplesStartIdx + state.allSamplesLength)
             );
         } imEnd();
         imBeginLayout(COL | FLEX1); {
@@ -433,8 +433,9 @@ export function imSoundLab(ctx: GlobalContext) {
                         } imEndCanvasRenderingContext2D();
                     } imEnd();
 
-                    const rangeSlider = imState(newRangeSliderState);
+                    // range slider
 
+                    const rangeSlider = imState(newRangeSliderState);
                     rangeSlider.min = 0;
                     rangeSlider.max = state.allSamples.length;
                     rangeSlider.minRangeSize = 500;
@@ -443,6 +444,8 @@ export function imSoundLab(ctx: GlobalContext) {
 
                     state.allSamplesStartIdx = rangeSlider.startValue;
                     state.allSamplesLength = rangeSlider.endValue - rangeSlider.startValue + 1;
+                    // state.allSamplesStartIdx = 0;
+                    // state.allSamplesLength = Math.min(500, state.allSamples.length);
 
                 } imEnd();
 
@@ -452,29 +455,47 @@ export function imSoundLab(ctx: GlobalContext) {
                     }
                 } imEnd();
 
-                imBeginLayout(FLEX1); {
-                    const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D();  {
-                        const plotState = imState(newPlotState);
-                        const widthChanged = imMemo(width);
-                        const heightChanged = imMemo(height);
-                        const dpiChanged = imMemo(dpi);
+                imBeginLayout(FLEX1 | COL); {
+                    imBeginLayout(FLEX1); {
+                        const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(); {
+                            const plotState = imState(newPlotState);
+                            const widthChanged = imMemo(width);
+                            const heightChanged = imMemo(height);
+                            const dpiChanged = imMemo(dpi);
 
-                        const resize = widthChanged || heightChanged || dpiChanged;
-                        if (resize) {
-                            plotState.width = width;
-                            plotState.height = height;
-                            plotState.dpi = dpi;
-                        }
+                            const resize = widthChanged || heightChanged || dpiChanged;
+                            if (resize) {
+                                plotState.width = width;
+                                plotState.height = height;
+                                plotState.dpi = dpi;
+                            }
 
-                        if (resize || !isExcessEventRender()) {
-                            ctx.clearRect(0, 0, width, height);
+                            if (resize || !isExcessEventRender()) {
+                                ctx.clearRect(0, 0, width, height);
 
-                            ctx.strokeStyle = "blue";
-                            ctx.lineWidth = 2;
-                            drawSamples(state.frequencies, plotState, ctx, 0, numFrequencies);
-                        }
+                                ctx.strokeStyle = "blue";
+                                ctx.lineWidth = 2;
+                                drawSamples(state.frequencies, plotState, ctx, state.frequenciesStartIdx, state.frequenciesLength);
 
-                    } imEndCanvasRenderingContext2D();
+                                ctx.strokeStyle = "red";
+                                ctx.lineWidth = 2;
+                                drawSamples(state.frequencies2, plotState, ctx, state.frequenciesStartIdx, state.frequenciesLength);
+                            }
+
+                        } imEndCanvasRenderingContext2D();
+                    } imEnd();
+
+                    // range slider
+
+                    const rangeSlider = imState(newRangeSliderState);
+                    rangeSlider.min = 0;
+                    rangeSlider.max = numFrequenciesToView / 2;
+                    rangeSlider.minRangeSize = 100;
+
+                    imRangeSlider(rangeSlider);
+
+                    state.frequenciesStartIdx = rangeSlider.startValue;
+                    state.frequenciesLength = rangeSlider.endValue - rangeSlider.startValue + 1;
                 } imEnd();
             } imEnd();
             imBeginLayout(FLEX1 | ROW | JUSTIFY_CENTER); {

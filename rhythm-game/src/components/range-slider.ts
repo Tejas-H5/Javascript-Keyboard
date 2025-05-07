@@ -57,6 +57,11 @@ export function imRangeSlider(s: RangeSliderState) {
     s.startValue = s.lastStartValue;
     s.endValue = s.lastEndValue;
 
+    if (s.lastStartValue === s.lastEndValue && s.startValue !== s.endValue) {
+        s.lastStartValue = s.startValue;
+        s.lastEndValue = s.endValue;
+    }
+
     if (s.endValue - s.startValue < minimumSize) {
         s.endValue = s.startValue + minimumSize;
     }
@@ -100,6 +105,7 @@ export function imRangeSlider(s: RangeSliderState) {
         imBeginSpace(sliderHandleSize, PX, 100, PERCENT, ABSOLUTE | ROW); {
             const x0 = rect.left;
             const x1 = rect.right - 2 * sliderHandleSize;
+            const localX = 0;
 
             if (imInit()) {
                 setStyle("backgroundColor", cssVars.fg2);
@@ -121,7 +127,6 @@ export function imRangeSlider(s: RangeSliderState) {
 
                 s.startValue = Math.floor(lerp(s.min, s.max, t));
                 if (s.startValue > s.endValue - minimumSize) {
-                    console.log("1")
                     s.endValue = s.startValue + minimumSize;
                 }
 
@@ -136,8 +141,8 @@ export function imRangeSlider(s: RangeSliderState) {
             const x1Changed = imMemo(x1);
             if (sChanged || x0Changed || x1Changed) {
                 const t = inverseLerp(s.startValue, s.min, s.max);
-                const sliderPos = lerp(x0, x1, t);
-                setStyle("left", sliderPos + "px");
+                const sliderPos = lerp(0, x1 - x0, t);
+                setStyle("left", (localX + sliderPos) + "px");
             }
         } imEnd();
 
@@ -149,7 +154,8 @@ export function imRangeSlider(s: RangeSliderState) {
                 setStyle("cursor", "ew-resize");
             }
 
-            const x0 = rect.left + sliderHandleSize;
+            const localX = sliderHandleSize;
+            const x0 = rect.left + localX;
             const x1 = rect.right - sliderHandleSize;
 
             if (mouse.leftMouseButton && elementHasMouseDown()) {
@@ -173,11 +179,9 @@ export function imRangeSlider(s: RangeSliderState) {
                 if (s.startValue < s.min) {
                     s.startValue = s.min;
                     s.endValue = s.min + delta;
-                    console.log("3")
                 } else if (s.endValue > s.max) {
                     s.endValue = s.max;
                     s.startValue = s.max - delta;
-                    console.log("4")
                 }
 
                 clampRangeSliderEndpoints(s);
@@ -192,16 +196,17 @@ export function imRangeSlider(s: RangeSliderState) {
             if (sChanged || x0Changed || x1Changed) {
                 const t0 = inverseLerp(s.startValue, s.min, s.max);
                 const t1 = inverseLerp(s.endValue, s.min, s.max);
-                const sliderStart = lerp(x0, x1, t0);
-                const sliderEnd = lerp(x0, x1, t1);
-                setStyle("left", sliderStart + "px");
+                const sliderStart = lerp(0, x1 - x0, t0);
+                const sliderEnd = lerp(0, x1 - x0, t1);
+                setStyle("left", (localX + sliderStart) + "px");
                 setStyle("width", (sliderEnd - sliderStart) + "px");
             }
         } imEnd();
 
         // End handle
         imBeginSpace(sliderHandleSize, PX, 100, PERCENT, ABSOLUTE); {
-            const x0 = rect.left + sliderHandleSize;
+            const localX = sliderHandleSize;
+            const x0 = rect.left + localX;
             const x1 = rect.right - sliderHandleSize;
 
             if (imInit()) {
@@ -225,7 +230,6 @@ export function imRangeSlider(s: RangeSliderState) {
 
                 s.endValue = Math.floor(lerp(s.min, s.max, t));
                 if (s.startValue > s.endValue - minimumSize) {
-                    console.log("1")
                     s.startValue = s.endValue - minimumSize;
                 }
 
@@ -240,8 +244,8 @@ export function imRangeSlider(s: RangeSliderState) {
             const x1Changed = imMemo(x1);
             if (sChanged || x0Changed || x1Changed) {
                 const t = inverseLerp(s.endValue, s.min, s.max);
-                const sliderPos = lerp(x0, x1, t);
-                setStyle("left", sliderPos + "px");
+                const sliderPos = lerp(0, x1 - x0, t);
+                setStyle("left", (localX + sliderPos) + "px");
             }
 
         } imEnd();

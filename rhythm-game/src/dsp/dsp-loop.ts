@@ -10,7 +10,6 @@ import { C_0, getNoteFrequency, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theo
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
-import { NoteMapEntry } from "src/state/sequencer-state";
 
 export type DSPPlaySettings = {
     attack: number;
@@ -119,11 +118,11 @@ export function updateOscillator(osc: PlayingOscillator, s: DspState) {
         let val = 0;
         let total = 0;
 
-        let n = 4;
+        let n = 1;
         let sign = 1;
 
         for (let i = 1; i <= n; i++) {
-            if (i % 2 === 0) continue;
+            // if (i % 2 === 0) continue;
 
             if (1) {
 
