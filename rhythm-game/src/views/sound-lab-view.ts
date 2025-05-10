@@ -10,7 +10,7 @@ import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
 import { COL, EM, FIXED, FLEX1, H3, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, PERCENT, PX, ROW } from "./layout";
 import { cssVars, getCurrentTheme } from "./styling";
-import { dft, fft, resizeNumberArray } from "src/utils/fft";
+import { fft, resizeNumberArray } from "src/utils/fft";
 import { newArray } from "src/utils/array-utils";
 
 
@@ -372,7 +372,6 @@ export function imSoundLab(ctx: GlobalContext) {
             state.signalFftWindow[i] = state.allSamples[idx];
         }
 
-        dft(state.signalFftWindow, state.frequenciesReal, state.frequenciesIm);
         fft(state.signalFftWindow, state.frequenciesReal2, state.frequenciesIm2);
 
         for (let i = 0; i < numFrequenciesToView; i++) {
@@ -490,7 +489,7 @@ export function imSoundLab(ctx: GlobalContext) {
                     const rangeSlider = imState(newRangeSliderState);
                     rangeSlider.min = 0;
                     rangeSlider.max = numFrequenciesToView / 2;
-                    rangeSlider.minRangeSize = 100;
+                    rangeSlider.minRangeSize = 10;
 
                     imRangeSlider(rangeSlider);
 
