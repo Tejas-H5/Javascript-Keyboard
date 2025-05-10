@@ -10,7 +10,7 @@ import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
 import { COL, EM, FIXED, FLEX1, H3, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, PERCENT, PX, ROW } from "./layout";
 import { cssVars, getCurrentTheme } from "./styling";
-import { fft, resizeNumberArray } from "src/utils/fft";
+import { fft, resizeNumberArrayPowerOf2 } from "src/utils/fft";
 import { newArray } from "src/utils/array-utils";
 
 
@@ -364,7 +364,7 @@ export function imSoundLab(ctx: GlobalContext) {
     const numFrequenciesToView = Math.floor(numFrequencies / 2);
     // compute frequencies of what we're looking at
     if (idxChanged || lenChanged) {
-        resizeNumberArray(state.signalFftWindow, state.allSamplesLength);
+        resizeNumberArrayPowerOf2(state.signalFftWindow, state.allSamplesLength);
         for (let i = 0; i < state.allSamplesLength; i++) {
             const idx = i + state.allSamplesStartIdx;
             if (idx >= state.allSamples.length) break;
