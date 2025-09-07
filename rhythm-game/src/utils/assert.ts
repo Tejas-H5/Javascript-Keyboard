@@ -1,19 +1,24 @@
-/**
- * Assertions are used to catch bugs.
- * Making this a no-op will sometimes improve performance. But I am not sure you want to do that just yet. 
- * Wait for me to add a comprehensive suite of tests for this framework before you do that.
- *
- * Every assertion should have a comment above it explaining why it's there, to make
- * debugging for users easier. It also means the final minimized code without comments doesn't have
- * a bunch of long error strings in there increasing it's size, and that
- * you only need to put a breakpoint here to respond to the vast majority of failures.
- */
-export function assert(value: unknown): asserts value {
-    if (!value) {
+// I've found a significant speedup by writing code like
+// if (x === false ) instaed of if (!x). 
+// You won't need to do this in 99.9999% of your code, but it 
+// would be nice if the library did it.
+export function assert(value: boolean): asserts value {
+    // Funnily enough - writing it like this ends up being very slow with the dev tools open. 
+    // I'm guessing the JIT can't inline methods with early returns when some debug=true setting has been set somewhere.
+    // Even putting a breakpoint on this line slows the app to a crawl for persumably similar reasons.
+    // if (value === true) return;
+    // throw new Error("Assertion failed - " + message);
+
+    if (value === false) {
         throw new Error("Assertion failed");
     }
 }
 
-export function unreachable(s: never): never {
-    assert(false);
+export function mustGetDefined<T>(val: T | undefined, field = "this value"): T {
+    if (val === undefined) throw new Error(`Expected ${field} to not be undefined`);
+    return val;
+}
+
+export function unreachable(val?: never): never {
+    throw new Error("This function should be unreachable");
 }

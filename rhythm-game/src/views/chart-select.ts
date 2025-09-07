@@ -1,56 +1,52 @@
-import { elementHasMouseClick, imBeginList, imEnd, imEndList, imTextSpan, nextListRoot, setInnerText } from "src/utils/im-dom-utils";
+import { BLOCK, COL, EM, imFlex, imGap, imLayout, imLayoutEnd, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
 import { GlobalContext, setCurrentChart, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "./app";
-import { imButton } from "./button";
-import { COL, EM, FLEX1, GAP5, H1, imBeginLayout, imBeginSpace, NOT_SET, PERCENT, ROW } from "./layout";
+import { EL_H1, elHasMousePress, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd } from "src/utils/im-core";
+import { imButtonIsClicked } from "src/components/button";
 
-export function ChartSelect(ctx: GlobalContext) {
-    imBeginLayout(FLEX1 | COL); {
-        imBeginLayout(FLEX1 | ROW); {
-            imBeginLayout(FLEX1 | COL | H1); {
-                setInnerText("Charts");
-            } imEnd();
+export function ChartSelect(c: ImCache, ctx: GlobalContext) {
+    imLayout(c, COL); imFlex(c); {
+        imLayout(c, ROW); imFlex(c); {
+            imLayout(c, BLOCK); imFlex(c); {
+                imEl(c, EL_H1); imStr(c, "Charts"); imElEnd(c, EL_H1);
+            } imLayoutEnd(c);
 
-            imBeginSpace(35, PERCENT, 0, NOT_SET, COL); {
-                imBeginList();
-                if (nextListRoot() && ctx.savedState.userCharts.length > 0) {
-                    imBeginList();
-                    for (const chart of ctx.savedState.userCharts) {
-                        nextListRoot();
-                        imBeginSpace(100, PERCENT, 2, EM); {
-                            imTextSpan(chart.name);
-                            if (elementHasMouseClick()) {
+            imLayout(c, COL); imSize(c, 35, PERCENT, 0, NA); {
+                if (imIf(c) && ctx.savedState.userCharts.length > 0) {
+                    imFor(c); for (const chart of ctx.savedState.userCharts) {
+                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, EM); {
+                            imStr(c, chart.name);
+                            if (elHasMousePress(c)) {
                                 setCurrentChart(ctx, chart);
                                 setViewPlayCurrentChart(ctx);
                             }
-                        } imEnd();
-                    }
-                    imEndList();
+                        } imLayoutEnd(c);
+                    } imForEnd(c);
                 } else {
-                    nextListRoot();
-                    imBeginLayout(); {
-                        imTextSpan("No songs yet! You'll need to make some yourself");
-                    } imEnd();
-                }
-                imEndList();
-            } imEnd();
-        } imEnd();
-        imBeginLayout(ROW | GAP5); {
-            if (imButton("Back")) {
+                    imIfElse(c);
+                    imLayout(c, BLOCK); {
+                        imStr(c, "No songs yet! You'll need to make some yourself");
+                    } imLayoutEnd(c);
+                } imIfEnd(c);
+            } imLayoutEnd(c);
+        } imLayoutEnd(c);
+        imLayout(c, ROW); imGap(c, 5, PX); {
+            if (imButtonIsClicked(c, "Back")) {
                 setViewStartScreen(ctx);
             }
 
-            if (imButton("Play")) {
+            if (imButtonIsClicked(c, "Play")) {
                 setViewPlayCurrentChart(ctx);
             }
 
-            if (imButton("Edit")) {
+            if (imButtonIsClicked(c, "Edit")) {
                 setViewEditChart(ctx);
             }
 
-            if (imButton("The lab")) {
+            if (imButtonIsClicked(c, "The lab")) {
                 setViewEditChart(ctx);
             }
-        } imEnd();
-    } imEnd();
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
 }
 

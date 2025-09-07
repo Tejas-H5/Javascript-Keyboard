@@ -1,253 +1,235 @@
-import { elementHasMouseClick, elementHasMouseDown, getCurrentRoot, getMouse, imEnd, imInit, imMemo, imMemoObjectVals, setStyle } from "src/utils/im-dom-utils";
-import { clamp, inverseLerp, lerp, } from "src/utils/math-utils";
-import { ABSOLUTE, EM, imBeginSpace, NOT_SET, PERCENT, PX, RELATIVE, ROW } from "src/views/layout";
-import { cssVars } from "src/views/styling";
-
-export type RangeSliderState = {
-    min: number;
-    max: number;
-    minRangeSize: number;
-
-    lastStartValue: number;
-    lastEndValue: number;
-
-    startValue: number;
-    endValue: number;
-    mouseStartX: number;
-    dragDeltaX: number;
-    dragStartStart: number;
-    dragEndStart: number;
-};
+import { ImCache, imGet, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
+import { elHasMousePress, elSetStyle, getGlobalEventSystem, imTrackSize } from "src/utils/im-dom";
+import { clamp } from "src/utils/math-utils";
+import { cssVarsApp } from "src/views/styling";
+import { BLOCK, imLayout, imLayoutEnd } from "./core/layout";
 
 
-function clampRangeSliderEndpoints(s: RangeSliderState) {
-    const lastRangeSize = s.lastEndValue - s.lastStartValue;
-
-    if (s.startValue < s.min) {
-        s.startValue = s.min;
-        s.endValue = s.min + lastRangeSize;
-    } else if (s.endValue > s.max) {
-        s.endValue = s.max;
-        s.startValue = s.endValue - lastRangeSize;
-    }
+type RangeSliderHandle = {
+    pos: number;
+    dragging: boolean;
+    dragStartPos: number;
 }
 
-export function newRangeSliderState(): RangeSliderState {
+type RangeSliderState = {
+    start: RangeSliderHandle;
+    end:   RangeSliderHandle;
+
+    dragStarted: boolean;
+    dragStartPos: number;
+
+    value: [
+        start: number,
+        end: number,
+    ];
+}
+
+function newRangeSliderHandle(pos: number): RangeSliderHandle {
     return {
-        min: 0,
-        max: 0,
-        minRangeSize: 0,
-
-        lastStartValue: 0,
-        lastEndValue: 0,
-
-        startValue: 0,
-        endValue: 0,
-        mouseStartX: 0,
-        dragDeltaX: 0,
-        dragStartStart: 0,
-        dragEndStart: 0,
+        pos: pos,
+        dragStartPos: 0,
+        dragging: false,
     };
 }
 
+const VERY_SMALL_NUMBER = 0.0000001;
+
 // TODO: an invalid state when start==end
-export function imRangeSlider(s: RangeSliderState) {
-    const minimumSize = s.minRangeSize;
+export function imRangeSlider(
+    c: ImCache,
+    lowerBound: number, upperBound: number, 
+    start: number, end: number, step: number, minWidth?: number,
+): RangeSliderState {
+    let min = Math.min(lowerBound, upperBound);
+    let max = Math.max(lowerBound, upperBound);
 
-    s.startValue = s.lastStartValue;
-    s.endValue = s.lastEndValue;
+    let s = imGet(c, imRangeSlider);
+    if (!s) {
+        s = imSet(c, {
+            start: newRangeSliderHandle(0),
+            end:   newRangeSliderHandle(1),
 
-    if (s.lastStartValue === s.lastEndValue && s.startValue !== s.endValue) {
-        s.lastStartValue = s.startValue;
-        s.lastEndValue = s.endValue;
-    }
+            dragStarted:   false,
+            dragStartPos:  0,
+            draggingStart: false,
+            draggingEnd:   false,
 
-    if (s.endValue - s.startValue < minimumSize) {
-        s.endValue = s.startValue + minimumSize;
-    }
-    if (s.startValue < s.min) {
-        s.startValue = s.min;
-    }
-    if (s.startValue + minimumSize > s.max) {
-        s.startValue = s.max - minimumSize;
-        s.endValue = s.max;
-    }
-    if (s.endValue - minimumSize < s.min) {
-        s.startValue = s.min;
-        s.endValue = s.min + minimumSize;
+            value: [start, end],
+        });
     }
 
-    if (s.endValue > s.max) {
-        s.endValue = s.max;
-    }
-    if (s.startValue < s.min) {
-        s.startValue = s.min;
+    const body = imLayout(c, BLOCK); 
+    const bodySize = imTrackSize(c);
+        const startHandle = imLayout(c, BLOCK); imLayoutEnd(c);
+        const sliderMiddle = imLayout(c, BLOCK); imLayoutEnd(c);
+        const endHandle = imLayout(c, BLOCK); imLayoutEnd(c);
+    imLayoutEnd(c);
+
+    if (isFirstishRender(c)) {
+        elSetStyle(c, "height", "30px", body);
+        elSetStyle(c, "backgroundColor", cssVarsApp.mg, body);
+        elSetStyle(c, "position", "relative", body);
+
+        elSetStyle(c, "position", "absolute", startHandle);
+        elSetStyle(c, "top", "0", startHandle);
+        elSetStyle(c, "height", "100%", startHandle);
+        elSetStyle(c, "aspectRatio", "1 / 1", startHandle);
+        elSetStyle(c, "backgroundColor", cssVarsApp.fg, startHandle);
+
+        elSetStyle(c, "position", "absolute", sliderMiddle);
+        elSetStyle(c, "top", "0", sliderMiddle);
+        elSetStyle(c, "height", "100%", sliderMiddle);
+        elSetStyle(c, "backgroundColor", cssVarsApp.bg, sliderMiddle);
+
+        elSetStyle(c, "position", "absolute", endHandle);
+        elSetStyle(c, "top", "0", endHandle);
+        elSetStyle(c, "height", "100%", endHandle);
+        elSetStyle(c, "aspectRatio", "1 / 1", endHandle);
+        elSetStyle(c, "backgroundColor", cssVarsApp.fg, endHandle);
     }
 
-    imBeginSpace(0, NOT_SET, 1, EM, RELATIVE); {
-        const rect = getCurrentRoot().root.getBoundingClientRect();
+    // Respond to pos change _after_ user has handled and set new drag values
 
-        if (imInit()) {
-            setStyle("backgroundColor", cssVars.bg2);
+    const domain = max - min;
+    s.start.pos = domain < VERY_SMALL_NUMBER ? 0 : (start - min) / domain;
+    s.end.pos   = domain < VERY_SMALL_NUMBER ? 1 : (end - min) / domain;
+
+    const startPosChanged    = imMemo(c, s.start.pos);
+    const endPosChanged      = imMemo(c, s.end.pos);
+    const sliderWidthChanged = imMemo(c, bodySize.size.width);
+    if (startPosChanged || endPosChanged || sliderWidthChanged) {
+        const bodyRect = body.getBoundingClientRect(); 
+        const startRect = startHandle.getBoundingClientRect();
+        const endRect = endHandle.getBoundingClientRect();
+        const sliderScreenStart  = bodyRect.left + startRect.width;
+        const sliderScreenEnd    = bodyRect.right - endRect.width;
+        const sliderScreenLength = sliderScreenEnd - sliderScreenStart;
+
+        const startPosPx = sliderScreenLength * s.start.pos;
+        const endPosPx   = sliderScreenLength * s.end.pos;
+        elSetStyle(c, "left",  startPosPx + "px",                     startHandle);
+        elSetStyle(c, "left",  (startRect.width + endPosPx) + "px",   endHandle);
+        elSetStyle(c, "left",  (startPosPx + startRect.width) + "px", sliderMiddle);
+        elSetStyle(c, "width", (endPosPx - startPosPx) + "px",        sliderMiddle);
+    }
+
+    const mouse = getGlobalEventSystem().mouse;
+    if (s.dragStarted && !mouse.leftMouseButton) {
+        s.dragStarted = false;
+        s.start.dragging = false;
+        s.end.dragging = false;
+    } 
+
+    let middleDragStarted = mouse.leftMouseButton && elHasMousePress(c, sliderMiddle);
+    let startDragStarted  = mouse.leftMouseButton && elHasMousePress(c, startHandle);
+    let endDragStarted    = mouse.leftMouseButton && elHasMousePress(c, endHandle);
+    let bodyDragStarted   = mouse.leftMouseButton && elHasMousePress(c, body);
+    const dragStarted = middleDragStarted || startDragStarted || endDragStarted || bodyDragStarted;
+    if (s.dragStarted || dragStarted) {
+        s.dragStarted = true;
+        mouse.ev?.preventDefault();
+
+        const bodyRect = body.getBoundingClientRect(); 
+        const startRect = startHandle.getBoundingClientRect();
+        const endRect = endHandle.getBoundingClientRect();
+
+        const sliderScreenStart  = bodyRect.left + startRect.width / 2;
+        const sliderScreenEnd    = bodyRect.right - endRect.width / 2;
+        const sliderScreenLength = sliderScreenEnd - sliderScreenStart;
+        const mousePos = (mouse.X - sliderScreenStart) / sliderScreenLength;
+
+        // NOTE: order  matters - if middleDragStarted, then bodyDragStarted is always true
+        if (middleDragStarted) {
+            startDragStarted = true;
+            endDragStarted = true;
+        } else if (bodyDragStarted) {
+            const lengthToStart = Math.abs(mousePos - s.start.pos);
+            const lengthToEnd = Math.abs(mousePos - s.end.pos);
+            if (lengthToStart < lengthToEnd) {
+                startDragStarted = true;
+            } else {
+                endDragStarted = true;
+            }
         }
 
-        const mouse = getMouse();
-
-        const sliderHandleSize = 40;
-        const dx = mouse.dX;
-        const x0 = rect.left;
-        const x1 = rect.right - 2 * sliderHandleSize;
-        if (x0 < x1) {
-            s.dragDeltaX += (s.max - s.min) * dx / (x1 - x0);
+        if (startDragStarted) {
+            s.start.dragging = true;
+            s.start.dragStartPos = s.start.pos;
+        }
+        if (endDragStarted) {
+            s.end.dragging = true;
+            s.end.dragStartPos = s.end.pos;
         }
 
-        // Start handle
-        imBeginSpace(sliderHandleSize, PX, 100, PERCENT, ABSOLUTE | ROW); {
-            const x0 = rect.left;
-            const x1 = rect.right - 2 * sliderHandleSize;
-            const localX = 0;
+        let deltaPos = 0;
+        if (dragStarted) {
+            s.dragStartPos = mousePos;
+        } else {
+            deltaPos = mousePos - s.dragStartPos;
+        }
 
-            if (imInit()) {
-                setStyle("backgroundColor", cssVars.fg2);
-                setStyle("userSelect", "none");
-                setStyle("cursor", "ew-resize");
-            }
-
-            if (mouse.leftMouseButton && elementHasMouseDown()) {
-                if (elementHasMouseClick()) {
-                    s.dragStartStart = s.startValue;
-                    s.dragDeltaX = 0;
+        if (s.start.dragging) {
+            s.start.pos = clamp(s.start.dragStartPos + deltaPos, 0, 1);
+            if (!s.end.dragging) {
+                if (s.start.pos > s.end.pos) {
+                    // s.start.pos = s.end.pos; // clamp
+                    s.end.pos = s.start.pos; // physics
                 }
-
-                let t = 0;
-                if (x0 < x1) {
-                    t = inverseLerp(s.dragStartStart + s.dragDeltaX, s.min, s.max);
-                    t = clamp(t, 0, 1);
-                }
-
-                s.startValue = Math.floor(lerp(s.min, s.max, t));
-                if (s.startValue > s.endValue - minimumSize) {
-                    s.endValue = s.startValue + minimumSize;
-                }
-
-                clampRangeSliderEndpoints(s);
-
-                s.lastStartValue = s.startValue;
-                s.lastEndValue = s.endValue;
             }
+        } 
 
-            const sChanged = imMemoObjectVals(s);
-            const x0Changed = imMemo(x0);
-            const x1Changed = imMemo(x1);
-            if (sChanged || x0Changed || x1Changed) {
-                const t = inverseLerp(s.startValue, s.min, s.max);
-                const sliderPos = lerp(0, x1 - x0, t);
-                setStyle("left", (localX + sliderPos) + "px");
-            }
-        } imEnd();
-
-        // body handle
-        imBeginSpace(0, NOT_SET, 100, PERCENT, ABSOLUTE); {
-            if (imInit()) {
-                setStyle("backgroundColor", cssVars.bg);
-                setStyle("userSelect", "none");
-                setStyle("cursor", "ew-resize");
-            }
-
-            const localX = sliderHandleSize;
-            const x0 = rect.left + localX;
-            const x1 = rect.right - sliderHandleSize;
-
-            if (mouse.leftMouseButton && elementHasMouseDown()) {
-                if (elementHasMouseClick()) {
-                    s.dragStartStart = s.startValue;
-                    s.dragEndStart = s.endValue;
-                    s.dragDeltaX = 0;
+        if (s.end.dragging) {
+            s.end.pos = clamp(s.end.dragStartPos + deltaPos, 0, 1);
+            if (!s.start.dragging) {
+                if (s.start.pos > s.end.pos) {
+                    // s.end.pos = s.start.pos;
+                    s.start.pos = s.end.pos;
                 }
-
-                const t0 = inverseLerp(s.dragStartStart + s.dragDeltaX, s.min, s.max);
-                const t1 = inverseLerp(s.dragEndStart + s.dragDeltaX, s.min, s.max);
-
-                s.startValue = Math.floor(lerp(s.min, s.max, t0));
-                s.endValue = Math.floor(lerp(s.min, s.max, t1));
-
-                if (s.endValue - s.startValue < minimumSize) {
-                    s.endValue = s.startValue + minimumSize;
-                }
-
-                const delta = s.endValue - s.startValue;
-                if (s.startValue < s.min) {
-                    s.startValue = s.min;
-                    s.endValue = s.min + delta;
-                } else if (s.endValue > s.max) {
-                    s.endValue = s.max;
-                    s.startValue = s.max - delta;
-                }
-
-                clampRangeSliderEndpoints(s);
-
-                s.lastStartValue = s.startValue;
-                s.lastEndValue = s.endValue;
             }
+        }
+    }
 
-            const sChanged = imMemoObjectVals(s);
-            const x0Changed = imMemo(x0);
-            const x1Changed = imMemo(x1);
-            if (sChanged || x0Changed || x1Changed) {
-                const t0 = inverseLerp(s.startValue, s.min, s.max);
-                const t1 = inverseLerp(s.endValue, s.min, s.max);
-                const sliderStart = lerp(0, x1 - x0, t0);
-                const sliderEnd = lerp(0, x1 - x0, t1);
-                setStyle("left", (localX + sliderStart) + "px");
-                setStyle("width", (sliderEnd - sliderStart) + "px");
+    let a = min + s.start.pos * domain;
+    let b = min + s.end.pos * domain;
+
+    let isDraggingBoth = s.start.dragging && s.end.dragging;
+
+    if (isDraggingBoth) {
+        minWidth = end - start;
+    }
+
+    if (minWidth !== undefined) {
+        if (b - a < minWidth) {
+            b = a + minWidth;
+        }
+
+        if (b > upperBound) {
+            b = upperBound;
+            a = upperBound - minWidth;
+
+            if (a < lowerBound) {
+                a = lowerBound;
             }
-        } imEnd();
+        }
+    }
 
-        // End handle
-        imBeginSpace(sliderHandleSize, PX, 100, PERCENT, ABSOLUTE); {
-            const localX = sliderHandleSize;
-            const x0 = rect.left + localX;
-            const x1 = rect.right - sliderHandleSize;
+    if (step > VERY_SMALL_NUMBER) {
+        if (step !== 1) {
+            a /= step;
+            b /= step;
+        }
 
-            if (imInit()) {
-                setStyle("backgroundColor", cssVars.fg2);
-                setStyle("userSelect", "none");
-                setStyle("cursor", "ew-resize");
-            }
+        a = Math.floor(a);
+        b = Math.floor(b);
 
-            const mouse = getMouse();
-            if (mouse.leftMouseButton && elementHasMouseDown()) {
-                if (elementHasMouseClick()) {
-                    s.dragEndStart = s.endValue;
-                    s.dragDeltaX = 0;
-                }
+        if (step !== 1) {
+            a *= step;
+            b *= step;
+        } 
+    }
 
-                let t = 0;
-                if (x0 < x1) {
-                    t = inverseLerp(s.dragEndStart + s.dragDeltaX, s.min, s.max);
-                    t = clamp(t, 0, 1);
-                }
+    s.value[0] = a;
+    s.value[1] = b;
 
-                s.endValue = Math.floor(lerp(s.min, s.max, t));
-                if (s.startValue > s.endValue - minimumSize) {
-                    s.startValue = s.endValue - minimumSize;
-                }
-
-                clampRangeSliderEndpoints(s);
-
-                s.lastStartValue = s.startValue;
-                s.lastEndValue = s.endValue;
-            }
-
-            const sChanged = imMemoObjectVals(s);
-            const x0Changed = imMemo(x0);
-            const x1Changed = imMemo(x1);
-            if (sChanged || x0Changed || x1Changed) {
-                const t = inverseLerp(s.endValue, s.min, s.max);
-                const sliderPos = lerp(0, x1 - x0, t);
-                setStyle("left", (localX + sliderPos) + "px");
-            }
-
-        } imEnd();
-    } imEnd();
+    return s;
 }

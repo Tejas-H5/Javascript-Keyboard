@@ -1,7 +1,8 @@
-import { deltaTimeSeconds, imEnd, imInit, imState, setInnerText, setStyle } from "src/utils/im-dom-utils";
+import { getDeltaTimeSeconds, ImCache, imState, isFirstishRender } from "src/utils/im-core";
 import { GlobalContext, setViewChartSelect } from "./app";
-import { imButton } from "./button";
-import { ALIGN_CENTER, COL, FLEX1, imBeginAbsolute, imBeginLayout, NOT_SET, PERCENT, RELATIVE } from "./layout";
+import { BLOCK, COL, imAbsolute, imAlign, imFlex, imLayout, imLayoutEnd, imRelative, NA, PERCENT } from "src/components/core/layout";
+import { elSetStyle, imStr } from "src/utils/im-dom";
+import { imButton, imButtonIsClicked } from "src/components/button";
 
 function newStartupViewState() {
     return { 
@@ -14,35 +15,32 @@ function newStartupViewState() {
     };
 }
 
-export function imStartupView(ctx: GlobalContext) {
+export function imStartupView(c: ImCache, ctx: GlobalContext) {
     // TODO: better game name
     const gameName = "Rhythm Keyboard!! (name subject to change)"
-    const s = imState(newStartupViewState);
+    const s = imState(c, newStartupViewState);
 
-    const dt = deltaTimeSeconds();
+    const dt = getDeltaTimeSeconds(c);
     s.t += dt;
     if (s.t > 1) {
         s.t = 0;
     } 
     s.fontSizeAnimated = s.fontSize + s.animateScale * Math.sin(s.t * 2 * Math.PI);
 
-    imBeginLayout(FLEX1 | COL | ALIGN_CENTER | RELATIVE); {
-        imBeginLayout(FLEX1 | COL | ALIGN_CENTER | RELATIVE); {
-            setStyle("fontSize", s.fontSizeAnimated + "px");
-            setInnerText(gameName);
-        } imEnd();
-        imBeginAbsolute(
-            25, PERCENT, 0, NOT_SET,
-            25, PERCENT, 0, NOT_SET
-        ); {
-            if (imInit()) {
-                setStyle("fontSize", "24px");
+    imLayout(c, COL); imFlex(c); imAlign(c); imRelative(c); {
+        imLayout(c, COL); imFlex(c); imAlign(c); imRelative(c); {
+            elSetStyle(c,"fontSize", s.fontSizeAnimated + "px");
+            imStr(c, gameName);
+        } imLayoutEnd(c);
+        imLayout(c, BLOCK); imAbsolute(c, 25, PERCENT, 0, NA, 25, PERCENT, 0, NA); {
+            if (isFirstishRender(c)) {
+                elSetStyle(c,"fontSize", "24px");
             }
 
-            if (imButton("Play")) {
+            if (imButtonIsClicked(c, "Play")) {
                 setViewChartSelect(ctx);
             }
-        } imEnd();
-    } imEnd();
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
 }
 

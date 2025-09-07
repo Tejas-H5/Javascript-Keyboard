@@ -7,6 +7,7 @@ export type KeyboardState = {
     flatKeys: InstrumentKey[];
     settings: {
     };
+    hasClicked: boolean;
 };
 
 export type InstrumentKey = {
@@ -144,6 +145,7 @@ export function newKeyboardState(): KeyboardState {
         flatKeys,
         settings: {
         },
+        hasClicked: false,
     };
 }
 

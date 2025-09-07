@@ -1,7 +1,34 @@
 import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
+import {
+    CommandItem,
+    getBeatIdxAfter,
+    getBeatsForTime,
+    getBeatsIndexesExclusive,
+    getBpmChangeItemBeforeBeats,
+    getItemEndBeats,
+    getItemEndTime,
+    getItemIdxAtBeat,
+    getItemStartBeats,
+    getItemStartTime,
+    getTimeForBeats,
+    gtBeats,
+    ltBeats,
+    lteBeats,
+    newTimelineItemNote,
+    NoteItem,
+    SequencerChart,
+    sequencerChartInsertItems,
+    sequencerChartRemoveItems,
+    sequencerChartShiftItems,
+    TIMELINE_ITEM_BPM,
+    TIMELINE_ITEM_MEASURE,
+    TIMELINE_ITEM_NOTE,
+    TimelineItem,
+    TimelineItemBpmChange,
+    transposeItems
+} from "src/state/sequencer-chart";
 import { unreachable } from "src/utils/assert";
 import { compareMusicNotes, getNoteHashKey, MusicNote, notesEqual, rebaseBeats } from "src/utils/music-theory-utils";
-import { TimelineItemBpmChange, CommandItem, getBeatIdxAfter, getBeatsForTime, getBeatsIndexesInclusive, getBpmChangeItemBeforeBeats, getItemEndBeats, getItemEndTime, getItemIdxAtBeat, getItemStartBeats, getItemStartTime, getTimeForBeats, gtBeats, gteBeats, ltBeats, lteBeats, newTimelineItemNote, NoteItem, SequencerChart, sequencerChartRemoveItems, sequencerChartShiftItems, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, TimelineItem, transposeItems, sequencerChartInsertItems, getBeatIdxBefore, getBeatsIndexesExclusive } from "src/state/sequencer-chart";
 
 export const SEQUENCER_ROW_COLS = 8;
 
@@ -35,8 +62,8 @@ export type SequencerState = {
     scheduledKeyPressesPlaybackSpeed: number;
 
     notesToPreview: NoteItem[];
+    notesToPreviewVersion: number;
 };
-
 
 export function getCursorStartBeats(state: SequencerState): number {
     return getBeats(state.cursorStart, state.cursorDivisor);
@@ -300,6 +327,7 @@ export function newSequencerState(currentChart: SequencerChart): SequencerState 
         reachedLastNote: false,
 
         notesToPreview: [],
+        notesToPreviewVersion: 0,
 
         _lastBpmChange: undefined,
     };

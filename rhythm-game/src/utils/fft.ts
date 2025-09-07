@@ -43,6 +43,11 @@ function isPowerOfTwo(v: number) {
     return !(v & (v - 1));
 }
 
+function get(arr: number[], i: number) {
+    if (i >= arr.length) return 0;
+    return arr[i];
+}
+
 function fftInternal(
     signal: number[], signalIdx: number, len: number, stride: number,
     dstFreqRe: number[], dstFreqIm: number[], freqStartIdx: number, 
@@ -56,7 +61,7 @@ function fftInternal(
     const halfLen = len / 2;
 
     if (len === 1) {
-        dstFreqRe[freqStartIdx] = signal[signalIdx];
+        dstFreqRe[freqStartIdx] = get(signal, signalIdx);
         dstFreqIm[freqStartIdx] = 0;
         return;
     }
@@ -112,7 +117,7 @@ export function resizeNumberArrayPowerOf2(arr: number[], len: number) {
     }
     power--;
     len = 1;
-    while (power) {
+    while (power > 0) {
         len = len << 1;
         power--
     }

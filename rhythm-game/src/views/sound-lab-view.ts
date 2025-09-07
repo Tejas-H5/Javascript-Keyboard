@@ -1,17 +1,18 @@
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
-import { imRangeSlider, newRangeSliderState } from "src/components/range-slider";
+import { BLOCK, COL, imFlex, imJustify, imLayout, imLayoutEnd, imSize, PERCENT, PX, ROW } from "src/components/core/layout";
+import { imRangeSlider } from "src/components/range-slider";
 import { dspProcess, dspReceiveMessage, newDspState } from "src/dsp/dsp-loop";
 import { getCurrentPlaySettings, getDspInfo, pressKey } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
+import { newArray } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
-import { disableIm, enableIm, imEnd, imInit, imMemo, imState, imStateInline, imTextSpan, isExcessEventRender, setStyle } from "src/utils/im-dom-utils";
+import { fft, resizeNumberArrayPowerOf2 } from "src/utils/fft";
+import { getRenderCount, ImCache, imMemo, imState, isFirstishRender } from "src/utils/im-core";
+import { EL_B, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax, arrayMin, derivative, inverseLerp, lerp, max, min } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
-import { COL, EM, FIXED, FLEX1, H3, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, PERCENT, PX, ROW } from "./layout";
-import { cssVars, getCurrentTheme } from "./styling";
-import { fft, resizeNumberArrayPowerOf2 } from "src/utils/fft";
-import { newArray } from "src/utils/array-utils";
+import { cssVarsApp, getCurrentTheme } from "./styling";
 
 
 function getExtentX(plot: PlotState): number {
@@ -181,8 +182,6 @@ function drawSamples(
 
     len = endIdx - startIdx + 1;
 
-    disableIm();
-
     const max = arrayMax(samples);
     const min = arrayMin(samples);
     plotState.posX = startIdx + len / 2;
@@ -219,32 +218,32 @@ function drawSamples(
         ctx.stroke();
     }
     ctx.closePath();
-
-    enableIm();
 }
 
-export function imSoundLab(ctx: GlobalContext) {
+function newSoundLabState() {
+    return {
+        dsp: newDspState(),
+        allSamples: [0],
+        allSamplesStartIdx: 0,
+        allSamplesLength: 1,
+        frequenciesStartIdx: 0,
+        frequenciesLength: 0,
+        signalFftWindow: [0],
+        derivative: [0],
+        frequenciesReal: [0],
+        frequenciesIm: [0],
+        frequenciesReal2: [0],
+        frequenciesIm2: [0],
+        frequencies: [0],
+        frequencies2: [0],
+        output: [[new Float32Array()]],
+    };
+}
+
+export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     const MIN_ZOOM = 100;
 
-    const state = imStateInline(() => {
-        return {
-            dsp: newDspState(),
-            allSamples: [0],
-            allSamplesStartIdx: 0,
-            allSamplesLength: 1,
-            frequenciesStartIdx: 0,
-            frequenciesLength: 0,
-            signalFftWindow: [0],
-            derivative: [0],
-            frequenciesReal: [0],
-            frequenciesIm: [0],
-            frequenciesReal2: [0],
-            frequenciesIm2: [0],
-            frequencies: [0],
-            frequencies2: [0],
-            output: [[new Float32Array()]],
-        }
-    });
+    const state = imState(c, newSoundLabState);
 
     let soundPlayed = false;
 
@@ -284,9 +283,9 @@ export function imSoundLab(ctx: GlobalContext) {
 
     const info = getDspInfo();
     const sampleRate = info.sampleRate;
-    const sampleRateChanged = imMemo(sampleRate);
+    const sampleRateChanged = imMemo(c, sampleRate);
     const infoCurrentlyPlaying = info.currentlyPlaying.length > 0;
-    const infoCurrentlyPlayingChanged = imMemo(infoCurrentlyPlaying);
+    const infoCurrentlyPlayingChanged = imMemo(c, infoCurrentlyPlaying);
 
     if (
         sampleRateChanged ||
@@ -358,8 +357,8 @@ export function imSoundLab(ctx: GlobalContext) {
         }
     }
 
-    const idxChanged = imMemo(state.allSamplesStartIdx);
-    const lenChanged = imMemo(state.allSamplesLength);
+    const idxChanged = imMemo(c, state.allSamplesStartIdx);
+    const lenChanged = imMemo(c, state.allSamplesLength);
     const numFrequencies = Math.min(state.allSamplesLength, 1000);
     const numFrequenciesToView = Math.floor(numFrequencies / 2);
     // compute frequencies of what we're looking at
@@ -389,78 +388,87 @@ export function imSoundLab(ctx: GlobalContext) {
         }
     }
 
-    imBeginLayout(FIXED | COL); {
-        imBeginLayout(H3 | ROW | JUSTIFY_CENTER); {
-            imTextSpan(
-                "Sound lab t=" + (state.allSamplesStartIdx / state.dsp.sampleRate).toPrecision(3) + 
-                    " sample " + state.allSamplesStartIdx + " -> " + (state.allSamplesStartIdx + state.allSamplesLength)
-            );
-        } imEnd();
-        imBeginLayout(COL | FLEX1); {
-            imBeginLayout(ROW | FLEX1); {
-                imBeginLayout(FLEX1 | COL); {
-                    imBeginLayout(FLEX1); {
-                        const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(); {
-                            const plotState = imState(newPlotState);
+    const isNewFrame = imMemo(c, getRenderCount(c));
 
-                            const widthChanged = imMemo(width);
-                            const heightChanged = imMemo(height);
-                            const dpiChanged = imMemo(dpi);
-                            const resize = widthChanged || heightChanged || dpiChanged;
-                            if (resize) {
-                                plotState.width = width;
-                                plotState.height = height;
-                                plotState.dpi = dpi;
-                            }
+    imLayout(c, COL); imFlex(c); {
+        imLayout(c, BLOCK); {
+            imLayout(c, ROW); {
+                imLayout(c, BLOCK); imFlex(c); {
+                    imLayout(c, BLOCK); {
+                        imEl(c, EL_B); imStr(c, "Sound Lab"); imElEnd(c, EL_B); 
+                    } imLayoutEnd(c);
 
-                            if (!isExcessEventRender() || resize) {
-                                ctx.clearRect(0, 0, width, height);
+                    imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                } imLayoutEnd(c);
 
-                                // const samples = state.output[0][0];
-                                const samples = state.allSamples;
+                const heading = "t=" + (state.allSamplesStartIdx / state.dsp.sampleRate).toPrecision(3) +
+                    " sample " + state.allSamplesStartIdx + " -> " + (state.allSamplesStartIdx + state.allSamplesLength);
+                imStr(c, heading);
 
-                                const theme = getCurrentTheme();
-                                ctx.strokeStyle = theme.fg.toString();
-                                ctx.lineWidth = 2;
-                                drawSamples(samples, plotState, ctx, state.allSamplesStartIdx, state.allSamplesLength);
+                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+            } imLayoutEnd(c);
+        } imLayoutEnd(c);
+        imLayout(c, COL); imFlex(c); {
+            imLayout(c, ROW); imFlex(c); {
+                imLayout(c, COL); imFlex(c); {
+                    const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
+                        const plotState = imState(c, newPlotState);
 
-                                ctx.strokeStyle = "green";
-                                ctx.lineWidth = 2;
-                                drawSamples(state.derivative, plotState, ctx, state.allSamplesStartIdx, state.allSamplesLength);
-                            }
+                        const widthChanged = imMemo(c, width);
+                        const heightChanged = imMemo(c, height);
+                        const dpiChanged = imMemo(c, dpi);
+                        const resize = widthChanged || heightChanged || dpiChanged;
+                        if (resize) {
+                            plotState.width = width;
+                            plotState.height = height;
+                            plotState.dpi = dpi;
+                        }
 
-                        } imEndCanvasRenderingContext2D();
-                    } imEnd();
+                        if (isNewFrame || resize) {
+                            ctx.clearRect(0, 0, width, height);
+
+                            // const samples = state.output[0][0];
+                            const samples = state.allSamples;
+
+                            const theme = getCurrentTheme();
+                            ctx.strokeStyle = theme.fg.toString();
+                            ctx.lineWidth = 2;
+                            drawSamples(samples, plotState, ctx, state.allSamplesStartIdx, state.allSamplesLength);
+
+                            ctx.strokeStyle = "green";
+                            ctx.lineWidth = 2;
+                            drawSamples(state.derivative, plotState, ctx, state.allSamplesStartIdx, state.allSamplesLength);
+                        }
+
+                    } imEndCanvasRenderingContext2D(c);
 
                     // range slider
 
-                    const rangeSlider = imState(newRangeSliderState);
-                    rangeSlider.min = 0;
-                    rangeSlider.max = state.allSamples.length;
-                    rangeSlider.minRangeSize = 500;
+                    let [start, end] = imRangeSlider(
+                        c,
+                        0, state.allSamples.length,
+                        state.allSamplesStartIdx, state.allSamplesStartIdx + state.allSamplesLength,
+                        1, 500,
+                    ).value;
 
-                    imRangeSlider(rangeSlider);
+                    state.allSamplesStartIdx = start;
+                    state.allSamplesLength   = end - start;
 
-                    state.allSamplesStartIdx = rangeSlider.startValue;
-                    state.allSamplesLength = rangeSlider.endValue - rangeSlider.startValue + 1;
-                    // state.allSamplesStartIdx = 0;
-                    // state.allSamplesLength = Math.min(500, state.allSamples.length);
+                } imLayoutEnd(c);
 
-                } imEnd();
-
-                imBeginSpace(2, PX, 100, PERCENT); {
-                    if (imInit()) {
-                        setStyle("backgroundColor", cssVars.bg);
+                imLayout(c, BLOCK); imSize(c, 2, PX, 100, PERCENT);  {
+                    if (isFirstishRender(c)) {
+                        elSetStyle(c, "backgroundColor", cssVarsApp.bg);
                     }
-                } imEnd();
+                } imLayoutEnd(c);
 
-                imBeginLayout(FLEX1 | COL); {
-                    imBeginLayout(FLEX1); {
-                        const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(); {
-                            const plotState = imState(newPlotState);
-                            const widthChanged = imMemo(width);
-                            const heightChanged = imMemo(height);
-                            const dpiChanged = imMemo(dpi);
+                imLayout(c, COL); imFlex(c); {
+                    imLayout(c, COL); imFlex(c); {
+                        const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
+                            const plotState = imState(c, newPlotState);
+                            const widthChanged = imMemo(c, width);
+                            const heightChanged = imMemo(c, height);
+                            const dpiChanged = imMemo(c, dpi);
 
                             const resize = widthChanged || heightChanged || dpiChanged;
                             if (resize) {
@@ -469,7 +477,7 @@ export function imSoundLab(ctx: GlobalContext) {
                                 plotState.dpi = dpi;
                             }
 
-                            if (resize || !isExcessEventRender()) {
+                            if (resize || isNewFrame) {
                                 ctx.clearRect(0, 0, width, height);
 
                                 ctx.strokeStyle = "blue";
@@ -481,25 +489,25 @@ export function imSoundLab(ctx: GlobalContext) {
                                 drawSamples(state.frequencies2, plotState, ctx, state.frequenciesStartIdx, state.frequenciesLength);
                             }
 
-                        } imEndCanvasRenderingContext2D();
-                    } imEnd();
+                        } imEndCanvasRenderingContext2D(c);
+                    } imLayoutEnd(c);
 
                     // range slider
 
-                    const rangeSlider = imState(newRangeSliderState);
-                    rangeSlider.min = 0;
-                    rangeSlider.max = numFrequenciesToView / 2;
-                    rangeSlider.minRangeSize = 10;
+                    const [start, end] = imRangeSlider(
+                        c,
+                        0, numFrequenciesToView,
+                        state.frequenciesStartIdx, state.frequenciesStartIdx + state.frequenciesLength,
+                        1, 500
+                    ).value;
 
-                    imRangeSlider(rangeSlider);
-
-                    state.frequenciesStartIdx = rangeSlider.startValue;
-                    state.frequenciesLength = rangeSlider.endValue - rangeSlider.startValue + 1;
-                } imEnd();
-            } imEnd();
-            imBeginLayout(FLEX1 | ROW | JUSTIFY_CENTER); {
-                imKeyboard(ctx);
-            } imEnd();
-        } imEnd();
-    } imEnd();
+                    state.frequenciesStartIdx = start;
+                    state.frequenciesLength  = end - start;
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
+            imLayout(c, ROW); imFlex(c); imJustify(c); {
+                imKeyboard(c, ctx);
+            } imLayoutEnd(c);
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
 }

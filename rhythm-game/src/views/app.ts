@@ -1,3 +1,5 @@
+import { COL, imFixed, imLayout, imLayoutEnd, PX } from "src/components/core/layout";
+import { FpsCounterState } from "src/components/fps-counter";
 import { pressKey, releaseAllKeys, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
@@ -55,26 +57,15 @@ import {
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
 import { arraySwap, filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
-import {
-    getKeyEvents,
-    imBeginList,
-    imEnd,
-    imEndList,
-    imInit,
-    imMemo,
-    imTextSpan,
-    isEditingTextSomewhereInDocument,
-    nextListRoot,
-    setClass
-} from "src/utils/im-dom-utils";
+import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
+import { ImCache, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
+import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp } from "src/utils/math-utils";
 import { notesEqual } from "src/utils/music-theory-utils";
 import { ChartSelect as imChartSelect } from "src/views/chart-select";
 import { EditView as imEditView } from "src/views/edit-view";
 import { PlayView as imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
-import { ABSOLUTE, FIXED, H2, imBeginLayout, ROW } from "./layout";
-import { cnApp } from "./styling";
 import { imSoundLab } from "./sound-lab-view";
 
 
@@ -225,7 +216,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
             if (vAxis !== 0) {
                 const prevIdx = loadSaveModal.idx;
 
-                setCurrentChartIdx(ctx, loadSaveModal.idx + vAxis);
+                setCurrentChartIdx(ctx, loadSaveModal.idx - vAxis);
 
                 if (altPressed) {
                     arraySwap(savedState.userCharts, loadSaveModal.idx, prevIdx);
@@ -348,6 +339,34 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         }
     }
 
+    const instrumentKey = getKeyForKeyboardKey(keyboard, key);
+    if (instrumentKey && !shiftPressed && !altPressed && !ctrlPressed) {
+        // need to handle '/' even though it wasn't actually pressed.
+        // hence not early returning on repeats
+
+        // play the instrument
+        {
+            pressKey(instrumentKey.index, instrumentKey.musicNote, isRepeat);
+        }
+
+        // insert notes into the sequencer
+        if (!isRepeat) {
+            const pos = sequencer.cursorStart;
+            const divisor = sequencer.cursorDivisor;
+
+            if (!isRepeat) {
+                sequencer.notesToPreview.push(newTimelineItemNote(
+                    instrumentKey.musicNote, 
+                    pos,
+                    1,
+                    divisor, 
+                ));
+                sequencer.notesToPreviewVersion++;
+            }
+        }
+
+        return true;
+    }
 
     if (isRepeat) {
         return false;
@@ -484,44 +503,6 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
         return true;
     }
 
-    const instrumentKey = getKeyForKeyboardKey(keyboard, key);
-    if (instrumentKey && !shiftPressed && !altPressed && !ctrlPressed) {
-        // play the instrument
-        {
-            pressKey(instrumentKey.index, instrumentKey.musicNote, isRepeat);
-        }
-
-        // insert notes into the sequencer
-        {
-            const pos = sequencer.cursorStart;
-            const divisor = sequencer.cursorDivisor;
-            const note = instrumentKey.musicNote;
-            const hasNote = timelineHasNoteAtPosition(chart, pos, divisor, note);
-
-            if (!isRepeat) {
-                sequencer.notesToPreview.push(newTimelineItemNote(
-                    instrumentKey.musicNote, 
-                    pos,
-                    1,
-                    divisor, 
-                ));
-            }
-
-            if (0) {
-                setTimelineNoteAtPosition(
-                    chart,
-                    pos,
-                    divisor,
-                    note,
-                    1,
-                    !hasNote
-                );
-            }
-        }
-
-        return true;
-    }
-
     return false;
 }
 
@@ -641,9 +622,13 @@ function handleKeyUp(ctx: GlobalContext, keyPressState: KeyPressState): boolean 
 
     const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, key);
     if (instrumentKey) {
+        let len = ctx.sequencer.notesToPreview.length;
         filterInPlace(ctx.sequencer.notesToPreview, note => {
             return !notesEqual(note.note, instrumentKey.musicNote);
         });
+        if (len !== ctx.sequencer.notesToPreview.length) {
+            ctx.sequencer.notesToPreviewVersion++;
+        }
 
         releaseKey(instrumentKey.index, instrumentKey.musicNote);
         return true;
@@ -854,10 +839,10 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
     dst.hAxis = hAxis;
 }
 // Contains ALL logic
-export function imApp(ctx: GlobalContext) {
+export function imApp(c: ImCache, ctx: GlobalContext, fps: FpsCounterState) {
     const { ui } = ctx;
 
-    const { keyDown, keyUp, blur } = getKeyEvents();
+    const { keyDown, keyUp, blur } = getGlobalEventSystem().keyboard;
 
     ctx.keyPressState = null;
 
@@ -878,32 +863,26 @@ export function imApp(ctx: GlobalContext) {
     }
     if (blur) {
         releaseAllKeys();
-        ctx.sequencer.notesToPreview.length = 0;
+        if (ctx.sequencer.notesToPreview.length) {
+            ctx.sequencer.notesToPreview.length = 0;
+            ctx.sequencer.notesToPreviewVersion++;
+        }
     }
 
-    if (imMemo(ctx.sequencer._currentChart._timelineLastUpdated)) {
+    if (imMemo(c, ctx.sequencer._currentChart._timelineLastUpdated)) {
         saveStateDebounced(ctx);
     }
 
-    imBeginLayout(ABSOLUTE | FIXED | ROW); {
-        if (imInit()) {
-            setClass(cnApp.normalFont);
-        }
-
-        imBeginList(); 
-        nextListRoot(ui.currentView);
-        switch(ui.currentView) { 
-            case APP_VIEW_STARTUP: { imStartupView(ctx); } break;
-            case APP_VIEW_CHART_SELECT: { imChartSelect(ctx); } break;
-            case APP_VIEW_PLAY_CHART: { imPlayView(ctx); } break;
-            case APP_VIEW_EDIT_CHART: { imEditView(ctx); } break;
-            case APP_VIEW_SOUND_LAB: { imSoundLab(ctx); } break;
+    imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+        imSwitch(c, ui.currentView); switch(ui.currentView) { 
+            case APP_VIEW_STARTUP:      imStartupView(c, ctx); break;
+            case APP_VIEW_CHART_SELECT: imChartSelect(c, ctx); break;
+            case APP_VIEW_PLAY_CHART:   imPlayView(c, ctx);    break;
+            case APP_VIEW_EDIT_CHART:   imEditView(c, ctx);    break;
+            case APP_VIEW_SOUND_LAB:    imSoundLab(c, ctx);    break;
             default: {
-                imBeginLayout(H2); {
-                    imTextSpan(`TODO: implement ${ui.currentView} ...`);
-                } imEnd();
+                imEl(c, EL_H2); imStr(c, `TODO: implement ${ui.currentView} ...`); imElEnd(c, EL_H2);
             } break;
-        }
-        imEndList();
-    } imEnd();
+        } imSwitchEnd(c);
+    } imLayoutEnd(c);
 }

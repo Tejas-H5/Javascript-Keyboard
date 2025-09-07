@@ -32,23 +32,12 @@ rhythm-game/    -- The frontend typescript code.
             UI components that can be copy-pasted to other simlar projects go here
         utils/
             Utils that can be copy-pasted to other simlar projects go here
-        css/            
-            All CSS that can be copy-pasted to other simlar projects goes here
         samples/
             samples are converted into number arrays by a python script, and then put here.
-        dsp/
-            dsp-loop.ts             -- All code that runs on a custom Audio Worklet node goes here
-            dsp-loop-interface.ts   -- All code that lets the frontend communicate with dsp-loop.js goes here
-        The rest of the code will be app-specific:
+        dsp/                        -- All code that runs on a custom Audio Worklet node goes here
         state/          -- All app-specific domain logic goes here.
-            global-context.ts   -- The 'spine' of the program - code with cross-cutting concerns goes here
-                This file also contains the GlobalContext, which has references to all of the 'subsystems' in the program
-        views/          
-            All ui components that require the GlobalContext in order to work go here
-        main.css        
-            App-specific css goes here. Most styling is done through JS though, so this file might mostly contain css vars
-        main.ts         
-            All initialization code goes here
+        views/          -- All ui components that require the GlobalContext in order to work go here
+        main.ts         -- All initialization code goes here
         vite-env.d.ts
 
     other files and folders

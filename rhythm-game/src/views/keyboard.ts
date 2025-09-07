@@ -1,19 +1,18 @@
-import "src/css/layout.css";
 import {
     getCurrentOscillatorGain,
     pressKey,
     releaseKey
 } from "src/dsp/dsp-loop-interface";
-import "src/main.css";
 import {
     getCurrentPlayingTimeRelative,
 } from "src/state/sequencer-state";
-import { elementHasMouseDown, elementHasMouseHover, imBeginList, imEnd, imEndList, imInit, imMemo, imStateInline, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
 import { GlobalContext } from "./app";
 import { timelineHasNoteAtPosition } from "src/state/sequencer-chart";
-import { GAP5, imBeginAbsolute, imBeginLayout, imBeginSpace, NOT_SET, PX, ROW } from "./layout";
-import { cssVars } from "./styling";
+import { cssVarsApp } from "./styling";
 import { APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART } from "src/state/ui-state";
+import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, inlineTypeId, isFirstishRender } from "src/utils/im-core";
+import { BLOCK, COL, imAbsolute, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, NA, PX, ROW } from "src/components/core/layout";
+import { elGet, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
 
 
 // TODO: KEYBOARD_OFFSETS
@@ -25,177 +24,181 @@ const offsets = [
     1.75,
 ];
 
-export function imKeyboard(ctx: GlobalContext) {
+export function imKeyboard(c: ImCache, ctx: GlobalContext) {
     const keyboard = ctx.keyboard;
     const keys = keyboard.keys;
 
+    const parent = elGet(c);
     let maxOffset = 0;
-    const root = imBeginLayout().root; {
-        const parent = root.parentElement!;
+    for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
+        const keyRow = keyboard.keys[rowIdx];
+        let computedOffset = offsets[rowIdx] + keyRow.length + 1;
+        maxOffset = Math.max(maxOffset, computedOffset);
+    }
+
+    imLayout(c, COL); imFlex(c); {
+        elSetClass(c, "keyboard");
+
+        const mouse = getGlobalEventSystem().mouse;
+
+        if (elHasMousePress(c)) {
+            keyboard.hasClicked = mouse.leftMouseButton;
+        } 
+        if (!mouse.leftMouseButton) {
+            keyboard.hasClicked = false;
+        }
+
         const width = parent.clientWidth;
         const height = parent.clientHeight;
         const keySize = Math.min(width / maxOffset, height / (keyboard.keys.length));
 
-        imBeginList();
-        for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
+        imFor(c); for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
             const keyRow = keyboard.keys[rowIdx];
-            let computedOffset = offsets[rowIdx] + keyRow.length + 1;
-            maxOffset = Math.max(maxOffset, computedOffset);
             const startOffset = offsets[rowIdx];
 
-            nextListRoot(); 
-            
-            imBeginLayout(ROW | GAP5); {
-                imBeginSpace(startOffset * keySize, PX, 0, NOT_SET); imEnd();
+            imLayout(c, ROW); imGap(c, 5, PX); imJustify(c); {
+                imLayout(c, BLOCK); imSize(c, startOffset * keySize, PX, 0, NA); imLayoutEnd(c);
 
-                imBeginList();
-                for (
+                imFor(c); for (
                     let keyIdx = 0;
                     keyIdx < keyRow.length;
                     keyIdx++
                 ) {
                     const key = keyRow[keyIdx];
-                    nextListRoot(); {
+                    let s; s = imGet(c, inlineTypeId(imKeyboard));
+                    if (!s) s = imSet(c, { pressed: false });
 
-                        const s = imStateInline(() => {
-                            return { pressed: false };
-                        });
+                    const signal = getCurrentOscillatorGain(key.index);
+                    const PRESS_EFFECT = 5;
 
-                        const signal = getCurrentOscillatorGain(key.index);
-                        const PRESS_EFFECT = 5;
+                    const sequencer = ctx.sequencer;
 
-                        const sequencer = ctx.sequencer;
+                    const isEditOrPlay = ctx.ui.currentView === APP_VIEW_EDIT_CHART ||
+                        ctx.ui.currentView === APP_VIEW_PLAY_CHART;
+                    const hasNote = isEditOrPlay && timelineHasNoteAtPosition(
+                        sequencer._currentChart,
+                        sequencer.cursorStart, sequencer.cursorDivisor,
+                        key.musicNote,
+                    );
 
-                        const isEditOrPlay = ctx.ui.currentView === APP_VIEW_EDIT_CHART || ctx.ui.currentView === APP_VIEW_PLAY_CHART;
-                        const hasNote = isEditOrPlay && timelineHasNoteAtPosition(
-                            sequencer._currentChart,
-                            sequencer.cursorStart, sequencer.cursorDivisor,
-                            key.musicNote,
-                        );
+                    const pressEffect = PRESS_EFFECT * Math.max(signal, hasNote ? 1 : 0);
 
-                        const pressEffect = PRESS_EFFECT * Math.max(signal, hasNote ? 1 : 0);
+                    imLayout(c, BLOCK); imRelative(c); {
+                        if (isFirstishRender(c)) {
+                            elSetStyle(c, "fontFamily", "monospace");
+                            elSetStyle(c, "outline", `1px solid ${cssVarsApp.fg}`);
+                            elSetStyle(c, "display", "inline-block");
+                            elSetStyle(c, "textAlign", "center");
+                            elSetStyle(c, "userSelect", "none");
+                        }
 
-                        imBeginLayout(); {
-                            if (imInit()) {
-                                setStyle("fontFamily", "monospace");
-                                setStyle("outline", `1px solid ${cssVars.fg}`);
-                                setStyle("display", "inline-block");
-                                setStyle("textAlign", "center");
-                                setStyle("userSelect", "none");
-                            }
+                        if (imMemo(c, keySize)) {
+                            elSetStyle(c, "width", keySize + "px");
+                            elSetStyle(c, "height", keySize + "px");
+                            elSetStyle(c, "fontSize", (keySize / 2) + "px");
+                        }
 
-                            if (imMemo(keySize)) {
-                                setStyle("width", keySize + "px");
-                                setStyle("height", keySize + "px");
-                                setStyle("fontSize", (keySize / 2) + "px");
-                            }
-                            
-                            if (imMemo(signal)) {
-                                setStyle("color", signal > 0.1 ? cssVars.bg : cssVars.fg);
-                            }
+                        if (imMemo(c, signal)) {
+                            elSetStyle(c, "color", signal > 0.1 ? cssVarsApp.bg : cssVarsApp.fg);
+                        }
 
-                            if (imMemo(pressEffect)) {
-                                setStyle("transform", `translate(${pressEffect}px, ${pressEffect}px)`);
-                            }
+                        if (imMemo(c, pressEffect)) {
+                            elSetStyle(c, "transform", `translate(${pressEffect}px, ${pressEffect}px)`);
+                        }
 
-                            if (elementHasMouseDown() && !s.pressed) {
+
+                        const isPressing = keyboard.hasClicked && elHasMouseOver(c) && mouse.leftMouseButton;
+                        const isPressingChanged = imMemo(c, isPressing);
+
+                        if (isPressingChanged) {
+                            if (isPressing) {
                                 s.pressed = true;
                                 pressKey(key.index, key.musicNote, false);
-                            }
-                            if (s.pressed && (!elementHasMouseHover() || !elementHasMouseDown())) {
+                            } else if (s.pressed) {
                                 s.pressed = false;
                                 releaseKey(key.index, key.musicNote);
                             }
+                        }
 
-                            // indicator that shows if it's pressed on the sequencer
-                            imBeginAbsolute(0, PX, 0, PX, 0, PX, 0, PX); {
-                                if (imMemo(hasNote)) {
-                                    setStyle("backgroundColor", hasNote ? cssVars.mg : cssVars.bg);
-                                }
-                            } imEnd();
-                            // letter bg
-                            imBeginAbsolute(0, PX, 0, PX, 0, PX, 0, PX); {
-                                if (imMemo(signal)) {
-                                    setStyle("backgroundColor", `rgba(0, 0, 0, ${signal})`);
-                                }
-                            } imEnd();
-                            // letter text
-                            imBeginAbsolute(5, PX, 0, PX, 0, NOT_SET, 0, PX); {
-                                if (imMemo(key.text)) {
-                                    setInnerText(key.text);
-                                }
-                            } imEnd();
-                            // note text
-                            imBeginAbsolute(0, NOT_SET, 0, PX, 5, PX, 0, PX); {
-                                if (imInit()) {
-                                    setStyle("textAlign", "right");
-                                }
-
-                                if (imMemo(keySize)) {
-                                    setStyle("fontSize", (keySize / 4) + "px");
-                                    setStyle("paddingRight", (keySize / 10) + "px");
-                                }
-
-                                if (imMemo(key.noteText)) {
-                                    setInnerText(key.noteText);
-                                }
-                            } imEnd();
-                            // approach square(s)
-                            imBeginList();
-                            // need to iterate over all the notes within the approach window, 
-                            // could need multiple approach squares for this key.
-                            const sequencer = ctx.sequencer;
-                            if (sequencer.isPlaying) {
-                                const currentTime = getCurrentPlayingTimeRelative(sequencer);
-
-                                const scheduledKeyPresses = ctx.sequencer.scheduledKeyPresses;
-                                for (let i = 0; i < scheduledKeyPresses.length; i++) {
-                                    const scheduledPress = scheduledKeyPresses[i];
-                                    if (scheduledPress.keyId !== key.index) {
-                                        continue;
-                                    }
-
-                                    const APPROACH_WINDOW = 500;
-                                    const PERSIST_WINDOW = 200;
-
-                                    const relativeTime = currentTime - scheduledPress.time;
-                                    if (relativeTime < -APPROACH_WINDOW) {
-                                        continue;
-                                    }
-
-                                    if (relativeTime > PERSIST_WINDOW) {
-                                        continue;
-                                    }
-
-                                    nextListRoot(); {
-                                        const t = -relativeTime / APPROACH_WINDOW;
-                                        const scale = 250 * Math.max(0, t)
-
-                                        imBeginAbsolute(0, PX, 0, PX, 0, PX, 0, PX); {
-                                            if (imInit()) {
-                                                setStyle("backgroundColor", cssVars.playback);
-                                            }
-                                            if (imMemo(t)) {
-                                                setStyle("opacity", t + "");
-                                            }
-                                        } imEnd();
-                                        // This osu! style border kinda whack ngl.
-                                        imBeginAbsolute(-scale, PX, -scale, PX, scale, PX, scale, PX); {
-                                            if (imInit()) {
-                                                setStyle("border", `5px solid ${cssVars.fg}`);
-                                                setStyle("opacity", "1");
-                                            }
-                                        } imEnd();
-                                    }
-                                }
+                        // indicator that shows if it's pressed on the sequencer
+                        imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                            if (imMemo(c, hasNote)) {
+                                elSetStyle(c, "backgroundColor", hasNote ? cssVarsApp.mg : cssVarsApp.bg);
                             }
-                            imEndList();
-                        } imEnd();
-                    }
-                }
-                imEndList();
-            } imEnd();
-        }
-        imEndList();
-    } imEnd();
+                        } imLayoutEnd(c);
+                        // letter bg
+                        imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                            if (imMemo(c, signal)) {
+                                elSetStyle(c, "backgroundColor", `rgba(0, 0, 0, ${signal})`);
+                            }
+                        } imLayoutEnd(c);
+                        // letter text
+                        imLayout(c, BLOCK); imAbsolute(c, 5, PX, 0, PX, 0, PX, 0, PX); {
+                            imStr(c, key.text);
+                        } imLayoutEnd(c);
+                        // note text
+                        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, 5, PX, 0, PX); {
+                            if (isFirstishRender(c)) {
+                                elSetStyle(c, "textAlign", "right");
+                            }
+
+                            if (imMemo(c, keySize)) {
+                                elSetStyle(c, "fontSize", (keySize / 4) + "px");
+                                elSetStyle(c, "paddingRight", (keySize / 10) + "px");
+                            }
+
+                            imStr(c, key.noteText);
+                        } imLayoutEnd(c);
+
+                        // approach square(s)
+                        // need to iterate over all the notes within the approach window, 
+                        // could need multiple approach squares for this key.
+                        const sequencer = ctx.sequencer;
+                        if (imIf(c) && sequencer.isPlaying) {
+                            const currentTime = getCurrentPlayingTimeRelative(sequencer);
+
+                            const scheduledKeyPresses = ctx.sequencer.scheduledKeyPresses;
+                            imFor(c); for (let i = 0; i < scheduledKeyPresses.length; i++) {
+                                const scheduledPress = scheduledKeyPresses[i];
+                                if (scheduledPress.keyId !== key.index) {
+                                    continue;
+                                }
+
+                                const APPROACH_WINDOW = 500;
+                                const PERSIST_WINDOW = 200;
+
+                                const relativeTime = currentTime - scheduledPress.time;
+                                if (relativeTime < -APPROACH_WINDOW) {
+                                    continue;
+                                }
+
+                                if (relativeTime > PERSIST_WINDOW) {
+                                    continue;
+                                }
+
+                                const t = -relativeTime / APPROACH_WINDOW;
+                                const scale = 250 * Math.max(0, t)
+
+                                imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                                    if (isFirstishRender(c)) {
+                                        elSetStyle(c, "backgroundColor", cssVarsApp.playback);
+                                    }
+                                    if (imMemo(c, t)) {
+                                        elSetStyle(c, "opacity", t + "");
+                                    }
+                                } imLayoutEnd(c);
+                                // This osu! style border kinda whack ngl.
+                                imLayout(c, BLOCK); imAbsolute(c, -scale, PX, -scale, PX, scale, PX, scale, PX); {
+                                    if (isFirstishRender(c)) {
+                                        elSetStyle(c, "border", `5px solid ${cssVarsApp.fg}`);
+                                        elSetStyle(c, "opacity", "1");
+                                    }
+                                } imLayoutEnd(c);
+                            } imForEnd(c);
+                        } imIfEnd(c);
+                    } imLayoutEnd(c);
+                } imForEnd(c);
+            } imLayoutEnd(c);
+        } imForEnd(c);
+    } imLayoutEnd(c);
 }

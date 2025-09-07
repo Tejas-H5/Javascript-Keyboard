@@ -1,42 +1,46 @@
-import { imBeginEl, imEnd, imMemo, imRef, imTrackSize, setStyle, UIRoot } from "src/utils/im-dom-utils";
-import { imBeginSpace, PERCENT, RELATIVE } from "src/views/layout";
+import { ImCache, imGet, imMemo, imSet } from "src/utils/im-core";
+import { EL_CANVAS, elSetStyle, imEl, imElEnd, imTrackSize } from "src/utils/im-dom";
+import { BLOCK, imFlex, imLayout, imLayoutEnd, imRelative, imSize, PERCENT } from "./core/layout";
 
-function newCanvasElement() {
-    return document.createElement("canvas");
-}
+type ImCanvasRenderingContext = [
+    canvas: HTMLCanvasElement,
+    context: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    dpi: number
+];
 
-export function imBeginCanvasRenderingContext2D() {
+export function imBeginCanvasRenderingContext2D(c: ImCache): ImCanvasRenderingContext {
     // When I set the canvas to the size of it's offset width, this in turn
     // causes the parent to get larger, which causes the canvas to get larger, and so on.
     // This relative -> absolute pattern is being used here to fix this.
 
-    imBeginSpace(100, PERCENT, 100, PERCENT, RELATIVE);
+    imLayout(c, BLOCK); imRelative(c); imFlex(c);
+    const { size } = imTrackSize(c);
 
-    const { size: rect } = imTrackSize();
-    const canvasRoot = imBeginEl(newCanvasElement);
+    const canvas = imEl(c, EL_CANVAS).root;
 
-    const canvas = canvasRoot.root;
-    let ctxRef = imRef<[UIRoot<HTMLCanvasElement>, CanvasRenderingContext2D, number, number, number] | null>();
-    if (!ctxRef.val) {
+    let ctx = imGet(c, imBeginCanvasRenderingContext2D);
+    if (!ctx) {
         const context = canvas.getContext("2d");
         if (!context) {
             throw new Error("Canvas 2d isn't supported by your browser!!! I'd suggest _not_ plotting anything.");
         }
-        ctxRef.val = [canvasRoot, context, 0, 0, 0];
 
-        setStyle("position", "absolute");
-        setStyle("top", "0");
-        setStyle("left", "0");
+        elSetStyle(c, "position", "absolute");
+        elSetStyle(c, "top", "0");
+        elSetStyle(c, "left", "0");
+
+        ctx = imSet(c, [canvas, context, 0, 0, 0]);
     }
-    const ctx = ctxRef.val;
 
-    const w = rect.width;
-    const h = rect.height;
+    const w = size.width;
+    const h = size.height;
     // const sf = window.devicePixelRatio ?? 1;
     const dpi = 2; // TODO: revert
-    const wC = imMemo(w);
-    const hC = imMemo(h);
-    const dpiC = imMemo(dpi);
+    const wC   = imMemo(c, w);
+    const hC   = imMemo(c, h);
+    const dpiC = imMemo(c, dpi);
     if (wC || hC || dpiC) {
         canvas.style.width = w + "px";
         canvas.style.height = h + "px";
@@ -50,7 +54,7 @@ export function imBeginCanvasRenderingContext2D() {
     return ctx;
 }
 
-export function imEndCanvasRenderingContext2D() {
-    imEnd();
-    imEnd();
+export function imEndCanvasRenderingContext2D(c: ImCache) {
+    imElEnd(c, EL_CANVAS);
+    imLayoutEnd(c);
 }

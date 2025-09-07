@@ -1,36 +1,55 @@
-import { imBeginEl, imMemo, setAttr, setInputValue } from "src/utils/im-dom-utils";
+import { newCssBuilder } from "src/utils/cssb";
+import { cssVars } from "./core/stylesheets";
+import { EL_INPUT, elSetAttr, elSetClass, imEl, imElEnd } from "src/utils/im-dom";
+import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core";
+import { imLayoutEnd } from "./core/layout";
 
-function newInput() {
-    return document.createElement("input");
+const cssb = newCssBuilder();
+
+const cnInput = cssb.newClassName("im-text-input");
+cssb.s(`
+input.${cnInput} {
+    all: unset;
+    resize: none;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px;
 }
 
-export function imBeginInput({
+input.${cnInput}:focus, input.${cnInput}:hover {
+    background-color: ${cssVars.bg2};
+}
+`);
+
+
+export function imTextInputBegin(c: ImCache, {
     value,
-    autoSize,
-    placeholder = null,
+    placeholder = "",
 }: {
     value: string;
-    autoSize: boolean;
-    placeholder?: string | null;
+    placeholder?: string;
 }) {
-    const inputRoot = imBeginEl(newInput);
-    const input = inputRoot.root; {
-        if (imMemo(placeholder)) {
-            setAttr("placeholder", placeholder);
+    const input = imEl(c, EL_INPUT); {
+        if (isFirstishRender(c)) {
+            elSetClass(c, cnInput);
+            elSetAttr(c, "type", "text");
         }
 
-        if (imMemo(value)) {
-            if (value !== input.value) {
-                setInputValue(input, value);
-
-                if (autoSize) {
-                    // TODO: test this code
-                    input.style.width = "0px";
-                    input.style.width = input.scrollWidth + "px";
-                }
-            }
+        if (imMemo(c, placeholder)) {
+            elSetAttr(c, "placeholder", placeholder);
         }
-    } // user-supplied end
 
-    return inputRoot;
+        if (imMemo(c, value)) {
+            input.root.value = value;
+        }
+
+    } // imElEnd(c, EL_INPUT);
+
+    return input;
 }
+
+export function imTextInputEnd(c: ImCache) {
+    imElEnd(c, EL_INPUT);
+}
+
+

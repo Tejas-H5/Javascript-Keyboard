@@ -1,9 +1,10 @@
 import { chooseItem } from "src/utils/array-utils";
 import { GlobalContext, setViewEditChart } from "./app";
 import { clamp } from "src/utils/math-utils";
-import { deltaTimeSeconds, getKeyEvents, imBeginList, imEnd, imEndList, imInit, imState, imTextDiv, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
-import { ALIGN_CENTER, COL, FLEX1, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, ROW, PERCENT, EM, NOT_SET, imBeginAbsolute, PX, RELATIVE } from "./layout";
 import { imGameplay } from "./gameplay";
+import { getDeltaTimeSeconds, ImCache, imElse, imEndIf, imIf, imState, isFirstishRender } from "src/utils/im-core";
+import { BLOCK, COL, imAlign, imFlex, imJustify, imLayout, imSize, imLayoutEnd, ROW, PERCENT, NA, EM, imRelative, imAbsolute, PX } from "src/components/core/layout";
+import { elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
 
 let MESSAGES = [
     "Nice!",
@@ -27,10 +28,10 @@ function newPlayViewState() {
     };
 }
 
-export function PlayView(ctx: GlobalContext) {
-    const s = imState(newPlayViewState);
+export function PlayView(c: ImCache, ctx: GlobalContext) {
+    const s = imState(c, newPlayViewState);
 
-    if (imInit()) {
+    if (isFirstishRender(c)) {
         randomizeMessage();
     }
 
@@ -46,16 +47,15 @@ export function PlayView(ctx: GlobalContext) {
         s.showResultsScreen = false;
     }
 
-    imBeginLayout(FLEX1 | COL); {
-        imBeginList(); 
-        if (nextListRoot() && s.showResultsScreen) {
-            ResultsScreen();
+    imLayout(c, COL); imFlex(c); {
+        if (imIf(c) && s.showResultsScreen) {
+            imResultsScreen(c);
         } else {
-            nextListRoot();
-            imGameplay(ctx);
-        }
-        imEndList();
-    } imEnd();
+            imElse(c);
+
+            imGameplay(c, ctx);
+        } imEndIf(c);
+    } imLayoutEnd(c);
 }
 
 
@@ -68,80 +68,79 @@ function newResultsScreenState() {
     };
 }
 
-function ResultsScreen() {
-    const s = imState(newResultsScreenState);
+function imResultsScreen(c: ImCache) {
+    const s = imState(c, newResultsScreenState);
 
-    const dt = deltaTimeSeconds();
+    const dt = getDeltaTimeSeconds(c);
     if (s.t < 100) {
         s.t += dt;
     }
 
     s.fontSize = s.baseFontSize + s.wiggle * Math.sin(Math.PI * 2 * s.t);
 
-    const { keyDown } = getKeyEvents();
+    const { keyDown } = getGlobalEventSystem().keyboard;
     if (keyDown && keyDown.key.toUpperCase() === "R") {
         s.t = 0;
     }
 
     const start = 0.3;
 
-    imBeginLayout(FLEX1 | ROW | ALIGN_CENTER | JUSTIFY_CENTER); {
-        imBeginSpace(80, PERCENT, 80, PERCENT); {
-            if (imInit()) {
-                setStyle("border", "1px solid currentColor");
+
+    imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
+        imLayout(c, BLOCK); imSize(c, 80, PERCENT, 80, PERCENT); {
+            if (isFirstishRender(c)) {
+                elSetStyle(c,"border", "1px solid currentColor");
             }
 
-            imBeginSpace(
-                0, NOT_SET, 4, EM, 
-                ROW | ALIGN_CENTER | JUSTIFY_CENTER | RELATIVE
-            ); {
-                imBeginAbsolute(0, PX, 0, PX, 0, PX, 0, PX, ROW | ALIGN_CENTER | JUSTIFY_CENTER); {
-                    setStyle("fontSize", s.fontSize + "rem");
-                    setInnerText(currentMessage);
-                } imEnd();
-            } imEnd();
+            imLayout(c, ROW); imAlign(c); imJustify(c); imRelative(c); imSize(c, 0, NA, 4, EM); {
+                imLayout(c, ROW); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                    elSetStyle(c,"fontSize", s.fontSize + "rem");
+                    imStr(c, currentMessage);
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
 
-            imBeginAnimatedRow(s.t, start + 0.1, 0.1, 300); {
-                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
+            imBeginAnimatedRow(c, s.t, start + 0.1, 0.1, 300); {
+                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
-                imTextDiv("Time taken: "); 
+                imStr(c, "Time taken: "); 
 
-                imBeginLayout(FLEX1); imEnd();
+                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-                imAnimatedNumber(12321, s.t, start + 0.7, 0.3);
+                imAnimatedNumber(c, 12321, s.t, start + 0.7, 0.3);
 
-                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
-            } imEnd();
-            imBeginAnimatedRow(s.t, start + 0.3, 0.1, 300); {
-                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
+                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
+            } imLayoutEnd(c);
+            imBeginAnimatedRow(c, s.t, start + 0.3, 0.1, 300); {
+                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
-                imTextDiv("Hits: "); 
+                imStr(c, "Hits: "); 
 
-                imBeginLayout(FLEX1); imEnd();
+                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-                imAnimatedNumber(12321, s.t, start + 1.1, 0.3);
+                imAnimatedNumber(c, 12321, s.t, start + 1.1, 0.3);
 
-                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
-            } imEnd();
-            imBeginAnimatedRow(s.t, start + 0.5, 0.1, 300); {
-                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
+                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
+            } imLayoutEnd(c);
+            imBeginAnimatedRow(c, s.t, start + 0.5, 0.1, 300); {
+                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
-                imTextDiv("Pauses: "); 
+                imStr(c, "Pauses: "); 
 
-                imBeginLayout(FLEX1); imEnd();
+                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-                imAnimatedNumber(12321, s.t, start + 1.4, 0.3);
+                imAnimatedNumber(c, 12321, s.t, start + 1.4, 0.3);
 
-                imBeginSpace(25, PERCENT, 0, NOT_SET); imEnd();
-            } imEnd();
+                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
+            } imLayoutEnd(c);
 
-        } imEnd();
-    } imEnd();
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
 }
 
 
 
 function imBeginAnimatedRow(
+    c: ImCache,
     t: number,
     inTime: number,
     duration: number,
@@ -153,13 +152,14 @@ function imBeginAnimatedRow(
 
     t = clamp((t - inTime) / duration, 0, 1);
 
-    imBeginLayout(ROW | JUSTIFY_CENTER); {
-        setStyle("opacity", t + "");
-        setStyle("transform", `translate(0, ${downAmount * (1 - t)}px)`);
+    imLayout(c, ROW); imJustify(c); {
+        elSetStyle(c,"opacity", t + "");
+        elSetStyle(c,"transform", `translate(0, ${downAmount * (1 - t)}px)`);
     } // user specified end
 }
 
 function imAnimatedNumber(
+    c: ImCache,
     targetNumber: number,
     tIn: number,
     inTime: number,
@@ -175,5 +175,5 @@ function imAnimatedNumber(
         number = Math.floor(targetNumber * t);
     }
 
-    imTextDiv(number + "");
+    imStr(c, number);
 }

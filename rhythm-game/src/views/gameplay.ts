@@ -1,26 +1,27 @@
+import { BLOCK, COL, imAbsolute, imAlign, imBg, imFlex, imJustify, imLayout, imLayoutEnd, imRelative, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
 import { getCurrentOscillatorGain, getCurrentOscillatorOwner } from "src/dsp/dsp-loop-interface";
 import {
     InstrumentKey,
     KeyboardState
 } from "src/state/keyboard-state";
 import {
-    getSequencerPlaybackOrEditingCursor,
-    getTimelineMusicNoteThreads,
-    NoteMapEntry
-} from "src/state/sequencer-state";
-import { lerpColor, newColor } from "src/utils/colour";
-import { deltaTimeSeconds, imBeginList, imEnd, imEndList, imInit, imState, nextListRoot, setInnerText, setStyle } from "src/utils/im-dom-utils";
-import { inverseLerp } from "src/utils/math-utils";
-import { getNoteHashKey } from "src/utils/music-theory-utils";
-import { GlobalContext } from "./app";
-import {
     CommandItem,
     getItemLengthBeats,
     getItemStartBeats,
     NoteItem,
 } from "src/state/sequencer-chart";
-import { ALIGN_CENTER, ALIGN_STRETCH, COL, FLEX1, H1, imBeginAbsolute, imBeginLayout, imBeginSpace, JUSTIFY_CENTER, JUSTIFY_START, NOT_SET, OVERFLOW_HIDDEN, PERCENT, PX, RELATIVE, ROW } from "./layout";
-import { cssVars, getCurrentTheme } from "./styling";
+import {
+    getSequencerPlaybackOrEditingCursor,
+    getTimelineMusicNoteThreads,
+    NoteMapEntry
+} from "src/state/sequencer-state";
+import { lerpColor, newColor } from "src/utils/colour";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imIf, imState, isFirstishRender } from "src/utils/im-core";
+import { EL_H1, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { inverseLerp } from "src/utils/math-utils";
+import { getNoteHashKey } from "src/utils/music-theory-utils";
+import { GlobalContext } from "./app";
+import { cssVarsApp, getCurrentTheme } from "./styling";
 
 const GAMEPLAY_LOOKAHEAD_BEATS = 2;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
@@ -83,8 +84,8 @@ function newGameplayState(): GameplayState {
     };
 }
 
-export function imGameplay(ctx: GlobalContext) {
-    const s = imState(newGameplayState);
+export function imGameplay(c: ImCache, ctx: GlobalContext) {
+    const s = imState(c, newGameplayState);
 
     s.start = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
 
@@ -97,17 +98,16 @@ export function imGameplay(ctx: GlobalContext) {
 
     s.midpoint = Math.floor(s.keysMap.size / 2);
 
-    imBeginLayout(FLEX1 | COL | ALIGN_STRETCH | JUSTIFY_CENTER | OVERFLOW_HIDDEN); {
-        imBeginLayout(FLEX1 | ROW | ALIGN_STRETCH | JUSTIFY_CENTER | OVERFLOW_HIDDEN); {
-            imBeginList();
-            for (const val of s.keysMap.values()) {
+    imLayout(c, COL); imFlex(c); imAlign(c); imJustify(c); {
+        imLayout(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); {
+            imFor(c); for (const val of s.keysMap.values()) {
                 const thread = val._items;
                 const instrumentKey = val.instrumentKey;
                 const sGameplay = s;
 
                 // Vertical note
-                nextListRoot(); {
-                    const s = imState(newVerticalNoteThreadState);
+                {
+                    const s = imState(c, newVerticalNoteThreadState);
 
                     const owner = getCurrentOscillatorOwner(instrumentKey.index)
                     const signal = getCurrentOscillatorGain(instrumentKey.index)
@@ -121,53 +121,48 @@ export function imGameplay(ctx: GlobalContext) {
                     const backgroundColor = s.currentBgColor.toCssString();
 
                     const imLetter = () => {
-                        imBeginSpace(40, PX, 0, NOT_SET, COL | ALIGN_CENTER | JUSTIFY_CENTER | H1); {
-                            imBeginLayout(); {
-                                if (imInit()) {
-                                    setStyle("height", "2ch");
+                        imLayout(c, COL); imSize(c, 40, PX, 0, NA); imAlign(c); imJustify(c); {
+                            imLayout(c, BLOCK); {
+                                if (isFirstishRender(c)) {
+                                    elSetStyle(c,"height", "2ch");
                                 }
-                                setStyle("color", thread.length === 0 ? cssVars.bg2 : cssVars.fg);
-                                setInnerText(instrumentKey ? instrumentKey.text : "?");
-                            } imEnd();
-                        } imEnd();
+                                elSetStyle(c,"color", thread.length === 0 ? cssVarsApp.bg2 : cssVarsApp.fg);
+
+                                imEl(c, EL_H1); imStr(c, instrumentKey ? instrumentKey.text : "?"); imElEnd(c, EL_H1);
+                            } imLayoutEnd(c);
+                        } imLayoutEnd(c);
                     }
 
-                    imBeginList();
-                    if (nextListRoot() && instrumentKey.isLeftmost) {
-                        imBeginSpace(2, PX, 0, NOT_SET); {
-                            imInit() && setStyle("background", cssVars.fg);
-                        } imEnd();
-                    }
-                    imEndList();
+                    if (imIf(c) && instrumentKey.isLeftmost) {
+                        imLayout(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
+                    } imEndIf(c);
 
-                    imBeginLayout(COL | ALIGN_STRETCH | JUSTIFY_START); {
+                    imLayout(c, COL); imAlign(c); imJustify(c); {
                         imLetter();
 
-                        imBeginSpace(100, PERCENT, 2, PX); {
-                            imInit() && setStyle("backgroundColor", cssVars.fg);
-                        } imEnd();
+                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
+                        } imLayoutEnd(c);
 
-                        imBeginSpace(100, PERCENT, 0, NOT_SET, FLEX1 | RELATIVE | OVERFLOW_HIDDEN); {
-                            if (imInit()) {
-                                setStyle("transition", "background-color 0.2s");
+                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
+                            if (isFirstishRender(c)) {
+                                elSetStyle(c,"transition", "background-color 0.2s");
                             }
 
-                            setStyle("backgroundColor", backgroundColor);
+                            elSetStyle(c,"backgroundColor", backgroundColor);
 
-                            imBeginList();
-                            for (let i = 0; i < thread.length; i++) {
+                            imFor(c); for (let i = 0; i < thread.length; i++) {
                                 const item = thread[i];
 
                                 const start = sGameplay.start;
 
-                                nextListRoot(); {
-                                    const s = imState(newBarState);
+                                {
+                                    const s = imState(c, newBarState);
 
                                     const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
                                     const itemStart = getItemStartBeats(item);
                                     const itemLength = getItemLengthBeats(item);
 
-                                    const dt = deltaTimeSeconds();
+                                    const dt = getDeltaTimeSeconds(c);
 
                                     let bottomPercent = 100 * inverseLerp(itemStart, start, end);
                                     let heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
@@ -190,62 +185,57 @@ export function imGameplay(ctx: GlobalContext) {
                                         s.animation = 0;
                                     }
 
-                                    const color = s.animation > 0.5 ? "#FFFF00" : cssVars.fg;
+                                    const color = s.animation > 0.5 ? "#FFFF00" : cssVarsApp.fg;
                                     // color = animation < 0.5 ? "#FFFF00" : s.instrumentKey.cssColours.normal;
 
-                                    imBeginAbsolute(
-                                        0, NOT_SET, 0, PX,
-                                        0, NOT_SET, 0, PX,
-                                    ); {
-                                        if (imInit()) {
-                                            setStyle("color", "transparent");
+                                    imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, 0, NA, 0, PX); {
+                                        if (isFirstishRender(c)) {
+                                            elSetStyle(c,"color", "transparent");
                                         }
 
-                                        setStyle("bottom", bottomPercent + "%");
-                                        setStyle("height", heightPercent + "%");
+                                        elSetStyle(c,"bottom", bottomPercent + "%");
+                                        elSetStyle(c,"height", heightPercent + "%");
 
-                                        imBeginSpace(100, PERCENT, 100, PERCENT, RELATIVE); {
-                                            if (imInit()) {
-                                                setStyle("backgroundColor", cssVars.fg);
+                                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT); imRelative(c); {
+                                            if (isFirstishRender(c)) {
+                                                elSetStyle(c,"backgroundColor", cssVarsApp.fg);
                                             }
 
-                                            imBeginAbsolute(
-                                                2, PX, 2, PX,
-                                                2, PX, 2, PX
-                                            ); {
-                                                if (imInit()) {
-                                                    setStyle("transition", "transition: background-color 0.2s;");
+                                            imLayout(c, BLOCK); imAbsolute(c, 2, PX, 2, PX, 2, PX, 2, PX); {
+                                                if (isFirstishRender(c)) {
+                                                    elSetStyle(c,"transition", "transition: background-color 0.2s;");
                                                 }
 
-                                                setStyle("backgroundColor", color);
-                                            } imEnd();
-                                        } imEnd();
+                                                elSetStyle(c,"backgroundColor", color);
+                                            } imLayoutEnd(c);
+                                        } imLayoutEnd(c);
 
-                                    } imEnd();
+                                    } imLayoutEnd(c);
                                 }
-                            }
-                            imEndList();
-                        } imEnd();
+                            } imEndFor(c);
+                        } imLayoutEnd(c);
 
-                        imBeginSpace(100, PERCENT, 2, PX); {
-                            imInit() && setStyle("backgroundColor", cssVars.fg);
-                        } imEnd();
+                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); {
+                            if (isFirstishRender(c)) {
+
+                                elSetStyle(c, "backgroundColor", cssVarsApp.fg);
+                            }
+                        } imLayoutEnd(c);
 
                         imLetter();
 
-                    } imEnd();
+                    } imLayoutEnd(c);
 
-                    imBeginList();
-                    if (nextListRoot() && instrumentKey.isRightmost) {
-                        imBeginSpace(2, PX, 0, NOT_SET); {
-                            imInit() && setStyle("background", cssVars.fg);
-                        } imEnd();
-                    }
-                    imEndList();
+                    if (imIf(c) && instrumentKey.isRightmost) {
+                        imLayout(c, BLOCK); imSize(c, 2, PX, 0, NA); {
+                            if (isFirstishRender(c)) {
+                                elSetStyle(c, "background", cssVarsApp.fg);
+                            }
+                        } imLayoutEnd(c);
+                    } imIf(c);
                 }
-            }
-            imEndList();
-        } imEnd();
-    } imEnd();
+            } imEndFor(c);
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
 }
 
