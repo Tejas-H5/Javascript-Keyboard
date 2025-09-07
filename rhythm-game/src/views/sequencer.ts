@@ -9,6 +9,7 @@ import {
     getBeatIdxBefore,
     getBeatsIndexesInclusive,
     getBpm,
+    getItemEndBeats,
     getItemLengthBeats,
     getItemStartBeats,
     isItemUnderCursor,
@@ -42,14 +43,15 @@ import { filteredCopy } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { compareMusicNotes, getNoteText, MusicNote } from "src/utils/music-theory-utils";
-import { GlobalContext } from "./app";
+import { GlobalContext, setViewTestCurrentChart } from "./app";
 import { cssVarsApp } from "./styling";
 import { isSaving } from "src/state/loading-saving-charts";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
 import { BLOCK, COL, DisplayTypeInstance, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW } from "src/components/core/layout";
-import { elSetClass, elSetStyle, imStr } from "src/utils/im-dom";
+import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { imButtonIsClicked } from "src/components/button";
-import { cn } from "src/components/core/stylesheets";
+import { cn, cssVars } from "src/components/core/stylesheets";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
 
 
 export function getMusicNoteText(n: MusicNote): string {
@@ -108,11 +110,11 @@ type SequencerUIState = {
     currentCursorAnimated: number;
     divisorAnimated: number;
 
-    leftExtent: number;
-    leftExtentAnimated: number;
+    leftExtentBeats: number;
+    rightExtentBeats: number;
+    leftExtentBeatsAnimated: number;
+    rightExtentBeatsAnimated: number;
     leftExtentIdx: number;
-    rightExtent: number;
-    rightExtentAnimated: number;
     rightExtentIdx: number;
     cursorIdx: number;
     notesMap: Map<string, NoteMapEntry>;
@@ -135,11 +137,11 @@ function newSequencerState(): SequencerUIState {
         currentCursorAnimated: -1,
         divisorAnimated: 4,
 
-        leftExtent: 0,
-        leftExtentAnimated: 0,
+        leftExtentBeats: 0,
+        leftExtentBeatsAnimated: 0,
         leftExtentIdx: 0,
-        rightExtent: 0,
-        rightExtentAnimated: 0,
+        rightExtentBeats: 0,
+        rightExtentBeatsAnimated: 0,
         rightExtentIdx: 0,
         cursorIdx: 0,
         notesMap: new Map(),
@@ -154,7 +156,9 @@ function newSequencerState(): SequencerUIState {
  * This component handles both the editing UI and the gameplay UI
  */
 export function imSequencer(c: ImCache, ctx: GlobalContext) {
-    const sequencer = ctx.sequencer;
+    const { sequencer, ui } = ctx;
+    const loadSaveModal = ui.loadSave.modal;
+
     const chart = sequencer._currentChart;
     const isRangeSelecting = hasRangeSelection(sequencer);
 
@@ -175,10 +179,10 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         );
         let leftExtent = cursorStartBeats + getSequencerLeftExtent(sequencer);
         let rightExtent = cursorStartBeats + getSequencerRightExtent(sequencer);
-        s.leftExtent = leftExtent;
-        s.rightExtent = rightExtent;
-        s.leftExtentAnimated = lerp(s.leftExtentAnimated, leftExtent, lerpFactor);
-        s.rightExtentAnimated = lerp(s.rightExtentAnimated, rightExtent, lerpFactor);
+        s.leftExtentBeats = leftExtent;
+        s.rightExtentBeats = rightExtent;
+        s.leftExtentBeatsAnimated = lerp(s.leftExtentBeatsAnimated, leftExtent, lerpFactor);
+        s.rightExtentBeatsAnimated = lerp(s.rightExtentBeatsAnimated, rightExtent, lerpFactor);
 
         const tl = sequencer._currentChart.timeline;
 
@@ -186,8 +190,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
         [s.leftExtentIdx, s.rightExtentIdx] = getBeatsIndexesInclusive(
             sequencer._currentChart,
-            s.leftExtentAnimated,
-            s.rightExtentAnimated,
+            s.leftExtentBeatsAnimated,
+            s.rightExtentBeatsAnimated,
         );
         if (s.leftExtentIdx === -1) {
             s.leftExtentIdx = 0;
@@ -217,8 +221,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
         getTimelineMusicNoteThreads(
             sequencer,
-            s.leftExtent,
-            s.rightExtent,
+            s.leftExtentBeats,
+            s.rightExtentBeats,
             s.notesMap,
             s.commandsList
         );
@@ -274,172 +278,261 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         }
     }
 
-    imLayout(c, COL); imFlex(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-        if (imIf(c) && isRangeSelecting) {
-            imLayout(c, BLOCK); imRelative(c); {
-                const [start, end] = getSelectionStartEndIndexes(sequencer);
-                let str;
-                if (start === -1 || end === -1) {
-                    str = "none selected";
-                } else {
-                    str = (end - start + 1) + " selected";
-                }
+    imLayout(c, COL); imGap(c, 5, PX); imFlex(c); {
+        imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); { 
+            imEl(c, EL_B); {
+                imStr(c, "Currently editing ");
+                imEl(c, EL_I); {
+                    imStr(c, sequencer._currentChart.name);
+                    assert(ctx.savedState.userCharts.indexOf(sequencer._currentChart) !== -1);
+                } imElEnd(c, EL_I);
+                imStr(c, "");
+            } imElEnd(c, EL_B);
 
-                imStr(c, str);
-            } imLayoutEnd(c);
-        } imIfEnd(c);
+            const numCopied = ui.copied.items.length;
+            if (imIf(c) && numCopied > 0) {
+                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-        imLayout(c, ROW); {
-            if (isFirstishRender(c)) {
-                elSetStyle(c,"gap", "20px");
-            }
-
-            imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
-
-            // bpm input
-            // TODO: clean this up.
-            {
-                let lastBpmChange = sequencer._lastBpmChange;
-                const value = imBpmInput(c, getBpm(lastBpmChange));
-                if (value !== null) {
-                    if (lastBpmChange) {
-                        sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange]);
-                        lastBpmChange.bpm = value;
-                    } else {
-                        lastBpmChange = newTimelineItemBpmChange(0, 4, value);
-                    }
-                    sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange]);
-                }
-            }
-
-            const newCursorDivisor = imDivisionInput(c, sequencer.cursorDivisor);
-            if (newCursorDivisor !== null) {
-                setCursorDivisor(sequencer, newCursorDivisor);
-            }
-
-            imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
-
-        } imLayoutEnd(c);
-
-        if (0) {
-            // Debug visualizer for the undo buffer
-            imLayout(c, BLOCK); {
-                let i = 0;
-                imFor(c); for (const item of chart._undoBuffer.items) {
-                    imLayout(c, INLINE_BLOCK); imPadding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
-                        imStr(c, chart._undoBuffer.idx === i ? ">" : "");
-                        imStr(c, "Entry " + (i++) + ": ");
-                        imFor(c); for (const tlItem of item.items) {
-                            imStr(c, timelineItemToString(tlItem));
-                        } imForEnd(c);
-                    } imLayoutEnd(c);
-                }  imForEnd(c);
-            } imLayoutEnd(c);
-        }
-
-        imLayout(c, BLOCK); imFlex(c); imRelative(c); {
-            if (isFirstishRender(c)) {
-                elSetStyle(c,"overflowY", "auto");
-            }
-
-            if (imIf(c) && isRangeSelecting) {
-                const beatsA = getRangeSelectionStartBeats(sequencer);
-                const beatsB = getRangeSelectionEndBeats(sequencer);
-
-                let min = Math.min(beatsA, beatsB);
-                let max = Math.max(beatsA, beatsB);
-
-                const leftAbsolutePercent = inverseLerp(
-                    min,
-                    s.leftExtentAnimated,
-                    s.rightExtentAnimated,
-                ) * 100;
-
-                const rightAbsolutePercent = inverseLerp(
-                    max,
-                    s.rightExtentAnimated,
-                    s.leftExtentAnimated,
-                ) * 100;
-
-                imLayout(c, BLOCK); 
-                imAbsolute(
-                    c,
-                    0, PX, rightAbsolutePercent, PERCENT,
-                    0, PX, leftAbsolutePercent, PERCENT); 
-                imBg(c, `rgba(0, 0, 255, 0.25)`);
-                imLayoutEnd(c);
-
-                // range select lines
-                imSequencerVerticalLine(c, s, getRangeSelectionStartBeats(sequencer), cssVarsApp.mg, 3);
-                imSequencerVerticalLine(c, s, getRangeSelectionEndBeats(sequencer), cssVarsApp.mg, 3);
+                imStr(c, numCopied + " items copied");
             } imIfEnd(c);
 
-            {
-                const startNonFloored = s.leftExtent;
-                const start = divisorSnap(startNonFloored, sequencer.cursorDivisor);
-                const endNonFloored = s.rightExtent;
-                const end = divisorSnap(endNonFloored, sequencer.cursorDivisor);
+            imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-                // grid lines
-                imFor(c); for (let x = start; x < end; x += 1 / sequencer.cursorDivisor) {
-                    if (x < 0) continue;
-
-                    const thickness = Math.abs(x % 1) < 0.0001 ? 2 : 1;
-                    imSequencerVerticalLine(c, s, x, cssVarsApp.bg2, thickness);
-                } imForEnd(c);
-
-                // cursor start vertical line
-                imSequencerVerticalLine(c, s, s.lastCursorStartBeats, cssVarsApp.mg, 3);
-
-                // add blue vertical lines for all the measures
-                imFor(c); for (const item of s.commandsList) {
-                    if (item.type !== TIMELINE_ITEM_MEASURE) {
-                        continue;
-                    }
-
-                    const beats = getItemStartBeats(item);
-                    imSequencerVerticalLine(c, s, beats, cssVarsApp.playback, 4);
-                } imForEnd(c);
-            }
-
-            imLayout(c, COL); imJustify(c); imSize(c, 0, NA, 100, PERCENT); {
+            imLayout(c, ROW); {
                 if (isFirstishRender(c)) {
-                    elSetStyle(c,"borderTop", `1px solid ${cssVarsApp.fg}`);
+                    elSetStyle(c, "gap", "20px");
                 }
 
-                imSequencerNotesUI(c, "bpm", s.bpmChanges, null,ctx, s);
-                imSequencerNotesUI(c, "measures", s.measures, null, ctx, s);
+                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-                imFor(c); for (const entry of s.noteOrder) {
-                    assert(!!entry.firstItem);
-                    const text = getItemSequencerText(ctx.keyboard, entry.firstItem);
-                    imSequencerNotesUI(c, text, entry.items, entry.previewItems, ctx, s);
+                // bpm input
+                // TODO: clean this up.
+                {
+                    let lastBpmChange = sequencer._lastBpmChange;
+                    const value = imBpmInput(c, getBpm(lastBpmChange));
+                    if (value !== null) {
+                        if (lastBpmChange) {
+                            sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange]);
+                            lastBpmChange.bpm = value;
+                        } else {
+                            lastBpmChange = newTimelineItemBpmChange(0, 4, value);
+                        }
+                        sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange]);
+                    }
+                }
+
+                const newCursorDivisor = imDivisionInput(c, sequencer.cursorDivisor);
+                if (newCursorDivisor !== null) {
+                    setCursorDivisor(sequencer, newCursorDivisor);
+                }
+
+                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+
+            } imLayoutEnd(c);
+
+            imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+
+            if (imButtonIsClicked(c, "Test")) {
+                setViewTestCurrentChart(ctx);
+            }
+
+            if (imButtonIsClicked(c, (loadSaveModal.open ? ">" : "<") + "Load/Save")) {
+                loadSaveModal.open = !loadSaveModal.open;
+            }
+        } imLayoutEnd(c);
+
+        imLine(c, LINE_HORIZONTAL, 1);
+
+        imLayout(c, COL); imFlex(c); {
+            if (imIf(c) && isRangeSelecting) {
+                imLayout(c, BLOCK); imRelative(c); {
+                    const [start, end] = getSelectionStartEndIndexes(sequencer);
+                    let str;
+                    if (start === -1 || end === -1) {
+                        str = "none selected";
+                    } else {
+                        str = (end - start + 1) + " selected";
+                    }
+
+                    imStr(c, str);
+                } imLayoutEnd(c);
+            } imIfEnd(c);
+
+            if (0) {
+                // Debug visualizer for the undo buffer
+                imLayout(c, BLOCK); {
+                    let i = 0;
+                    const chart = sequencer._currentChart;
+                    imFor(c); for (const item of chart._undoBuffer.items) {
+                        imLayout(c, INLINE_BLOCK); imPadding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
+                            imStr(c, chart._undoBuffer.idx === i ? ">" : "");
+                            imStr(c, "Entry " + (i++) + ": ");
+                            imFor(c); for (const tlItem of item.items) {
+                                imStr(c, timelineItemToString(tlItem));
+                            } imForEnd(c);
+                        } imLayoutEnd(c);
+                    } imForEnd(c);
+                } imLayoutEnd(c);
+            }
+
+            imLayout(c, BLOCK); imFlex(c); imRelative(c); {
+                if (isFirstishRender(c)) {
+                    elSetStyle(c, "overflowY", "auto");
+                    elSetStyle(c, "overflowX", "hidden");
+                }
+
+                if (imIf(c) && isRangeSelecting) {
+                    const beatsA = getRangeSelectionStartBeats(sequencer);
+                    const beatsB = getRangeSelectionEndBeats(sequencer);
+
+                    let min = Math.min(beatsA, beatsB);
+                    let max = Math.max(beatsA, beatsB);
+
+                    const leftAbsolutePercent = inverseLerp(
+                        min,
+                        s.leftExtentBeatsAnimated,
+                        s.rightExtentBeatsAnimated,
+                    ) * 100;
+
+                    const rightAbsolutePercent = inverseLerp(
+                        max,
+                        s.rightExtentBeatsAnimated,
+                        s.leftExtentBeatsAnimated,
+                    ) * 100;
+
+                    imLayout(c, BLOCK);
+                    imAbsolute(
+                        c,
+                        0, PX, rightAbsolutePercent, PERCENT,
+                        0, PX, leftAbsolutePercent, PERCENT);
+                    imBg(c, `rgba(0, 0, 255, 0.25)`);
+                    imLayoutEnd(c);
+
+                    // range select lines
+                    imSequencerVerticalLine(c, s, getRangeSelectionStartBeats(sequencer), cssVarsApp.mg, 3);
+                    imSequencerVerticalLine(c, s, getRangeSelectionEndBeats(sequencer), cssVarsApp.mg, 3);
+                } imIfEnd(c);
+
+                {
+                    const startNonFloored = s.leftExtentBeats;
+                    const start = divisorSnap(startNonFloored, sequencer.cursorDivisor);
+                    const endNonFloored = s.rightExtentBeats;
+                    const end = divisorSnap(endNonFloored, sequencer.cursorDivisor);
+
+                    // grid lines
+                    imFor(c); for (let x = start; x < end; x += 1 / sequencer.cursorDivisor) {
+                        if (x < 0) continue;
+
+                        const thickness = Math.abs(x % 1) < 0.0001 ? 2 : 1;
+                        imSequencerVerticalLine(c, s, x, cssVarsApp.bg2, thickness);
+                    } imForEnd(c);
+
+                    // cursor start vertical line
+                    imSequencerVerticalLine(c, s, s.lastCursorStartBeats, cssVarsApp.mg, 3);
+
+                    // add blue vertical lines for all the measures
+                    imFor(c); for (const item of s.commandsList) {
+                        if (item.type !== TIMELINE_ITEM_MEASURE) continue;
+                        const beats = getItemStartBeats(item);
+                        imSequencerVerticalLine(c, s, beats, cssVarsApp.playback, 4);
+                    } imForEnd(c);
+                }
+
+                imLayout(c, COL); imJustify(c); imSize(c, 0, NA, 100, PERCENT); {
+                    imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s);
+                    imSequencerNotesUI(c, "measures", s.measures, null, ctx, s);
+
+                    imFor(c); for (const entry of s.noteOrder) {
+                        assert(!!entry.firstItem);
+                        const text = getItemSequencerText(ctx.keyboard, entry.firstItem);
+                        imSequencerNotesUI(c, text, entry.items, entry.previewItems, ctx, s);
+                    } imForEnd(c);
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
+
+            imLine(c, LINE_HORIZONTAL, 1);
+
+
+            // minimap of the entire chart
+            const chart = sequencer._currentChart;
+            if (imIf(c) && chart.timeline.length > 0) {
+                const lastItem = chart.timeline[chart.timeline.length - 1]
+                const totalBeats = getItemEndBeats(lastItem);
+
+                imLayout(c, BLOCK); imSize(c, 0, NA, 50, PX); imRelative(c); {
+                    const leftAbsolutePercent = 100.0 * s.leftExtentBeatsAnimated / totalBeats;
+                    const rightAbsolutePercent = 100.0 * s.rightExtentBeatsAnimated / totalBeats;
+                    const color = `rgba(0, 0, 0, 0.25)`;
+
+                    imFor(c); for (let i = 0; i < chart.timeline.length; i++) {
+                        const item = chart.timeline[i];
+                        const absoluteLeftStart = 100 * getItemStartBeats(item) / totalBeats;
+                        const absoluteLeftEnd   = 100 * getItemEndBeats(item) / totalBeats;
+                        const width = absoluteLeftEnd - absoluteLeftStart;
+                        imSwitch(c, item.type); switch (item.type) {
+                            case TIMELINE_ITEM_MEASURE: {
+                                imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.playback, 2);
+                            } break;
+                            case TIMELINE_ITEM_BPM: {
+                                imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.bpmMarker, 2);
+                            } break;
+                            case TIMELINE_ITEM_NOTE: {
+                                const absoluteTop = 100 * (item.note.noteIndex ?? 0) / (ctx.keyboard.maxNoteIdx + 1);
+
+                                imLayout(c, BLOCK); 
+                                imAbsolute(c, absoluteTop, PERCENT, 0, NOT_SET, 0, NA, absoluteLeftStart, PERCENT);
+                                imSize(c, width, PERCENT, 2, PX); {
+                                    imBg(c, cssVars.fg);
+                                } imLayoutEnd(c);
+                            } break;
+                        } imSwitchEnd(c);
+                    } imForEnd(c);
+
+                    const cursorBeats = getCursorStartBeats(sequencer);
+                    imAbsoluteVerticalLine(c, 100.0 * cursorBeats / totalBeats, cssVarsApp.fg, 4);
+
+                    // the currently viewed sliding window
+                    {
+                        imLayout(c, BLOCK); {
+                            imAbsolute(c, 0, PX, 0, NA, 0, PX, 0, PX);
+                            imSize(c, leftAbsolutePercent, PERCENT, 0, NA);
+                            imBg(c, color);
+                        } imLayoutEnd(c);
+
+                        imLayout(c, BLOCK); {
+                            imAbsolute(c, 0, PX, 0, PX, 0, PX, rightAbsolutePercent, PERCENT);
+                            imBg(c, color);
+                        } imLayoutEnd(c);
+                    }
+                } imLayoutEnd(c);
+            } imIfEnd(c);
+
+            imLine(c, LINE_HORIZONTAL, 1);
+
+            imLayout(c, ROW); imJustify(c); {
+                const idxText = "note " + s.cursorIdx;
+                const timelinePosText = timelinePosToString(sequencer.cursorStart, sequencer.cursorDivisor);
+                imLayout(c, BLOCK); imFlex(c); {
+                    if (imIf(c) && isSaving(ctx)) {
+                        imStr(c, "Saving...");
+                    } imIfEnd(c);
+                } imLayoutEnd(c);
+                imStr(c, idxText + " | " + timelinePosText);
+                imLayout(c, ROW); imFlex(c); imJustify(c, END); {
+                    if (imIf(c) && sequencer.notesToPreview.length > 0) {
+                        imStr(c, "TAB -> place, DEL or ~ -> delete");
+                    } imIfEnd(c);
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
+            imLayout(c, ROW); {
+                imFor(c); for (let i = 0; i < NUM_EXTENT_DIVISIONS; i++) {
+                    // GridLine - wtf ???
+                    imLayout(c, BLOCK); imFlex(c); {
+                        // text: timestamp + "ms"
+                        // timelinePosToString(s.state.cursorStartPos[0] + gridLineAmount, s.state.cursorStartPos[1]) 
+                    } imLayoutEnd(c);
                 } imForEnd(c);
             } imLayoutEnd(c);
-        } imLayoutEnd(c);
-        imLayout(c, ROW); imJustify(c); {
-            const idxText = "note " + s.cursorIdx;
-            const timelinePosText = timelinePosToString(sequencer.cursorStart, sequencer.cursorDivisor);
-            imLayout(c, BLOCK); imFlex(c); {
-                if (imIf(c) && isSaving(ctx)) {
-                    imStr(c, "Saving...");
-                } imIfEnd(c);
-            } imLayoutEnd(c);
-            imStr(c, idxText + " | " + timelinePosText);
-            imLayout(c, ROW); imFlex(c); imJustify(c, END); {
-                if (imIf(c) && sequencer.notesToPreview.length > 0) {
-                    imStr(c, "TAB -> place, DEL or ~ -> delete");
-                } imIfEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
-        imLayout(c, ROW); {
-            imFor(c); for (let i = 0; i < NUM_EXTENT_DIVISIONS; i++) {
-                // GridLine - wtf ???
-                imLayout(c, BLOCK); imFlex(c); {
-                    // text: timestamp + "ms"
-                    // timelinePosToString(s.state.cursorStartPos[0] + gridLineAmount, s.state.cursorStartPos[1]) 
-                } imLayoutEnd(c);
-            } imForEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 }
@@ -454,18 +547,27 @@ function imSequencerVerticalLine(
 ) {
     const absolutePercent = inverseLerp(
         beats,
-        internalState.leftExtentAnimated,
-        internalState.rightExtentAnimated,
+        internalState.leftExtentBeatsAnimated,
+        internalState.rightExtentBeatsAnimated,
     ) * 100;
 
+    imAbsoluteVerticalLine(c, absolutePercent, color, thickness);
+}
+
+function imAbsoluteVerticalLine(
+    c: ImCache,
+    absolutePercent: number,
+    color: string,
+    thickness: number,
+) {
     if (imIf(c) && absolutePercent >= 0 && absolutePercent <= 100) {
         imLayout(c, BLOCK); imAbsolute(
             c,
             0, PX, 0, NOT_SET,
             0, PX, absolutePercent, PERCENT,
         ); {
-            elSetStyle(c,"width", thickness + "px");
-            elSetStyle(c,"backgroundColor", color);
+            if (imMemo(c, thickness)) elSetStyle(c,"width", thickness + "px");
+            if (imMemo(c, color)) elSetStyle(c,"backgroundColor", color);
         } imLayoutEnd(c);
     } imIfEnd(c);
 }
@@ -511,8 +613,8 @@ function imSequencerTrackTimelineItem(
     ctx: GlobalContext,
     s: SequencerUIState
 ) {
-    const left = s.leftExtentAnimated;
-    const right = s.rightExtentAnimated;
+    const left = s.leftExtentBeatsAnimated;
+    const right = s.rightExtentBeatsAnimated;
     const extentSize = right - left;
 
     const leftPercent = 100 * (getItemStartBeats(item) - left) / extentSize;

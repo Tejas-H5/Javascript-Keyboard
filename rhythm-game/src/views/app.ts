@@ -24,6 +24,8 @@ import {
     getBpmChangeItemBeforeBeats,
     getChartExtent,
     getItemStartBeats,
+    getLastMeasureBeats,
+    getNextMeasureBeats,
     newChart,
     newTimelineItemBpmChange,
     newTimelineItemMeasure,
@@ -63,7 +65,7 @@ import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-
 import { clamp } from "src/utils/math-utils";
 import { notesEqual } from "src/utils/music-theory-utils";
 import { ChartSelect as imChartSelect } from "src/views/chart-select";
-import { EditView as imEditView } from "src/views/edit-view";
+import { imEditView as imEditView } from "src/views/edit-view";
 import { PlayView as imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
 import { imSoundLab } from "./sound-lab-view";
@@ -120,6 +122,29 @@ function handlePlayChartOrEditChartKeyDown(ctx: GlobalContext, keyPressState: Ke
         handleMovement(
             sequencer,
             key === "ArrowRight" ? 1 : -1,
+            ctrlPressed,
+            shiftPressed
+        );
+
+        return true;
+    }
+
+    // move back and forth between measures
+    const downArrow = key === "ArrowDown";
+    const upArrow = key === "ArrowUp";
+    if (downArrow || upArrow) {
+        const cursorBeats = getCursorStartBeats(sequencer);
+
+        let newPos;
+        if (upArrow) {
+            newPos = getNextMeasureBeats(sequencer._currentChart, cursorBeats);
+        } else {
+            newPos = getLastMeasureBeats(sequencer._currentChart, cursorBeats);
+        }
+
+        handleMovementAbsolute(
+            sequencer,
+            newPos * sequencer.cursorDivisor,
             ctrlPressed,
             shiftPressed
         );

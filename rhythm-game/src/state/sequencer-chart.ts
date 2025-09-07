@@ -1,8 +1,7 @@
 import { arrayAt, filterInPlace, findLastIndexOf } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
-import { unreachable } from "src/utils/assert";
+import { assert, unreachable } from "src/utils/assert";
 import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "src/utils/math-utils";
-import { beatsToMs, compareMusicNotes, getNoteHashKey, msToBeats, MusicNote, notesEqual } from "src/utils/music-theory-utils";
+import { beatsToMs, compareMusicNotes, msToBeats, MusicNote, notesEqual } from "src/utils/music-theory-utils";
 import { getMusicNoteText } from "src/views/sequencer";
 
 export type SequencerChart = {
@@ -260,7 +259,6 @@ export function getNoteItemAtBeats(chart: SequencerChart, beats: number): NoteIt
 
     return item;
 }
-
 
 
 export function getPlaybackDuration(chart: SequencerChart): number {
@@ -590,13 +588,46 @@ export function getBpmBeats(bpmChange: TimelineItemBpmChange | undefined): numbe
 
 export function getLastMeasureBeats(chart: SequencerChart, beats: number): number {
     const timeline = chart.timeline;
+    if (timeline.length === 0) return 0;
 
-    const idx = findLastIndexOf(timeline, item =>
-        item.type === TIMELINE_ITEM_MEASURE
-        && lteBeats(getItemStartBeats(item), beats)
-    );
+    let idx = -1;
+    for (let i = timeline.length - 1; i >= 0; i--) {
+        const item = timeline[i];
+        if (item.type !== TIMELINE_ITEM_MEASURE) continue;
+
+        if (ltBeats(getItemStartBeats(item), beats)) {
+            idx = i;
+            break;
+        }
+    }
     if (idx === -1) {
-        return 0;
+        return beats;
+    }
+
+    const item = timeline[idx];
+    if (!item || item.type !== TIMELINE_ITEM_MEASURE) {
+        throw new Error("!item || item.type !== TIMELINE_ITEM_MEASURE");
+    }
+
+    return getItemStartBeats(item);
+}
+
+export function getNextMeasureBeats(chart: SequencerChart, beats: number): number {
+    const timeline = chart.timeline;
+    if (timeline.length === 0) return 0;
+
+    let idx = -1;
+    for (let i = 0; i < timeline.length; i++) {
+        const item = timeline[i];
+        if (item.type !== TIMELINE_ITEM_MEASURE) continue;
+
+        if (gtBeats(getItemStartBeats(item), beats)) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx === -1) {
+        return beats;
     }
 
     const item = timeline[idx];

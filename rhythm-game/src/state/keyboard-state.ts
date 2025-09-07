@@ -8,6 +8,7 @@ export type KeyboardState = {
     settings: {
     };
     hasClicked: boolean;
+    maxNoteIdx: number;
 };
 
 export type InstrumentKey = {
@@ -63,6 +64,7 @@ function newKey(k: string): InstrumentKey {
 export function newKeyboardState(): KeyboardState {
     const keys: InstrumentKey[][] = [];
     const flatKeys: InstrumentKey[] = [];
+    let maxNoteIdx = 0;
 
     // initialize keys
     {
@@ -122,7 +124,10 @@ export function newKeyboardState(): KeyboardState {
                     noteIndexOffset++;
 
                     key.noteText = getNoteText(noteIndex);
+
                     key.musicNote.noteIndex = noteIndex;
+                    maxNoteIdx = noteIndex;
+
                     key.isLeftmost = j === 0;
                     key.isRightmost = j === pianoKeys[i].length -1;
                 }
@@ -146,6 +151,7 @@ export function newKeyboardState(): KeyboardState {
         settings: {
         },
         hasClicked: false,
+        maxNoteIdx,
     };
 }
 

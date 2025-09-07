@@ -7,14 +7,14 @@ import {
     recomputeState
 } from "src/state/sequencer-state";
 import { assert } from "src/utils/assert";
-import { ImCache, imElse, imEndFor, imEndIf, imFor, imIf, imMemo, isFirstishRender } from "src/utils/im-core";
-import { EL_B, elHasMousePress, elSetStyle, EV_INPUT, EV_KEYDOWN, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
+import { ImCache, imElse, imEndFor, imEndIf, imFor, imIf, imIfEnd, imMemo, isFirstishRender } from "src/utils/im-core";
+import { EL_B, EL_I, elHasMousePress, elSetStyle, EV_INPUT, EV_KEYDOWN, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
 import { imSequencer } from "src/views/sequencer";
 import { GlobalContext, setViewTestCurrentChart } from "./app";
 import { cssVarsApp } from "./styling";
 import { imButtonIsClicked } from "src/components/button";
 
-export function EditView(c: ImCache, ctx: GlobalContext) {
+export function imEditView(c: ImCache, ctx: GlobalContext) {
     const { sequencer, ui } = ctx;
 
     const loadSaveModal = ui.loadSave.modal;
@@ -28,39 +28,8 @@ export function EditView(c: ImCache, ctx: GlobalContext) {
     }
 
     imLayout(c, ROW); imFlex(c); {
-        imLayout(c, COL); imGap(c, 5, PX); imFlex(c); {
-            imLayout(c, ROW); imGap(c, 5, PX); {
-                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imSequencer(c, ctx);
 
-                imLayout(c, BLOCK); { 
-                    imEl(c, EL_B); {
-                        imStr(c, "Currently editing [");
-                        imStr(c, sequencer._currentChart.name);
-                        imStr(c, "]");
-                    } imElEnd(c, EL_B);
-
-                    assert(ctx.savedState.userCharts.indexOf(sequencer._currentChart) !== -1);
-                } imLayoutEnd(c);
-
-                // TODO: put this in a better place
-                const numCopied = ui.copied.items.length;
-                if (imIf(c) && numCopied > 0) {
-                    imStr(c, numCopied + " items copied");
-                } imEndIf(c);
-
-                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
-
-                if (imButtonIsClicked(c, "Test")) {
-                    setViewTestCurrentChart(ctx);
-                }
-
-                if (imButtonIsClicked(c, (loadSaveModal.open ? ">" : "<") + "Load/Save")) {
-                    loadSaveModal.open = !loadSaveModal.open;
-                }
-            } imLayoutEnd(c);
-
-            imSequencer(c, ctx);
-        } imLayoutEnd(c);
         if (imIf(c) && loadSaveModal.open) {
             // Load save panel
 

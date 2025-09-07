@@ -4,12 +4,14 @@ import { newCssBuilder, setCssVars } from "src/utils/cssb";
 
 type AppTheme = ComponentsCoreTheme & {
     playback: CssColor;
+    bpmMarker: CssColor;
     error:    CssColor;
 };
 
 export const cssVarsApp: Record<keyof AppTheme, string> = {
     ...cssVars,
     playback: "var(--playback)",
+    bpmMarker: "var(--bpmMarker)",
     error:    "var(--error)",
 } as const;
 
@@ -60,6 +62,7 @@ export const cnApp = {
 const mainTheme = Object.freeze({
     ...defaultCoreTheme,
     playback: newColorFromHex("#00F"),
+    bpmMarker: newColorFromHex("#A00"),
     error:    newColorFromHex("#F00"),
 });
 
@@ -74,3 +77,5 @@ export function updateTheme() {
     currentTheme = mainTheme
     setCssVars(currentTheme);
 }
+
+updateTheme();
