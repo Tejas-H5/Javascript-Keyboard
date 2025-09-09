@@ -1,4 +1,4 @@
-import { BLOCK, COL, imAbsolute, imAlign, imBg, imFlex, imJustify, imLayout, imLayoutEnd, imRelative, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
+import { BLOCK, CENTER, COL, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, imTextColor, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
 import { getCurrentOscillatorGain, getCurrentOscillatorOwner } from "src/dsp/dsp-loop-interface";
 import {
     InstrumentKey,
@@ -8,22 +8,27 @@ import {
     CommandItem,
     getItemLengthBeats,
     getItemStartBeats,
-    NoteItem,
+    NoteItem
 } from "src/state/sequencer-chart";
 import {
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
     NoteMapEntry
 } from "src/state/sequencer-state";
-import { lerpColor, newColor } from "src/utils/colour";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imIf, imState, isFirstishRender } from "src/utils/im-core";
-import { EL_H1, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
-import { inverseLerp } from "src/utils/math-utils";
+import { copyColor, lerpColor, newColor } from "src/utils/colour";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imGet, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { clamp, inverseLerp } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
-import { cssVarsApp, getCurrentTheme } from "./styling";
+import { cnApp, cssVarsApp, getCurrentTheme } from "./styling";
+import { getOrCreateCurrentChart } from "src/state/saved-state";
+import { assert } from "src/utils/assert";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
+import { cn } from "src/components/core/stylesheets";
 
-const GAMEPLAY_LOOKAHEAD_BEATS = 2;
+const SIGNAL_LOOKAHEAD_BEATS = 1;
+const GAMEPLAY_LOOKAHEAD_BEATS = 3;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
 
 export type KeysMapEntry = { 
@@ -68,15 +73,21 @@ function newVerticalNoteThreadState() {
 
 type GameplayState = {
     start: number;
+    end: number;
     midpoint: number;
     notesMap: Map<string, NoteMapEntry>;
     keysMap: Map<string, KeysMapEntry>;
     commandsList: CommandItem[];
+
+    score: number;
 };
 
 function newGameplayState(): GameplayState {
     return {
+        score: 0,
+
         start: 0,
+        end: 0,
         midpoint: 0,
         notesMap: new Map(),
         keysMap: new Map(),
@@ -85,25 +96,53 @@ function newGameplayState(): GameplayState {
 }
 
 export function imGameplay(c: ImCache, ctx: GlobalContext) {
-    const s = imState(c, newGameplayState);
+    const focusChanged = imMemo(c, true);
+    let gameplayState = imGet(c, newGameplayState);
+    if (!gameplayState || focusChanged) {
+        console.log("Recreated gameplay state");
+        gameplayState = imSet(c, newGameplayState());
+    }
 
-    s.start = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
+    gameplayState.start = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
+    gameplayState.end = gameplayState.start + GAMEPLAY_LOADAHEAD_BEATS;
 
     getTimelineMusicNoteThreads(
-        ctx.sequencer, s.start, s.start + GAMEPLAY_LOADAHEAD_BEATS,
-        s.notesMap, s.commandsList
+        ctx.sequencer, 
+        gameplayState.start, gameplayState.end,
+        gameplayState.notesMap, gameplayState.commandsList
     );
 
-    notesMapToKeysMap(ctx.keyboard, s.notesMap, s.keysMap);
+    notesMapToKeysMap(ctx.keyboard, gameplayState.notesMap, gameplayState.keysMap);
 
-    s.midpoint = Math.floor(s.keysMap.size / 2);
+    gameplayState.midpoint = Math.floor(gameplayState.keysMap.size / 2);
 
-    imLayout(c, COL); imFlex(c); imAlign(c); imJustify(c); {
+    const chart = ctx.sequencer._currentChart;
+
+    imLayout(c, COL); imFlex(c); imJustify(c); {
+        imLayout(c, ROW); {
+            if (isFirstishRender(c)) {
+                elSetClass(c, cn.mediumFont);
+            }
+
+            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); {
+                imStr(c, chart.name);
+            } imLayoutEnd(c);
+
+            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c);  imJustify(c, CENTER); {
+                imEl(c, EL_I); imStr(c, gameplayState.score); imElEnd(c, EL_I);
+            } imLayoutEnd(c);
+
+            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c, END); {
+            } imLayoutEnd(c);
+        } imLayoutEnd(c);
+
+        imLine(c, LINE_HORIZONTAL, 1);
+
         imLayout(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); {
-            imFor(c); for (const val of s.keysMap.values()) {
+            imFor(c); for (const val of gameplayState.keysMap.values()) {
                 const thread = val._items;
                 const instrumentKey = val.instrumentKey;
-                const sGameplay = s;
+                const sGameplay = gameplayState;
 
                 // Vertical note
                 {
@@ -111,34 +150,20 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
                     const owner = getCurrentOscillatorOwner(instrumentKey.index)
                     const signal = getCurrentOscillatorGain(instrumentKey.index)
+                    const playerSignal = owner === 0 ? signal : 0;
 
                     const theme = getCurrentTheme();
-                    const hasPress = (owner === 0 && signal > 0.001);
-
-                    const wantedBgColor = thread.length > 0 ? theme.bg2 : theme.bg;
-                    const wantedFgColor = thread.length > 0 ? theme.fg2 : theme.error;
-                    lerpColor(wantedBgColor, wantedFgColor, hasPress ? signal : 0, s.currentBgColor);
+                    
                     const backgroundColor = s.currentBgColor.toCssString();
 
-                    const imLetter = () => {
-                        imLayout(c, COL); imSize(c, 40, PX, 0, NA); imAlign(c); imJustify(c); {
-                            imLayout(c, BLOCK); {
-                                if (isFirstishRender(c)) {
-                                    elSetStyle(c,"height", "2ch");
-                                }
-                                elSetStyle(c,"color", thread.length === 0 ? cssVarsApp.bg2 : cssVarsApp.fg);
-
-                                imEl(c, EL_H1); imStr(c, instrumentKey ? instrumentKey.text : "?"); imElEnd(c, EL_H1);
-                            } imLayoutEnd(c);
-                        } imLayoutEnd(c);
-                    }
+                    copyColor(theme.bg, s.currentBgColor);
 
                     if (imIf(c) && instrumentKey.isLeftmost) {
                         imLayout(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
                     } imEndIf(c);
 
-                    imLayout(c, COL); imAlign(c); imJustify(c); {
-                        imLetter();
+                    imLayout(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
+                        imLetter(c, gameplayState, instrumentKey, thread, playerSignal);
 
                         imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
                         } imLayoutEnd(c);
@@ -222,8 +247,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             }
                         } imLayoutEnd(c);
 
-                        imLetter();
-
+                        imLetter(c, gameplayState, instrumentKey, thread, playerSignal);
                     } imLayoutEnd(c);
 
                     if (imIf(c) && instrumentKey.isRightmost) {
@@ -232,10 +256,50 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                 elSetStyle(c, "background", cssVarsApp.fg);
                             }
                         } imLayoutEnd(c);
-                    } imIf(c);
+                    } imIfEnd(c);
                 }
             } imEndFor(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 }
 
+function imLetter(
+    c: ImCache,
+    gameplay: GameplayState,
+    instrumentKey: InstrumentKey,
+    thread: NoteItem[],
+    signal: number,
+) {
+    let s; s = imGetInline(c, imLetter) ?? imSet(c, {
+        textColor: newColor(0, 0, 0, 1),
+        bgColor: newColor(0, 0, 0, 1),
+    });
+
+    const theme = getCurrentTheme();
+
+    let distanceToNextNoteNormalized = 1;
+    if (thread.length > 0) {
+        let start = getItemStartBeats(thread[0]);
+        distanceToNextNoteNormalized = clamp((start - gameplay.start) / SIGNAL_LOOKAHEAD_BEATS, 0, 1);
+    }
+
+    lerpColor(theme.fg, theme.bg2, distanceToNextNoteNormalized, s.textColor);
+    lerpColor(s.textColor, theme.bg, signal, s.textColor);
+    lerpColor(theme.bg, theme.fg, signal, s.bgColor);
+
+    imLayout(c, COL); imSize(c, 40, PX, 0, NA); imAlign(c); imJustify(c);  {
+        imBg(c, s.bgColor.toString());
+        imTextColor(c, s.textColor.toString());
+
+        imLayout(c, BLOCK); {
+            if (isFirstishRender(c)) {
+                elSetStyle(c, "fontSize", "2em");
+                elSetStyle(c, "height", "1.3em");
+            }
+
+            imEl(c, EL_B); {
+                imStr(c, instrumentKey ? instrumentKey.text : "?");
+            } imElEnd(c, EL_B);
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
+}

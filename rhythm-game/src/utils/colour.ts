@@ -114,3 +114,10 @@ export function lerpColor(c1: CssColor, c2: CssColor, factor: number, dst: CssCo
     dst.b = lerp(c1.b, c2.b, factor);
     dst.a = lerp(c1.a, c2.a, factor);
 }
+
+export function copyColor(c1: CssColor, dst: CssColor) {
+    dst.r = c1.r;
+    dst.g = c1.g;
+    dst.b = c1.b;
+    dst.a = c1.a;
+}

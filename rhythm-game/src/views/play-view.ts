@@ -28,7 +28,7 @@ function newPlayViewState() {
     };
 }
 
-export function PlayView(c: ImCache, ctx: GlobalContext) {
+export function imPlayView(c: ImCache, ctx: GlobalContext) {
     const s = imState(c, newPlayViewState);
 
     if (isFirstishRender(c)) {

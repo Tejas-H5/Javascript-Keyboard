@@ -45,6 +45,8 @@ input {
 input:focus {
     background-color: ${cssVars.bg2};
 }
+
+h1, h2, h3, h4 { margin: 0; }
     `);
 
 export const cnApp = {

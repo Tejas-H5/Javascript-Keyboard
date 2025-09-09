@@ -66,7 +66,7 @@ import { clamp } from "src/utils/math-utils";
 import { notesEqual } from "src/utils/music-theory-utils";
 import { ChartSelect as imChartSelect } from "src/views/chart-select";
 import { imEditView as imEditView } from "src/views/edit-view";
-import { PlayView as imPlayView } from "src/views/play-view";
+import { imPlayView as imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
 import { imSoundLab } from "./sound-lab-view";
 
@@ -182,7 +182,17 @@ function handlePlayChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 }
 
 function handleChartSelectKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
-    const { key, keyUpper } = keyPressState;
+    const { key, keyUpper, vAxis } = keyPressState;
+    const { ui } = ctx;
+
+    if (ctx.savedState.userCharts.length === 0) {
+        throw new Error("Didn't expect to have zero charts. Developer shipped this game without adding the charts they've made xD");
+    }
+
+    if (ui.loadSave.modal.idx >= ctx.savedState.userCharts.length) {
+        ui.loadSave.modal.idx = ctx.savedState.userCharts.length - 1;
+    }
+    const currentChart = ctx.savedState.userCharts[ui.loadSave.modal.idx];
 
     if (keyUpper === "E") {
         setViewEditChart(ctx);
@@ -195,13 +205,22 @@ function handleChartSelectKeyDown(ctx: GlobalContext, keyPressState: KeyPressSta
     }
 
     if (key === "Enter") {
-        setViewPlayCurrentChart(ctx);
+        setCurrentChart(ctx, currentChart);
+        if (currentChart.timeline.length === 0) {
+            setViewEditChart(ctx);
+        } else {
+            setViewPlayCurrentChart(ctx);
+        }
         return true;
     }
 
     if (key === "Escape") {
         setViewStartScreen(ctx);
         return true;
+    }
+
+    if (vAxis !== 0) {
+        setCurrentChartIdx(ctx, ui.loadSave.modal.idx - vAxis);
     }
     return false;
 }
@@ -532,7 +551,8 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
 }
 
 function handleSoundLabKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
-    // NOTE: has been moved into the component
+    // NOTE: has been moved into the component.
+    // TODO: do the same with the rest of the handlers.
     return false;
 }
 
@@ -761,14 +781,14 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
     // run code while exiting a view
     {
         switch (ctx.ui.currentView) {
-            case APP_VIEW_EDIT_CHART:
+            case APP_VIEW_EDIT_CHART: {
                 editView.lastCursorStart = sequencer.cursorStart;
                 editView.lastCursorDivisor = sequencer.cursorDivisor;
-                break;
-            case APP_VIEW_PLAY_CHART:
+            } break;
+            case APP_VIEW_PLAY_CHART: {
                 stopPlaying(ctx);
                 setScheduledPlaybackVolume(1);
-                break;
+            } break;
         }
     }
 
@@ -777,17 +797,17 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
     // run code while entering a view
     {
         switch (ctx.ui.currentView) {
-            case APP_VIEW_EDIT_CHART:
+            case APP_VIEW_EDIT_CHART: {
                 if (editView.lastCursorDivisor !== 0) {
                     sequencer.cursorStart = editView.lastCursorStart;
                     sequencer.cursorDivisor = editView.lastCursorDivisor;
                 }
-                break;
-            case APP_VIEW_CHART_SELECT:
+            } break;
+            case APP_VIEW_CHART_SELECT: {
                 editView.lastCursorStart = 0;
                 editView.lastCursorDivisor = 0;
-                break;
-            case APP_VIEW_PLAY_CHART:
+            } break;
+            case APP_VIEW_PLAY_CHART: {
                 let startFromBeats: number;
                 if (playView.isTesting) {
                     startFromBeats = getBeats(editView.lastCursorStart, editView.lastCursorDivisor);
@@ -797,7 +817,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
 
                 setScheduledPlaybackVolume(0.1);
                 startPlaying(ctx, startFromBeats - 2, undefined, { isUserDriven: true });
-                break;
+            } break;
         }
     }
 }

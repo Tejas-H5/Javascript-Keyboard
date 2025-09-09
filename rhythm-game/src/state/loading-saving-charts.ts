@@ -35,6 +35,10 @@ export function loadSaveState(): SavedState {
         }
     }
 
+    if (loadedState.userCharts.length === 0) {
+        // TODO: insert premade charts here.
+    }
+
     return loadedState;
 }
 

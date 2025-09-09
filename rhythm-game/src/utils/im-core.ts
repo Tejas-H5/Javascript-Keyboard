@@ -1,4 +1,6 @@
-// IM-CORE 1.041
+// IM-CORE 1.043
+// NOTE: I'm currently working on 3 different apps with this framework,
+// so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
 import { assert } from "src/utils/assert";
 
@@ -321,6 +323,21 @@ export function imGet<T>(
 }
 
 /**
+ * NOTE: undefined return type is a lie! Will also return whatever you set with imSet.
+ * ```ts
+ * let s; s = imGetInline(c, fn);
+ * if (!s) s = imSet(c, { blah });
+ * ```ts
+ */
+export function imGetInline(
+    c: ImCache,
+    typeIdInline: TypeId<unknown>,
+): undefined {
+    return imGet(c, inlineTypeId(typeIdInline));
+}
+
+
+/**
  * A shorthand for a pattern that is very common.
  * NOTE: if your state gains dependencies, you can just use imGet and imSet directly, as intended.
  */
@@ -620,6 +637,7 @@ export const imEndIf = imIfEnd;
 export const imElse = imIfElse;
 export const imEndSwitch = imSwitchEnd;
 export const imEndFor = imForEnd;
+export const imCatch = imTryCatch;
 
 /**
  * ```ts
@@ -731,7 +749,7 @@ export type ImMemoResult
  */
 export function imMemo(c: ImCache, val: unknown): ImMemoResult {
     /**
-     * NOTE: I had previously implemented imMemo(c, ) and imMemoEnd():
+     * NOTE: I had previously implemented imMemo() and imMemoEnd():
      *
      * if (imBeginMemo().val(x).objectVals(obj)) {
      *      <Memoized component>
@@ -763,9 +781,10 @@ export function imMemo(c: ImCache, val: unknown): ImMemoResult {
 }
 
 export type TryState = {
-    entries: ImCacheEntries,
+    entries: ImCacheEntries;
     err: any | null;
     recover: () => void;
+    unwoundThisFrame: boolean;
     // TODO: consider Map<Error, count: number>
 };
 
@@ -791,14 +810,19 @@ export function imTry(c: ImCache): TryState {
                 c[CACHE_NEEDS_RERENDER] = true;
             },
             entries,
+            unwoundThisFrame: false,
         };
         tryState = imSet(c, val);
     }
+
+    tryState.unwoundThisFrame = false;
 
     return tryState;
 }
 
 export function imTryCatch(c: ImCache, tryState: TryState, err: any) {
+    tryState.unwoundThisFrame = true;
+
     if (tryState.err != null) {
         throw new Error("Your error boundary pathway also has an error in it, so we can't recover!");
     }
@@ -810,14 +834,19 @@ export function imTryCatch(c: ImCache, tryState: TryState, err: any) {
         throw new Error("Couldn't find the entries in the stack to unwind to!");
     }
 
-    c[CACHE_IDX] = idx;
-    c[CACHE_CURRENT_ENTRIES] = c[idx];
+    c[CACHE_IDX] = idx - 1;
+    c[CACHE_CURRENT_ENTRIES] = c[idx - 1];
 }
 
 export function imTryEnd(c: ImCache, tryState: TryState) {
-    const entries = c[CACHE_CURRENT_ENTRIES];
-    assert(entries === tryState.entries);
-    __imBlockDerivedEnd(c, INTERNAL_TYPE_TRY_BLOCK);
+    if (tryState.unwoundThisFrame === true) {
+        // nothing to end.
+        assert(c[c[CACHE_IDX] + 1] === tryState.entries);
+    } else {
+        const entries = c[CACHE_CURRENT_ENTRIES];
+        assert(entries === tryState.entries);
+        __imBlockDerivedEnd(c, INTERNAL_TYPE_TRY_BLOCK);
+    }
 }
 
 export function getDeltaTimeSeconds(c: ImCache): number {

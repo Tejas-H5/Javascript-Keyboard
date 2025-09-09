@@ -33,7 +33,7 @@ export const defaultCoreTheme = Object.freeze({
     mg: newColorFromHex("#888"),
     fg2: newColorFromHex("#333"),
     fg: newColorFromHex("#000"),
-    mediumText: "4rem",
+    mediumText: "2.5rem",
     normalText: "1.5rem",
     smallText: "1rem",
 });

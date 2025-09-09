@@ -56,15 +56,15 @@ export function imSize(
     if (size.width !== width || size.wType !== wType) {
         size.width = width;
         size.wType = wType;
-        elSetStyle(c, "minWidth", getSize(width, wType));
-        elSetStyle(c, "maxWidth", getSize(width, wType));
+        // elSetStyle(c, "minWidth", getSize(width, wType));
+        // elSetStyle(c, "maxWidth", getSize(width, wType));
+        elSetStyle(c, "width", getSize(width, wType));
     }
 
     if (size.height !== height || size.hType !== hType) {
         size.height = height;
         size.hType = hType;
-        elSetStyle(c, "minHeight", getSize(height, hType));
-        elSetStyle(c, "maxHeight", getSize(height, hType));
+        elSetStyle(c, "height", getSize(height, hType));
     }
 
     return size;
@@ -131,9 +131,18 @@ export function imRelative(c: ImCache) {
     }
 }
 
-export function imBg(c: ImCache, colour: string) {
+export function imBg(c: ImCache, colour: string, transition?: number) {
     if (imMemo(c, colour)) {
         elSetStyle(c, "backgroundColor", colour);
+        if (transition) {
+            elSetStyle(c, "transition", colour);
+        }
+    }
+}
+
+export function imTextColor(c: ImCache, colour: string) {
+    if (imMemo(c, colour)) {
+        elSetStyle(c, "color", colour);
     }
 }
 
