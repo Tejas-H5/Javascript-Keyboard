@@ -22,7 +22,7 @@ import {
     equalBeats,
     getBpm,
     getBpmChangeItemBeforeBeats,
-    getChartExtent,
+    getChartDurationInBeats,
     getItemStartBeats,
     getLastMeasureBeats,
     getNextMeasureBeats,
@@ -513,7 +513,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState
     }
 
     if (key === "End") {
-        const end = getChartExtent(chart) * sequencer.cursorDivisor;
+        const end = getChartDurationInBeats(chart) * sequencer.cursorDivisor;
         handleMovementAbsolute(sequencer, end, ctrlPressed, shiftPressed);
         return true;
     }

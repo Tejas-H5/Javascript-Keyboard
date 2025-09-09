@@ -71,7 +71,7 @@ export const TIMELINE_ITEM_MEASURE = 2;
 export const TIMELINE_ITEM_NOTE = 3;
 export const DEFAULT_BPM = 120;
 
-const CURSOR_ITEM_TOLERANCE_BEATS = 0.000001;
+const CURSOR_ITEM_TOLERANCE_BEATS = 0.0001;
 
 type BaseTimelineItem = {
     start: number;
@@ -733,7 +733,7 @@ export function sequencerChartShiftItems(
 }
 
 
-export function getChartExtent(chart: SequencerChart): number {
+export function getChartDurationInBeats(chart: SequencerChart): number {
     const timeline = chart.timeline;
     if (timeline.length === 0) {
         return 0;

@@ -1,4 +1,5 @@
 import { TimelineItem } from "src/state/sequencer-chart";
+import { GameplayState } from "src/views/gameplay";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -41,6 +42,7 @@ export type UIState = {
 
     playView: {
         isTesting: boolean;
+        result: GameplayState | null;
     }
 };
 
@@ -75,6 +77,7 @@ export function newUiState(): UIState {
 
         playView: {
             isTesting: false,
+            result: null,
         }
     };
 }

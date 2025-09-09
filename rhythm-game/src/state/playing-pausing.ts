@@ -1,6 +1,6 @@
 import { isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
-import { getBeatIdxAfter, getChartExtent, getItemEndBeats, getItemEndTime, getItemStartBeats, getItemStartTime, getLastMeasureBeats, getTimeForBeats, gtBeats, ltBeats, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
+import { getBeatIdxAfter, getChartDurationInBeats, getItemEndBeats, getItemEndTime, getItemStartBeats, getItemStartTime, getLastMeasureBeats, getTimeForBeats, gtBeats, ltBeats, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
 import {
     getCurrentPlayingBeats,
     getCursorStartBeats,
@@ -45,7 +45,7 @@ export function playFromLastMeasure(ctx: GlobalContext, options: PlayOptions = {
 
     // +1 for good luck - it's used to find a bound that must alawys include the last note,
     // that we can play every note
-    const endBeats = getChartExtent(chart) + 1;
+    const endBeats = getChartDurationInBeats(chart) + 1;
     startPlaying(ctx, lastMeasureStart, endBeats, options);
 }
 
@@ -93,7 +93,7 @@ export type PlayOptions = {
 export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: number, options: PlayOptions = {}) {
     const chart = ctx.sequencer._currentChart;
     if (endBeats === undefined) {
-        endBeats = getChartExtent(chart) + 1;
+        endBeats = getChartDurationInBeats(chart) + 1;
     }
 
     let { speed = 1, isUserDriven = false } = options;

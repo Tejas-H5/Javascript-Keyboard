@@ -1,7 +1,7 @@
 import { chooseItem } from "src/utils/array-utils";
 import { GlobalContext, setViewEditChart } from "./app";
 import { clamp } from "src/utils/math-utils";
-import { imGameplay } from "./gameplay";
+import { GameplayState, imGameplay } from "./gameplay";
 import { getDeltaTimeSeconds, ImCache, imElse, imEndIf, imIf, imState, isFirstishRender } from "src/utils/im-core";
 import { BLOCK, COL, imAlign, imFlex, imJustify, imLayout, imSize, imLayoutEnd, ROW, PERCENT, NA, EM, imRelative, imAbsolute, PX } from "src/components/core/layout";
 import { elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
@@ -22,34 +22,17 @@ function randomizeMessage() {
     currentMessage = chooseItem(MESSAGES, Math.random());
 }
 
-function newPlayViewState() {
-    return {
-        showResultsScreen: false,
-    };
-}
-
 export function imPlayView(c: ImCache, ctx: GlobalContext) {
-    const s = imState(c, newPlayViewState);
-
     if (isFirstishRender(c)) {
         randomizeMessage();
     }
 
-    const playView = ctx.ui.playView;
-    if (!ctx.sequencer.isPlaying) {
-        if (playView.isTesting) {
-            setViewEditChart(ctx);
-        } else if (!s.showResultsScreen) {
-            s.showResultsScreen = true;
-            randomizeMessage();
-        }
-    } else {
-        s.showResultsScreen = false;
-    }
+    // NOTE: strange code boundary here between the results screen and the gameplay screen, because I wrote this code a while ago.
+    // but it seems to work ok for now.
 
     imLayout(c, COL); imFlex(c); {
-        if (imIf(c) && s.showResultsScreen) {
-            imResultsScreen(c);
+        if (imIf(c) && ctx.ui.playView.result) {
+            imResultsScreen(c, ctx.ui.playView.result);
         } else {
             imElse(c);
 
@@ -68,7 +51,7 @@ function newResultsScreenState() {
     };
 }
 
-function imResultsScreen(c: ImCache) {
+function imResultsScreen(c: ImCache, result: GameplayState) {
     const s = imState(c, newResultsScreenState);
 
     const dt = getDeltaTimeSeconds(c);
@@ -102,36 +85,26 @@ function imResultsScreen(c: ImCache) {
             imBeginAnimatedRow(c, s.t, start + 0.1, 0.1, 300); {
                 imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
-                imStr(c, "Time taken: "); 
+                imStr(c, "Score: "); 
 
                 imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-                imAnimatedNumber(c, 12321, s.t, start + 0.7, 0.3);
+                imAnimatedNumber(c, result.score, s.t, start + 0.7, 0.3);
 
                 imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
             } imLayoutEnd(c);
             imBeginAnimatedRow(c, s.t, start + 0.3, 0.1, 300); {
                 imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
-                imStr(c, "Hits: "); 
+                imStr(c, "Theoretical perfect score: <TODO>"); 
 
                 imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-                imAnimatedNumber(c, 12321, s.t, start + 1.1, 0.3);
-
                 imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
             } imLayoutEnd(c);
-            imBeginAnimatedRow(c, s.t, start + 0.5, 0.1, 300); {
-                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
-                imStr(c, "Pauses: "); 
 
-                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
-
-                imAnimatedNumber(c, 12321, s.t, start + 1.4, 0.3);
-
-                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
-            } imLayoutEnd(c);
+            // TODO: S S or some typical rhythm game score designation, and its 3d and rotating. epic
 
         } imLayoutEnd(c);
     } imLayoutEnd(c);

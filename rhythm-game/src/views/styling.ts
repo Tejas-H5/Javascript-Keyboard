@@ -6,13 +6,17 @@ type AppTheme = ComponentsCoreTheme & {
     playback: CssColor;
     bpmMarker: CssColor;
     error:    CssColor;
+    calm:    CssColor;
+    danger:    CssColor;
 };
 
 export const cssVarsApp: Record<keyof AppTheme, string> = {
     ...cssVars,
-    playback: "var(--playback)",
+    playback:  "var(--playback)",
     bpmMarker: "var(--bpmMarker)",
-    error:    "var(--error)",
+    error:     "var(--error)",
+    calm:      "var(--calm)",
+    danger:    "var(--danger)",
 } as const;
 
 const cssb = newCssBuilder();
@@ -63,9 +67,11 @@ export const cnApp = {
 
 const mainTheme = Object.freeze({
     ...defaultCoreTheme,
-    playback: newColorFromHex("#00F"),
+    playback:  newColorFromHex("#00F"),
     bpmMarker: newColorFromHex("#A00"),
-    error:    newColorFromHex("#F00"),
+    error:     newColorFromHex("#F00"),
+    calm:      newColorFromHex("#00AAFF"),
+    danger:    newColorFromHex("#FF0000"),
 });
 
 let currentTheme: AppTheme = mainTheme;
