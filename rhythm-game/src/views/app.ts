@@ -65,10 +65,11 @@ import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-
 import { clamp } from "src/utils/math-utils";
 import { notesEqual } from "src/utils/music-theory-utils";
 import { ChartSelect as imChartSelect } from "src/views/chart-select";
-import { imEditView as imEditView } from "src/views/edit-view";
-import { imPlayView as imPlayView } from "src/views/play-view";
+import { imEditView } from "src/views/edit-view";
+import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
 import { imSoundLab } from "./sound-lab-view";
+import { newGameplayState } from "./gameplay";
 
 
 export type GlobalContext = {
@@ -115,41 +116,43 @@ function handleStartupKeyDown(ctx: GlobalContext, keyPressState: KeyPressState):
 
 function handlePlayChartOrEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
     const { key, ctrlPressed, shiftPressed, isRepeat } = keyPressState;
-    const { sequencer } = ctx;
+    const { sequencer, ui } = ctx;
 
-    // need to move by the current beat snap.
-    if (key === "ArrowLeft" || key === "ArrowRight") {
-        handleMovement(
-            sequencer,
-            key === "ArrowRight" ? 1 : -1,
-            ctrlPressed,
-            shiftPressed
-        );
+    if (ui.currentView === APP_VIEW_EDIT_CHART || ui.playView.isTesting) {
+        // need to move by the current beat snap.
+        if (key === "ArrowLeft" || key === "ArrowRight") {
+            handleMovement(
+                sequencer,
+                key === "ArrowRight" ? 1 : -1,
+                ctrlPressed,
+                shiftPressed
+            );
 
-        return true;
-    }
-
-    // move back and forth between measures
-    const downArrow = key === "ArrowDown";
-    const upArrow = key === "ArrowUp";
-    if (downArrow || upArrow) {
-        const cursorBeats = getCursorStartBeats(sequencer);
-
-        let newPos;
-        if (upArrow) {
-            newPos = getNextMeasureBeats(sequencer._currentChart, cursorBeats);
-        } else {
-            newPos = getLastMeasureBeats(sequencer._currentChart, cursorBeats);
+            return true;
         }
 
-        handleMovementAbsolute(
-            sequencer,
-            newPos * sequencer.cursorDivisor,
-            ctrlPressed,
-            shiftPressed
-        );
+        // move back and forth between measures
+        const downArrow = key === "ArrowDown";
+        const upArrow = key === "ArrowUp";
+        if (!shiftPressed && (downArrow || upArrow)) {
+            const cursorBeats = getCursorStartBeats(sequencer);
 
-        return true;
+            let newPos;
+            if (upArrow) {
+                newPos = getNextMeasureBeats(sequencer._currentChart, cursorBeats);
+            } else {
+                newPos = getLastMeasureBeats(sequencer._currentChart, cursorBeats);
+            }
+
+            handleMovementAbsolute(
+                sequencer,
+                newPos * sequencer.cursorDivisor,
+                ctrlPressed,
+                shiftPressed
+            );
+
+            return true;
+        }
     }
 
     if (isRepeat) {
@@ -814,6 +817,16 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 } else {
                     startFromBeats = 0;
                 }
+
+                playView.result = null;
+
+                // Testing results screen
+                if (0) {
+                    const result = newGameplayState(newKeyboardState(), newChart("Test chart name"));
+                    result.score = 199
+                    result.bestPossibleScore = 200;
+                    playView.result = result;
+                } 
 
                 setScheduledPlaybackVolume(0.1);
                 startPlaying(ctx, startFromBeats - 2, undefined, { isUserDriven: true });

@@ -1,18 +1,18 @@
-import { BLOCK, COL, imAlign, imFlex, imGap, imLayout, imLayoutEnd, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imFlex, imLayout, imLayoutEnd, imSize, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
 import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
-import { stopPlaying, } from "src/state/playing-pausing";
+import { stopPlaying } from "src/state/playing-pausing";
 import { getPlaybackDuration } from "src/state/sequencer-chart";
 import {
-    getCurrentPlayingTimeRelative,
+    getCurrentPlayingTime,
     recomputeState
 } from "src/state/sequencer-state";
-import { assert } from "src/utils/assert";
-import { ImCache, imElse, imEndFor, imEndIf, imFor, imIf, imIfEnd, imMemo, isFirstishRender } from "src/utils/im-core";
-import { EL_B, EL_I, elHasMousePress, elSetStyle, EV_INPUT, EV_KEYDOWN, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
+import { ImCache, imElse, imEndFor, imEndIf, imFor, imIf, imMemo, isFirstishRender } from "src/utils/im-core";
+import { elHasMousePress, elSetStyle, EV_INPUT, EV_KEYDOWN, imOn, imStr } from "src/utils/im-dom";
 import { imSequencer } from "src/views/sequencer";
-import { GlobalContext, setViewTestCurrentChart } from "./app";
+import { GlobalContext } from "./app";
 import { cssVarsApp } from "./styling";
-import { imButtonIsClicked } from "src/components/button";
+
+const OVERPLAY_MS = 1000;
 
 export function imEditView(c: ImCache, ctx: GlobalContext) {
     const { sequencer, ui } = ctx;
@@ -21,9 +21,9 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
 
     recomputeState(sequencer);
 
-    const currentTime = getCurrentPlayingTimeRelative(sequencer);
+    const currentTime = getCurrentPlayingTime(sequencer);
     const duration = getPlaybackDuration(sequencer._currentChart);
-    if (currentTime > duration) {
+    if (currentTime > duration + OVERPLAY_MS) {
         stopPlaying(ctx);
     }
 

@@ -347,7 +347,7 @@ export function syncPlayback(sequencer: SequencerState, dspTime: number, dspPaus
         // if (!sequencer.isPaused) {
         //     sequencer.pausedTime = Date.now() - sequencer.startPlayingTime;
         // }
-    } else {
+    } else if (sequencer.isPlaying) {
         // resync the current time with the DSP time. 
         // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
         const currentEstimatedScheduledTime = getCurrentPlayingTimeRelative(sequencer);
@@ -365,7 +365,7 @@ export function getCurrentPlayingTimeRelative(state: SequencerState): number {
         return state.pausedTime;
     }
 
-    return Date.now() - state.startPlayingTime;
+    return performance.now() - state.startPlayingTime;
 }
 
 export function handleMovement(

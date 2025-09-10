@@ -3,7 +3,7 @@ import { BLOCK, COL, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayout
 import { cssVars } from "src/components/core/stylesheets";
 import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, isFirstishRender } from "src/utils/im-core";
 import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
-import { GlobalContext, setCurrentChart, setViewEditChart, setViewPlayCurrentChart, setViewStartScreen } from "./app";
+import { GlobalContext, setCurrentChart, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
 
 export function ChartSelect(c: ImCache, ctx: GlobalContext) {
     imLayout(c, COL); imFlex(c); {
@@ -90,7 +90,7 @@ export function ChartSelect(c: ImCache, ctx: GlobalContext) {
             }
 
             if (imButtonIsClicked(c, "The lab")) {
-                setViewEditChart(ctx);
+                setViewSoundLab(ctx);
             }
         } imLayoutEnd(c);
     } imLayoutEnd(c);

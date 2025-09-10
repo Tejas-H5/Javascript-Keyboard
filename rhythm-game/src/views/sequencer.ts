@@ -488,8 +488,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         } imSwitchEnd(c);
                     } imForEnd(c);
 
-                    const cursorBeats = getCursorStartBeats(sequencer);
-                    imAbsoluteVerticalLine(c, 100.0 * cursorBeats / totalBeats, cssVarsApp.fg, 4);
+                    imAbsoluteVerticalLine(c, 100.0 * cursorStartBeats / totalBeats, cssVarsApp.fg, 4);
 
                     // the currently viewed sliding window
                     {

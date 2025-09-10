@@ -9,7 +9,7 @@ import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
 import { ImCache, imCacheBegin, imCacheEnd, imCatch, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import { imApp, newGlobalContext, setCurrentChart, setViewPlayCurrentChart } from "./views/app";
+import { imApp, newGlobalContext, setCurrentChart, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
 
 const saveState = loadSaveState();
 const globalContext = newGlobalContext(saveState);
@@ -74,20 +74,26 @@ initCssbStyles();
             const sequencer = globalContext.sequencer;
 
             if (sequencer.isPlaying) {
-                if (dspInfo.scheduledPlaybackTime === -1) {
-                    stopPlaying(globalContext);
-                } else {
+                // Allow playback to go off the end, so that downstream code may react to this.
+                if (dspInfo.scheduledPlaybackTime !== -1) {
                     syncPlayback(sequencer, dspInfo.scheduledPlaybackTime, dspInfo.isPaused);
-                }
+                } 
             } 
         }
     });
 
     // Our code only works after the audio context has loaded.
-    // setViewEditChart(globalContext);
 
-    const chart = getChart(globalContext.savedState, "The pink panther");
-    assert(!!chart);
-    setCurrentChart(globalContext, chart);
-    setViewPlayCurrentChart(globalContext);
+    // Test edit view
+    if (0) {
+        setViewEditChart(globalContext);
+    }
+
+    // Test gameplay
+    if (0) {
+        const chart = getChart(globalContext.savedState, "The pink panther");
+        assert(!!chart);
+        setCurrentChart(globalContext, chart);
+        setViewPlayCurrentChart(globalContext);
+    }
 })();

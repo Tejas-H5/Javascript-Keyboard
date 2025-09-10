@@ -149,7 +149,7 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
     sequencer.scheduledKeyPressesFirstItemStart = startPlaybackFromTime;
     sequencer.scheduledKeyPressesPlaybackSpeed = speed;
 
-    sequencer.startPlayingTime = Date.now() + leadInTime;
+    sequencer.startPlayingTime = performance.now() + leadInTime;
     sequencer.isPlaying = true;
     sequencer.isPaused = false;
 

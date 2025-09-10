@@ -13,7 +13,9 @@ import {
     getItemStartBeats,
     gteBeats,
     lteBeats,
-    NoteItem
+    NoteItem,
+    SequencerChart,
+    TIMELINE_ITEM_NOTE
 } from "src/state/sequencer-chart";
 import {
     getSequencerPlaybackOrEditingCursor,
@@ -40,6 +42,17 @@ const SCOREABLE_BEAT_QUANTIZATION = 16;
 // till it reaches zero. 
 const PENALTY_QUANTIZATION_SECONDS = 0.1;
 const PENALTY_QUANTIZATION_START_SECONDS = 0.3;
+
+export function getBestPossibleScore(chart: SequencerChart) {
+    let totalScore = 0;
+    for (const item of chart.timeline) {
+        if (item.type !== TIMELINE_ITEM_NOTE) continue;
+
+        const beats = getItemLengthBeats(item);
+        totalScore += Math.floor(SCOREABLE_BEAT_QUANTIZATION * beats);
+    }
+    return totalScore;
+}
 
 export type KeysMapEntry = { 
     instrumentKey: InstrumentKey;
@@ -94,6 +107,8 @@ export type GameplayState = {
     penaltyTimer: number;
 
     score: number;
+    bestPossibleScore: number;
+    chartName: string;
 };
 
 type GameplayKeyState = {
@@ -102,9 +117,11 @@ type GameplayKeyState = {
     lastReleasedItem: NoteItem | null;
 };
 
-function newGameplayState(keyboard: KeyboardState): GameplayState {
+export function newGameplayState(keyboard: KeyboardState, chart: SequencerChart): GameplayState {
     return {
         score: 0,
+        bestPossibleScore: getBestPossibleScore(chart),
+        chartName: chart.name,
 
         start: 0,
         end: 0,
@@ -122,20 +139,19 @@ function newGameplayState(keyboard: KeyboardState): GameplayState {
             };
         }),
 
-        penaltyTimer: 0,
+        penaltyTimer: -PENALTY_QUANTIZATION_START_SECONDS,
     };
 }
 
 export function imGameplay(c: ImCache, ctx: GlobalContext) {
-    const focusChanged = imMemo(c, ctx.keyboard);
-    let gameplayState = imGet(c, newGameplayState);
-    if (!gameplayState || focusChanged) {
-        console.log("Recreated gameplay state");
-        gameplayState = imSet(c, newGameplayState(ctx.keyboard));
-        gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
-    }
-
     const chart = ctx.sequencer._currentChart;
+
+    const chartChanged = imMemo(c, chart);
+
+    let gameplayState = imGet(c, newGameplayState);
+    if (!gameplayState || chartChanged) {
+        gameplayState = imSet(c, newGameplayState(ctx.keyboard, chart));
+    }
 
     const durationBeats = getChartDurationInBeats(chart);
     const progressPercent = Math.round(max(100 * gameplayState.start / durationBeats, 0));
@@ -188,8 +204,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
             imLine(c, LINE_VERTICAL, 1);
 
             imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c, END); imRelative(c); {
+                // using runway doesn' look as nice.
                 const runway = PENALTY_QUANTIZATION_START_SECONDS + PENALTY_QUANTIZATION_SECONDS;
-                const amountPenalized01 = (gameplayState.penaltyTimer + PENALTY_QUANTIZATION_START_SECONDS) / runway;
+                const amountPenalized01 = (gameplayState.penaltyTimer + PENALTY_QUANTIZATION_START_SECONDS) / PENALTY_QUANTIZATION_START_SECONDS;
 
                 const colours = imGetInline(c, imGameplay) 
                               ?? imSet(c, { barColor: newColor(0, 0, 0, 0) });

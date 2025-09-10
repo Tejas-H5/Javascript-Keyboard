@@ -1,5 +1,6 @@
-import { TimelineItem } from "src/state/sequencer-chart";
-import { GameplayState } from "src/views/gameplay";
+import { newChart, TimelineItem } from "src/state/sequencer-chart";
+import { GameplayState, newGameplayState } from "src/views/gameplay";
+import { newKeyboardState } from "./keyboard-state";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -47,7 +48,7 @@ export type UIState = {
 };
 
 export function newUiState(): UIState {
-    return {
+    const s: UIState = {
         // NOTE: program breaks if we don't start from here
         currentView: APP_VIEW_STARTUP,
 
@@ -80,4 +81,6 @@ export function newUiState(): UIState {
             result: null,
         }
     };
+
+    return s;
 }

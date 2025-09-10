@@ -15,11 +15,11 @@ export type ScheduledKeyPress = {
 
 const audioCtx = new AudioContext()
 const playSettings: DSPPlaySettings = {
-    attack: 0.01,
-    decay: 0.01,
+    attack: 0.05,
+    decay: 0.3,
     attackVolume: 0.5,
-    sustainVolume: 0.5,
-    sustain: 0.25,
+    sustainVolume: 0.15,
+    sustain: 0.5,
     isUserDriven: false,
 };
 let dspPort: MessagePort | undefined;
