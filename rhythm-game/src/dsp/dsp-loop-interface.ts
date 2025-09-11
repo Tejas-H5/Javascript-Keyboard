@@ -1,6 +1,8 @@
 import { MusicNote } from "src/utils/music-theory-utils";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
 import { getAllSamples } from "src/samples/all-samples";
+import { InstrumentKey } from "src/state/keyboard-state";
+import { stopPlaying } from "src/state/playing-pausing";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
@@ -79,13 +81,6 @@ export function getCurrentOscillatorGain(id: number): number {
     }
     return block[1];
 }
-
-
-export function isAnythingPlaying() {
-    const info = getDspInfo();
-    return info.currentlyPlaying.some(block => block[1] > 0 && block[2] === 0);
-}
-
 // 0 -> user. 
 // 1 -> Not implement yet, but  it will be (track_idx + 1) - you'll need to do id - 1 to get the track index
 export function getCurrentOscillatorOwner(id: number): number {
@@ -95,6 +90,21 @@ export function getCurrentOscillatorOwner(id: number): number {
     }
     return block[2];
 }
+export function getCurrentOscillatorGainForOwner(id: number, owner: number): number {
+    const block = getInfoBlock(id);
+    if (!block) return 0;
+
+    const [,gain, blockOwner] = block;
+    if (blockOwner !== owner) return 0;
+
+    return gain;
+}
+
+export function isAnythingPlaying() {
+    const info = getDspInfo();
+    return info.currentlyPlaying.some(block => block[1] > 0 && block[2] === 0);
+}
+
 
 // we keep forgetting to ignore repeats, so I've made it an argument to this method.
 export function pressKey(id: number, note: MusicNote, isRepeat: boolean) {

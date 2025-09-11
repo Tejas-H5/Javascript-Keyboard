@@ -52,6 +52,7 @@ import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/ut
 import { imButtonIsClicked } from "src/components/button";
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
+import { DEBUG_UNDO_BUFFER } from "src/debug-flags";
 
 
 export function getMusicNoteText(n: MusicNote): string {
@@ -358,7 +359,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 } imLayoutEnd(c);
             } imIfEnd(c);
 
-            if (0) {
+            if (DEBUG_UNDO_BUFFER) {
                 // Debug visualizer for the undo buffer
                 imLayout(c, BLOCK); {
                     let i = 0;

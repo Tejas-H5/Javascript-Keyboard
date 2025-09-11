@@ -6,18 +6,6 @@ import { clamp } from "src/utils/math-utils";
 import { GlobalContext } from "./app";
 import { GameplayState, imGameplay } from "./gameplay";
 
-let MESSAGES = [
-    "Nice!",
-    "Well done!",
-    "Amazin!",
-    "Pogger!",
-    "Let's go!",
-    "You did it!",
-    "Ain't no way dude!",
-    "Lets goooo!",
-    "This message is randomly generated",
-];
-
 export function imPlayView(c: ImCache, ctx: GlobalContext) {
     // NOTE: strange code boundary here between the results screen and the gameplay screen, because I wrote this code a while ago.
     // but it seems to work ok for now.
@@ -44,7 +32,18 @@ function newResultsScreenState() {
     };
 }
 
-function getDesignation(score: number, bestPossibleScore: number) {
+type Designation 
+    =  "SSS"
+    | "SS"
+    | "S"
+    | "A"
+    | "B"
+    | "C"
+    | "D"
+    | "L";
+
+
+function getDesignation(score: number, bestPossibleScore: number): Designation {
     const percent = score / bestPossibleScore;
     if (score > bestPossibleScore) {
         // The way I compute the best possible score uses a far simpler codepath than the game's actual codepath, so
@@ -60,18 +59,29 @@ function getDesignation(score: number, bestPossibleScore: number) {
     return "L";
 }
 
+function getMessagesForDesignation(d: Designation): string[] {
+    switch(d) {
+        case "SSS": return ["HOW"];
+        case "SS":  return ["LETS GOOOO!!!!"];
+        case "S":   return ["Amazing!", "Very nice!", ">message goes here<"];
+        case "A":   return ["Well done!", "This is a good improvement.", "Yes"];
+        case "B":   return ["Nice!", "Good job!", "This message is randomly generated"];
+        case "C":   return ["You passed!","Bare minimum!", "De-fault!"];
+        case "D":   return ["...", "We'll get em next time."];
+        case "L":   return ["Nahhh, ain't now way bruh", "Nooo", "This is so sad, guys"];
+    }
+    return ["???"];
+}
+
 function imResultsScreen(c: ImCache, result: GameplayState) {
     const focusChanged = imMemo(c, true);
 
     let s = imGet(c, newResultsScreenState);
     if (!s || focusChanged) {
         s = imSet(c, newResultsScreenState());
-        s
-        if (result.score > result.bestPossibleScore) {
-            s.message = "HOW"
-        } else {
-            s.message = chooseItem(MESSAGES, Math.random());
-        }
+        const designation = getDesignation(result.score, result.bestPossibleScore);
+        const messages = getMessagesForDesignation(designation);
+        s.message = chooseItem(messages, Math.random());
     }
 
     const dt = getDeltaTimeSeconds(c);
@@ -100,6 +110,8 @@ function imResultsScreen(c: ImCache, result: GameplayState) {
 
                 imEl(c, EL_B); imStr(c, result.chartName); imElEnd(c, EL_B);
             } imLayoutEnd(c);
+
+            imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
                 currentStart += 0.3;
@@ -131,13 +143,15 @@ function imResultsScreen(c: ImCache, result: GameplayState) {
                 imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
             } imLayoutEnd(c);
 
+            imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
                 currentStart += 0.3;
                 imStr(c, s.message);
             } imLayoutEnd(c);
 
             const root = imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); 
-            imAlign(c); imJustify(c); imFlex(c); {
+            imAlign(c); imJustify(c); imFlex(c, 4); {
                 currentStart += 0.3;
 
                 const height = root.clientHeight;

@@ -660,6 +660,7 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
         const trackPlayback = s.trackPlayback;
         stopPlayingScheduledKeys(s);
         if (e.scheduleKeys !== null && e.scheduleKeys.length > 0) {
+            console.log("new scheduled keys: ", e.scheduleKeys);
             trackPlayback.scheduleKeys = e.scheduleKeys;
             trackPlayback.isPaused = false;
             trackPlayback.scheduledPlaybackTime = 0;

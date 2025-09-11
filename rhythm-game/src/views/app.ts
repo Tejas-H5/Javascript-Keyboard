@@ -1,7 +1,7 @@
 import { COL, imFixed, imLayout, imLayoutEnd, PX } from "src/components/core/layout";
 import { FpsCounterState } from "src/components/fps-counter";
-import { pressKey, releaseAllKeys, releaseKey, setScheduledPlaybackVolume } from "src/dsp/dsp-loop-interface";
-import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
+import { pressKey, releaseAllKeys, releaseKey, schedulePlayback, setScheduledPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     saveStateDebounced,
 } from "src/state/loading-saving-charts";
@@ -70,6 +70,7 @@ import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
 import { imSoundLab } from "./sound-lab-view";
 import { newGameplayState } from "./gameplay";
+import { TEST_RESULTS_VIEW } from "src/debug-flags";
 
 
 export type GlobalContext = {
@@ -227,6 +228,17 @@ function handleChartSelectKeyDown(ctx: GlobalContext, keyPressState: KeyPressSta
     }
     return false;
 }
+
+function playKeyPressForUI(ctx: GlobalContext, key: InstrumentKey) {
+    updatePlaySettings(s => s.isUserDriven = false);
+    schedulePlayback([{
+        time: 0, timeEnd: 200,
+        keyId: key.index,
+        noteIndex: key.musicNote.noteIndex,
+        sample: key.musicNote.sample,
+    }]);
+}
+
 
 function handleEditChartKeyDown(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
     const {
@@ -821,7 +833,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 playView.result = null;
 
                 // Testing results screen
-                if (0) {
+                if (TEST_RESULTS_VIEW) {
                     const result = newGameplayState(newKeyboardState(), newChart("Test chart name"));
                     result.score = 199
                     result.bestPossibleScore = 200;
@@ -908,6 +920,24 @@ export function imApp(c: ImCache, ctx: GlobalContext, fps: FpsCounterState) {
         const keyPressState = newKeyPressState(keyDown);
         ctx.keyPressState = keyPressState;
         getKeyPressState(keyDown, keyPressState);
+
+        // UI sound effects (before other key events)
+        if (ctx.keyPressState) {
+            if (ui.currentView === APP_VIEW_CHART_SELECT) {
+                const { vAxis, hAxis, key } = ctx.keyPressState;
+
+                if (vAxis < 0 || hAxis < 0) {
+                    playKeyPressForUI(ctx, ctx.keyboard.keys[1][6]);
+                } else if (vAxis > 0 || hAxis > 0) {
+                    playKeyPressForUI(ctx, ctx.keyboard.keys[1][8]);
+                } else if (key === "Enter") {
+                    playKeyPressForUI(ctx, ctx.keyboard.keys[1][5]);
+                } else if (key === "Escape") {
+                    playKeyPressForUI(ctx, ctx.keyboard.keys[1][1]);
+                }
+            }
+        }
+
         if (handleKeyDown(ctx, keyPressState)) {
             keyDown.preventDefault();
         }

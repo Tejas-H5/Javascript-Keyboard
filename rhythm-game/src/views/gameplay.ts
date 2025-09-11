@@ -1,7 +1,7 @@
 import { BLOCK, CENTER, COL, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, imTextColor, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
 import { cn } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
-import { getCurrentOscillatorGain, getCurrentOscillatorOwner } from "src/dsp/dsp-loop-interface";
+import { getCurrentOscillatorGain, getCurrentOscillatorGainForOwner, getCurrentOscillatorOwner } from "src/dsp/dsp-loop-interface";
 import {
     InstrumentKey,
     KeyboardState
@@ -32,7 +32,7 @@ import { GlobalContext } from "./app";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
 const SIGNAL_LOOKAHEAD_BEATS = 1;
-const GAMEPLAY_LOOKAHEAD_BEATS = 3;
+const GAMEPLAY_LOOKAHEAD_BEATS = 1.5;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
 
 // every 1/n beats hit = 1 score
@@ -145,6 +145,7 @@ export function newGameplayState(keyboard: KeyboardState, chart: SequencerChart)
 
 export function imGameplay(c: ImCache, ctx: GlobalContext) {
     const chart = ctx.sequencer._currentChart;
+    const keyboard = ctx.keyboard;
 
     const chartChanged = imMemo(c, chart);
 
@@ -234,150 +235,148 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
         imLayout(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); {
             let avoidPenalty = true;
 
-            imFor(c); for (const keysMapEntry of gameplayState.keysMap.values()) {
-                const thread = keysMapEntry._items;
-                const instrumentKey = keysMapEntry.instrumentKey;
-                const sGameplay = gameplayState;
+            imFor(c); for (let rowIdx = 0; rowIdx < keyboard.keys.length; rowIdx++) {
+            // imFor(c); for (let rowIdx = keyboard.keys.length - 1; rowIdx >= 0; rowIdx--) {) {
+                const row = keyboard.keys[rowIdx];
+                imFor(c); for (let keyRowIdx = 0; keyRowIdx < row.length; keyRowIdx++) {
+                    const instrumentKey = row[keyRowIdx];
 
-                const keyIdx = instrumentKey.index;
-                const keyState = gameplayState.keyState[keyIdx];
-                assert(!!keyState);
+                    const thread = gameplayState.keysMap.get(instrumentKey)?._items;
+                    assert(!!thread);
 
-                // Vertical note
-                {
-                    const s = imState(c, newVerticalNoteThreadState);
+                    const sGameplay = gameplayState;
 
-                    const owner = getCurrentOscillatorOwner(instrumentKey.index)
-                    const signal = getCurrentOscillatorGain(instrumentKey.index)
-                    const playerSignal = owner === 0 ? signal : 0;
+                    const keyIdx = instrumentKey.index;
+                    const keyState = gameplayState.keyState[keyIdx];
+                    assert(!!keyState);
 
-                    const theme = getCurrentTheme();
-                    
-                    const backgroundColor = s.currentBgColor.toCssString();
+                    // Vertical note
+                    {
+                        const s = imState(c, newVerticalNoteThreadState);
 
-                    copyColor(theme.bg, s.currentBgColor);
+                        let keySignal = getCurrentOscillatorGainForOwner(instrumentKey.index, 0);
 
-                    if (imIf(c) && instrumentKey.isLeftmost) {
-                        imLayout(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
-                    } imEndIf(c);
+                        const theme = getCurrentTheme();
 
-                    imLayout(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
-                        imLetter(c, gameplayState, instrumentKey, thread, playerSignal);
+                        const backgroundColor = s.currentBgColor.toCssString();
 
-                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
-                        } imLayoutEnd(c);
+                        copyColor(theme.bg, s.currentBgColor);
 
-                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c,"transition", "background-color 0.2s");
-                            }
+                        if (imIf(c) && instrumentKey.isLeftmost) {
+                            imLayout(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
+                        } imEndIf(c);
 
-                            elSetStyle(c,"backgroundColor", backgroundColor);
+                        imLayout(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
+                            imLetter(c, gameplayState, instrumentKey, thread, keySignal);
 
-                            imFor(c); for (let i = 0; i < thread.length; i++) {
-                                const item = thread[i];
-                                const start = sGameplay.start;
+                            imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
+                            } imLayoutEnd(c);
 
-                                {
-                                    const s = imState(c, newBarState);
+                            imLayout(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
+                                if (isFirstishRender(c)) {
+                                    elSetStyle(c, "transition", "background-color 0.2s");
+                                }
 
-                                    const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
-                                    const itemStart = getItemStartBeats(item);
-                                    const itemLength = getItemLengthBeats(item);
-                                    const itemEnd = itemStart + itemLength;
+                                elSetStyle(c, "backgroundColor", backgroundColor);
 
-                                    const dt = getDeltaTimeSeconds(c);
+                                imFor(c); for (let i = 0; i < thread.length; i++) {
+                                    const item = thread[i];
+                                    const start = sGameplay.start;
 
-                                    let bottomPercent = 100 * inverseLerp(itemStart, start, end);
-                                    let heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
+                                    {
+                                        const s = imState(c, newBarState);
 
-                                    if (bottomPercent <= 0) {
-                                        // prevent the bar from going past the midpoint line
-                                        heightPercent += bottomPercent;
-                                        bottomPercent = 0;
-                                    }
+                                        const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
+                                        const itemStart = getItemStartBeats(item);
+                                        const itemLength = getItemLengthBeats(item);
+                                        const itemEnd = itemStart + itemLength;
 
-                                    const itemInRange = lteBeats(itemStart, start) && lteBeats(start, itemEnd);
-                                    const quantizedBeats = Math.floor(SCOREABLE_BEAT_QUANTIZATION * start);
-                                    const finishedPressingLastKey = keyState.lastReleasedItem === keyState.lastPressedItem;
-                                    const startedPressingThisQuarterBeat = keyState.lastPressedQuantizedBeat >= quantizedBeats;
-                                    const itemIsCurrent = keyState.lastPressedItem === item;
+                                        const dt = getDeltaTimeSeconds(c);
 
-                                    const canPressThisQuarterBeat = 
-                                        itemInRange && 
-                                        !startedPressingThisQuarterBeat &&
-                                        (finishedPressingLastKey || itemIsCurrent);
+                                        let bottomPercent = 100 * inverseLerp(itemStart, start, end);
+                                        let heightPercent = 100 * itemLength / GAMEPLAY_LOOKAHEAD_BEATS;
 
-                                    if (canPressThisQuarterBeat && playerSignal) {
-                                        keyState.lastPressedQuantizedBeat = quantizedBeats;
-                                        gameplayState.score += 1;
-                                        keyState.lastPressedItem = item;
-                                    } else if (!playerSignal && !finishedPressingLastKey) {
-                                        keyState.lastReleasedItem = keyState.lastPressedItem;
-                                    }
+                                        if (bottomPercent <= 0) {
+                                            // prevent the bar from going past the midpoint line
+                                            heightPercent += bottomPercent;
+                                            bottomPercent = 0;
+                                        }
 
-                                    if (itemInRange && keyState.lastPressedItem !== item) {
-                                        avoidPenalty = false;
-                                    }
+                                        const itemInRange = lteBeats(itemStart, start) && lteBeats(start, itemEnd);
+                                        const quantizedBeats = Math.floor(SCOREABLE_BEAT_QUANTIZATION * start);
+                                        const finishedPressingLastKey = keyState.lastReleasedItem === keyState.lastPressedItem;
+                                        const startedPressingThisQuarterBeat = keyState.lastPressedQuantizedBeat >= quantizedBeats;
+                                        const itemIsCurrent = keyState.lastPressedItem === item;
 
-                                    if (itemInRange) {
-                                        // give user an indication that they should care about the fact that this bar has reached the bottom.
-                                        // hopefully they'll see the keyboard letter just below it, and try pressing it.
-                                        s.animation += dt;
-                                        if (s.animation > 1) {
+                                        const canPressThisQuarterBeat =
+                                            itemInRange &&
+                                            !startedPressingThisQuarterBeat &&
+                                            (finishedPressingLastKey || itemIsCurrent);
+
+                                        if (canPressThisQuarterBeat && keySignal) {
+                                            keyState.lastPressedQuantizedBeat = quantizedBeats;
+                                            gameplayState.score += 1;
+                                            keyState.lastPressedItem = item;
+                                        } else if (!keySignal && !finishedPressingLastKey) {
+                                            keyState.lastReleasedItem = keyState.lastPressedItem;
+                                        }
+
+                                        if (itemInRange && keyState.lastPressedItem !== item) {
+                                            avoidPenalty = false;
+                                        }
+
+                                        if (itemInRange) {
+                                            // give user an indication that they should care about the fact that this bar has reached the bottom.
+                                            // hopefully they'll see the keyboard letter just below it, and try pressing it.
+                                            s.animation += dt;
+                                            if (s.animation > 1) {
+                                                s.animation = 0;
+                                            }
+                                        } else {
                                             s.animation = 0;
                                         }
-                                    } else {
-                                        s.animation = 0;
-                                    }
 
-                                    const color = s.animation > 0.5 ? "#FFFF00" : cssVarsApp.fg;
-                                    // color = animation < 0.5 ? "#FFFF00" : s.instrumentKey.cssColours.normal;
+                                        const color = s.animation > 0.5 ? "#FFFF00" : cssVarsApp.fg;
 
-                                    imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, 0, NA, 0, PX); {
-                                        if (isFirstishRender(c)) {
-                                            elSetStyle(c,"color", "transparent");
-                                        }
-
-                                        elSetStyle(c,"bottom", bottomPercent + "%");
-                                        elSetStyle(c,"height", heightPercent + "%");
-
-                                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT); imRelative(c); {
+                                        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, 0, NA, 0, PX); {
                                             if (isFirstishRender(c)) {
-                                                elSetStyle(c,"backgroundColor", cssVarsApp.fg);
+                                                elSetStyle(c, "color", "transparent");
                                             }
 
-                                            imLayout(c, BLOCK); imAbsolute(c, 2, PX, 2, PX, 2, PX, 2, PX); {
+                                            elSetStyle(c, "bottom", bottomPercent + "%");
+                                            elSetStyle(c, "height", heightPercent + "%");
+
+                                            imLayout(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT); imRelative(c); {
                                                 if (isFirstishRender(c)) {
-                                                    elSetStyle(c,"transition", "transition: background-color 0.2s;");
+                                                    elSetStyle(c, "backgroundColor", cssVarsApp.fg);
                                                 }
 
-                                                elSetStyle(c,"backgroundColor", color);
+                                                imLayout(c, BLOCK); imAbsolute(c, 2, PX, 2, PX, 2, PX, 2, PX); {
+                                                    if (isFirstishRender(c)) {
+                                                        elSetStyle(c, "transition", "transition: background-color 0.2s;");
+                                                    }
+
+                                                    elSetStyle(c, "backgroundColor", color);
+                                                } imLayoutEnd(c);
                                             } imLayoutEnd(c);
+
                                         } imLayoutEnd(c);
+                                    }
+                                } imEndFor(c);
+                            } imLayoutEnd(c);
 
-                                    } imLayoutEnd(c);
+                            imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); {
+                                if (isFirstishRender(c)) {
+                                    elSetStyle(c, "backgroundColor", cssVarsApp.fg);
                                 }
-                            } imEndFor(c);
+                            } imLayoutEnd(c);
+
+                            imLetter(c, gameplayState, instrumentKey, thread, keySignal);
                         } imLayoutEnd(c);
 
-                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); {
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c, "backgroundColor", cssVarsApp.fg);
-                            }
-                        } imLayoutEnd(c);
-
-                        imLetter(c, gameplayState, instrumentKey, thread, playerSignal);
-                    } imLayoutEnd(c);
-
-                    if (imIf(c) && instrumentKey.isRightmost) {
-                        imLayout(c, BLOCK); imSize(c, 2, PX, 0, NA); {
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c, "background", cssVarsApp.fg);
-                            }
-                        } imLayoutEnd(c);
-                    } imIfEnd(c);
-                }
+                    }
+                } imEndFor(c);
+                imLine(c, LINE_VERTICAL, 2);
             } imEndFor(c);
 
             if (avoidPenalty) {

@@ -1,8 +1,8 @@
 import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
 import { BLOCK, imLayout, imLayoutEnd } from "./components/core/layout";
 import { fpsMarkRenderingEnd, fpsMarkRenderingStart, newFpsCounterState } from "./components/fps-counter";
+import { TEST_EDIT_VIEW, TEST_CHART, TEST_GAMEPLAY } from "./debug-flags";
 import { loadSaveState } from "./state/loading-saving-charts";
-import { stopPlaying } from "./state/playing-pausing";
 import { getChart } from "./state/saved-state";
 import { syncPlayback } from "./state/sequencer-state";
 import { assert } from "./utils/assert";
@@ -84,14 +84,15 @@ initCssbStyles();
 
     // Our code only works after the audio context has loaded.
 
-    // Test edit view
-    if (0) {
+    if (TEST_EDIT_VIEW) {
+        const chart = getChart(globalContext.savedState, TEST_CHART);
+        assert(!!chart);
+        setCurrentChart(globalContext, chart);
         setViewEditChart(globalContext);
     }
 
-    // Test gameplay
-    if (0) {
-        const chart = getChart(globalContext.savedState, "The pink panther");
+    if (TEST_GAMEPLAY) {
+        const chart = getChart(globalContext.savedState, TEST_CHART);
         assert(!!chart);
         setCurrentChart(globalContext, chart);
         setViewPlayCurrentChart(globalContext);
