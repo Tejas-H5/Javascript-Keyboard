@@ -1,4 +1,4 @@
-import { newChart, TimelineItem } from "src/state/sequencer-chart";
+import { newChart, SequencerChart, TimelineItem } from "src/state/sequencer-chart";
 import { GameplayState, newGameplayState } from "src/views/gameplay";
 import { newKeyboardState } from "./keyboard-state";
 
@@ -18,7 +18,9 @@ export type UIState = {
     currentView: AppView;
 
     chartSelect: {
-        loadedCharts: string[];
+        // A sorted lists of charts
+        loadedCharts: SequencerChart[];
+        idx: number;
     },
 
     loadSave: {
@@ -54,6 +56,7 @@ export function newUiState(): UIState {
 
         chartSelect: {
             loadedCharts: [],
+            idx: 0,
         },
 
         loadSave: {

@@ -1,8 +1,8 @@
-import { getDeltaTimeSeconds, ImCache, imState, isFirstishRender } from "src/utils/im-core";
-import { GlobalContext, setViewChartSelect } from "./app";
+import { imButtonIsClicked } from "src/components/button";
 import { BLOCK, COL, imAbsolute, imAlign, imFlex, imLayout, imLayoutEnd, imRelative, NA, PERCENT } from "src/components/core/layout";
+import { getDeltaTimeSeconds, ImCache, imState, isFirstishRender } from "src/utils/im-core";
 import { elSetStyle, imStr } from "src/utils/im-dom";
-import { imButton, imButtonIsClicked } from "src/components/button";
+import { GlobalContext, setViewChartSelect } from "./app";
 
 function newStartupViewState() {
     return { 
@@ -15,7 +15,24 @@ function newStartupViewState() {
     };
 }
 
+function handleStartupKeyDown(ctx: GlobalContext): boolean {
+    if (!ctx.keyPressState) return false;
+    const { key } = ctx.keyPressState;
+
+    if (key === "Enter") {
+        // NOTE: will need to change when we add more screens we can go to from here
+        setViewChartSelect(ctx);
+        return true;
+    }
+
+    return false;
+}
+
 export function imStartupView(c: ImCache, ctx: GlobalContext) {
+    if (!ctx.handled) {
+        ctx.handled = handleStartupKeyDown(ctx);
+    }
+
     // TODO: better game name
     const gameName = "Rhythm Keyboard!! (name subject to change)"
     const s = imState(c, newStartupViewState);

@@ -9,7 +9,8 @@ const cssb = newCssBuilder();
 const cnButton = (() => {
     const transiton = `0.05s linear`;
     return cssb.cn(`button`, [
-        ` { cursor: pointer; user-select: none; background-color: ${cssVars.bg}; color: ${cssVars.fg}; transition: background-color ${transiton}, color ${transiton}; padding: 3px 10px; border: 2px solid ${cssVars.fg}; border-radius: 5px;  }`,
+        ` { cursor: pointer; user-select: none; background-color: ${cssVars.bg}; color: ${cssVars.fg}; transition: background-color ${transiton}, color ${transiton}; padding: 3px 10px; }`,
+        `.radius {  border-radius: 5px; border: 2px solid ${cssVars.fg}; }`,
         `.toggled { background-color: ${cssVars.fg}; color: ${cssVars.bg}; }`,
         `:hover { background-color: ${cssVars.bg2}; color: ${cssVars.fg}; }`,
         `.toggled:hover { background-color: ${cssVars.fg2}; color: ${cssVars.bg}; }`,
@@ -19,7 +20,17 @@ const cnButton = (() => {
 })();
 
 export function imButton(c: ImCache, toggled = false) {
-    if (isFirstishRender(c)) elSetClass(c, cnButton);
+    if (isFirstishRender(c)) {
+        elSetClass(c, cnButton);
+        elSetClass(c, "radius");
+    }
+    if (imMemo(c, toggled))  elSetClass(c, "toggled", toggled);
+}
+
+export function imButtonNoRadius(c: ImCache, toggled = false) {
+    if (isFirstishRender(c)) {
+        elSetClass(c, cnButton);
+    }
     if (imMemo(c, toggled))  elSetClass(c, "toggled", toggled);
 }
 

@@ -3,12 +3,34 @@ import { chooseItem } from "src/utils/array-utils";
 import { getDeltaTimeSeconds, ImCache, imElse, imEndIf, imFor, imForEnd, imGet, imIf, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { EL_B, EL_I, elSetStyle, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp } from "src/utils/math-utils";
-import { GlobalContext } from "./app";
+import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app";
 import { GameplayState, imGameplay } from "./gameplay";
+
+function handlePlayViewKeyDown(ctx: GlobalContext) {
+    if (!ctx.keyPressState) return false;
+
+    const { key, startTestingPressed } = ctx.keyPressState;
+    const { ui } = ctx;
+
+    if (key === "Escape" || startTestingPressed) {
+        if (ui.playView.isTesting) {
+            setViewEditChart(ctx);
+        } else {
+            setViewChartSelect(ctx);
+        }
+        return true;
+    }
+
+    return false;
+}
 
 export function imPlayView(c: ImCache, ctx: GlobalContext) {
     // NOTE: strange code boundary here between the results screen and the gameplay screen, because I wrote this code a while ago.
     // but it seems to work ok for now.
+
+    if (!ctx.handled) {
+        ctx.handled = handlePlayViewKeyDown(ctx);
+    }
 
     imLayout(c, COL); imFlex(c); {
         if (imIf(c) && ctx.ui.playView.result) {
@@ -51,10 +73,10 @@ function getDesignation(score: number, bestPossibleScore: number): Designation {
         return "SSS" 
     }
     if (score === bestPossibleScore) return "SS";
-    if (percent >= 0.98) return "S";
-    if (percent >= 0.9)  return "A";
-    if (percent >= 0.8)  return "B";
-    if (percent >= 0.7)  return "C";
+    if (score > Math.max(bestPossibleScore - 10, bestPossibleScore * 0.98)) return "S";
+    if (score > Math.max(bestPossibleScore - 50, bestPossibleScore * 0.9))  return "A";
+    if (score > Math.max(bestPossibleScore - 100, bestPossibleScore * 0.8)) return "B";
+    if (score > Math.max(bestPossibleScore - 500, bestPossibleScore * 0.7)) return "C";
     if (percent >= 0.5)  return "D";
     return "L";
 }
@@ -90,11 +112,6 @@ function imResultsScreen(c: ImCache, result: GameplayState) {
     }
 
     s.fontSize = s.baseFontSize + s.wiggle * Math.sin(Math.PI * 2 * s.t);
-
-    const { keyDown } = getGlobalEventSystem().keyboard;
-    if (keyDown && keyDown.key.toUpperCase() === "R") {
-        s.t = 0;
-    }
 
     imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
         imLayout(c, COL); imSize(c, 80, PERCENT, 80, PERCENT); {

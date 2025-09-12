@@ -4,7 +4,8 @@
 export const TEST_EDIT_VIEW    = 0;
 export const TEST_CHART = "Watercolour";
 export const DEBUG_UNDO_BUFFER = 0;
+export const TEST_CHART_SELECT_VIEW = 0;
 
-export const TEST_GAMEPLAY     = 1;
+export const TEST_GAMEPLAY     = 0;
 export const TEST_RESULTS_VIEW = 0;
 

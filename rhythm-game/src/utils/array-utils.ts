@@ -35,7 +35,7 @@ export function findLastIndexOf<T>(arr: T[], predicate: (v: T) => boolean) {
 }
 
 /** t is a number between 0 and 1 */
-export function chooseItem<T>(arr: T[], t: number): T{
+export function chooseItem<T>(arr: T[], t: number): T {
     return arr[Math.floor(t * arr.length)];
 }
 

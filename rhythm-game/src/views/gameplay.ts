@@ -1,8 +1,9 @@
-import { BLOCK, CENTER, COL, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, imTextColor, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, imTextColor, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
 import { cn } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
-import { getCurrentOscillatorGain, getCurrentOscillatorGainForOwner, getCurrentOscillatorOwner } from "src/dsp/dsp-loop-interface";
+import { getCurrentOscillatorGainForOwner, pressKey } from "src/dsp/dsp-loop-interface";
 import {
+    getKeyForKeyboardKey,
     InstrumentKey,
     KeyboardState
 } from "src/state/keyboard-state";
@@ -24,15 +25,15 @@ import {
 } from "src/state/sequencer-state";
 import { assert } from "src/utils/assert";
 import { copyColor, lerpColor, newColor } from "src/utils/colour";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imGet, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
-import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imGet, imGetInline, imIf, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, max } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
-import { GlobalContext } from "./app";
+import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
 const SIGNAL_LOOKAHEAD_BEATS = 1;
-const GAMEPLAY_LOOKAHEAD_BEATS = 1.5;
+const GAMEPLAY_LOOKAHEAD_BEATS = 2;
 const GAMEPLAY_LOADAHEAD_BEATS = 6;
 
 // every 1/n beats hit = 1 score
@@ -41,7 +42,7 @@ const SCOREABLE_BEAT_QUANTIZATION = 16;
 // Every {PENALTY_QUANTIZATION} after {PENALTY_QUANTIZATION_START} where we don't hit any notes, our score will simply decline, 
 // till it reaches zero. 
 const PENALTY_QUANTIZATION_SECONDS = 0.1;
-const PENALTY_QUANTIZATION_START_SECONDS = 0.3;
+const PENALTY_QUANTIZATION_START_SECONDS = 0.5;
 
 export function getBestPossibleScore(chart: SequencerChart) {
     let totalScore = 0;
@@ -143,7 +144,34 @@ export function newGameplayState(keyboard: KeyboardState, chart: SequencerChart)
     };
 }
 
+function handlePlayChartKeyDown(ctx: GlobalContext): boolean {
+    if (!ctx.keyPressState) return false;
+    const { key, startTestingPressed, isRepeat } = ctx.keyPressState;
+    const { ui, keyboard } = ctx;
+
+    if (key === "Escape" || startTestingPressed) {
+        if (ui.playView.isTesting) {
+            setViewEditChart(ctx);
+        } else {
+            setViewChartSelect(ctx);
+        }
+        return true;
+    }
+
+    const instrumentKey = getKeyForKeyboardKey(keyboard, key);
+    if (instrumentKey) {
+        pressKey(instrumentKey.index, instrumentKey.musicNote, isRepeat);
+        return true;
+    }
+
+    return false;
+}
+
 export function imGameplay(c: ImCache, ctx: GlobalContext) {
+    if (!ctx.handled) {
+        ctx.handled = handlePlayChartKeyDown(ctx);
+    }
+
     const chart = ctx.sequencer._currentChart;
     const keyboard = ctx.keyboard;
 
@@ -186,47 +214,51 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     gameplayState.midpoint = Math.floor(gameplayState.keysMap.size / 2);
 
     imLayout(c, COL); imFlex(c); imJustify(c); {
-        imLayout(c, ROW); {
+        imLayout(c, ROW); imRelative(c); {
             if (isFirstishRender(c)) {
                 elSetClass(c, cn.mediumFont);
+                elSetClass(c, cn.noWrap);
             }
 
-            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); {
-                imStr(c, chart.name);
-                imStr(c, " - ");
+            // using runway doesn' look as nice.
+            const runway = PENALTY_QUANTIZATION_START_SECONDS + PENALTY_QUANTIZATION_SECONDS;
+            const amountPenalized01 = (gameplayState.penaltyTimer + PENALTY_QUANTIZATION_START_SECONDS) / PENALTY_QUANTIZATION_START_SECONDS;
 
-                imStr(c, progressPercent);
-                imStr(c, "%");
+            const colours = imGetInline(c, imGameplay) ?? imSet(c, { 
+                barColor: newColor(0, 0, 0, 0),
+                textColor: newColor(0, 0, 0, 0),
+            });
+
+            const theme = getCurrentTheme();
+            lerpColor(theme.calm, theme.danger, amountPenalized01, colours.barColor);
+            lerpColor(theme.bg, theme.fg, amountPenalized01, colours.textColor);
+
+            imLayout(c, BLOCK); {
+                if (isFirstishRender(c)) {
+                    elSetStyle(c, "zIndex", "-1");
+                }
+
+                imAbsolute(c, 0, PX, amountPenalized01 * 50, PERCENT, 0, PX, amountPenalized01 * 50, PERCENT);
+                imBg(c, colours.barColor.toString());
             } imLayoutEnd(c);
 
-            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c);  imJustify(c, CENTER); {
-            } imLayoutEnd(c);
+            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c); imTextColor(c, colours.textColor.toCssString()); {
+                if (isFirstishRender(c)) {
+                    elSetStyle(c, "zIndex", "1");
+                }
 
-            imLine(c, LINE_VERTICAL, 1);
-
-            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c, END); imRelative(c); {
-                // using runway doesn' look as nice.
-                const runway = PENALTY_QUANTIZATION_START_SECONDS + PENALTY_QUANTIZATION_SECONDS;
-                const amountPenalized01 = (gameplayState.penaltyTimer + PENALTY_QUANTIZATION_START_SECONDS) / PENALTY_QUANTIZATION_START_SECONDS;
-
-                const colours = imGetInline(c, imGameplay) 
-                              ?? imSet(c, { barColor: newColor(0, 0, 0, 0) });
-                
-                const theme = getCurrentTheme();
-                lerpColor(theme.calm, theme.danger, amountPenalized01, colours.barColor);
-
-
-                imLayout(c, BLOCK); {
-                    if (isFirstishRender(c)) {
-                        elSetStyle(c, "zIndex", "-1");
-                    }
-
-                    // Looks like I've independently arrived at something very close to the osu! healthbar ...
-                    imAbsolute(c, 0, PX, 0, PX, 0, PX, amountPenalized01 * 100, PERCENT); 
-                    imBg(c, colours.barColor.toString());
+                imLayout(c, ROW); imFlex(c); imJustify(c); {
+                    imStr(c, chart.name);
                 } imLayoutEnd(c);
 
-                imEl(c, EL_I); imPadding(c, 0, PX, 10, PX, 0, PX, 10, PX); imStr(c, gameplayState.score); imElEnd(c, EL_I);
+                imLayout(c, ROW); imFlex(c); imJustify(c); {
+                    imStr(c, gameplayState.score);
+                } imLayoutEnd(c);
+
+                imLayout(c, ROW); imFlex(c); imJustify(c); {
+                    imStr(c, progressPercent);
+                    imStr(c, "%");
+                } imLayoutEnd(c);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
 

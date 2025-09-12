@@ -53,15 +53,18 @@ export type PlayingSampleFile = {
 };
 
 export type DspLoopMessage = 1337 | {
-    playSettings?: Partial<DSPPlaySettings>;
-    setOscilatorSignal?: [number, PlayingOscillator["inputs"]];
-    clearAllOscilatorSignals?: true;
-    playSample?: [number, PlayingSampleFile["inputs"]];
-    scheduleKeys?: ScheduledKeyPress[] | null;
-    scheduleKeysVolume?: number;
+    playSettings?:                     Partial<DSPPlaySettings>;
+    setOscilatorSignal?:               [number, PlayingOscillator["inputs"]];
+    clearAllOscilatorSignals?:         true;
+    playSample?:                       [number, PlayingSampleFile["inputs"]];
+
+    scheduleKeys?:    ScheduledKeyPress[] | null;
+    newPlaybackTime?: number;
+
+    scheduleKeysVolume?:               number;
     // This samples record is so massive that my editor lags way too hard when I edit that file. So I
     // put it in a different file, and just inject it on startup, since it's JSON serialzable
-    setAllSamples?: Record<string, number[]>;
+    setAllSamples?:                    Record<string, number[]>;
 };
 
 
@@ -396,6 +399,11 @@ function processSample(s: DspState) {
                     // dont care abt things we've scheduled that aren't here yet..
                     break;
                 }
+                if (nextScheduledPlaybackTime > nextItem.timeEnd) {
+                    // ignore things we've already played. 
+                    // This codepath hits when we change the time we're playing
+                    break;
+                }
 
                 const sample = getPlayingSample(s, nextItem.keyId);
                 const osc = getPlayingOscillator(s, nextItem.keyId);
@@ -656,14 +664,23 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
         giveUserOwnership(osc);
     }
 
+    const trackPlayback = s.trackPlayback;
+
     if (e.scheduleKeys !== undefined) {
-        const trackPlayback = s.trackPlayback;
         stopPlayingScheduledKeys(s);
         if (e.scheduleKeys !== null && e.scheduleKeys.length > 0) {
             console.log("new scheduled keys: ", e.scheduleKeys);
             trackPlayback.scheduleKeys = e.scheduleKeys;
             trackPlayback.isPaused = false;
             trackPlayback.scheduledPlaybackTime = 0;
+            trackPlayback.scheduledPlaybackCurrentIdx = 0;
+        }
+    }
+
+    if (e.newPlaybackTime !== undefined) {
+        if (trackPlayback.scheduleKeys) {
+            console.log("new playback time");
+            trackPlayback.scheduledPlaybackTime = e.newPlaybackTime;
             trackPlayback.scheduledPlaybackCurrentIdx = 0;
         }
     }
