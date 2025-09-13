@@ -1,12 +1,13 @@
 import { arrayAt, filterInPlace, findLastIndexOf } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
-import { greaterThan, greaterThanOrEqualTo, lessThan, lessThanOrEqualTo, within } from "src/utils/math-utils";
-import { beatsToMs, compareMusicNotes, msToBeats, MusicNote, notesEqual } from "src/utils/music-theory-utils";
-import { getMusicNoteText } from "src/views/sequencer";
+import { beatsToMs, compareMusicNotes, getMusicNoteText, msToBeats, MusicNote, notesEqual } from "src/utils/music-theory-utils";
 
 export type SequencerChart = {
     name: string;
+
+    // NOTE: do not mutate the notes directly. Instead, remove, deep-copy, and insert the notes
     timeline: TimelineItem[];
+
     cursorStart: number;
     cursorDivisor: number;
 
@@ -27,7 +28,7 @@ type TimelineMutation = {
     items: TimelineItem[];
 };
 
-export function newChart(name: string = ""): SequencerChart {
+export function newChart(name: string = "", timeline: TimelineItem[] = []): SequencerChart {
     return {
         name,
         timeline: [],
@@ -40,8 +41,6 @@ export function newChart(name: string = ""): SequencerChart {
     }
 }
 
-
-
 export function undoEdit(chart: SequencerChart) {
     traverseUndoBuffer(chart, false);
 }
@@ -50,12 +49,15 @@ export function redoEdit(chart: SequencerChart) {
     traverseUndoBuffer(chart, true);
 }
 
-export function newTimelineItemBpmChange(start: number, divisor: number, bpm: number): TimelineItemBpmChange {
+export function newTimelineItemBpmChange(
+    start: number,
+    bpm: number
+): TimelineItemBpmChange {
     return {
         type: TIMELINE_ITEM_BPM,
         bpm,
         start,
-        divisor,
+        length: 0,
         _scheduledStart: 0,
         _index: 0,
         _shouldDelete: false,
@@ -63,7 +65,7 @@ export function newTimelineItemBpmChange(start: number, divisor: number, bpm: nu
 }
 
 export function newTimelineItemBpmChangeDefault() {
-    return newTimelineItemBpmChange(0, 4, DEFAULT_BPM);
+    return newTimelineItemBpmChange(0, DEFAULT_BPM);
 }
 
 export const TIMELINE_ITEM_BPM = 1;
@@ -71,20 +73,59 @@ export const TIMELINE_ITEM_MEASURE = 2;
 export const TIMELINE_ITEM_NOTE = 3;
 export const DEFAULT_BPM = 120;
 
-const CURSOR_ITEM_TOLERANCE_BEATS = 0.0001;
-
-type BaseTimelineItem = {
+type BaseTimelineItemOld = {
     start: number;
     divisor: number;
     _scheduledStart: number;
     _index: number;
     _shouldDelete: boolean;
 };
+
+// Beats are a timescale-agnostic way of representing when an item appears in a beatmap.
+// A common problem that occurs in other rhythm games, is that if you change the timing after you've
+// created a chart, all of the objects will no longer be snapped to the timeline. 
+// By simply having 'beats' as the core unit everything is snapped to, then speeding up/slowing down
+// playback after-the-fact, we get around this issue.
+//
+// Ideally, I'd like to pack this position into a single integer. 
+// We can have a 'beat' part, and then a fractional part.
+// But this actually looks a lot like just a normal integer with extra steps,
+// which is what I've gone with.
+//
+// This representation is far simpler and more convenient to use than any two part 
+// representation I had before.
+//
+// 1 'fractional beat' is (1 'real beat' / FRACTIONAL_UNITS_PER_BEAT).
+// The majority of the code here will use fractional beats.
+// 720 is a good number, because it divides perfectly with 1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16.
+// Aka ever divisor we might ever want for our charts. Sorry in advance to all the jazz people that wanted 7 or 11. I'm sure your idea is still doable.
+// 800,000 beats available to us for a song - more than enough.
+// It was chosen from https://en.wikipedia.org/wiki/Highly_composite_number
+export const FRACTIONAL_UNITS_PER_BEAT = 720;
+
+type TimelinePoint = number & { __TimelinePoint: void };
+
+export function getFractional(timelinePoint: TimelinePoint): number {
+    return timelinePoint & 0xFF;
+}
+
+export function getBeatOffset(timelinePoint: TimelinePoint): number {
+    return timelinePoint >> 0xFF;
+}
+
+// Can be interpreted as a position, or a length
+type BaseTimelineItem = {
+    start:  number; // fractional beat
+    length: number; // arbitrarily large number to add to `fraction` to get the end
+
+    _scheduledStart: number;
+    _index: number;
+    _shouldDelete: boolean;
+};
+
 export type NoteItem = BaseTimelineItem & {
     type: typeof TIMELINE_ITEM_NOTE;
-
     note: MusicNote;
-    len: number;
 
     _scheduledEnd: number;
 }
@@ -103,44 +144,14 @@ export type CommandItem = TimelineItemBpmChange | TimelineItemMeasure;
 export type TimelineItem = NoteItem | CommandItem;
 export type TimelineItemType = TimelineItem["type"];
 
-export function equalBeats(beatsA: number, beatsB: number): boolean {
-    return within(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS);
-}
-export function lteBeats(beatsA: number, beatsB: number): boolean {
-    return lessThanOrEqualTo(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
-}
-
-export function ltBeats(beatsA: number, beatsB: number): boolean {
-    return lessThan(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
-}
-
-export function gteBeats(beatsA: number, beatsB: number): boolean {
-    return greaterThanOrEqualTo(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
-}
-
-export function gtBeats(beatsA: number, beatsB: number): boolean {
-    return greaterThan(beatsA, beatsB, CURSOR_ITEM_TOLERANCE_BEATS)
-}
-
-
-export function getItemStartBeats(item: TimelineItem): number {
-    return getBeats(item.start, item.divisor);
-}
-
-
-// Beats are a timescale-agnostic way of representing when an item appears in a beatmap.
-// A common problem that occurs in other rhythm games, is that if you change the timing after you've
-// created a chart, all of the objects will no longer be snapped to the timeline. This avoids that issue.
-export function getBeats(numerator: number, divisor: number): number {
-    return numerator / divisor;
-}
-
-export function getBpmChangeItemBeforeBeats(chart: SequencerChart, beats: number): TimelineItemBpmChange | undefined {
+export function getBpmChangeItemBeforeBeats(
+    chart: SequencerChart,
+    beat: number,
+): TimelineItemBpmChange | undefined {
     const timeline = chart.timeline;
 
     const idx = findLastIndexOf(timeline, item =>
-        item.type === TIMELINE_ITEM_BPM
-        && lteBeats(getItemStartBeats(item), beats)
+        item.type === TIMELINE_ITEM_BPM && item.start <= beat
     );
     if (idx === -1) {
         return undefined;
@@ -156,18 +167,13 @@ export function getBpmChangeItemBeforeBeats(chart: SequencerChart, beats: number
 
 export function getBeatIdxAfter(chart: SequencerChart, beats: number) {
     const timeline = chart.timeline;
-    const startIdx = timeline.findIndex(
-        item => gteBeats(getItemStartBeats(item), beats),
-    );
+    const startIdx = timeline.findIndex(item => item.start >= beats);
     return startIdx;
 }
 
 export function getBeatIdxBefore(chart: SequencerChart, beats: number) {
     const timeline = chart.timeline;
-    const endIdx = findLastIndexOf(
-        timeline,
-        (item) => lteBeats(getItemStartBeats(item), beats)
-    );
+    const endIdx = findLastIndexOf(timeline, (item) => item.start <= beats);
     return endIdx;
 }
 
@@ -196,14 +202,8 @@ export function getItemIdxAtBeat(chart: SequencerChart, beats: number, type?: Ti
 
     for (let i = 0; i < timeline.length; i++) {
         const item = timeline[i];
-        if (type && item.type !== type) {
-            continue;
-        }
-
-        const itemStart = getItemStartBeats(item);
-        if (equalBeats(itemStart, beats)) {
-            return i;
-        }
+        if (type && item.type !== type) continue;
+        if (item.start === beats) return i;
     }
 
     return -1;
@@ -213,29 +213,12 @@ export function timelineMeasureAtBeatsIdx(chart: SequencerChart, beats: number):
     return getItemIdxAtBeat(chart, beats, TIMELINE_ITEM_MEASURE);
 }
 
-export function timelineHasNoteAtPosition(
-    chart: SequencerChart,
-    position: number,
-    divisor: number,
-    note: MusicNote,
-): boolean {
-    const len = 1;
-
-    const rangeStartBeats = getBeats(position, divisor);
-    const rangeEndBeats = getBeats(position + len, divisor);
+export function timelineHasNoteAtPosition(chart: SequencerChart, beat: number, note: MusicNote): boolean {
     for (const item of chart.timeline) {
-        if (item.type !== TIMELINE_ITEM_NOTE) {
-            continue;
-        }
+        if (item.type !== TIMELINE_ITEM_NOTE) continue;
+        if (!notesEqual(item.note, note))     continue;
 
-        if (!notesEqual(item.note, note)) {
-            continue;
-        }
-
-        if (
-            gtBeats(getItemEndBeats(item), rangeStartBeats)
-            && ltBeats(getItemStartBeats(item), rangeEndBeats)
-        ) {
+        if (item.start <= beat && beat <= itemEnd(item)) {
             return true;
         }
     }
@@ -321,23 +304,12 @@ export function getItemEndTime(item: TimelineItem): number {
 }
 
 
-export function isItemUnderCursor(item: TimelineItem, cursorBeats: number): boolean {
-    const start = getItemStartBeats(item);
-    const end = getItemEndBeats(item);
-    return lteBeats(start, cursorBeats) && ltBeats(cursorBeats, end);
+export function isBeatWithin(item: TimelineItem, cursorBeats: number): boolean {
+    return item.start <= cursorBeats && cursorBeats <= (item.start + item.length);
 }
 
-
-export function getItemLengthBeats(item: TimelineItem) {
-    if (item.type === TIMELINE_ITEM_NOTE) {
-        return item.len / item.divisor;
-    }
-    return 0;
-}
-
-
-export function getItemEndBeats(item: TimelineItem): number {
-    return getItemStartBeats(item) + getItemLengthBeats(item);
+export function itemEnd(item: TimelineItem): number {
+    return item.start + item.length;
 }
 
 export function sequencerChartInsertItems(chart: SequencerChart, itemsToInsert: TimelineItem[]) {
@@ -425,25 +397,23 @@ function filterDegenerateItems(chart: SequencerChart) {
     let lastBpmBeats = 0;
     let lastMeasureBeats = 0;
     filterInPlace(timeline, item => {
-        const startBeats = getItemStartBeats(item);
-
         if (item.type === TIMELINE_ITEM_MEASURE) {
             // the most recent measure should overwrite the last one at the same position
             // (not a big deal, but just don't want duplicates)
-            if (equalBeats(lastMeasureBeats, startBeats)) {
+            if (lastMeasureBeats === item.start) {
                 replaceLast(item);
                 return false;
             }
-            lastMeasureBeats = startBeats;
+            lastMeasureBeats = item.start;
         }
 
         if (item.type === TIMELINE_ITEM_BPM) {
             // the most recent bpm should overwrite the last one at the same position
-            if (equalBeats(lastBpmBeats, startBeats)) {
+            if (lastBpmBeats === item.start) {
                 replaceLast(item);
                 return false;
             }
-            lastBpmBeats = startBeats;
+            lastBpmBeats = item.start;
         }
 
         if (isDegenerateItem(item)) {
@@ -456,7 +426,7 @@ function filterDegenerateItems(chart: SequencerChart) {
 
 function isDegenerateItem(item: TimelineItem) {
     if (item.type === TIMELINE_ITEM_NOTE) {
-        if (equalBeats(getItemLengthBeats(item), 0)) {
+        if (item.length === 0) {
             return true;
         }
     }
@@ -509,8 +479,8 @@ export function sortAndIndexTimeline(chart: SequencerChart) {
     const timeline = chart.timeline;
 
     timeline.sort((a, b) => {
-        const delta = getItemStartBeats(a) - getItemStartBeats(b);
-        if (Math.abs(delta) > CURSOR_ITEM_TOLERANCE_BEATS) {
+        const delta = a.start - b.start;
+        if (delta !== 0) {
             return delta;
         }
 
@@ -533,8 +503,8 @@ export function computeScheduledTimes(timeline: TimelineItem[]) {
         const item = timeline[i];
         item._index = i;
 
-        const relativeBeats = getItemStartBeats(item) - currentBpmBeats;
-        const itemStartTime = currentBpmTime + beatsToMs(relativeBeats, currentBpm);
+        const realBeatsRelative = (item.start - currentBpmBeats) / FRACTIONAL_UNITS_PER_BEAT;
+        const itemStartTime = currentBpmTime + beatsToMs(realBeatsRelative, currentBpm);
         item._scheduledStart = itemStartTime;
 
         if (item.type === TIMELINE_ITEM_MEASURE) {
@@ -544,14 +514,13 @@ export function computeScheduledTimes(timeline: TimelineItem[]) {
         if (item.type === TIMELINE_ITEM_BPM) {
             currentBpmTime = itemStartTime;
             currentBpm = item.bpm;
-            currentBpmBeats = getItemStartBeats(item);
+            currentBpmBeats = item.start;
             continue;
         }
 
         if (item.type === TIMELINE_ITEM_NOTE) {
-            const itemEnd = getItemEndBeats(item);
-            const relativeEnd = itemEnd - currentBpmBeats;
-            item._scheduledEnd = currentBpmTime + beatsToMs(relativeEnd, currentBpm);
+            const realBeatsEndRelative = (itemEnd(item) - currentBpmBeats) / FRACTIONAL_UNITS_PER_BEAT;
+            item._scheduledEnd = currentBpmTime + beatsToMs(realBeatsEndRelative, currentBpm);
             continue;
         }
 
@@ -582,7 +551,7 @@ export function getBpmTime(bpmChange: TimelineItemBpmChange | undefined): number
 
 export function getBpmBeats(bpmChange: TimelineItemBpmChange | undefined): number {
     if (!bpmChange) return 0;
-    return getItemStartBeats(bpmChange);
+    return bpmChange.start;
 }
 
 
@@ -595,7 +564,7 @@ export function getLastMeasureBeats(chart: SequencerChart, beats: number): numbe
         const item = timeline[i];
         if (item.type !== TIMELINE_ITEM_MEASURE) continue;
 
-        if (ltBeats(getItemStartBeats(item), beats)) {
+        if (item.start < beats) {
             idx = i;
             break;
         }
@@ -609,7 +578,7 @@ export function getLastMeasureBeats(chart: SequencerChart, beats: number): numbe
         throw new Error("!item || item.type !== TIMELINE_ITEM_MEASURE");
     }
 
-    return getItemStartBeats(item);
+    return item.start;
 }
 
 export function getNextMeasureBeats(chart: SequencerChart, beats: number): number {
@@ -621,7 +590,7 @@ export function getNextMeasureBeats(chart: SequencerChart, beats: number): numbe
         const item = timeline[i];
         if (item.type !== TIMELINE_ITEM_MEASURE) continue;
 
-        if (gtBeats(getItemStartBeats(item), beats)) {
+        if (item.start > beats) {
             idx = i;
             break;
         }
@@ -635,7 +604,7 @@ export function getNextMeasureBeats(chart: SequencerChart, beats: number): numbe
         throw new Error("!item || item.type !== TIMELINE_ITEM_MEASURE");
     }
 
-    return getItemStartBeats(item);
+    return item.start;
 }
 
 
@@ -653,7 +622,7 @@ export function getBeatsForTime(chart: SequencerChart, time: number): number {
     const bpm = getBpm(bpmChange);
     const bpmBeats = getBpmBeats(bpmChange);
 
-    const relativeBeats = msToBeats(time - bpmTime, bpm);
+    const relativeBeats = msToBeats(time - bpmTime, bpm) * FRACTIONAL_UNITS_PER_BEAT;
     return bpmBeats + relativeBeats;
 }
 
@@ -664,13 +633,8 @@ export function getTimeForBeats(chart: SequencerChart, beats: number): number {
     const bpm = getBpm(bpmChange);
     const bpmBeats = getBpmBeats(bpmChange);
 
-    const relativeTime = beatsToMs(beats - bpmBeats, bpm);
+    const relativeTime = beatsToMs((beats - bpmBeats) / FRACTIONAL_UNITS_PER_BEAT, bpm);
     return bpmTime + relativeTime;
-}
-
-
-export function divisorSnap(beats: number, divisor: number): number {
-    return Math.floor(beats * divisor) / divisor;
 }
 
 export function transposeItems(
@@ -726,7 +690,7 @@ export function sequencerChartShiftItems(
     sequencerChartRemoveItems(chart, toEdit);
 
     for (const item of toEdit) {
-        item.start += amountBeats * item.divisor;
+        item.start += amountBeats;
     }
 
     sequencerChartInsertItems(chart, toEdit);
@@ -740,14 +704,14 @@ export function getChartDurationInBeats(chart: SequencerChart): number {
     }
 
     const lastItem = timeline[timeline.length - 1];
-    return getItemEndBeats(lastItem);
+    return itemEnd(lastItem);
 }
 
-export function newTimelineItemMeasure(start: number, divisor: number): TimelineItemMeasure {
+export function newTimelineItemMeasure(start: number): TimelineItemMeasure {
     return {
         type: TIMELINE_ITEM_MEASURE,
         start,
-        divisor,
+        length: 0,
         _scheduledStart: 0,
         _index: 0,
         _shouldDelete: false,
@@ -755,18 +719,17 @@ export function newTimelineItemMeasure(start: number, divisor: number): Timeline
 }
 
 export function newTimelineItemMeasureDefault() {
-    return newTimelineItemMeasure(0, 4);
+    return newTimelineItemMeasure(0);
 }
 
-export function newTimelineItemNote(musicNote: MusicNote, start: number, len: number, divisor: number): NoteItem {
+export function newTimelineItemNote(musicNote: MusicNote, start: number, len: number): NoteItem {
     assert(!!musicNote.sample || musicNote.noteIndex !== undefined);
 
     return {
         type: TIMELINE_ITEM_NOTE,
         start,
-        divisor,
+        length: len,
         note: { ...musicNote },
-        len,
         _scheduledStart: 0,
         _index: 0,
         _scheduledEnd: 0,
@@ -775,22 +738,22 @@ export function newTimelineItemNote(musicNote: MusicNote, start: number, len: nu
 }
 
 export function newTimelineItemNoteDefault() {
-    return newTimelineItemNote({ noteIndex: 0 }, 0, 1, 4);
+    return newTimelineItemNote({ noteIndex: 0 }, 0, 1);
 }
 
 // TODO (javescript maintainers): add structs to the language, its a no brainer
 export function copyTimelineItem<T extends TimelineItem>(item: T): T {
     let result: T;
     switch (item.type) {
-        case TIMELINE_ITEM_NOTE: 
-            result = newTimelineItemNote(item.note, item.start, item.len, item.divisor) as T;
-            break;
-        case TIMELINE_ITEM_MEASURE: 
-            result = newTimelineItemMeasure(item.start, item.divisor) as T;
-            break;
-        case TIMELINE_ITEM_BPM: 
-            result = newTimelineItemBpmChange(item.start, item.divisor, item.bpm) as T;
-            break;
+        case TIMELINE_ITEM_NOTE: {
+            result = newTimelineItemNote(item.note, item.start, item.length) as T;
+        } break;
+        case TIMELINE_ITEM_MEASURE: {
+            result = newTimelineItemMeasure(item.start) as T;
+        } break;
+        case TIMELINE_ITEM_BPM: {
+            result = newTimelineItemBpmChange(item.start, item.bpm) as T;
+        } break;
         default: unreachable(item);
     }
     result._index = item._index;
@@ -802,14 +765,13 @@ export function copyTimelineItem<T extends TimelineItem>(item: T): T {
 export function timelineItemsEqual<T extends TimelineItem>(a: T, b: T): boolean {
     switch (a.type) {
         case TIMELINE_ITEM_NOTE: 
-            return b.type === TIMELINE_ITEM_NOTE && a.start === b.start && a.divisor === b.divisor &&
+            return b.type === TIMELINE_ITEM_NOTE && a.start === b.start &&
                 notesEqual(a.note, b.note) &&
-                a.len === b.len;
+                a.length === b.length;
         case TIMELINE_ITEM_MEASURE: 
-            return b.type === TIMELINE_ITEM_MEASURE && a.start === b.start && a.divisor === b.divisor;
+            return b.type === TIMELINE_ITEM_MEASURE && a.start === b.start;
         case TIMELINE_ITEM_BPM: 
-            return b.type === TIMELINE_ITEM_BPM && a.start === b.start && a.divisor === b.divisor &&
-                a.bpm === b.bpm;
+            return b.type === TIMELINE_ITEM_BPM && a.start === b.start && a.bpm === b.bpm;
         default: unreachable(a);
     }
 }
@@ -825,3 +787,5 @@ export function timelineItemToString<T extends TimelineItem>(item: T): string {
         default: unreachable(item);
     }
 }
+
+

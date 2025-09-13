@@ -3,7 +3,7 @@ import { BLOCK, COL, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayout
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { InstrumentKey } from "src/state/keyboard-state";
-import { getChartDurationInBeats, getItemStartBeats, gtBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
+import { getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
 import { arrayAt } from "src/utils/array-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
@@ -12,11 +12,12 @@ import { getNoteHashKey } from "src/utils/music-theory-utils";
 import { GlobalContext, playKeyPressForUI, setCurrentChart, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
 import { cssVarsApp } from "./styling";
 import { getChartIdx } from "src/state/saved-state";
+import { scrollIntoViewVH } from "src/utils/dom-utils";
 
 function handleChartSelectKeyDown(ctx: GlobalContext): boolean {
     if (!ctx.keyPressState) return false;
 
-    const { key, keyUpper, vAxis } = ctx.keyPressState;
+    const { key, keyUpper, listNavAxis } = ctx.keyPressState;
     const { ui } = ctx;
 
     if (ctx.savedState.userCharts.length === 0) {
@@ -53,9 +54,9 @@ function handleChartSelectKeyDown(ctx: GlobalContext): boolean {
         return true;
     }
 
-    if (vAxis !== 0) {
+    if (listNavAxis !== 0) {
         ui.chartSelect.idx = clamp(
-            ui.chartSelect.idx - vAxis,
+            ui.chartSelect.idx + listNavAxis,
             0,
             ui.chartSelect.loadedCharts.length - 1
         );
@@ -103,20 +104,22 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
 
     imLayout(c, COL); imFlex(c); {
         imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
-            imLayout(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX);
-            imScrollOverflow(c, true); {
-
-                imLayout(c, COL); imFlex(c); {
+            imLayout(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX); {
+                const scrollContainer = imLayout(c, COL); imFlex(c); imScrollOverflow(c, true); {
                     if (imIf(c) && charts.length > 0) {
                         imFor(c); for (let i = 0; i < charts.length; i++) {
                             const chart = charts[i];
 
-                            imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
+                            const root = imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
                                 if (elHasMouseOver(c)) {
                                     ui.idx = i;
                                 }
 
                                 const chartSelected = ui.idx === i;
+                                const chartSelectedChanged = imMemo(c, chartSelected);
+                                if (chartSelectedChanged && chartSelected) {
+                                    scrollIntoViewVH(scrollContainer, root, 0.5);
+                                }
 
                                 if (chartSelected) {
                                     setCurrentChart(ctx, chart);
@@ -372,10 +375,10 @@ function imChartStatistics(
                             for (const item of currentChart.timeline) {
                                 if (item.type !== TIMELINE_ITEM_NOTE) continue;
                                 if (lastItem) {
-                                    const a = getItemStartBeats(lastItem);
-                                    const b = getItemStartBeats(item);
+                                    const a = lastItem.start;
+                                    const b = item.start;
                                     const dist = b - a;
-                                    if (gtBeats(dist, 0)) {
+                                    if (dist > 0) {
                                         const bucket = Math.floor(getItemStart01(currentChart, item) * speed.length);
                                         speed[bucket] += 1 / dist;
                                     }
@@ -421,6 +424,6 @@ function imVerticalText(c: ImCache) {
 
 function getItemStart01(chart: SequencerChart, item: TimelineItem) {
     const duration = getChartDurationInBeats(chart);
-    const startBeats = getItemStartBeats(item);
+    const startBeats = item.start;
     return startBeats / duration;
 }

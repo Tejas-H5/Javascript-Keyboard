@@ -5,15 +5,11 @@ import {
     getBeatsForTime,
     getBeatsIndexesExclusive,
     getBpmChangeItemBeforeBeats,
-    getItemEndBeats,
+    itemEnd,
     getItemEndTime,
     getItemIdxAtBeat,
-    getItemStartBeats,
     getItemStartTime,
     getTimeForBeats,
-    gtBeats,
-    ltBeats,
-    lteBeats,
     newTimelineItemNote,
     NoteItem,
     SequencerChart,
@@ -25,10 +21,11 @@ import {
     TIMELINE_ITEM_NOTE,
     TimelineItem,
     TimelineItemBpmChange,
-    transposeItems
+    transposeItems,
+    FRACTIONAL_UNITS_PER_BEAT
 } from "src/state/sequencer-chart";
 import { unreachable } from "src/utils/assert";
-import { compareMusicNotes, getNoteHashKey, MusicNote, notesEqual, rebaseBeats } from "src/utils/music-theory-utils";
+import { compareMusicNotes, getNoteHashKey, MusicNote, notesEqual } from "src/utils/music-theory-utils";
 
 export const SEQUENCER_ROW_COLS = 8;
 
@@ -40,8 +37,8 @@ export type SequencerState = {
     _nonOverlappingItems: NoteItem[][];
     _visitedBuffer: boolean[];
 
-    cursorStart: number;
-    cursorDivisor: number;
+    cursor: number; 
+    cursorSnap: number;
     _lastBpmChange: TimelineItemBpmChange | undefined;
 
     isRangeSelecting: boolean;
@@ -65,24 +62,8 @@ export type SequencerState = {
     notesToPreviewVersion: number;
 };
 
-export function getCursorStartBeats(state: SequencerState): number {
-    return getBeats(state.cursorStart, state.cursorDivisor);
-}
-
 export function getCursorStartTime(state: SequencerState): number {
-    return getTimeForBeats(state._currentChart, getCursorStartBeats(state));
-}
-
-export function getRangeSelectionStartBeats(state: SequencerState): number {
-    return getBeats(state.rangeSelectStart, state.cursorDivisor);
-}
-
-export function getBeats(numerator: number, divisor: number): number {
-    return numerator / divisor;
-}
-
-export function getRangeSelectionEndBeats(state: SequencerState): number {
-    return getBeats(state.rangeSelectEnd, state.cursorDivisor);
+    return getTimeForBeats(state._currentChart, state.cursor);
 }
 
 export function hasRangeSelection(state: SequencerState) {
@@ -91,14 +72,14 @@ export function hasRangeSelection(state: SequencerState) {
 
 // TODO: ctx
 export function getSelectionStartEndIndexes(state: SequencerState): [number, number] {
-    const a = getRangeSelectionStartBeats(state);
-    const b = getRangeSelectionEndBeats(state);
+    const a = state.rangeSelectStart;
+    const b = state.rangeSelectEnd;
     return getBeatsIndexesExclusive(state._currentChart, a, b);
 }
 
 export function clearRangeSelection(state: SequencerState, goBackToStart: boolean) {
     if (goBackToStart) {
-        state.cursorStart = state.rangeSelectStart;
+        state.cursor = state.rangeSelectStart;
     }
 
     state.isRangeSelecting = false;
@@ -113,36 +94,28 @@ export function setIsRangeSelecting(state: SequencerState, value: boolean) {
 
     state.isRangeSelecting = value;
     if (state.isRangeSelecting) {
-        state.rangeSelectStart = state.cursorStart;
-        state.rangeSelectEnd = state.cursorStart;
+        state.rangeSelectStart = state.cursor;
+        state.rangeSelectEnd = state.cursor;
     }
 }
 
-export function setCursorBeats(state: SequencerState, dividedBeats: number) {
-    state.cursorStart = dividedBeats;
+export function setCursorBeats(sequencer: SequencerState, beats: number) {
+    sequencer.cursor = sequencer.cursorSnap * Math.floor(beats / sequencer.cursorSnap);
 }
 
-export function setCursorDivisor(state: SequencerState, newDivisor: number) {
-    if (state.isRangeSelecting) {
-        // this breaks selection, so we've gotta clear it for now.
-        // TODO: verify that this is still the case
-        clearRangeSelection(state, false);
+export function setCursorSnap(sequencer: SequencerState, snap: number) {
+    if (snap === 0 || Math.trunc(snap) !== snap) {
+        snap = FRACTIONAL_UNITS_PER_BEAT / 4;
     }
 
-    // Should verify that this works
-    const newStartBeats = rebaseBeats(
-        state.cursorStart,
-        state.cursorDivisor,
-        newDivisor,
-    );
+    sequencer.cursorSnap = Math.floor(snap);
+    sequencer.cursor = sequencer.cursorSnap * Math.round(sequencer.cursor / sequencer.cursorSnap)
 
-    state.cursorStart = newStartBeats;
-    state.cursorDivisor = newDivisor;
+    clearRangeSelection(sequencer, false);
 }
-
 
 export function getCurrentItemIdx(state: SequencerState): number {
-    return getItemIdxAtBeat(state._currentChart, getCursorStartBeats(state));
+    return getItemIdxAtBeat(state._currentChart, state.cursor);
 }
 
 
@@ -151,34 +124,30 @@ export function getCurrentItemIdx(state: SequencerState): number {
 // else, it union-differences itself from any notes of the same note. (there will only be one such note if all you do is call `setTimelineNoteAtPosition` all the time)
 export function setTimelineNoteAtPosition(
     chart: SequencerChart,
-    pos: number, divisor: number,
+    rangeStart: number, 
+    rangeLen: number,
     note: MusicNote,
-    len: number,
     onOrOff: boolean,
 ) {
     const timeline = chart.timeline;
 
-    if (onOrOff) {
-        const rangeStartBeats = getBeats(pos, divisor);
-        const rangeEndBeats = getBeats(pos + len, divisor);
+    const rangeEnd = rangeStart + rangeLen;
 
+    if (onOrOff) {
         const notesToRemove: NoteItem[] = [];
 
         let isNoteValid = true;
-        let newNoteStartBeats = rangeStartBeats;
-        let newNoteEndBeats = rangeEndBeats;
+        let newNoteStartBeats = rangeStart;
+        let newNoteEndBeats = rangeEnd;
         for (const item of timeline) {
             if (item.type !== TIMELINE_ITEM_NOTE) continue;
             if (!notesEqual(item.note, note)) continue;
 
-            const itemStartBeats = getItemStartBeats(item);
-            const itemEndBeats = getItemEndBeats(item);
-
             // ignore notes that are not even in the range
-            if (ltBeats(itemEndBeats, rangeStartBeats)) continue;
-            if (gtBeats(itemStartBeats, rangeEndBeats)) break;
+            if (itemEnd(item) < rangeStart) continue;
+            if (item.start > rangeEnd) break;
 
-            if (lteBeats(itemStartBeats, rangeStartBeats) && lteBeats(rangeEndBeats, itemEndBeats)) {
+            if (item.start <= rangeStart && rangeEnd <= itemEnd(item)) {
                 //    |-----------|
                 //      |++++++|
                 // => |-----------|  (don't add this note)
@@ -186,10 +155,10 @@ export function setTimelineNoteAtPosition(
                 continue;
             } 
 
-            if (ltBeats(itemStartBeats, newNoteStartBeats)) {
-                newNoteStartBeats = itemStartBeats;
-            } else if (gtBeats(itemEndBeats, newNoteEndBeats)) {
-                newNoteEndBeats = itemEndBeats;
+            if (item.start < newNoteStartBeats) {
+                newNoteStartBeats = item.start;
+            } else if (itemEnd(item) > newNoteEndBeats) {
+                newNoteEndBeats = itemEnd(item);
             }
 
             notesToRemove.push(item);
@@ -198,16 +167,13 @@ export function setTimelineNoteAtPosition(
         sequencerChartRemoveItems(chart, notesToRemove);
 
         if (isNoteValid) {
-            const newNoteStart = newNoteStartBeats * divisor;
-            const newNoteLen = (newNoteEndBeats - newNoteStartBeats) * divisor;
-            const newNote = newTimelineItemNote(note, newNoteStart, newNoteLen, divisor);
+            const newNoteStart = newNoteStartBeats;
+            const newNoteLen = newNoteEndBeats - newNoteStartBeats;
+            const newNote = newTimelineItemNote(note, newNoteStart, newNoteLen);
 
             sequencerChartInsertItems(chart, [newNote]);
         }
     } else {
-        const rangeStartBeats = getBeats(pos, divisor);
-        const rangeEndBeats = getBeats(pos + len, divisor);
-
         const notesToAdd: NoteItem[] = [];
         const notesToRemove: NoteItem[] = [];
 
@@ -215,14 +181,11 @@ export function setTimelineNoteAtPosition(
             if (item.type !== TIMELINE_ITEM_NOTE) continue;
             if (!notesEqual(item.note, note)) continue;
 
-            const itemStartBeats = getItemStartBeats(item);
-            const itemEndBeats = getItemEndBeats(item);
-
             // ignore notes that are not even in the range
-            if (ltBeats(itemEndBeats, rangeStartBeats)) continue;
-            if (gtBeats(itemStartBeats, rangeEndBeats)) break;
+            if (itemEnd(item) < rangeStart) continue;
+            if (item.start > rangeEnd) break;
 
-            if (lteBeats(rangeStartBeats, itemStartBeats) && lteBeats(itemEndBeats, rangeEndBeats)) {
+            if (rangeStart <= item.start && itemEnd(item) <= rangeEnd) {
                 //    |------|
                 //  |xxxxxxxxxxx|
                 // => nothing - delete this item
@@ -233,34 +196,25 @@ export function setTimelineNoteAtPosition(
             //    |-----------------------|  |  |--------------|      |      |-----------|
             //           |xxxxxxxxxxx|       |         |xxxxxxxxxxx|  | |xxxxxxxxxxx|
             // => |------|           |----|  |  |------|              |             |----|
-            // Turns out that all three cases can behandled by putting two if-statements one after the other
+            //
+            // Turns out that all three cases can be handled by putting two if-statements one after the other
 
-            const trimEndOfPrevNote = ltBeats(itemStartBeats, rangeStartBeats);
-            const trimStartOfLastNote = ltBeats(rangeEndBeats, itemEndBeats);
+            const trimEndOfPrevNote = item.start < rangeStart;
+            const trimStartOfLastNote = rangeEnd < itemEnd(item);
             if (trimEndOfPrevNote || trimStartOfLastNote) {
                 notesToRemove.push(item);
             }
 
             if (trimEndOfPrevNote) {
-                // TODO: is there a better way ?
                 const newStart = item.start;
-                const divisor = item.divisor;
-                const newNoteStartBeats = itemStartBeats;
-                const newNoteEndBeats = rangeStartBeats;
-                const deltaBeats = newNoteEndBeats - newNoteStartBeats;
-                const newLen = deltaBeats * divisor;
-                notesToAdd.push(newTimelineItemNote(item.note, newStart, newLen, divisor));
+                const newLen = rangeStart - newStart;
+                notesToAdd.push(newTimelineItemNote(item.note, newStart, newLen));
             }
 
             if (trimStartOfLastNote) {
-                // TODO: is there a better way ?
-                const newStart = pos + len;
-                // const divisor = divisor;
-                const newNoteStartBeats = rangeEndBeats;
-                const newNoteEndBeats = itemEndBeats;
-                const deltaBeats = newNoteEndBeats - newNoteStartBeats;
-                const newLen = deltaBeats * divisor;
-                notesToAdd.push(newTimelineItemNote(item.note, newStart, newLen, divisor));
+                const newStart = rangeEnd;
+                const newLen = itemEnd(item) - rangeEnd;
+                notesToAdd.push(newTimelineItemNote(item.note, newStart, newLen));
             }
         }
 
@@ -273,7 +227,7 @@ export function setTimelineNoteAtPosition(
 export function recomputeSequencerState(sequencer: SequencerState) {
     // recompute current bpm
     {
-        const startBeats = getCursorStartBeats(sequencer);
+        const startBeats = sequencer.cursor;
         sequencer._lastBpmChange = getBpmChangeItemBeforeBeats(sequencer._currentChart, startBeats);
     }
 }
@@ -308,8 +262,10 @@ export function newSequencerState(currentChart: SequencerChart): SequencerState 
         _timelineTempBuffer: [],
         _nonOverlappingItems: [],
         _visitedBuffer: [],
-        cursorStart: 0,
-        cursorDivisor: 4,
+
+        cursor: 0,
+        cursorSnap: FRACTIONAL_UNITS_PER_BEAT / 4,
+
         isPlaying: false,
         isPaused: false,
         pausedTime: 0,
@@ -375,11 +331,10 @@ export function handleMovement(
     isShiftPressed: boolean,
 ) {
     if (isCtrlPressed) {
-        // pressing ctrl to move by exactly 1 beat
-        amount *= sequencer.cursorDivisor;
+        amount = Math.sign(amount) * FRACTIONAL_UNITS_PER_BEAT;
     }
 
-    const cursorBeats = sequencer.cursorStart;
+    const cursorBeats = sequencer.cursor;
     const newStart = cursorBeats + amount;
 
     handleMovementAbsolute(sequencer, newStart, isCtrlPressed, isShiftPressed);
@@ -405,10 +360,10 @@ export function getSequencerPlaybackOrEditingCursor(sequencer: SequencerState) {
     } 
 
     if (sequencer.isRangeSelecting) {
-        return getRangeSelectionEndBeats(sequencer);
+        return sequencer.rangeSelectEnd;
     }
 
-    return getCursorStartBeats(sequencer);
+    return sequencer.cursor;
 }
 
 
@@ -425,7 +380,7 @@ export function getCurrentPlayingTime(sequencer: SequencerState): number {
 export function getCurrentPlayingBeats(sequencer: SequencerState): number {
     const currentTime = getCurrentPlayingTime(sequencer);
     const beats = getBeatsForTime(sequencer._currentChart, currentTime);
-    return beats;
+    return Math.round(beats);
 }
 
 export function recomputeState(sequencer: SequencerState) {
@@ -442,14 +397,14 @@ export function isItemBeingPlayed(sequencer: SequencerState, item: TimelineItem)
 }
 
 export function isItemRangeSelected(sequencer: SequencerState, item: TimelineItem): boolean {
-    const start = getRangeSelectionStartBeats(sequencer);
-    const end = getRangeSelectionEndBeats(sequencer);
+    const start = sequencer.rangeSelectStart;
+    const end = sequencer.rangeSelectEnd;
     const min = Math.min(start, end);
     const max = Math.max(start, end);
 
-    const itemBeats = getItemStartBeats(item);
+    const itemBeats = item.start;
 
-    return lteBeats(min, itemBeats) && lteBeats(itemBeats, max);
+    return min <= itemBeats && itemBeats <= max;
 }
 
 export type NoteMapEntry = { 
@@ -480,10 +435,8 @@ export function getTimelineMusicNoteThreads(
 
     for (let i = 0; i < timeline.length; i++) {
         const item = timeline[i];
-        const itemStart = getItemStartBeats(item);
-        const itemEnd = getItemEndBeats(item);
-        if (ltBeats(itemEnd, startBeats)) continue;
-        if (gtBeats(itemStart, endBeats)) break;
+        if (itemEnd(item) < startBeats) continue;
+        if (item.start > endBeats) break;
 
         if (
             item.type === TIMELINE_ITEM_BPM || 
@@ -547,7 +500,7 @@ export function getTimelineNonOverappingThreads(
 
         for (let i = startIdx; i <= endIdx; i++) {
             const item = timeline[i];
-            const start = getItemStartBeats(item);
+            const start = item.start;
 
             if (dstVisited[i - startIdx]) {
                 continue;
@@ -558,11 +511,11 @@ export function getTimelineNonOverappingThreads(
                 continue;
             }
 
-            if (lteBeats(start, lastItemEnd)) {
+            if (start <= lastItemEnd) {
                 continue;
             }
 
-            lastItemEnd = getItemEndBeats(item);
+            lastItemEnd = itemEnd(item);
             thread.push(item);
             dstVisited[i - startIdx] = true;
             noneVisited = false;
@@ -590,14 +543,8 @@ export function getNonOverlappingThreadsSubset(
     for (const thread of srcThreads) {
         let hasItems = false;
         for (const item of thread) {
-            const itemStart = getItemStartBeats(item);
-            const itemEnd = getItemEndBeats(item);
-            if (itemEnd < startBeats) {
-                continue;
-            }
-            if (itemStart > endBeats) {
-                break;
-            }
+            if (itemEnd(item) < startBeats) continue;
+            if (item.start > endBeats) break;
 
             if (!hasItems) {
                 hasItems = true;
@@ -615,27 +562,23 @@ export function getNonOverlappingThreadsSubset(
     }
 }
 
-export function shiftSelectedItems(sequencer: SequencerState, amount: number) {
+export function shiftSelectedItems(sequencer: SequencerState, beats: number) {
     const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
     if (startIdx === -1 || endIdx === -1) {
         return;
     }
 
-    const amountBeats = getBeats(amount, sequencer.cursorDivisor);
-    sequencerChartShiftItems(sequencer._currentChart, startIdx, endIdx, amountBeats);
+    sequencerChartShiftItems(sequencer._currentChart, startIdx, endIdx, beats);
 
-    sequencer.rangeSelectStart += amountBeats * sequencer.cursorDivisor;
-    sequencer.rangeSelectEnd += amountBeats * sequencer.cursorDivisor;
+    sequencer.rangeSelectStart += beats;
+    sequencer.rangeSelectEnd   += beats;
 }
 
-export function shiftItemsAfterCursor(s: SequencerState, subdivisions: number) {
-    const cursorStart = getCursorStartBeats(s);
+export function shiftItemsAfterCursor(s: SequencerState, amount: number) {
+    const cursorStart = s.cursor;
     const rightOfCursorIdx = getBeatIdxAfter(s._currentChart, cursorStart);
-    const amountBeats = getBeats(subdivisions, s.cursorDivisor);
 
-    sequencerChartShiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, amountBeats);
-
-    // TODO: move cursor around as well??
+    sequencerChartShiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, amount);
 }
 
 export function transposeSelectedItems(sequencer: SequencerState, halfSteps: number) {

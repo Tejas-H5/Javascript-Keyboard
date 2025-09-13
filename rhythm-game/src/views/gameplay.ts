@@ -1,7 +1,7 @@
 import { BLOCK, COL, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, imTextColor, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
-import { cn } from "src/components/core/stylesheets";
+import { cn, cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
-import { getCurrentOscillatorGainForOwner, pressKey } from "src/dsp/dsp-loop-interface";
+import { getCurrentOscillatorGainForOwner, pressKey, setScheduledPlaybackTime, } from "src/dsp/dsp-loop-interface";
 import {
     getKeyForKeyboardKey,
     InstrumentKey,
@@ -9,16 +9,14 @@ import {
 } from "src/state/keyboard-state";
 import {
     CommandItem,
+    FRACTIONAL_UNITS_PER_BEAT,
     getChartDurationInBeats,
-    getItemLengthBeats,
-    getItemStartBeats,
-    gteBeats,
-    lteBeats,
     NoteItem,
     SequencerChart,
     TIMELINE_ITEM_NOTE
 } from "src/state/sequencer-chart";
 import {
+    getCurrentPlayingTime,
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
     NoteMapEntry
@@ -26,18 +24,19 @@ import {
 import { assert } from "src/utils/assert";
 import { copyColor, lerpColor, newColor } from "src/utils/colour";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imGet, imGetInline, imIf, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
-import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
 import { clamp, inverseLerp, max } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
-const SIGNAL_LOOKAHEAD_BEATS = 1;
-const GAMEPLAY_LOOKAHEAD_BEATS = 2;
-const GAMEPLAY_LOADAHEAD_BEATS = 6;
+const SIGNAL_LOOKAHEAD_BEATS   = 1 * FRACTIONAL_UNITS_PER_BEAT;
+const GAMEPLAY_LOOKAHEAD_BEATS = 2 * FRACTIONAL_UNITS_PER_BEAT;
+const GAMEPLAY_LOADAHEAD_BEATS = 6 * FRACTIONAL_UNITS_PER_BEAT;
 
 // every 1/n beats hit = 1 score
-const SCOREABLE_BEAT_QUANTIZATION = 16;
+const SCOREABLE_BEAT_QUANTIZATION_REAL_BEATS = 16;
+const SCOREABLE_BEAT_QUANTIZATION = FRACTIONAL_UNITS_PER_BEAT / SCOREABLE_BEAT_QUANTIZATION_REAL_BEATS;
 
 // Every {PENALTY_QUANTIZATION} after {PENALTY_QUANTIZATION_START} where we don't hit any notes, our score will simply decline, 
 // till it reaches zero. 
@@ -49,8 +48,8 @@ export function getBestPossibleScore(chart: SequencerChart) {
     for (const item of chart.timeline) {
         if (item.type !== TIMELINE_ITEM_NOTE) continue;
 
-        const beats = getItemLengthBeats(item);
-        totalScore += Math.floor(SCOREABLE_BEAT_QUANTIZATION * beats);
+        const realBeats = item.length / FRACTIONAL_UNITS_PER_BEAT;
+        totalScore += Math.floor(SCOREABLE_BEAT_QUANTIZATION_REAL_BEATS * realBeats);
     }
     return totalScore;
 }
@@ -107,6 +106,11 @@ export type GameplayState = {
 
     penaltyTimer: number;
 
+    // Don't want to trigger practice mode by accident - it wipes all progress.
+    practiceModeTimerSeconds: number;
+    practiceModeButtonHeld: boolean;
+    practiceMode: boolean;
+
     score: number;
     bestPossibleScore: number;
     chartName: string;
@@ -115,7 +119,7 @@ export type GameplayState = {
 type GameplayKeyState = {
     lastPressedQuantizedBeat: number;
     lastPressedItem: NoteItem | null;
-    lastReleasedItem: NoteItem | null;
+    finishedPress: boolean;
 };
 
 export function newGameplayState(keyboard: KeyboardState, chart: SequencerChart): GameplayState {
@@ -136,42 +140,65 @@ export function newGameplayState(keyboard: KeyboardState, chart: SequencerChart)
             return {
                 lastPressedQuantizedBeat: -1,
                 lastPressedItem: null,
-                lastReleasedItem: null,
+                finishedPress: false,
             };
         }),
 
         penaltyTimer: -PENALTY_QUANTIZATION_START_SECONDS,
+
+        practiceModeTimerSeconds: 0,
+        practiceModeButtonHeld: false,
+        practiceMode: false,
     };
 }
 
-function handlePlayChartKeyDown(ctx: GlobalContext): boolean {
-    if (!ctx.keyPressState) return false;
-    const { key, startTestingPressed, isRepeat } = ctx.keyPressState;
-    const { ui, keyboard } = ctx;
+function handleGameplayKeyDown(ctx: GlobalContext, gameplayState: GameplayState): boolean {
+    let result = false;
 
-    if (key === "Escape" || startTestingPressed) {
-        if (ui.playView.isTesting) {
-            setViewEditChart(ctx);
+    if (ctx.keyPressState)  {
+        const { key, startTestingPressed, isRepeat } = ctx.keyPressState;
+        const { ui, keyboard } = ctx;
+
+        if (key === "Escape" || startTestingPressed) {
+            if (ui.playView.isTesting) {
+                setViewEditChart(ctx);
+            } else {
+                setViewChartSelect(ctx);
+            }
+            result = true;
         } else {
-            setViewChartSelect(ctx);
+            const instrumentKey = getKeyForKeyboardKey(keyboard, key);
+            if (instrumentKey) {
+                pressKey(instrumentKey.index, instrumentKey.musicNote, isRepeat);
+                result = true;
+            }
         }
-        return true;
     }
 
-    const instrumentKey = getKeyForKeyboardKey(keyboard, key);
-    if (instrumentKey) {
-        pressKey(instrumentKey.index, instrumentKey.musicNote, isRepeat);
-        return true;
+    // code to enable practice mode. 
+    if (!result && (ctx.keyPressState || ctx.keyReleaseState || ctx.blurredState)) {
+        if (ctx.keyPressState && !ctx.keyPressState.isRepeat) {
+            if (ctx.keyPressState.key === "Backspace") {
+                if (gameplayState.practiceMode) {
+                    gamplayPracticeModeRewind(ctx, gameplayState);
+                } else {
+                    gameplayState.practiceModeButtonHeld = true;
+                    gameplayState.practiceModeTimerSeconds = 0;
+                }
+                result = true;
+            }
+        } else {
+            if (ctx.keyReleaseState?.key === "Backspace" || ctx.blurredState) {
+                gameplayState.practiceModeButtonHeld = false;
+                result = true;
+            }
+        }
     }
 
-    return false;
+    return result;
 }
 
 export function imGameplay(c: ImCache, ctx: GlobalContext) {
-    if (!ctx.handled) {
-        ctx.handled = handlePlayChartKeyDown(ctx);
-    }
-
     const chart = ctx.sequencer._currentChart;
     const keyboard = ctx.keyboard;
 
@@ -184,9 +211,13 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
     const durationBeats = getChartDurationInBeats(chart);
     const progressPercent = Math.round(max(100 * gameplayState.start / durationBeats, 0));
-    if (gteBeats(gameplayState.start, durationBeats)) {
-        // finished. should switch views next frame.
-        ctx.ui.playView.result = gameplayState;
+    if (gameplayState.start >= durationBeats) {
+        if (gameplayState.practiceMode) {
+            setViewChartSelect(ctx);
+        } else {
+            // finished. should switch views next frame.
+            ctx.ui.playView.result = gameplayState;
+        }
     }
 
     gameplayState.start = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
@@ -212,6 +243,24 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     notesMapToKeysMap(ctx.keyboard, gameplayState.notesMap, gameplayState.keysMap);
 
     gameplayState.midpoint = Math.floor(gameplayState.keysMap.size / 2);
+
+    if (!ctx.handled) {
+        ctx.handled = handleGameplayKeyDown(ctx, gameplayState);
+    }
+
+    const PRACTICE_MODE_HOLD_TIME_SECONDS = 1;
+
+    if (!gameplayState.practiceMode) {
+        if (gameplayState.practiceModeButtonHeld) {
+            if (gameplayState.practiceModeTimerSeconds > PRACTICE_MODE_HOLD_TIME_SECONDS) {
+                gameplayState.practiceMode = true;
+                // this is just the first rewind. Afterwards, 
+                // we rewind on key press instead of on timer end
+                gamplayPracticeModeRewind(ctx, gameplayState);
+            }
+            gameplayState.practiceModeTimerSeconds += dt;
+        }
+    }
 
     imLayout(c, COL); imFlex(c); imJustify(c); {
         imLayout(c, ROW); imRelative(c); {
@@ -251,8 +300,18 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                     imStr(c, chart.name);
                 } imLayoutEnd(c);
 
-                imLayout(c, ROW); imFlex(c); imJustify(c); {
-                    imStr(c, gameplayState.score);
+                imLayout(c, ROW); imFlex(c); imJustify(c); imRelative(c); {
+                    let val;
+                    if (gameplayState.practiceMode) {
+                        val = "practice mode";
+                    } else if (gameplayState.practiceModeButtonHeld) {
+                        const remaining = PRACTICE_MODE_HOLD_TIME_SECONDS - gameplayState.practiceModeTimerSeconds;
+                        val = "hold for practice mode in " + remaining.toFixed(1) + "s..."
+                    } else {
+                        val = gameplayState.score;
+                    }
+
+                    im3DLookingText(c, val);
                 } imLayoutEnd(c);
 
                 imLayout(c, ROW); imFlex(c); imJustify(c); {
@@ -301,6 +360,11 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                         imLayout(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
                             imLetter(c, gameplayState, instrumentKey, thread, keySignal);
 
+                            // DEbug
+                            imLayout(c, BLOCK); {
+                                imStr(c, keyState.lastPressedQuantizedBeat);
+                            } imLayoutEnd(c);
+
                             imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
                             } imLayoutEnd(c);
 
@@ -319,8 +383,8 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                         const s = imState(c, newBarState);
 
                                         const end = start + GAMEPLAY_LOOKAHEAD_BEATS;
-                                        const itemStart = getItemStartBeats(item);
-                                        const itemLength = getItemLengthBeats(item);
+                                        const itemStart = item.start;
+                                        const itemLength = item.length;
                                         const itemEnd = itemStart + itemLength;
 
                                         const dt = getDeltaTimeSeconds(c);
@@ -334,23 +398,25 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                             bottomPercent = 0;
                                         }
 
-                                        const itemInRange = lteBeats(itemStart, start) && lteBeats(start, itemEnd);
-                                        const quantizedBeats = Math.floor(SCOREABLE_BEAT_QUANTIZATION * start);
-                                        const finishedPressingLastKey = keyState.lastReleasedItem === keyState.lastPressedItem;
+                                        const itemInRange = itemStart <= start && start <= itemEnd;
+                                        const quantizedBeats = Math.floor(start / SCOREABLE_BEAT_QUANTIZATION) 
                                         const startedPressingThisQuarterBeat = keyState.lastPressedQuantizedBeat >= quantizedBeats;
                                         const itemIsCurrent = keyState.lastPressedItem === item;
 
                                         const canPressThisQuarterBeat =
                                             itemInRange &&
                                             !startedPressingThisQuarterBeat &&
-                                            (finishedPressingLastKey || itemIsCurrent);
+                                            (keyState.finishedPress || itemIsCurrent);
 
                                         if (canPressThisQuarterBeat && keySignal) {
                                             keyState.lastPressedQuantizedBeat = quantizedBeats;
                                             gameplayState.score += 1;
                                             keyState.lastPressedItem = item;
-                                        } else if (!keySignal && !finishedPressingLastKey) {
-                                            keyState.lastReleasedItem = keyState.lastPressedItem;
+                                            keyState.finishedPress = false;
+                                        } 
+
+                                        if (keySignal && !keyState.finishedPress) {
+                                            keyState.finishedPress = true;
                                         }
 
                                         if (itemInRange && keyState.lastPressedItem !== item) {
@@ -368,7 +434,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                             s.animation = 0;
                                         }
 
-                                        const color = s.animation > 0.5 ? "#FFFF00" : cssVarsApp.fg;
+                                        let color = s.animation > 0.5 ? "#FFFF00" : cssVarsApp.fg;
 
                                         imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, 0, NA, 0, PX); {
                                             if (isFirstishRender(c)) {
@@ -388,6 +454,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                                         elSetStyle(c, "transition", "transition: background-color 0.2s;");
                                                     }
 
+                                                    if (keySignal) {
+                                                        color = "red";
+                                                    }
                                                     elSetStyle(c, "backgroundColor", color);
                                                 } imLayoutEnd(c);
                                             } imLayoutEnd(c);
@@ -434,7 +503,7 @@ function imLetter(
 
     let distanceToNextNoteNormalized = 1;
     if (thread.length > 0) {
-        let start = getItemStartBeats(thread[0]);
+        let start = thread[0].start;
         distanceToNextNoteNormalized = clamp((start - gameplay.start) / SIGNAL_LOOKAHEAD_BEATS, 0, 1);
     }
 
@@ -457,4 +526,27 @@ function imLetter(
             } imElEnd(c, EL_B);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
+}
+
+function im3DLookingText(c: ImCache, value: Stringifyable) {
+    imLayout(c, ROW); imFlex(c); imJustify(c); imRelative(c); {
+        imLayout(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+            if (isFirstishRender(c)) {
+                elSetStyle(c, "transform", "translate(3px, 3px)");
+            }
+
+            imTextColor(c, cssVars.bg);
+            imStr(c, value);
+        } imLayoutEnd(c);
+        imLayout(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+            imTextColor(c, cssVars.fg);
+            imStr(c, value);
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
+}
+function gamplayPracticeModeRewind(ctx: GlobalContext, gameplayState: GameplayState) {
+    const currentTime = getCurrentPlayingTime(ctx.sequencer);
+    const rewindAmount = 1 * 1000;
+    const maxRewind = -500;
+    setScheduledPlaybackTime(Math.max(currentTime - rewindAmount, maxRewind));
 }

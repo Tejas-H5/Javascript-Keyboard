@@ -1,6 +1,5 @@
-import { newChart, SequencerChart, TimelineItem } from "src/state/sequencer-chart";
-import { GameplayState, newGameplayState } from "src/views/gameplay";
-import { newKeyboardState } from "./keyboard-state";
+import { SequencerChart, TimelineItem } from "src/state/sequencer-chart";
+import { GameplayState } from "src/views/gameplay";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -39,8 +38,7 @@ export type UIState = {
     }
 
     editView: {
-        lastCursorStart: number;
-        lastCursorDivisor: number;
+        lastCursor: number;
     }
 
     playView: {
@@ -75,8 +73,7 @@ export function newUiState(): UIState {
         },
 
         editView: {
-            lastCursorStart: 0,
-            lastCursorDivisor: 0,
+            lastCursor: 0,
         },
 
         playView: {

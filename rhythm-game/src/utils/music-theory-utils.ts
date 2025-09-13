@@ -1,4 +1,4 @@
-import { Sample } from "src/samples/all-samples";
+import { Sample } from "src/assets/samples/all-samples";
 
 // at least one of these fields must be set
 export type MusicNote = {
@@ -40,11 +40,6 @@ export function compareMusicNotes(a: MusicNote, b: MusicNote): number {
 export function notesEqual(a: MusicNote, b: MusicNote): boolean {
     return (!!a.sample && a.sample === b.sample) ||
         (!!a.noteIndex && a.noteIndex === b.noteIndex);
-}
-
-export function rebaseBeats(beats: number, divisor: number, newDivisor: number): number {
-	const inBase1 = beats / divisor;
-	return Math.floor(inBase1 * newDivisor);
 }
 
 export function beatsToMs(beats: number, bpm: number) {
@@ -89,3 +84,14 @@ export function getNoteIndex(noteLetter: string, noteNumber: number) {
     }
     return baseIndex + noteNumber * 12
 }
+
+export function getMusicNoteText(n: MusicNote): string {
+    if (n.sample) {
+        return n.sample;
+    }
+    if (n.noteIndex) {
+        return getNoteText(n.noteIndex);
+    }
+    return "<???>";
+}
+

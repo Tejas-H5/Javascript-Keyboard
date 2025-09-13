@@ -1,18 +1,22 @@
+import { imButtonIsClicked } from "src/components/button";
+import { BLOCK, COL, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW } from "src/components/core/layout";
+import { cn, cssVars } from "src/components/core/stylesheets";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
+import { DEBUG_UNDO_BUFFER } from "src/debug-flags";
 import {
     getKeyForNote,
     KeyboardState,
 } from "src/state/keyboard-state";
+import { isSaving } from "src/state/loading-saving-charts";
 import { previewNotes } from "src/state/playing-pausing";
 import {
     CommandItem,
-    divisorSnap,
+    FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxBefore,
     getBeatsIndexesInclusive,
     getBpm,
-    getItemEndBeats,
-    getItemLengthBeats,
-    getItemStartBeats,
-    isItemUnderCursor,
+    isBeatWithin,
+    itemEnd,
     newTimelineItemBpmChange,
     NoteItem,
     sequencerChartInsertItems,
@@ -26,9 +30,6 @@ import {
     timelineItemToString
 } from "src/state/sequencer-chart";
 import {
-    getCursorStartBeats,
-    getRangeSelectionEndBeats,
-    getRangeSelectionStartBeats,
     getSelectionStartEndIndexes,
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
@@ -37,33 +38,17 @@ import {
     isItemRangeSelected,
     NoteMapEntry,
     SequencerState,
-    setCursorDivisor,
+    setCursorSnap,
 } from "src/state/sequencer-state";
 import { filteredCopy } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imIf, imIfEnd, imMemo, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
+import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
-import { compareMusicNotes, getNoteText, MusicNote } from "src/utils/music-theory-utils";
+import { compareMusicNotes, getMusicNoteText } from "src/utils/music-theory-utils";
 import { GlobalContext, setViewTestCurrentChart } from "./app";
 import { cssVarsApp } from "./styling";
-import { isSaving } from "src/state/loading-saving-charts";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
-import { BLOCK, COL, DisplayTypeInstance, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW } from "src/components/core/layout";
-import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
-import { imButtonIsClicked } from "src/components/button";
-import { cn, cssVars } from "src/components/core/stylesheets";
-import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
-import { DEBUG_UNDO_BUFFER } from "src/debug-flags";
 
-
-export function getMusicNoteText(n: MusicNote): string {
-    if (n.sample) {
-        return n.sample;
-    }
-    if (n.noteIndex) {
-        return getNoteText(n.noteIndex);
-    }
-    return "<???>";
-}
 
 export function getItemSequencerText(globalState: KeyboardState, item: TimelineItem): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
@@ -83,10 +68,8 @@ export function getItemSequencerText(globalState: KeyboardState, item: TimelineI
     return unreachable(item);
 }
 
-function timelinePosToString(numerator: number, divisor: number): string {
-    const num = Math.floor(numerator / divisor);
-    const fractional = numerator % divisor;
-    return num + " " + fractional + "/" + divisor;
+function timelinePosToString(numerator: number): string {
+    return "beat=" + (numerator / FRACTIONAL_UNITS_PER_BEAT) + " (fractional beat=" + numerator + ")";
 }
 
 // The number of divisions to show before AND after the cursor.
@@ -94,22 +77,21 @@ const NUM_EXTENT_DIVISIONS = 16;
 
 // TODO: there's some redundancy here, we should get rid of it.
 export function getSequencerLeftExtent(sequencer: SequencerState): number {
-    return -NUM_EXTENT_DIVISIONS / sequencer.cursorDivisor;
+    return -NUM_EXTENT_DIVISIONS * sequencer.cursorSnap;
 }
 export function getSequencerRightExtent(sequencer: SequencerState): number {
-    return NUM_EXTENT_DIVISIONS / sequencer.cursorDivisor;
+    return NUM_EXTENT_DIVISIONS * sequencer.cursorSnap;
 }
 
 type SequencerUIState = {
-    lastCursorStartBeats: number;
-    lastCursorStartDivisor: number;
+    lastCursor: number;
     lastUpdatedTime: number;
     invalidateCache: boolean;
     itemsUnderCursor: Set<TimelineItem>;
     notesToPlay: NoteItem[];
 
     currentCursorAnimated: number;
-    divisorAnimated: number;
+    cursorSnapAnimated: number;
 
     leftExtentBeats: number;
     rightExtentBeats: number;
@@ -127,8 +109,7 @@ type SequencerUIState = {
 
 function newSequencerState(): SequencerUIState {
     return {
-        lastCursorStartBeats: -1,
-        lastCursorStartDivisor: -1,
+        lastCursor: 0,
         lastUpdatedTime: -1,
         invalidateCache: false,
 
@@ -136,7 +117,7 @@ function newSequencerState(): SequencerUIState {
         itemsUnderCursor: new Set(),
         
         currentCursorAnimated: -1,
-        divisorAnimated: 4,
+        cursorSnapAnimated: 4,
 
         leftExtentBeats: 0,
         leftExtentBeatsAnimated: 0,
@@ -165,29 +146,25 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
     const s = imState(c, newSequencerState);
 
-    const cursorStartBeats = getSequencerPlaybackOrEditingCursor(sequencer);
-    const divisor = sequencer.cursorDivisor;
+    const currentCursor = getSequencerPlaybackOrEditingCursor(sequencer);
 
     // Compute animation factors every frame without memoization
     {
         const lerpFactor = 20 * getDeltaTimeSeconds(c);
 
-        s.currentCursorAnimated = lerp(s.currentCursorAnimated, s.lastCursorStartBeats, lerpFactor);
-        s.divisorAnimated = lerp(
-            s.divisorAnimated,
-            sequencer.cursorDivisor,
-            lerpFactor,
-        );
-        let leftExtent = cursorStartBeats + getSequencerLeftExtent(sequencer);
-        let rightExtent = cursorStartBeats + getSequencerRightExtent(sequencer);
-        s.leftExtentBeats = leftExtent;
+        s.currentCursorAnimated = lerp(s.currentCursorAnimated, s.lastCursor, lerpFactor);
+        s.cursorSnapAnimated    = lerp(s.cursorSnapAnimated, sequencer.cursorSnap, lerpFactor);
+        let leftExtent  = currentCursor + getSequencerLeftExtent(sequencer);
+        let rightExtent = currentCursor + getSequencerRightExtent(sequencer);
+
+        s.leftExtentBeats  = leftExtent;
         s.rightExtentBeats = rightExtent;
-        s.leftExtentBeatsAnimated = lerp(s.leftExtentBeatsAnimated, leftExtent, lerpFactor);
+        s.leftExtentBeatsAnimated  = lerp(s.leftExtentBeatsAnimated, leftExtent, lerpFactor);
         s.rightExtentBeatsAnimated = lerp(s.rightExtentBeatsAnimated, rightExtent, lerpFactor);
 
         const tl = sequencer._currentChart.timeline;
 
-        s.cursorIdx = getBeatIdxBefore(chart, cursorStartBeats);
+        s.cursorIdx = getBeatIdxBefore(chart, currentCursor);
 
         [s.leftExtentIdx, s.rightExtentIdx] = getBeatsIndexesInclusive(
             sequencer._currentChart,
@@ -202,22 +179,19 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         }
     }
 
-    // TODO: check if this actually creates GC pressure.
     const previewItemsChanged = imMemo(c, sequencer.notesToPreviewVersion);
     const currentChartChanged = imMemo(c, sequencer._currentChart);
 
     // Recompute the non-overlapping items in the sequencer timeline as needed
     if (
-        s.lastCursorStartBeats !== cursorStartBeats ||
-        s.lastCursorStartDivisor !== divisor ||
+        s.lastCursor !== currentCursor ||
         s.lastUpdatedTime !== sequencer._currentChart._timelineLastUpdated ||
         currentChartChanged ||
         previewItemsChanged ||
         s.invalidateCache
     ) {
         s.lastUpdatedTime = sequencer._currentChart._timelineLastUpdated;
-        s.lastCursorStartBeats = cursorStartBeats;
-        s.lastCursorStartDivisor = divisor;
+        s.lastCursor = currentCursor;
         s.invalidateCache = false;
 
         getTimelineMusicNoteThreads(
@@ -255,7 +229,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         // check if we've got any new things in the set, and then play them.
         {
             for (const note of s.itemsUnderCursor) {
-                if (!isItemUnderCursor(note, cursorStartBeats)) {
+                if (!isBeatWithin(note, currentCursor)) {
                     s.itemsUnderCursor.delete(note);
                 }
             }
@@ -263,7 +237,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             s.notesToPlay.length = 0;
             for (const notes of s.notesMap.values()) {
                 for (const note of notes.items) {
-                    if (isItemUnderCursor(note, cursorStartBeats)) {
+                    if (isBeatWithin(note, currentCursor)) {
                         if (!s.itemsUnderCursor.has(note)) {
                             s.notesToPlay.push(note);
                         }
@@ -316,15 +290,16 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange]);
                             lastBpmChange.bpm = value;
                         } else {
-                            lastBpmChange = newTimelineItemBpmChange(0, 4, value);
+                            lastBpmChange = newTimelineItemBpmChange(0, value);
                         }
                         sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange]);
                     }
                 }
 
-                const newCursorDivisor = imDivisionInput(c, sequencer.cursorDivisor);
+                const newCursorDivisor = imCursorDivisor(c, Math.floor(FRACTIONAL_UNITS_PER_BEAT / sequencer.cursorSnap));
                 if (newCursorDivisor !== null) {
-                    setCursorDivisor(sequencer, newCursorDivisor);
+                    const newCursorSnap = Math.floor(FRACTIONAL_UNITS_PER_BEAT / newCursorDivisor);
+                    setCursorSnap(sequencer, newCursorSnap);
                 }
 
                 imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
@@ -383,8 +358,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 }
 
                 if (imIf(c) && isRangeSelecting) {
-                    const beatsA = getRangeSelectionStartBeats(sequencer);
-                    const beatsB = getRangeSelectionEndBeats(sequencer);
+                    const beatsA = sequencer.rangeSelectStart;
+                    const beatsB = sequencer.rangeSelectEnd;
 
                     let min = Math.min(beatsA, beatsB);
                     let max = Math.max(beatsA, beatsB);
@@ -410,31 +385,31 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     imLayoutEnd(c);
 
                     // range select lines
-                    imSequencerVerticalLine(c, s, getRangeSelectionStartBeats(sequencer), cssVarsApp.mg, 3);
-                    imSequencerVerticalLine(c, s, getRangeSelectionEndBeats(sequencer), cssVarsApp.mg, 3);
+                    imSequencerVerticalLine(c, s, sequencer.rangeSelectStart, cssVarsApp.mg, 3);
+                    imSequencerVerticalLine(c, s, sequencer.rangeSelectEnd, cssVarsApp.mg, 3);
                 } imIfEnd(c);
 
                 {
-                    const startNonFloored = s.leftExtentBeats;
-                    const start = divisorSnap(startNonFloored, sequencer.cursorDivisor);
-                    const endNonFloored = s.rightExtentBeats;
-                    const end = divisorSnap(endNonFloored, sequencer.cursorDivisor);
+                    const start = sequencer.cursorSnap * Math.floor(s.leftExtentBeats / sequencer.cursorSnap);
+                    const end   = sequencer.cursorSnap * Math.floor(s.rightExtentBeats / sequencer.cursorSnap);
 
                     // grid lines
-                    imFor(c); for (let x = start; x < end; x += 1 / sequencer.cursorDivisor) {
-                        if (x < 0) continue;
+                    imFor(c); for (let x = start; x < end; x += sequencer.cursorSnap) {
+                        if (x < 0) {
+                            continue;
+                        }
 
                         const thickness = Math.abs(x % 1) < 0.0001 ? 2 : 1;
                         imSequencerVerticalLine(c, s, x, cssVarsApp.bg2, thickness);
                     } imForEnd(c);
 
                     // cursor start vertical line
-                    imSequencerVerticalLine(c, s, s.lastCursorStartBeats, cssVarsApp.mg, 3);
+                    imSequencerVerticalLine(c, s, s.lastCursor, cssVarsApp.mg, 3);
 
                     // add blue vertical lines for all the measures
                     imFor(c); for (const item of s.commandsList) {
                         if (item.type !== TIMELINE_ITEM_MEASURE) continue;
-                        const beats = getItemStartBeats(item);
+                        const beats = item.start;
                         imSequencerVerticalLine(c, s, beats, cssVarsApp.playback, 4);
                     } imForEnd(c);
                 }
@@ -458,7 +433,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             const chart = sequencer._currentChart;
             if (imIf(c) && chart.timeline.length > 0) {
                 const lastItem = chart.timeline[chart.timeline.length - 1]
-                const totalBeats = getItemEndBeats(lastItem);
+                const totalBeats = itemEnd(lastItem);
 
                 imLayout(c, BLOCK); imSize(c, 0, NA, 50, PX); imRelative(c); {
                     const leftAbsolutePercent = 100.0 * s.leftExtentBeatsAnimated / totalBeats;
@@ -467,8 +442,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
                     imFor(c); for (let i = 0; i < chart.timeline.length; i++) {
                         const item = chart.timeline[i];
-                        const absoluteLeftStart = 100 * getItemStartBeats(item) / totalBeats;
-                        const absoluteLeftEnd   = 100 * getItemEndBeats(item) / totalBeats;
+                        const absoluteLeftStart = 100 * item.start / totalBeats;
+                        const absoluteLeftEnd   = 100 * itemEnd(item) / totalBeats;
                         const width = absoluteLeftEnd - absoluteLeftStart;
                         imSwitch(c, item.type); switch (item.type) {
                             case TIMELINE_ITEM_MEASURE: {
@@ -478,7 +453,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                                 imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.bpmMarker, 2);
                             } break;
                             case TIMELINE_ITEM_NOTE: {
-                                const absoluteTop = 100 * (item.note.noteIndex ?? 0) / (ctx.keyboard.maxNoteIdx + 1);
+                                const absoluteTop = 100 * (1 - ((item.note.noteIndex ?? 0) / (ctx.keyboard.maxNoteIdx + 1)));
 
                                 imLayout(c, BLOCK); 
                                 imAbsolute(c, absoluteTop, PERCENT, 0, NOT_SET, 0, NA, absoluteLeftStart, PERCENT);
@@ -489,7 +464,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         } imSwitchEnd(c);
                     } imForEnd(c);
 
-                    imAbsoluteVerticalLine(c, 100.0 * cursorStartBeats / totalBeats, cssVarsApp.fg, 4);
+                    imAbsoluteVerticalLine(c, 100.0 * currentCursor / totalBeats, cssVarsApp.fg, 4);
 
                     // the currently viewed sliding window
                     {
@@ -511,7 +486,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
             imLayout(c, ROW); imJustify(c); {
                 const idxText = "note " + s.cursorIdx;
-                const timelinePosText = timelinePosToString(sequencer.cursorStart, sequencer.cursorDivisor);
+                const timelinePosText = timelinePosToString(sequencer.cursor);
                 imLayout(c, BLOCK); imFlex(c); {
                     if (imIf(c) && isSaving(ctx)) {
                         imStr(c, "Saving...");
@@ -617,11 +592,11 @@ function imSequencerTrackTimelineItem(
     const right = s.rightExtentBeatsAnimated;
     const extentSize = right - left;
 
-    const leftPercent = 100 * (getItemStartBeats(item) - left) / extentSize;
+    const leftPercent = 100 * (item.start - left) / extentSize;
     const MIN_WIDTH_PERCENT = 1;
     let width;
     if (item.type === TIMELINE_ITEM_NOTE) {
-        width = Math.max(100 * getItemLengthBeats(item) / extentSize, MIN_WIDTH_PERCENT);
+        width = Math.max(100 * item.length / extentSize, MIN_WIDTH_PERCENT);
     } else {
         width = MIN_WIDTH_PERCENT;
     }
@@ -631,12 +606,12 @@ function imSequencerTrackTimelineItem(
 
     if (item.type === TIMELINE_ITEM_NOTE) {
         const { sequencer } = ctx;
-        const cursorStart = getCursorStartBeats(sequencer);
+        const cursorStart = sequencer.cursor;
 
         if (hasRangeSelection(sequencer)) {
             isUnderCursor = isItemRangeSelected(sequencer, item);
         } else {
-            isUnderCursor = isItemUnderCursor(item, cursorStart);
+            isUnderCursor = isBeatWithin(item, cursorStart);
         }
 
         isBeingPlayed = isItemBeingPlayed(sequencer, item);
@@ -710,7 +685,7 @@ function getNextDivisor(val: number) {
 
 
 // allows someone to specifically select a number between 1 and 16
-function imDivisionInput(c: ImCache, val: number): number | null {
+function imCursorDivisor(c: ImCache, val: number): number | null {
     let result: number | null = null;
 
     imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {

@@ -1,6 +1,6 @@
 import { MusicNote } from "src/utils/music-theory-utils";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
-import { getAllSamples } from "src/samples/all-samples";
+import { getAllSamples } from "src/assets/samples/all-samples";
 import { InstrumentKey } from "src/state/keyboard-state";
 import { stopPlaying } from "src/state/playing-pausing";
 
@@ -49,6 +49,10 @@ export function getCurrentPlaySettings() {
 export function setScheduledPlaybackVolume(value: number) {
     scheduledVolume = value;
     audioLoopDispatch({ scheduleKeysVolume: value });
+}
+
+export function setScheduledPlaybackTime(value: number) {
+    audioLoopDispatch({ newPlaybackTime: value });
 }
 
 export function getDspInfo() {

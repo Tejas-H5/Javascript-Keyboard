@@ -1,4 +1,4 @@
-// IM-DOM 1.1
+// IM-DOM 1.31
 
 import { assert } from "src/utils/assert";
 import {
@@ -190,7 +190,7 @@ export function imDomRootEnd(c: ImCache, root: ValidElement) {
 }
 
 
-interface Stringifyable {
+export interface Stringifyable {
     // Allows you to memoize the text on the object reference, and not the literal string itself, as needed.
     // Also, most objects in JavaScript already implement this.
     toString(): string;

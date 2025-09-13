@@ -1,4 +1,4 @@
-import { Sample } from "src/samples/all-samples";
+import { Sample } from "src/assets/samples/all-samples";
 import { newColorFromHsv } from "src/utils/colour";
 import { getNoteText, MusicNote } from "src/utils/music-theory-utils";
 

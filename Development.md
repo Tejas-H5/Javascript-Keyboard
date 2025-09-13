@@ -1,4 +1,4 @@
-# How do I get this thing running locally?
+#in How do I get this thing running locally?
 
 1. Clone this repo into a directory of your choosing.
 2. Install node and npm. You'll need these to install dependencies and run javascript.

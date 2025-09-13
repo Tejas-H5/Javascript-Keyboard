@@ -17,7 +17,6 @@ import {
 } from "src/state/saved-state";
 import {
     copyTimelineItem,
-    getItemStartBeats,
     newChart,
     redoEdit,
     SequencerChart,
@@ -25,12 +24,7 @@ import {
     sortAndIndexTimeline,
     undoEdit
 } from "src/state/sequencer-chart";
-import {
-    getBeats,
-    getCursorStartBeats,
-    newSequencerState,
-    SequencerState
-} from "src/state/sequencer-state";
+import { newSequencerState, SequencerState } from "src/state/sequencer-state";
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
@@ -52,7 +46,11 @@ export type GlobalContext = {
     sequencer: SequencerState;
     ui: UIState;
     savedState: SavedState;
+
     keyPressState: KeyPressState | null;
+    keyReleaseState: KeyPressState | null;
+    blurredState: boolean;
+
     handled: boolean;
 };
 
@@ -65,13 +63,14 @@ export function newGlobalContext(saveState: SavedState) {
         ui: newUiState(),
         savedState: saveState,
         keyPressState: null,
+        keyReleaseState: null,
+        blurredState: false,
         handled: false,
     };
 
     setCurrentChart(ctx, ctx.sequencer._currentChart);
 
-    ctx.sequencer.cursorStart = ctx.sequencer._currentChart.cursorStart;
-    ctx.sequencer.cursorDivisor = ctx.sequencer._currentChart.cursorDivisor;
+    ctx.sequencer.cursor = ctx.sequencer._currentChart.cursorStart;
 
     return ctx;
 }
@@ -104,12 +103,10 @@ export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
 
 export function setCurrentChart(ctx: GlobalContext, chart: SequencerChart) {
     const sequencer = ctx.sequencer;
-    sequencer._currentChart.cursorDivisor = sequencer.cursorDivisor;
-    sequencer._currentChart.cursorStart = sequencer.cursorStart;
+    sequencer._currentChart.cursorStart = sequencer.cursor;
 
     sequencer._currentChart = chart;
-    sequencer.cursorStart = chart.cursorStart;
-    sequencer.cursorDivisor = chart.cursorDivisor;
+    sequencer.cursor = chart.cursorStart;
     sortAndIndexTimeline(sequencer._currentChart);
 
     assert(ctx.savedState.userCharts.indexOf(chart) !== -1);
@@ -184,8 +181,8 @@ export function copyNotesToTempStore(ctx: GlobalContext, startIdx: number, endId
     ui.copied.items = tl.slice(startIdx, endIdx + 1).map(copyTimelineItem);
 
     ui.copied.positionStart = Math.min(
-        getCursorStartBeats(sequencer),
-        getItemStartBeats(tl[startIdx])
+        sequencer.cursor,
+        tl[startIdx].start
     );
 
     return true;
@@ -209,15 +206,11 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
         return false;
     }
 
-    const delta = getCursorStartBeats(sequencer) - ui.copied.positionStart;
+    const delta = sequencer.cursor - ui.copied.positionStart;
 
     const newNotes = ui.copied.items.map(item => {
         const newItem = copyTimelineItem(item);
-        const beats = getItemStartBeats(newItem);
-
-        const newBeats = beats + delta;
-        newItem.start = newBeats * newItem.divisor;
-
+        newItem.start = newItem.start + delta;
         return newItem;
     });
 
@@ -268,8 +261,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
     {
         switch (ctx.ui.currentView) {
             case APP_VIEW_EDIT_CHART: {
-                editView.lastCursorStart = sequencer.cursorStart;
-                editView.lastCursorDivisor = sequencer.cursorDivisor;
+                editView.lastCursor = sequencer.cursor;
             } break;
             case APP_VIEW_PLAY_CHART: {
                 stopPlaying(ctx);
@@ -284,27 +276,26 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
     {
         switch (ctx.ui.currentView) {
             case APP_VIEW_EDIT_CHART: {
-                if (editView.lastCursorDivisor !== 0) {
-                    sequencer.cursorStart = editView.lastCursorStart;
-                    sequencer.cursorDivisor = editView.lastCursorDivisor;
+                if (editView.lastCursor !== 0) {
+                    sequencer.cursor = editView.lastCursor;
                 }
             } break;
             case APP_VIEW_CHART_SELECT: {
-                editView.lastCursorStart = 0;
-                editView.lastCursorDivisor = 0;
-
-                chartSelect.loadedCharts = [...ctx.savedState.userCharts];
+                editView.lastCursor = 0;
+                chartSelect.loadedCharts = [
+                    ...ctx.savedState.userCharts,
+                ];
                 chartSelect.loadedCharts.sort((a, b) => {
                     // TODO: short by chart difficulty instead
                     return a.name.localeCompare(b.name);
                 });
             } break;
             case APP_VIEW_PLAY_CHART: {
-                let startFromBeats: number;
+                let startFrom: number;
                 if (playView.isTesting) {
-                    startFromBeats = getBeats(editView.lastCursorStart, editView.lastCursorDivisor);
+                    startFrom = editView.lastCursor;
                 } else {
-                    startFromBeats = 0;
+                    startFrom = 0;
                 }
 
                 playView.result = null;
@@ -318,7 +309,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 } 
 
                 setScheduledPlaybackVolume(0.1);
-                startPlaying(ctx, startFromBeats - 2, undefined, { isUserDriven: true });
+                startPlaying(ctx, startFrom - 2, undefined, { isUserDriven: true });
             } break;
         }
     }
@@ -335,6 +326,7 @@ type KeyPressState = {
     isRepeat: boolean
 
     vAxis: number;
+    listNavAxis: number;
     hAxis: number;
 
     startTestingPressed: boolean;
@@ -351,6 +343,7 @@ function newKeyPressState(e: KeyboardEvent): KeyPressState {
         altPressed: false,
         isRepeat: false,
         vAxis: 0,
+        listNavAxis: 0,
         hAxis: 0,
         startTestingPressed: false,
         isPlayPausePressed: false,
@@ -377,6 +370,16 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
     }
     dst.vAxis = vAxis;
 
+    let listNavAxis = -vAxis;
+    if (vAxis === 0) {
+        if (key === "PageUp") {
+            listNavAxis = -10;
+        } else if (key === "PageDown") {
+            listNavAxis = 10;
+        }
+    }
+    dst.listNavAxis = listNavAxis;
+
     let hAxis = 0;
     if (key === "ArrowRight") {
         hAxis = 1;
@@ -391,6 +394,8 @@ export function imApp(c: ImCache, ctx: GlobalContext, fps: FpsCounterState) {
 
     const { keyDown, keyUp, blur } = getGlobalEventSystem().keyboard;
     ctx.keyPressState = null;
+    ctx.keyReleaseState = null;
+    ctx.blurredState = false;
     ctx.handled = false;
 
     // NOTE: this is not quite how I would do key input today - this
@@ -421,9 +426,11 @@ export function imApp(c: ImCache, ctx: GlobalContext, fps: FpsCounterState) {
 
     if (keyUp) {
         const keyReleaseState = newKeyPressState(keyUp);
+        ctx.keyReleaseState = keyReleaseState;
         getKeyPressState(keyUp, keyReleaseState);
         if (handleKeyUp(ctx, keyReleaseState)) {
             keyUp.preventDefault();
+            ctx.handled = true;
         }
     }
 
@@ -433,6 +440,7 @@ export function imApp(c: ImCache, ctx: GlobalContext, fps: FpsCounterState) {
             ctx.sequencer.notesToPreview.length = 0;
             ctx.sequencer.notesToPreviewVersion++;
         }
+        ctx.blurredState = true;
     }
 
     if (imMemo(c, ctx.sequencer._currentChart._timelineLastUpdated)) {
@@ -453,6 +461,8 @@ export function imApp(c: ImCache, ctx: GlobalContext, fps: FpsCounterState) {
     } imLayoutEnd(c);
 
     if (ctx.handled && ctx.keyPressState) {
-        ctx.keyPressState.e.preventDefault();
+        if (!isEditingTextSomewhereInDocument()) {
+            ctx.keyPressState.e.preventDefault();
+        }
     }
 }

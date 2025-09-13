@@ -7,11 +7,10 @@ import {
     stopPlaying
 } from "src/state/playing-pausing";
 import {
-    equalBeats,
+    FRACTIONAL_UNITS_PER_BEAT,
     getBpm,
     getBpmChangeItemBeforeBeats,
     getChartDurationInBeats,
-    getItemStartBeats,
     getLastMeasureBeats,
     getNextMeasureBeats,
     getPlaybackDuration,
@@ -26,13 +25,12 @@ import {
     clearRangeSelection,
     deleteRange,
     getCurrentPlayingTime,
-    getCursorStartBeats,
     getSelectionStartEndIndexes,
     handleMovement,
     handleMovementAbsolute,
     hasRangeSelection,
     recomputeState,
-    setCursorDivisor,
+    setCursorSnap,
     setTimelineNoteAtPosition,
     shiftItemsAfterCursor,
     shiftSelectedItems,
@@ -83,7 +81,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
     if (!ctx.keyPressState) return false;
 
     const {
-        key, keyUpper, ctrlPressed, shiftPressed, altPressed, vAxis, isRepeat,
+        key, keyUpper, ctrlPressed, shiftPressed, altPressed, listNavAxis, vAxis, isRepeat,
         startTestingPressed, isPlayPausePressed
     } = ctx.keyPressState;
 
@@ -113,10 +111,10 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
         if (loadSaveModal.isRenaming) {
             // the input component over there will handle these.
         } else {
-            if (vAxis !== 0) {
+            if (listNavAxis !== 0) {
                 const prevIdx = loadSaveModal.idx;
 
-                setCurrentChartIdx(ctx, loadSaveModal.idx - vAxis);
+                setCurrentChartIdx(ctx, loadSaveModal.idx + listNavAxis);
 
                 if (altPressed) {
                     arraySwap(savedState.userCharts, loadSaveModal.idx, prevIdx);
@@ -164,7 +162,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
     let hasShiftLeft = key === "<" || key === ",";
     let hasShiftRight = key === ">" || key === ".";
     if (shiftPressed && (hasShiftLeft || hasShiftRight)) {
-        const amount = hasShiftRight ? 1 : -1;
+        const amount = hasShiftRight ? sequencer.cursorSnap : -sequencer.cursorSnap;
 
         if (hasRangeSelection(sequencer)) {
             shiftSelectedItems(sequencer, amount)
@@ -201,13 +199,18 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
 
 
     if (key === "Tab") {
-        let amnt;
-        if (shiftPressed) { amnt = -1; } else { amnt = 1; }
+        const amnt = shiftPressed ? -sequencer.cursorSnap : sequencer.cursorSnap;
         handleMovement(sequencer, amnt, false, false);
 
         // Add the previewed notes to the sequencer, push forwards
         for (const note of sequencer.notesToPreview) {
-            setTimelineNoteAtPosition(chart, note.start, note.divisor, note.note, 1, true);
+            setTimelineNoteAtPosition(
+                chart,
+                note.start,
+                sequencer.cursorSnap,
+                note.note,
+                true,
+            );
             note.start += amnt;
         }
 
@@ -228,12 +231,17 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
         // Technically, the preview is the exact opposite feedback we are supposed to give the user here.
         // But this method of deleting notes seems good enough to offset that fact for now
         if (sequencer.notesToPreview.length > 0) {
-            let amnt;
-            if (shiftPressed) { amnt = -1; } else { amnt = 1; }
+            const amnt = shiftPressed ? -sequencer.cursorSnap : sequencer.cursorSnap;
             handleMovement(sequencer, amnt, false, false);
 
             for (const note of sequencer.notesToPreview) {
-                setTimelineNoteAtPosition(chart, note.start, note.divisor, note.note, 1, false);
+                setTimelineNoteAtPosition(
+                    chart,
+                    note.start,
+                    sequencer.cursorSnap,
+                    note.note,
+                    false,
+                );
                 note.start += amnt;
             }
         }
@@ -251,15 +259,13 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
 
         // insert notes into the sequencer
         if (!isRepeat) {
-            const pos = sequencer.cursorStart;
-            const divisor = sequencer.cursorDivisor;
+            const pos = sequencer.cursor;
 
             if (!isRepeat) {
                 sequencer.notesToPreview.push(newTimelineItemNote(
                     instrumentKey.musicNote, 
                     pos,
-                    1,
-                    divisor, 
+                    sequencer.cursorSnap
                 ));
                 sequencer.notesToPreviewVersion++;
             }
@@ -272,7 +278,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
         if (key === "ArrowLeft" || key === "ArrowRight") {
             handleMovement(
                 sequencer,
-                key === "ArrowRight" ? 1 : -1,
+                key === "ArrowRight" ? sequencer.cursorSnap : -sequencer.cursorSnap,
                 ctrlPressed,
                 shiftPressed
             );
@@ -284,7 +290,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
     const downArrow = key === "ArrowDown";
     const upArrow = key === "ArrowUp";
     if (!shiftPressed && (downArrow || upArrow)) {
-        const cursorBeats = getCursorStartBeats(sequencer);
+        const cursorBeats = sequencer.cursor;
 
         let newPos;
         if (upArrow) {
@@ -293,12 +299,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
             newPos = getLastMeasureBeats(sequencer._currentChart, cursorBeats);
         }
 
-        handleMovementAbsolute(
-            sequencer,
-            newPos * sequencer.cursorDivisor,
-            ctrlPressed,
-            shiftPressed
-        );
+        handleMovementAbsolute(sequencer, newPos, ctrlPressed, shiftPressed);
 
         return true;
     }
@@ -334,30 +335,47 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
         key === "!" || key === "1"
         || key === "@" || key === "2"
         || key === "#" || key === "3"
+        // Nah if you want the weird divisors you'l have to set them manually with mouse clicks
+        // || key === "$" || key === "4"
     )) {
 
-        const cycleThroughDivisors = (divisors: number[]) => {
-            for (let i = 0; i < divisors.length; i++) {
-                const curr = divisors[i];
-                const next = divisors[(i + 1) % divisors.length];
-                let cursorDivisor = sequencer.cursorDivisor;
-                if (cursorDivisor === curr) {
-                    setCursorDivisor(sequencer, next);
+        const cycleThroughCursorSnaps = (snaps: number[]) => {
+            for (let i = 0; i < snaps.length; i++) {
+                const curr = snaps[i];
+                const nextSnap = snaps[(i + 1) % snaps.length];
+                if (curr === sequencer.cursorSnap) {
+                    setCursorSnap(sequencer, nextSnap);
                     return;
                 }
             }
 
-            setCursorDivisor(sequencer, divisors[0]);
+            setCursorSnap(sequencer, snaps[0]);
         }
 
         if (key === "!" || key === "1") {
-            setCursorDivisor(sequencer, 1);
+            setCursorSnap(sequencer, FRACTIONAL_UNITS_PER_BEAT);
         } else if (key === "@" || key === "2") {
-            cycleThroughDivisors([2, 4, 8, 16]);
+            cycleThroughCursorSnaps([
+                FRACTIONAL_UNITS_PER_BEAT / 2,
+                FRACTIONAL_UNITS_PER_BEAT / 4,
+                FRACTIONAL_UNITS_PER_BEAT / 8,
+                FRACTIONAL_UNITS_PER_BEAT / 16
+            ]);
         } else if (key === "#" || key === "3") {
-            cycleThroughDivisors([3, 6, 9, 12, 15]);
+            cycleThroughCursorSnaps([
+                FRACTIONAL_UNITS_PER_BEAT / 3,
+                FRACTIONAL_UNITS_PER_BEAT / 6,
+                FRACTIONAL_UNITS_PER_BEAT / 12,
+            ]);
         } else if (key === "$" || key === "4") {
-            cycleThroughDivisors([4, 7, 10, 11, 13, 14,]);
+            cycleThroughCursorSnaps([
+                Math.floor(FRACTIONAL_UNITS_PER_BEAT / 7),
+                FRACTIONAL_UNITS_PER_BEAT / 9,
+                Math.floor(FRACTIONAL_UNITS_PER_BEAT / 11),
+                Math.floor(FRACTIONAL_UNITS_PER_BEAT / 13),
+                Math.floor(FRACTIONAL_UNITS_PER_BEAT / 14),
+                FRACTIONAL_UNITS_PER_BEAT / 15,
+            ]);
         }
 
         return true;
@@ -404,18 +422,17 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
     }
 
     if (key === "End") {
-        const end = getChartDurationInBeats(chart) * sequencer.cursorDivisor;
+        const end = getChartDurationInBeats(chart);
         handleMovementAbsolute(sequencer, end, ctrlPressed, shiftPressed);
         return true;
     }
 
     if (shiftPressed && (keyUpper === "M")) {
-        const cursorStartBeats = getCursorStartBeats(sequencer);
+        const cursorStartBeats = sequencer.cursor;
         const idx = timelineMeasureAtBeatsIdx(chart, cursorStartBeats);
         if (idx === -1) {
-            const start = sequencer.cursorStart;
-            const divisor = sequencer.cursorDivisor;
-            sequencerChartInsertItems(chart, [newTimelineItemMeasure(start, divisor)]);
+            const start = sequencer.cursor;
+            sequencerChartInsertItems(chart, [newTimelineItemMeasure(start)]);
         } else {
             const measure = chart.timeline[idx];
             sequencerChartRemoveItems(chart, [measure]);
@@ -424,15 +441,14 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
     }
 
     if (shiftPressed && (keyUpper === "B")) {
-        const start = getCursorStartBeats(sequencer);
+        const start = sequencer.cursor;
         const bpmChange = getBpmChangeItemBeforeBeats(chart, start);
-        if (bpmChange && equalBeats(start, getItemStartBeats(bpmChange))) {
+        if (bpmChange && start ===  bpmChange.start) {
             sequencerChartRemoveItems(chart, [bpmChange]);
         } else {
-            const start = sequencer.cursorStart;
-            const divisor = sequencer.cursorDivisor;
+            const start = sequencer.cursor;
             const bpm = getBpm(bpmChange);
-            const newBpmChange = newTimelineItemBpmChange(start, divisor, bpm);
+            const newBpmChange = newTimelineItemBpmChange(start, bpm);
             sequencerChartInsertItems(chart, [newBpmChange]);
         }
         return true;

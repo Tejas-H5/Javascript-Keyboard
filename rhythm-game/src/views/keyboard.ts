@@ -77,7 +77,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                         ctx.ui.currentView === APP_VIEW_PLAY_CHART;
                     const hasNote = isEditOrPlay && timelineHasNoteAtPosition(
                         sequencer._currentChart,
-                        sequencer.cursorStart, sequencer.cursorDivisor,
+                        sequencer.cursor, 
                         key.musicNote,
                     );
 

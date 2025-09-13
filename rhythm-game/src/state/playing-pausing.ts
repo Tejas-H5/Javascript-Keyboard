@@ -1,13 +1,7 @@
 import { isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
-import { getBeatIdxAfter, getChartDurationInBeats, getItemEndBeats, getItemEndTime, getItemStartBeats, getItemStartTime, getLastMeasureBeats, getTimeForBeats, gtBeats, ltBeats, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
-import {
-    getCurrentPlayingBeats,
-    getCursorStartBeats,
-    getRangeSelectionEndBeats,
-    getRangeSelectionStartBeats,
-    hasRangeSelection,
-} from "src/state/sequencer-state";
+import { getBeatIdxAfter, getChartDurationInBeats, itemEnd, getItemEndTime, getItemStartTime, getLastMeasureBeats, getTimeForBeats, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
+import { getCurrentPlayingBeats, hasRangeSelection, } from "src/state/sequencer-state";
 import { unreachable } from "src/utils/assert";
 import { GlobalContext } from "src/views/app";
 
@@ -18,7 +12,7 @@ export function stopPlaying({ sequencer }: GlobalContext, stopOnCursor = false) 
 
     if (stopOnCursor) {
         const playingBeats = getCurrentPlayingBeats(sequencer);
-        sequencer.cursorStart = Math.floor(playingBeats * sequencer.cursorDivisor);
+        sequencer.cursor = Math.floor(playingBeats);
     }
 
     sequencer.playingTimeout = 0;
@@ -40,7 +34,7 @@ export function playFromLastMeasure(ctx: GlobalContext, options: PlayOptions = {
     }
 
     // Play from the last measure till the end
-    const cursorStart = getCursorStartBeats(sequencer);
+    const cursorStart = sequencer.cursor;
     const lastMeasureStart = getLastMeasureBeats(chart, cursorStart);
 
     // +1 for good luck - it's used to find a bound that must alawys include the last note,
@@ -57,8 +51,8 @@ export function playFromCursor(ctx: GlobalContext, options: PlayOptions = {}) {
         return;
     }
 
-    const cursorStart = getCursorStartBeats(sequencer);
-    const endBeats = getItemEndBeats(chart.timeline[chart.timeline.length - 1]);
+    const cursorStart = sequencer.cursor;
+    const endBeats = itemEnd(chart.timeline[chart.timeline.length - 1]);
     startPlaying(ctx, cursorStart, endBeats, options);
 }
 
@@ -74,8 +68,8 @@ export function playCurrentRangeSelection(ctx: GlobalContext, options: PlayOptio
         return;
     }
 
-    const a = getRangeSelectionStartBeats(sequencer);
-    const b = getRangeSelectionEndBeats(sequencer);
+    const a = sequencer.rangeSelectStart;
+    const b = sequencer.rangeSelectEnd;
     startPlaying(ctx, a, b, options);
 }
 
@@ -119,11 +113,8 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
 
     for (let i = 0; i < timeline.length; i++) {
         const item = timeline[i];
-        const itemStart = getItemStartBeats(item);
-        const itemEnd = getItemEndBeats(item);
-
-        if (ltBeats(itemEnd, startBeats)) continue;
-        if (gtBeats(itemStart, endBeats)) break;
+        if (itemEnd(item) < startBeats) continue;
+        if (item.start > endBeats) break;
 
         if (item.type === TIMELINE_ITEM_BPM || item.type === TIMELINE_ITEM_MEASURE) {
             // can't be played.
