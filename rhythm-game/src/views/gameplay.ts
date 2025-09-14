@@ -156,15 +156,11 @@ function handleGameplayKeyDown(ctx: GlobalContext, gameplayState: GameplayState)
     let result = false;
 
     if (ctx.keyPressState)  {
-        const { key, startTestingPressed, isRepeat } = ctx.keyPressState;
-        const { ui, keyboard } = ctx;
+        const { key, isRepeat } = ctx.keyPressState;
+        const { keyboard } = ctx;
 
-        if (key === "Escape" || startTestingPressed) {
-            if (ui.playView.isTesting) {
-                setViewEditChart(ctx);
-            } else {
-                setViewChartSelect(ctx);
-            }
+        if (key === "Escape") {
+            setViewChartSelect(ctx);
             result = true;
         } else {
             const instrumentKey = getKeyForKeyboardKey(keyboard, key);
@@ -360,11 +356,6 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                         imLayout(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
                             imLetter(c, gameplayState, instrumentKey, thread, keySignal);
 
-                            // DEbug
-                            imLayout(c, BLOCK); {
-                                imStr(c, keyState.lastPressedQuantizedBeat);
-                            } imLayoutEnd(c);
-
                             imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
                             } imLayoutEnd(c);
 
@@ -454,9 +445,6 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                                         elSetStyle(c, "transition", "transition: background-color 0.2s;");
                                                     }
 
-                                                    if (keySignal) {
-                                                        color = "red";
-                                                    }
                                                     elSetStyle(c, "backgroundColor", color);
                                                 } imLayoutEnd(c);
                                             } imLayoutEnd(c);

@@ -228,16 +228,7 @@ export function setViewSoundLab(ctx: GlobalContext) {
     setCurrentView(ctx, APP_VIEW_SOUND_LAB);
 }
 
-export function setViewTestCurrentChart(ctx: GlobalContext) {
-    ctx.ui.playView.isTesting = true;
-
-    // dont reload the chart, just use the one we have now...
-    setCurrentView(ctx, APP_VIEW_PLAY_CHART);
-}
-
 export function setViewPlayCurrentChart(ctx: GlobalContext) {
-    ctx.ui.playView.isTesting = false;
-
     setCurrentView(ctx, APP_VIEW_PLAY_CHART);
 }
 
@@ -250,10 +241,6 @@ export function setViewStartScreen(ctx: GlobalContext) {
 }
 
 function setCurrentView(ctx: GlobalContext, view: AppView) {
-    if (ctx.ui.currentView === view) {
-        return;
-    }
-
     const { editView, playView, chartSelect } = ctx.ui;
     const sequencer = ctx.sequencer;
 
@@ -291,12 +278,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 });
             } break;
             case APP_VIEW_PLAY_CHART: {
-                let startFrom: number;
-                if (playView.isTesting) {
-                    startFrom = editView.lastCursor;
-                } else {
-                    startFrom = 0;
-                }
+                let startFrom = editView.lastCursor;
 
                 playView.result = null;
 
@@ -329,7 +311,6 @@ type KeyPressState = {
     listNavAxis: number;
     hAxis: number;
 
-    startTestingPressed: boolean;
     isPlayPausePressed: boolean;
 };
 
@@ -345,7 +326,6 @@ function newKeyPressState(e: KeyboardEvent): KeyPressState {
         vAxis: 0,
         listNavAxis: 0,
         hAxis: 0,
-        startTestingPressed: false,
         isPlayPausePressed: false,
     };
 }
@@ -359,7 +339,6 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
     dst.altPressed = e.altKey;
     dst.isRepeat = e.repeat;
 
-    dst.startTestingPressed = dst.shiftPressed && (key === "T" || key === 't');
     dst.isPlayPausePressed = key === " ";
 
     let vAxis = 0;
@@ -443,7 +422,7 @@ export function imApp(c: ImCache, ctx: GlobalContext, fps: FpsCounterState) {
         ctx.blurredState = true;
     }
 
-    if (imMemo(c, ctx.sequencer._currentChart._timelineLastUpdated)) {
+    if (imMemo(c, ctx.sequencer._currentChart._lastUpdated)) {
         saveStateDebounced(ctx);
     }
 

@@ -3,32 +3,32 @@ import { BLOCK, COL, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayout
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { InstrumentKey } from "src/state/keyboard-state";
+import { getChartIdx } from "src/state/saved-state";
 import { getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
 import { arrayAt } from "src/utils/array-utils";
+import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax, clamp } from "src/utils/math-utils";
 import { getNoteHashKey } from "src/utils/music-theory-utils";
 import { GlobalContext, playKeyPressForUI, setCurrentChart, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
 import { cssVarsApp } from "./styling";
-import { getChartIdx } from "src/state/saved-state";
-import { scrollIntoViewVH } from "src/utils/dom-utils";
 
 function handleChartSelectKeyDown(ctx: GlobalContext): boolean {
     if (!ctx.keyPressState) return false;
 
     const { key, keyUpper, listNavAxis } = ctx.keyPressState;
-    const { ui } = ctx;
 
     if (ctx.savedState.userCharts.length === 0) {
         throw new Error("Didn't expect to have zero charts. Developer shipped this game without adding the charts they've made xD");
     }
 
-    if (ui.loadSave.modal.idx >= ctx.savedState.userCharts.length) {
-        ui.loadSave.modal.idx = ctx.savedState.userCharts.length - 1;
-    }
-    const currentChart = ctx.savedState.userCharts[ui.loadSave.modal.idx];
+    const ui = ctx.ui.chartSelect;
 
+    if (ui.idx >= ui.loadedCharts.length) {
+        ui.idx = ui.loadedCharts.length - 1;
+    }
+    const currentChart = ui.loadedCharts[ui.idx];
     if (keyUpper === "E") {
         setViewEditChart(ctx);
         return true;
@@ -55,13 +55,9 @@ function handleChartSelectKeyDown(ctx: GlobalContext): boolean {
     }
 
     if (listNavAxis !== 0) {
-        ui.chartSelect.idx = clamp(
-            ui.chartSelect.idx + listNavAxis,
-            0,
-            ui.chartSelect.loadedCharts.length - 1
-        );
+        ui.idx = clamp(ui.idx + listNavAxis, 0, ui.loadedCharts.length - 1);
 
-        const chart = ui.chartSelect.loadedCharts[ui.chartSelect.idx];
+        const chart = ui.loadedCharts[ui.idx];
         const idx = getChartIdx(ctx.savedState, chart.name);
 
         // We need to update the modal index too. because that used to be our source of truth xD

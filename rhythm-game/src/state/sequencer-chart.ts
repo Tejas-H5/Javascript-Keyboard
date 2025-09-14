@@ -11,14 +11,14 @@ export type SequencerChart = {
     cursorStart: number;
     cursorDivisor: number;
 
-    _timelineLastUpdated: number;
+    _lastUpdated: number;
     _tempBuffer: TimelineItem[];
     _undoBuffer: { 
         enabled: boolean;
         items: TimelineMutation[];
         idx: number;
     }
-}
+};
 
 export const MUTATION_INSERT = 1;
 export const MUTATION_REMOVE = 2;
@@ -28,14 +28,14 @@ type TimelineMutation = {
     items: TimelineItem[];
 };
 
-export function newChart(name: string = "", timeline: TimelineItem[] = []): SequencerChart {
+export function newChart(name: string = ""): SequencerChart {
     return {
         name,
         timeline: [],
         cursorStart: 0,
         cursorDivisor: 4,
 
-        _timelineLastUpdated: 0,
+        _lastUpdated: 0,
         _tempBuffer: [],
         _undoBuffer: { items: [], idx: -1, enabled: true }
     }
@@ -89,17 +89,19 @@ type BaseTimelineItemOld = {
 //
 // Ideally, I'd like to pack this position into a single integer. 
 // We can have a 'beat' part, and then a fractional part.
-// But this actually looks a lot like just a normal integer with extra steps,
-// which is what I've gone with.
-//
-// This representation is far simpler and more convenient to use than any two part 
-// representation I had before.
-//
+// We can put the beat part first, then the fractional part second, so that
+// all the regular numerical operators work as usual.
+// This ends up being semantically the same as a number that we divide by some high 
+// number to convert it to beats, which is what I've gone with.
 // 1 'fractional beat' is (1 'real beat' / FRACTIONAL_UNITS_PER_BEAT).
 // The majority of the code here will use fractional beats.
+//
+// What is that number?
+//
 // 720 is a good number, because it divides perfectly with 1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16.
-// Aka ever divisor we might ever want for our charts. Sorry in advance to all the jazz people that wanted 7 or 11. I'm sure your idea is still doable.
-// 800,000 beats available to us for a song - more than enough.
+// Aka every divisor we might ever want for our charts. Sorry in advance to all the jazz people that wanted 7 or 11. 
+// I'm sure your idea is still doable, and that being 1/720 beats off every now and then isn't really a deal anyway.
+// Even when we divide INT_MAX by 720, we still have 800,000 beats available to us for a song - more than enough.
 // It was chosen from https://en.wikipedia.org/wiki/Highly_composite_number
 export const FRACTIONAL_UNITS_PER_BEAT = 720;
 
@@ -115,8 +117,8 @@ export function getBeatOffset(timelinePoint: TimelinePoint): number {
 
 // Can be interpreted as a position, or a length
 type BaseTimelineItem = {
-    start:  number; // fractional beat
-    length: number; // arbitrarily large number to add to `fraction` to get the end
+    start:  number; // integer - fractional beat
+    length: number; // length in fractional beats
 
     _scheduledStart: number;
     _index: number;
@@ -475,7 +477,7 @@ function reindexTimeline(timeline: TimelineItem[]) {
 }
 
 export function sortAndIndexTimeline(chart: SequencerChart) {
-    chart._timelineLastUpdated = Date.now();
+    chart._lastUpdated = Date.now();
     const timeline = chart.timeline;
 
     timeline.sort((a, b) => {

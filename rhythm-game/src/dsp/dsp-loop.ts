@@ -6,7 +6,7 @@
 import { newFunctionUrl } from "src/utils/web-workers";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 import { clamp, derivative, lerp, max, min, moveTowards } from "src/utils/math-utils";
-import { C_0, getNoteFrequency, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
+import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
@@ -372,7 +372,7 @@ function getPlayingSample(s: DspState, id: number) {
 
 
 // Runs a whole lot, so it needs to be highly optimized
-function processSample(s: DspState) {
+function processSample(s: DspState, idx: number) {
     let sample = 0;
     let count = 0;
 
@@ -399,10 +399,10 @@ function processSample(s: DspState) {
                     // dont care abt things we've scheduled that aren't here yet..
                     break;
                 }
-                if (nextScheduledPlaybackTime > nextItem.timeEnd) {
+                if (nextScheduledPlaybackTime >= nextItem.timeEnd) {
                     // ignore things we've already played. 
                     // This codepath hits when we change the time we're playing
-                    break;
+                    continue;
                 }
 
                 const sample = getPlayingSample(s, nextItem.keyId);
@@ -589,7 +589,7 @@ export function dspProcess(s: DspState, outputs: Float32Array[][]) {
 
     // run oscillators
     for (let i = 0; i < output[0].length; i++) {
-        output[0][i] = processSample(s);
+        output[0][i] = processSample(s, i);
     }
     // it doesn't work too good, actually :(
     // normalizeIfGreaterThanOne(output[0]);
@@ -759,6 +759,8 @@ export function getDspLoopClassUrl(): string {
         getSampleFileValue,
         lerp,
         clamp,
+        getNoteLetter,
+        { value: JSON.stringify(NOTE_LETTERS), name: "NOTE_LETTERS" },
         { value: null, name: "rng", },
         { value: C_0, name: "C_0", },
         { value: TWELVTH_ROOT_OF_TWO, name: "TWELVTH_ROOT_OF_TWO",  },

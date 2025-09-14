@@ -22,17 +22,16 @@ import {
     TimelineItem,
     TimelineItemBpmChange,
     transposeItems,
-    FRACTIONAL_UNITS_PER_BEAT
+    FRACTIONAL_UNITS_PER_BEAT,
 } from "src/state/sequencer-chart";
 import { unreachable } from "src/utils/assert";
 import { compareMusicNotes, getNoteHashKey, MusicNote, notesEqual } from "src/utils/music-theory-utils";
 
 export const SEQUENCER_ROW_COLS = 8;
 
-
-
 export type SequencerState = {
     _currentChart: SequencerChart;
+    _trackIdx: number;
     _timelineTempBuffer: TimelineItem[];
     _nonOverlappingItems: NoteItem[][];
     _visitedBuffer: boolean[];
@@ -259,6 +258,7 @@ export function isItemPlaying(state: SequencerState, item: TimelineItem): boolea
 export function newSequencerState(currentChart: SequencerChart): SequencerState {
     const sequencer: SequencerState = {
         _currentChart: currentChart,
+        _trackIdx: 0,
         _timelineTempBuffer: [],
         _nonOverlappingItems: [],
         _visitedBuffer: [],

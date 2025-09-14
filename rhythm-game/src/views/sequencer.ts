@@ -46,7 +46,7 @@ import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imIf,
 import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { compareMusicNotes, getMusicNoteText } from "src/utils/music-theory-utils";
-import { GlobalContext, setViewTestCurrentChart } from "./app";
+import { GlobalContext, } from "./app";
 import { cssVarsApp } from "./styling";
 
 
@@ -185,12 +185,12 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
     // Recompute the non-overlapping items in the sequencer timeline as needed
     if (
         s.lastCursor !== currentCursor ||
-        s.lastUpdatedTime !== sequencer._currentChart._timelineLastUpdated ||
+        s.lastUpdatedTime !== sequencer._currentChart._lastUpdated ||
         currentChartChanged ||
         previewItemsChanged ||
         s.invalidateCache
     ) {
-        s.lastUpdatedTime = sequencer._currentChart._timelineLastUpdated;
+        s.lastUpdatedTime = sequencer._currentChart._lastUpdated;
         s.lastCursor = currentCursor;
         s.invalidateCache = false;
 
@@ -308,10 +308,6 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
             imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-            if (imButtonIsClicked(c, "Test")) {
-                setViewTestCurrentChart(ctx);
-            }
-
             if (imButtonIsClicked(c, (loadSaveModal.open ? ">" : "<") + "Load/Save")) {
                 loadSaveModal.open = !loadSaveModal.open;
             }
@@ -399,8 +395,13 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             continue;
                         }
 
-                        const thickness = Math.abs(x % 1) < 0.0001 ? 2 : 1;
-                        imSequencerVerticalLine(c, s, x, cssVarsApp.bg2, thickness);
+                        let color = cssVars.bg2;
+                        let thickness = 1;
+                        const divisor1 = FRACTIONAL_UNITS_PER_BEAT / 2;
+                        if (x % divisor1 === 0) {
+                            thickness = 2;
+                        }
+                        imSequencerVerticalLine(c, s, x, color, thickness);
                     } imForEnd(c);
 
                     // cursor start vertical line

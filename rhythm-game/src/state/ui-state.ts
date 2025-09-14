@@ -42,7 +42,6 @@ export type UIState = {
     }
 
     playView: {
-        isTesting: boolean;
         result: GameplayState | null;
     }
 };
@@ -77,7 +76,6 @@ export function newUiState(): UIState {
         },
 
         playView: {
-            isTesting: false,
             result: null,
         }
     };

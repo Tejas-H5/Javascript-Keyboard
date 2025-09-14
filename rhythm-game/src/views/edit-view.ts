@@ -65,7 +65,6 @@ import {
     setCurrentChart,
     setCurrentChartIdx,
     setViewChartSelect,
-    setViewTestCurrentChart,
     undoSequencerEdit
 } from "./app";
 import { cssVarsApp } from "./styling";
@@ -81,8 +80,8 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
     if (!ctx.keyPressState) return false;
 
     const {
-        key, keyUpper, ctrlPressed, shiftPressed, altPressed, listNavAxis, vAxis, isRepeat,
-        startTestingPressed, isPlayPausePressed
+        key, keyUpper, ctrlPressed, shiftPressed, altPressed, listNavAxis, vAxis, hAxis, isRepeat,
+        isPlayPausePressed
     } = ctx.keyPressState;
 
     const { ui, sequencer, keyboard, savedState } = ctx;
@@ -173,7 +172,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
         return true;
     }
 
-    if (shiftPressed && (vAxis !== 0)) {
+    if (ctrlPressed && (vAxis !== 0)) {
         const amount = vAxis > 0 ? 1 : -1;
         if (hasRangeSelection(sequencer)) {
             transposeSelectedItems(sequencer, amount)
@@ -275,25 +274,23 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
     }
 
     // need to move by the current beat snap.
-        if (key === "ArrowLeft" || key === "ArrowRight") {
-            handleMovement(
-                sequencer,
-                key === "ArrowRight" ? sequencer.cursorSnap : -sequencer.cursorSnap,
-                ctrlPressed,
-                shiftPressed
-            );
+    if (hAxis) {
+        handleMovement(
+            sequencer,
+            hAxis * sequencer.cursorSnap,
+            ctrlPressed,
+            shiftPressed
+        );
 
-            return true;
-        }
+        return true;
+    }
 
     // move back and forth between measures
-    const downArrow = key === "ArrowDown";
-    const upArrow = key === "ArrowUp";
-    if (!shiftPressed && (downArrow || upArrow)) {
+    if (vAxis) {
         const cursorBeats = sequencer.cursor;
 
         let newPos;
-        if (upArrow) {
+        if (vAxis > 0) {
             newPos = getNextMeasureBeats(sequencer._currentChart, cursorBeats);
         } else {
             newPos = getLastMeasureBeats(sequencer._currentChart, cursorBeats);
@@ -323,11 +320,6 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
             playFromCursor(ctx, { speed, isUserDriven });
         }
 
-        return true;
-    }
-
-    if (startTestingPressed) {
-        setViewTestCurrentChart(ctx);
         return true;
     }
 

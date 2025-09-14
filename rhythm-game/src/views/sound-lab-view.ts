@@ -498,9 +498,8 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                         c,
                         0, numFrequenciesToView,
                         state.frequenciesStartIdx, state.frequenciesStartIdx + state.frequenciesLength,
-                        1, 500
+                        1, 50
                     ).value;
-
                     state.frequenciesStartIdx = start;
                     state.frequenciesLength  = end - start;
                 } imLayoutEnd(c);

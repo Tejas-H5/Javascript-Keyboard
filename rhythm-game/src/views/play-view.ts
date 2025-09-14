@@ -15,21 +15,16 @@ import {
 } from "src/utils/im-core";
 import { EL_B, EL_I, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp } from "src/utils/math-utils";
-import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app";
+import { GlobalContext, setViewChartSelect, setViewPlayCurrentChart } from "./app";
 import { GameplayState, imGameplay } from "./gameplay";
 
 function handlePlayViewKeyDown(ctx: GlobalContext) {
     if (!ctx.keyPressState) return false;
 
-    const { key, startTestingPressed } = ctx.keyPressState;
-    const { ui } = ctx;
+    const { key } = ctx.keyPressState;
 
-    if (key === "Escape" || startTestingPressed) {
-        if (ui.playView.isTesting) {
-            setViewEditChart(ctx);
-        } else {
-            setViewChartSelect(ctx);
-        }
+    if (key === "Escape") {
+        setViewChartSelect(ctx);
         return true;
     }
 
@@ -46,7 +41,7 @@ export function imPlayView(c: ImCache, ctx: GlobalContext) {
 
     imLayout(c, COL); imFlex(c); {
         if (imIf(c) && ctx.ui.playView.result) {
-            imResultsScreen(c, ctx.ui.playView.result);
+            imResultsScreen(ctx, c, ctx.ui.playView.result);
         } else {
             imElse(c);
 
@@ -73,12 +68,10 @@ type Designation
     | "A"
     | "B"
     | "C"
-    | "D"
     | "L";
 
 
 function getDesignation(score: number, bestPossibleScore: number): Designation {
-    const percent = score / bestPossibleScore;
     if (score > bestPossibleScore) {
         // The way I compute the best possible score uses a far simpler codepath than the game's actual codepath, so
         // this could actually happen.
@@ -89,27 +82,50 @@ function getDesignation(score: number, bestPossibleScore: number): Designation {
     if (score > Math.max(bestPossibleScore - 50, bestPossibleScore * 0.9))  return "A";
     if (score > Math.max(bestPossibleScore - 100, bestPossibleScore * 0.8)) return "B";
     if (score > Math.max(bestPossibleScore - 500, bestPossibleScore * 0.7)) return "C";
-    if (percent >= 0.5)  return "D";
     return "L";
 }
 
+// Its cringe but I like it. Reminds me of this old typing game 'stamina' I used to play
 function getMessagesForDesignation(d: Designation): string[] {
     switch(d) {
         case "SSS": return ["HOW"];
         case "SS":  return ["LETS GOOOO!!!!"];
         case "S":   return ["Amazing!", "Very nice!", ">message goes here<"];
-        case "A":   return ["Well done!", "This is a good improvement.", "Yes"];
+        case "A":   return ["Well done!", "This is a good improvement.", "Yes", "So close", "Missed it by THAT much"];
         case "B":   return ["Nice!", "Good job!", "This message is randomly generated"];
-        case "C":   return ["You passed!","Bare minimum!", "De-fault!"];
-        case "D":   return ["...", "We'll get em next time."];
-        case "L":   return ["Nahhh, ain't now way bruh", "Nooo", "This is so sad, guys"];
+        case "C":   return [
+            "You passed!",
+            "Bare minimum!",
+            "De-fault!",
+            "Do worse to unlock the tutorial. Well, kinda"
+        ];
+        case "L":   return [
+            "...",
+            "Taking Ls is the only way to grow as a person", 
+            "This game is hard. Because really, you're learning a full instrument",
+            "We'll get em next time.", "This game is hard. Because really, you're learning a full instrument",
+            "The road is long and hard. Will the destination be worth it? probably not, so make sure you're enjoying yourself",
+            "This game comes with a chart editor, which you may be interested in",
+            "Excess keys being held down do not detract from score",
+            "Press and hold [Backspace] to engage practice mode. You can use it to rewind by a couple seconds, and try again.",
+            "Reminder to sit up straight and hydrate", // https://www.youtube.com/watch?v=A7UkRXNnCeQ
+        ];
     }
     return ["???"];
 }
 
-function imResultsScreen(c: ImCache, result: GameplayState) {
-    const focusChanged = imMemo(c, true);
+function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) {
+    if (!ctx.handled) {
+        if (ctx.keyPressState) {
+            if (ctx.keyPressState.key === "Enter") {
+                // restart this chart
 
+                setViewPlayCurrentChart(ctx);
+            }
+        }
+    }
+
+    const focusChanged = imMemo(c, true);
     let s = imGet(c, newResultsScreenState);
     if (!s || focusChanged) {
         s = imSet(c, newResultsScreenState());
