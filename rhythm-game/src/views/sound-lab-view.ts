@@ -268,7 +268,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
             const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, key);
             if (instrumentKey) {
                 if (!ctx.keyPressState.isRepeat) {
-                    pressKey(instrumentKey.index, instrumentKey.musicNote, ctx.keyPressState.isRepeat);
+                    pressKey(instrumentKey.index, instrumentKey.noteId, ctx.keyPressState.isRepeat);
                     soundPlayed = true;
                 }
                 handled = true;
@@ -323,21 +323,19 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
             const key = ctx.keyboard.flatKeys[keyId];
             assert(key.index === keyId);
 
-            if (key.musicNote.noteIndex !== undefined) {
-                dspReceiveMessage(state.dsp, {
-                    setOscilatorSignal: [keyId, {
-                        noteIndex: key.musicNote.noteIndex,
-                        signal: 1
-                    }]
-                });
-            }
+            dspReceiveMessage(state.dsp, {
+                setOscilatorSignal: [keyId, {
+                    noteId: key.noteId,
+                    signal: 1
+                }]
+            });
         }
 
         for (const [id, osc] of state.dsp.playingOscillators) {
             if (!info.currentlyPlaying.find(block => block[0] === id)) {
                 dspReceiveMessage(state.dsp, {
                     setOscilatorSignal: [id, {
-                        noteIndex: osc.inputs.noteIndex,
+                        noteId: osc.inputs.noteId,
                         signal: 0
                     }]
                 });

@@ -1,6 +1,6 @@
 import { Sample } from "src/assets/samples/all-samples";
 import { newColorFromHsv } from "src/utils/colour";
-import { getNoteText, MusicNote } from "src/utils/music-theory-utils";
+import { getNoteText } from "src/utils/music-theory-utils";
 
 export type KeyboardState = {
     keys: InstrumentKey[][];
@@ -15,7 +15,7 @@ export type InstrumentKey = {
     keyboardKey: string;
     text: string;
     noteText: string;
-    musicNote: MusicNote;
+    noteId: number;
     isLeftmost: boolean;
     isRightmost: boolean;
     cssColours: {
@@ -30,13 +30,8 @@ export type InstrumentKey = {
 }
 
 
-export function getKeyForMusicNoteIndex(state: KeyboardState, idx: number): InstrumentKey | undefined {
-    return state.flatKeys.find(k => k.musicNote.noteIndex === idx);
-}
-export function getKeyForNote(keyboard: KeyboardState, note: MusicNote): InstrumentKey | undefined {
-    if (note.sample) return keyboard.flatKeys.find(k => k.musicNote.sample === note.sample);
-    if (note.noteIndex) return getKeyForMusicNoteIndex(keyboard, note.noteIndex);
-    return undefined;
+export function getKeyForNote(state: KeyboardState, noteId: number): InstrumentKey | undefined {
+    return state.flatKeys.find(k => k.noteId === noteId);
 }
 
 export function getKeyForKeyboardKey(state: KeyboardState, key: string): InstrumentKey | undefined {
@@ -49,7 +44,7 @@ function newKey(k: string): InstrumentKey {
         text: k[0].toUpperCase() + k.substring(1),
         noteText: "",
         index: -1,
-        musicNote: {},
+        noteId: 0,
         remainingDuration: 0,
         isLeftmost: false,
         isRightmost: false,
@@ -61,6 +56,8 @@ function newKey(k: string): InstrumentKey {
     };
 }
 
+export const BASE_NOTE = 28;
+
 export function newKeyboardState(): KeyboardState {
     const keys: InstrumentKey[][] = [];
     const flatKeys: InstrumentKey[] = [];
@@ -68,43 +65,10 @@ export function newKeyboardState(): KeyboardState {
 
     // initialize keys
     {
-        // drums row
-        {
-            const drumKeys = "1234567890-=".split("").map(k => newKey(k));
-            const drumSlots: { name: string, sample: Sample }[] = [
-                { name: "kickA", sample: "kick", },
-                { name: "kickB", sample: "kick", },
-                { name: "snareA", sample: "snare", },
-                { name: "snareB", sample: "snare", },
-                { name: "hatA", sample: "hat1", },
-                { name: "hatB", sample: "hat2", },
-                { name: "crashA", sample: "crash1", },
-                { name: "crashB", sample: "crash2", },
-                { name: "randA", sample: "rand1", },
-                { name: "randB", sample: "rand2", },
-                // TODO: add some more samples for these guys
-                { name: "snareC", sample: "snare", },
-                { name: "snareD", sample: "snare", },
-            ];
-            if (drumKeys.length !== drumSlots.length) {
-                throw new Error("Mismatched drum slots!");
-            }
-
-            keys.push(drumKeys);
-
-            for (let i = 0; i < drumSlots.length; i++) {
-                const key = drumKeys[i];
-                key.noteText = drumSlots[i].name;
-                key.musicNote.sample = drumSlots[i].sample;
-                key.isLeftmost = i === 0;
-                key.isRightmost = i === drumSlots.length - 1;
-                flatKeys.push(key);
-            }
-        }
-
         // piano rows
         {
             const pianoKeys: InstrumentKey[][] = [
+                "1234567890-=".split("").map(newKey),
                 "qwertyuiop[]".split("").map(newKey),
                 "asdfghjkl;'↵".split("").map(newKey),
                 "zxcvbnm,./".split("").map(newKey),
@@ -113,7 +77,6 @@ export function newKeyboardState(): KeyboardState {
             keys.push(...pianoKeys);
 
             let noteIndexOffset = 0;
-            const BASE_NOTE = 40;
             for (let i = 0; i < pianoKeys.length; i++) {
                 for (let j = 0; j < pianoKeys[i].length; j++) {
                     const key = pianoKeys[i][j];
@@ -124,8 +87,7 @@ export function newKeyboardState(): KeyboardState {
                     noteIndexOffset++;
 
                     key.noteText = getNoteText(noteIndex);
-
-                    key.musicNote.noteIndex = noteIndex;
+                    key.noteId = noteIndex;
                     maxNoteIdx = noteIndex;
 
                     key.isLeftmost = j === 0;
@@ -153,5 +115,50 @@ export function newKeyboardState(): KeyboardState {
         hasClicked: false,
         maxNoteIdx,
     };
+}
+
+export function sampleToNoteIdx(sample: Sample) {
+    let offset = 0;
+    switch (sample) {
+        case "kick":   offset = 0; break;
+        case "snare":  offset = 2; break;
+        case "hat1":   offset = 4; break;
+        case "hat2":   offset = 5; break;
+        case "crash1": offset = 6; break;
+        case "crash2": offset = 7; break;
+        case "rand1":  offset = 8; break;
+        case "rand2":  offset = 9; break;
+        case "snare":  offset = 10; break;
+    }
+
+    return BASE_NOTE + offset;
+}
+
+// Allows our 'note index' to be a number, while also allowing us to override various samples.
+export function noteIdToSample(noteIdx: number): Sample | null {
+    switch(noteIdx) {
+        case BASE_NOTE + 0: return "kick";
+        case BASE_NOTE + 1: return "kick";
+        case BASE_NOTE + 2: return "snare";
+        case BASE_NOTE + 3: return "snare";
+        case BASE_NOTE + 4: return "hat1";
+        case BASE_NOTE + 5: return "hat2";
+        case BASE_NOTE + 6: return "crash1";
+        case BASE_NOTE + 7: return "crash2";
+        case BASE_NOTE + 8: return "rand1";
+        case BASE_NOTE + 9: return "rand2";
+        case BASE_NOTE + 10: return "snare";
+        case BASE_NOTE + 11: return "snare";
+    }
+
+    return null;
+}
+
+export function getMusicNoteText(noteId: number) {
+    const sample = noteIdToSample(noteId);
+    if (sample !== null) {
+        return sample; 
+    }
+    return getNoteText(noteId);
 }
 

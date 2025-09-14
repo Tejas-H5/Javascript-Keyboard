@@ -4,7 +4,9 @@ import { cn, cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
 import { DEBUG_UNDO_BUFFER } from "src/debug-flags";
 import {
+    getKeyForKeyboardKey,
     getKeyForNote,
+    getMusicNoteText,
     KeyboardState,
 } from "src/state/keyboard-state";
 import { isSaving } from "src/state/loading-saving-charts";
@@ -45,16 +47,15 @@ import { assert, unreachable } from "src/utils/assert";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imIf, imIfEnd, imMemo, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
 import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
-import { compareMusicNotes, getMusicNoteText } from "src/utils/music-theory-utils";
 import { GlobalContext, } from "./app";
 import { cssVarsApp } from "./styling";
 
 
 export function getItemSequencerText(globalState: KeyboardState, item: TimelineItem): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
-        const key = getKeyForNote(globalState, item.note);
+        const key = getKeyForNote(globalState, item.noteId);
         const keyText = key ? key.text.toUpperCase() : "<no key!>";
-        return keyText + " " + getMusicNoteText(item.note);
+        return keyText + " " + getMusicNoteText(item.noteId);
     }
 
     if (item.type === TIMELINE_ITEM_BPM) {
@@ -100,7 +101,7 @@ type SequencerUIState = {
     leftExtentIdx: number;
     rightExtentIdx: number;
     cursorIdx: number;
-    notesMap: Map<string, NoteMapEntry>;
+    notesMap: Map<number, NoteMapEntry>;
     noteOrder: NoteMapEntry[];
     commandsList: CommandItem[]
     bpmChanges: TimelineItemBpmChange[];
@@ -222,9 +223,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             }
             s.noteOrder.push(entry);
         }
-        s.noteOrder.sort((a, b) => {
-            return compareMusicNotes(b.musicNote, a.musicNote);
-        });
+        s.noteOrder.sort((a, b) => b.noteId - a.noteId);
 
         // check if we've got any new things in the set, and then play them.
         {
@@ -253,7 +252,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         }
     }
 
-    imLayout(c, COL); imGap(c, 5, PX); imFlex(c); {
+    imLayout(c, COL); imGap(c, 5, PX); imFlex(c); imRelative(c); {
         imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); { 
             imEl(c, EL_B); {
                 imStr(c, "Currently editing ");
@@ -454,7 +453,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                                 imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.bpmMarker, 2);
                             } break;
                             case TIMELINE_ITEM_NOTE: {
-                                const absoluteTop = 100 * (1 - ((item.note.noteIndex ?? 0) / (ctx.keyboard.maxNoteIdx + 1)));
+                                const absoluteTop = 100 * (1 - item.noteId / (ctx.keyboard.maxNoteIdx + 1));
 
                                 imLayout(c, BLOCK); 
                                 imAbsolute(c, absoluteTop, PERCENT, 0, NOT_SET, 0, NA, absoluteLeftStart, PERCENT);
@@ -500,17 +499,87 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     } imIfEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
-            imLayout(c, ROW); {
-                imFor(c); for (let i = 0; i < NUM_EXTENT_DIVISIONS; i++) {
-                    // GridLine - wtf ???
-                    imLayout(c, BLOCK); imFlex(c); {
-                        // text: timestamp + "ms"
-                        // timelinePosToString(s.state.cursorStartPos[0] + gridLineAmount, s.state.cursorStartPos[1]) 
-                    } imLayoutEnd(c);
-                } imForEnd(c);
-            } imLayoutEnd(c);
         } imLayoutEnd(c);
+
+        if (imIf(c) && sequencer.keyEditFilterModalOpen) {
+            imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+                imLayout(c, COL); imAbsolute(c, 10, PX, 10, PX, 10, PX, 10, PX); imBg(c, cssVars.bg); {
+                    imLayout(c, ROW); imAlign(c); imJustify(c); {
+                        imStr(c, "Set edit filter - edits will only apply to these notes. Press keys to select, shift to range-select");
+                    } imLayoutEnd(c);
+
+                    const root = imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
+                        if (isFirstishRender(c)) {
+                            elSetStyle(c, "lineHeight", "1");
+                        }
+
+                        const height = root.clientHeight;
+                        if (imMemo(c, height)) {
+                            elSetStyle(c, "fontSize", (root.clientHeight / ctx.keyboard.flatKeys.length) + "px");
+                        }
+
+                        imLayout(c, COL); {
+                            imFor(c); for (const key of ctx.keyboard.flatKeys) {
+                                imLayout(c, BLOCK); {
+                                    imStr(c, key.noteText);
+                                } imLayoutEnd(c);
+                            } imForEnd(c);
+                        } imLayoutEnd(c);
+
+                        imLayout(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
+
+                        imLayout(c, COL); imFlex(c); {
+                            imFor(c); for (const key of ctx.keyboard.flatKeys) {
+                                const normalized = 1;
+                                imLayout(c, BLOCK); imBg(c, cssVarsApp.fg); {
+                                    if (isFirstishRender(c)) {
+                                        elSetStyle(c, "color", cssVars.bg);
+                                    }
+
+                                    imSize(c, 100 * normalized, PERCENT, 100, PERCENT);
+                                    imStr(c, "x");
+                                } imLayoutEnd(c);
+                            } imForEnd(c);
+                        } imLayoutEnd(c);
+                    } imLayoutEnd(c);
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
+
+            if (!ctx.handled) {
+                let handled = false;
+                const keyPress = ctx.keyPressState;
+                if (keyPress) {
+                    if (keyPress.key === "Escape") {
+                        sequencer.keyEditFilterModalOpen = false;
+                        handled = true;
+                    }
+
+                    const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, keyPress.key);
+                    if (instrumentKey && !keyPress.shiftPressed && !keyPress.altPressed && !keyPress.ctrlPressed) {
+                        handled = true;
+                    }
+                }
+
+
+                ctx.handled = handled;
+            }
+        } imIfEnd(c);
+
     } imLayoutEnd(c);
+
+    if (!ctx.handled) {
+        const keyPress = ctx.keyPressState;
+        if (keyPress) {
+            let handled = false; {
+                if (keyPress.keyUpper === "F" && keyPress.shiftPressed) {
+                    sequencer.keyEditFilterModalOpen = !sequencer.keyEditFilterModalOpen;
+                    handled = true;
+                }
+
+
+            } ctx.handled = handled;
+        }
+    }
 }
 
 

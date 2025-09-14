@@ -1,18 +1,14 @@
-import { MusicNote } from "src/utils/music-theory-utils";
-import { DspInfo, DspLoopMessage, DSPPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
 import { getAllSamples } from "src/assets/samples/all-samples";
-import { InstrumentKey } from "src/state/keyboard-state";
-import { stopPlaying } from "src/state/playing-pausing";
+import { DspInfo, DspLoopMessage, DSPPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
+import { noteIdToSample } from "src/state/keyboard-state";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
     time: number;
     // Used to know which keyboard key is being played by the DSP.
     keyId: number;
-
     timeEnd: number;
-    noteIndex?: number;
-    sample?: string;
+    noteId: number;
 }
 
 const audioCtx = new AudioContext()
@@ -111,28 +107,23 @@ export function isAnythingPlaying() {
 
 
 // we keep forgetting to ignore repeats, so I've made it an argument to this method.
-export function pressKey(id: number, note: MusicNote, isRepeat: boolean) {
+export function pressKey(id: number, noteId: number, isRepeat: boolean) {
     if (isRepeat) return false;
 
     resumeAudio();
 
     setCurrentOscillatorGain(id, 1);
 
-    if (note.sample) {
-        audioLoopDispatch({ playSample: [id, { sample: note.sample }] })
-    } else if (note.noteIndex) {
-        audioLoopDispatch({ setOscilatorSignal: [id, { noteIndex: note.noteIndex, signal: 1 }] })
+    const sample = noteIdToSample(noteId);
+    if (sample) {
+        audioLoopDispatch({ playSample: [id, { sample: sample }] })
     } else {
-        unreachable();
+        audioLoopDispatch({ setOscilatorSignal: [id, { noteId: noteId, signal: 1 }] })
     }
 }
 
-export function releaseKey(noteIndex: number, note: MusicNote) {
-    if (note.sample) {
-        // do nothing
-    } else if (note.noteIndex) {
-        audioLoopDispatch({ setOscilatorSignal: [noteIndex, { noteIndex: note.noteIndex, signal: 0 }] })
-    }
+export function releaseKey(noteIndex: number, noteId: number) {
+    audioLoopDispatch({ setOscilatorSignal: [noteIndex, { noteId: noteId, signal: 0 }] })
 }
 
 export function schedulePlayback(presses: ScheduledKeyPress[]) {

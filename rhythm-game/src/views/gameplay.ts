@@ -26,8 +26,7 @@ import { copyColor, lerpColor, newColor } from "src/utils/colour";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imGet, imGetInline, imIf, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
 import { clamp, inverseLerp, max } from "src/utils/math-utils";
-import { getNoteHashKey } from "src/utils/music-theory-utils";
-import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app";
+import { GlobalContext, setViewChartSelect } from "./app";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
 const SIGNAL_LOOKAHEAD_BEATS   = 1 * FRACTIONAL_UNITS_PER_BEAT;
@@ -63,7 +62,7 @@ export type KeysMapEntry = {
 
 export function notesMapToKeysMap(
     keyboard: KeyboardState,
-    srcNotesMap: Map<string, NoteMapEntry>,
+    srcNotesMap: Map<number, NoteMapEntry>,
     dstKeysMap: Map<InstrumentKey, KeysMapEntry>,
 ) {
     for (const k of keyboard.flatKeys) {
@@ -73,8 +72,7 @@ export function notesMapToKeysMap(
             dstKeysMap.set(k, block);
         }
 
-        const noteHashKey = getNoteHashKey(k.musicNote);
-        const notesMapEntry = srcNotesMap.get(noteHashKey);
+        const notesMapEntry = srcNotesMap.get(k.noteId);
         if (!notesMapEntry) {
             continue;
         }
@@ -98,7 +96,7 @@ export type GameplayState = {
     start: number;
     end: number;
     midpoint: number;
-    notesMap: Map<string, NoteMapEntry>;
+    notesMap: Map<number, NoteMapEntry>;
     commandsList: CommandItem[];
 
     keysMap: Map<InstrumentKey, KeysMapEntry>;
@@ -165,7 +163,7 @@ function handleGameplayKeyDown(ctx: GlobalContext, gameplayState: GameplayState)
         } else {
             const instrumentKey = getKeyForKeyboardKey(keyboard, key);
             if (instrumentKey) {
-                pressKey(instrumentKey.index, instrumentKey.musicNote, isRepeat);
+                pressKey(instrumentKey.index, instrumentKey.noteId, isRepeat);
                 result = true;
             }
         }

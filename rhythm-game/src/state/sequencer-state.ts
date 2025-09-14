@@ -25,20 +25,15 @@ import {
     FRACTIONAL_UNITS_PER_BEAT,
 } from "src/state/sequencer-chart";
 import { unreachable } from "src/utils/assert";
-import { compareMusicNotes, getNoteHashKey, MusicNote, notesEqual } from "src/utils/music-theory-utils";
 
 export const SEQUENCER_ROW_COLS = 8;
 
 export type SequencerState = {
-    _currentChart: SequencerChart;
-    _trackIdx: number;
-    _timelineTempBuffer: TimelineItem[];
-    _nonOverlappingItems: NoteItem[][];
-    _visitedBuffer: boolean[];
+    keyEditFilterModalOpen: boolean;
+    keyEditFilter: boolean[]; // NOTE: use the getter for this one
 
     cursor: number; 
     cursorSnap: number;
-    _lastBpmChange: TimelineItemBpmChange | undefined;
 
     isRangeSelecting: boolean;
     rangeSelectStart: number;
@@ -59,7 +54,19 @@ export type SequencerState = {
 
     notesToPreview: NoteItem[];
     notesToPreviewVersion: number;
+
+    // Derived fields  
+    _currentChart: SequencerChart;
+    _trackIdx: number;
+    _timelineTempBuffer: TimelineItem[];
+    _nonOverlappingItems: NoteItem[][];
+    _visitedBuffer: boolean[];
+    _lastBpmChange: TimelineItemBpmChange | undefined;
+
 };
+
+export function isNoteFiltered() {
+}
 
 export function getCursorStartTime(state: SequencerState): number {
     return getTimeForBeats(state._currentChart, state.cursor);
@@ -125,7 +132,7 @@ export function setTimelineNoteAtPosition(
     chart: SequencerChart,
     rangeStart: number, 
     rangeLen: number,
-    note: MusicNote,
+    noteId: number,
     onOrOff: boolean,
 ) {
     const timeline = chart.timeline;
@@ -140,7 +147,7 @@ export function setTimelineNoteAtPosition(
         let newNoteEndBeats = rangeEnd;
         for (const item of timeline) {
             if (item.type !== TIMELINE_ITEM_NOTE) continue;
-            if (!notesEqual(item.note, note)) continue;
+            if (item.noteId !== noteId) continue;
 
             // ignore notes that are not even in the range
             if (itemEnd(item) < rangeStart) continue;
@@ -168,7 +175,7 @@ export function setTimelineNoteAtPosition(
         if (isNoteValid) {
             const newNoteStart = newNoteStartBeats;
             const newNoteLen = newNoteEndBeats - newNoteStartBeats;
-            const newNote = newTimelineItemNote(note, newNoteStart, newNoteLen);
+            const newNote = newTimelineItemNote(noteId, newNoteStart, newNoteLen);
 
             sequencerChartInsertItems(chart, [newNote]);
         }
@@ -178,7 +185,7 @@ export function setTimelineNoteAtPosition(
 
         for (const item of timeline) {
             if (item.type !== TIMELINE_ITEM_NOTE) continue;
-            if (!notesEqual(item.note, note)) continue;
+            if (item.noteId !== noteId) continue;
 
             // ignore notes that are not even in the range
             if (itemEnd(item) < rangeStart) continue;
@@ -207,13 +214,13 @@ export function setTimelineNoteAtPosition(
             if (trimEndOfPrevNote) {
                 const newStart = item.start;
                 const newLen = rangeStart - newStart;
-                notesToAdd.push(newTimelineItemNote(item.note, newStart, newLen));
+                notesToAdd.push(newTimelineItemNote(item.noteId, newStart, newLen));
             }
 
             if (trimStartOfLastNote) {
                 const newStart = rangeEnd;
                 const newLen = itemEnd(item) - rangeEnd;
-                notesToAdd.push(newTimelineItemNote(item.note, newStart, newLen));
+                notesToAdd.push(newTimelineItemNote(item.noteId, newStart, newLen));
             }
         }
 
@@ -229,11 +236,6 @@ export function recomputeSequencerState(sequencer: SequencerState) {
         const startBeats = sequencer.cursor;
         sequencer._lastBpmChange = getBpmChangeItemBeforeBeats(sequencer._currentChart, startBeats);
     }
-}
-
-// Used to deterministically order notes
-export function sortNotes(notes: MusicNote[]) {
-    return notes.sort(compareMusicNotes);
 }
 
 export function deleteRange(chart: SequencerChart, start: number, end: number) {
@@ -262,6 +264,9 @@ export function newSequencerState(currentChart: SequencerChart): SequencerState 
         _timelineTempBuffer: [],
         _nonOverlappingItems: [],
         _visitedBuffer: [],
+
+        keyEditFilterModalOpen: false,
+        keyEditFilter: [],
 
         cursor: 0,
         cursorSnap: FRACTIONAL_UNITS_PER_BEAT / 4,
@@ -408,7 +413,7 @@ export function isItemRangeSelected(sequencer: SequencerState, item: TimelineIte
 }
 
 export type NoteMapEntry = { 
-    musicNote: MusicNote; 
+    noteId: number;
     items: NoteItem[];
     firstItem: NoteItem | null;
     previewItems: NoteItem[];
@@ -420,7 +425,7 @@ export function getTimelineMusicNoteThreads(
     sequencer: SequencerState,
     startBeats: number,
     endBeats: number,
-    dstNotesMap: Map<string, NoteMapEntry>,
+    dstNotesMap: Map<number, NoteMapEntry>,
     dstCommandsList: CommandItem[],
 ) {
     const chart = sequencer._currentChart;
@@ -447,14 +452,18 @@ export function getTimelineMusicNoteThreads(
         }
 
         if (item.type === TIMELINE_ITEM_NOTE) {
-            const key = getNoteHashKey(item.note);
-            const entry = dstNotesMap.get(key) ?? { musicNote: item.note, items: [], previewItems: [], firstItem: null };
+            const entry = dstNotesMap.get(item.noteId) ?? {
+                noteId: item.noteId,
+                items: [],
+                previewItems: [],
+                firstItem: null
+            };
 
-            entry.musicNote = item.note;
+            entry.noteId = item.noteId;
             if (entry.firstItem === null) entry.firstItem = item;
             entry.items.push(item);
 
-            dstNotesMap.set(key, entry);
+            dstNotesMap.set(item.noteId, entry);
             continue;
         }
 
@@ -462,14 +471,18 @@ export function getTimelineMusicNoteThreads(
     }
 
     for (const item of sequencer.notesToPreview) {
-        const key = getNoteHashKey(item.note);
-        const entry = dstNotesMap.get(key) ?? { musicNote: item.note, items: [], previewItems: [], firstItem: null };
+        const entry = dstNotesMap.get(item.noteId) ?? {
+            noteId: item.noteId,
+            items: [],
+            previewItems: [],
+            firstItem: null
+        };
 
-        entry.musicNote = item.note;
+        entry.noteId = item.noteId;
         if (entry.firstItem === null) entry.firstItem = item;
         entry.previewItems.push(item);
 
-        dstNotesMap.set(key, entry);
+        dstNotesMap.set(item.noteId, entry);
     }
 }
 

@@ -40,7 +40,7 @@ function main() {
 // These dependencies were passed on externally, and stringified in an automated manner
 ${dependencies.map(a => {
     if(typeof a === "function") return a.toString();
-    return `var ${a.name} = ${a.value};`
+    return `var ${a.name} = ${JSON.stringify(a.value)};`
 }).join("\n\n")}
 
 // This is the actual code we want to run. It too was staringified in an automated manner

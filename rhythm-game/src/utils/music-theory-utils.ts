@@ -1,47 +1,3 @@
-import { Sample } from "src/assets/samples/all-samples";
-
-// at least one of these fields must be set
-export type MusicNote = {
-    noteIndex?: number;
-    sample?: Sample;
-}
-
-export function getNoteHashKey(note: MusicNote): string {
-    if (note.noteIndex) {
-        return "" + note.noteIndex;
-    }
-
-    if (note.sample) {
-        return note.sample;
-    }
-    
-    return "";
-}
-
-
-export function compareMusicNotes(a: MusicNote, b: MusicNote): number {
-    if (a.noteIndex && b.noteIndex) {
-        return a.noteIndex - b.noteIndex;
-    }
-
-    if (a.sample && b.sample) {
-        return a.sample.localeCompare(b.sample);
-    }
-
-    if (a.sample && b.noteIndex) {
-        return 1;
-    }
-    if (b.sample && a.noteIndex) {
-        return -1;
-    }
-    return 0;
-}
-
-export function notesEqual(a: MusicNote, b: MusicNote): boolean {
-    return (!!a.sample && a.sample === b.sample) ||
-        (!!a.noteIndex && a.noteIndex === b.noteIndex);
-}
-
 export function beatsToMs(beats: number, bpm: number) {
     const bpms = bpm / 60 / 1000;
     return beats / bpms;
@@ -83,15 +39,5 @@ export function getNoteIndex(noteLetter: string, noteNumber: number) {
         throw new Error("invalid note letter: " + noteLetter);
     }
     return baseIndex + noteNumber * 12
-}
-
-export function getMusicNoteText(n: MusicNote): string {
-    if (n.sample) {
-        return n.sample;
-    }
-    if (n.noteIndex) {
-        return getNoteText(n.noteIndex);
-    }
-    return "<???>";
 }
 

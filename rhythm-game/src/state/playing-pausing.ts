@@ -154,7 +154,7 @@ function pushNotePress(
     item: NoteItem,
     startPlaybackFromTime: number,
 ) {
-    const n = item.note;
+    const n = item.noteId;
     const key = getKeyForNote(keyboard, n);
     if (!key) {
         // this note can't be played, do nothing
@@ -165,8 +165,7 @@ function pushNotePress(
         time: getItemStartTime(item) - startPlaybackFromTime,
         timeEnd: getItemEndTime(item) - startPlaybackFromTime,
         keyId: key.index,
-        noteIndex: n.noteIndex,
-        sample: n.sample,
+        noteId: item.noteId,
     });
 }
 

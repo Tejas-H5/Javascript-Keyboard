@@ -32,7 +32,6 @@ import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
 import { ImCache, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp } from "src/utils/math-utils";
-import { notesEqual } from "src/utils/music-theory-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
@@ -81,8 +80,7 @@ export function playKeyPressForUI(ctx: GlobalContext, key: InstrumentKey) {
     schedulePlayback([{
         time: 0, timeEnd: 200,
         keyId: key.index,
-        noteIndex: key.musicNote.noteIndex,
-        sample: key.musicNote.sample,
+        noteId: key.noteId,
     }]);
 }
 
@@ -152,13 +150,13 @@ function handleKeyUp(ctx: GlobalContext, keyPressState: KeyPressState): boolean 
     if (instrumentKey) {
         let len = ctx.sequencer.notesToPreview.length;
         filterInPlace(ctx.sequencer.notesToPreview, note => {
-            return !notesEqual(note.note, instrumentKey.musicNote);
+            return note.noteId !== instrumentKey.noteId;
         });
         if (len !== ctx.sequencer.notesToPreview.length) {
             ctx.sequencer.notesToPreviewVersion++;
         }
 
-        releaseKey(instrumentKey.index, instrumentKey.musicNote);
+        releaseKey(instrumentKey.index, instrumentKey.noteId);
         return true;
     }
 
@@ -312,6 +310,7 @@ type KeyPressState = {
     hAxis: number;
 
     isPlayPausePressed: boolean;
+    isLoadSavePressed: boolean;
 };
 
 function newKeyPressState(e: KeyboardEvent): KeyPressState {
@@ -327,6 +326,7 @@ function newKeyPressState(e: KeyboardEvent): KeyPressState {
         listNavAxis: 0,
         hAxis: 0,
         isPlayPausePressed: false,
+        isLoadSavePressed: false,
     };
 }
 
@@ -340,6 +340,7 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
     dst.isRepeat = e.repeat;
 
     dst.isPlayPausePressed = key === " ";
+    dst.isLoadSavePressed = dst.keyUpper === "S" && dst.ctrlPressed;
 
     let vAxis = 0;
     if (key === "ArrowUp") {
@@ -368,7 +369,11 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
     dst.hAxis = hAxis;
 }
 // Contains ALL logic
-export function imApp(c: ImCache, ctx: GlobalContext, fps: FpsCounterState) {
+export function imApp(
+    c: ImCache,
+    ctx: GlobalContext,
+    fps: FpsCounterState
+) {
     const { ui } = ctx;
 
     const { keyDown, keyUp, blur } = getGlobalEventSystem().keyboard;

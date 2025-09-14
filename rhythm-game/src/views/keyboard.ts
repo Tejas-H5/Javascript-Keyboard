@@ -78,7 +78,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                     const hasNote = isEditOrPlay && timelineHasNoteAtPosition(
                         sequencer._currentChart,
                         sequencer.cursor, 
-                        key.musicNote,
+                        key.noteId,
                     );
 
                     const pressEffect = PRESS_EFFECT * Math.max(signal, hasNote ? 1 : 0);
@@ -113,10 +113,10 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                         if (isPressingChanged) {
                             if (isPressing) {
                                 s.pressed = true;
-                                pressKey(key.index, key.musicNote, false);
+                                pressKey(key.index, key.noteId, false);
                             } else if (s.pressed) {
                                 s.pressed = false;
-                                releaseKey(key.index, key.musicNote);
+                                releaseKey(key.index, key.noteId);
                             }
                         }
 

@@ -10,6 +10,7 @@ import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
+import { BASE_NOTE, noteIdToSample } from "src/state/keyboard-state";
 
 export type DSPPlaySettings = {
     attack: number;
@@ -33,7 +34,7 @@ export type PlayingOscillator = {
         value: number;
     };
     inputs: {
-        noteIndex: number;
+        noteId: number;
         signal: number;
     },
 };
@@ -84,9 +85,9 @@ export function updateOscillator(osc: PlayingOscillator, s: DspState) {
 
     const { inputs, state } = osc;
 
-    if (state._lastNoteIndex !== inputs.noteIndex) {
-        state._lastNoteIndex = inputs.noteIndex;
-        state._frequency = getNoteFrequency(inputs.noteIndex);
+    if (state._lastNoteIndex !== inputs.noteId) {
+        state._lastNoteIndex = inputs.noteId;
+        state._frequency = getNoteFrequency(inputs.noteId);
     }
 
     if (inputs.signal || state.gain > OSC_GAIN_AWAKE_THRESHOLD) {
@@ -458,24 +459,24 @@ function processSample(s: DspState, idx: number) {
 
             currentlyPlaying.push(nextItem);
 
-            if (nextItem.noteIndex) {
+            const sample = noteIdToSample(nextItem.noteId);
+            if (sample) {
+                const osc = getOrCreatePlayingSample(s, nextItem.keyId);
+                osc.inputs = {
+                    sample: sample,
+                };
+                osc.state.sampleIdx = 0;
+                osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
+            } else {
                 const osc = getOrCreatePlayingOscillator(s, nextItem.keyId);
                 osc.inputs = {
-                    noteIndex: nextItem.noteIndex,
+                    noteId: nextItem.noteId,
                     signal: 1,
                 };
                 osc.state.pressedTime = osc.state.time;
                 osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
             }
 
-            if (nextItem.sample) {
-                const osc = getOrCreatePlayingSample(s, nextItem.keyId);
-                osc.inputs = {
-                    sample: nextItem.sample,
-                };
-                osc.state.sampleIdx = 0;
-                osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
-            }
 
             trackPlayback.shouldSendUiUpdateSignals = true;
         }
@@ -534,7 +535,7 @@ function processSample(s: DspState, idx: number) {
 export function newPlayingOscilator(): PlayingOscillator {
     return {
         state: { _lastNoteIndex: -1, _frequency: 0, prevSignal: 0, time: 0, pressedTime: 0, gain: 0, volume: 0, manuallyPressed: false, value: 0 },
-        inputs: { noteIndex: 0, signal: 0 },
+        inputs: { noteId: 0, signal: 0 },
     };
 }
 
@@ -760,7 +761,9 @@ export function getDspLoopClassUrl(): string {
         lerp,
         clamp,
         getNoteLetter,
-        { value: JSON.stringify(NOTE_LETTERS), name: "NOTE_LETTERS" },
+        noteIdToSample,
+        { value: BASE_NOTE, name: "BASE_NOTE" },
+        { value: NOTE_LETTERS, name: "NOTE_LETTERS" },
         { value: null, name: "rng", },
         { value: C_0, name: "C_0", },
         { value: TWELVTH_ROOT_OF_TWO, name: "TWELVTH_ROOT_OF_TWO",  },

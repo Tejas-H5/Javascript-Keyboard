@@ -10,7 +10,6 @@ import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax, clamp } from "src/utils/math-utils";
-import { getNoteHashKey } from "src/utils/music-theory-utils";
 import { GlobalContext, playKeyPressForUI, setCurrentChart, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
 import { cssVarsApp } from "./styling";
 
@@ -200,10 +199,9 @@ function imChartStatistics(
 ) {
     let musicNoteHashToKeyboardKeyIdx; musicNoteHashToKeyboardKeyIdx = imGetInline(c, imGetInline);
     if (!musicNoteHashToKeyboardKeyIdx) {
-        musicNoteHashToKeyboardKeyIdx = imSet(c, new Map<string, InstrumentKey>());
+        musicNoteHashToKeyboardKeyIdx = imSet(c, new Map<number, InstrumentKey>());
         for (const key of ctx.keyboard.flatKeys) {
-            const hash = getNoteHashKey(key.musicNote);
-            musicNoteHashToKeyboardKeyIdx.set(hash, key);
+            musicNoteHashToKeyboardKeyIdx.set(key.noteId, key);
         }
     }
 
@@ -218,8 +216,7 @@ function imChartStatistics(
         for (const item of currentChart.timeline) {
             if (item.type !== TIMELINE_ITEM_NOTE) continue;
 
-            const hash = getNoteHashKey(item.note);
-            const key = musicNoteHashToKeyboardKeyIdx.get(hash);
+            const key = musicNoteHashToKeyboardKeyIdx.get(item.noteId);
             if (key) {
                 val.keyFrequencies[key.index]++;
             }
@@ -298,8 +295,8 @@ function imChartStatistics(
                             for (const item of currentChart.timeline) {
                                 if (item.type !== TIMELINE_ITEM_NOTE) continue;
                                 if (lastItem) {
-                                    const lastKey = musicNoteHashToKeyboardKeyIdx.get(getNoteHashKey(lastItem.note));
-                                    const key = musicNoteHashToKeyboardKeyIdx.get(getNoteHashKey(item.note));
+                                    const lastKey = musicNoteHashToKeyboardKeyIdx.get(lastItem.noteId);
+                                    const key = musicNoteHashToKeyboardKeyIdx.get(item.noteId);
                                     if (lastKey && key) {
                                         const bucket = Math.floor(getItemStart01(currentChart, item) * transitions.length);
 

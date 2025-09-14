@@ -1,6 +1,7 @@
 import { arrayAt, filterInPlace, findLastIndexOf } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
-import { beatsToMs, compareMusicNotes, getMusicNoteText, msToBeats, MusicNote, notesEqual } from "src/utils/music-theory-utils";
+import { beatsToMs, msToBeats } from "src/utils/music-theory-utils";
+import { getMusicNoteText } from "./keyboard-state";
 
 export type SequencerChart = {
     name: string;
@@ -73,14 +74,6 @@ export const TIMELINE_ITEM_MEASURE = 2;
 export const TIMELINE_ITEM_NOTE = 3;
 export const DEFAULT_BPM = 120;
 
-type BaseTimelineItemOld = {
-    start: number;
-    divisor: number;
-    _scheduledStart: number;
-    _index: number;
-    _shouldDelete: boolean;
-};
-
 // Beats are a timescale-agnostic way of representing when an item appears in a beatmap.
 // A common problem that occurs in other rhythm games, is that if you change the timing after you've
 // created a chart, all of the objects will no longer be snapped to the timeline. 
@@ -127,7 +120,7 @@ type BaseTimelineItem = {
 
 export type NoteItem = BaseTimelineItem & {
     type: typeof TIMELINE_ITEM_NOTE;
-    note: MusicNote;
+    noteId: number;
 
     _scheduledEnd: number;
 }
@@ -215,10 +208,10 @@ export function timelineMeasureAtBeatsIdx(chart: SequencerChart, beats: number):
     return getItemIdxAtBeat(chart, beats, TIMELINE_ITEM_MEASURE);
 }
 
-export function timelineHasNoteAtPosition(chart: SequencerChart, beat: number, note: MusicNote): boolean {
+export function timelineHasNoteAtPosition(chart: SequencerChart, beat: number, noteId: number): boolean {
     for (const item of chart.timeline) {
         if (item.type !== TIMELINE_ITEM_NOTE) continue;
-        if (!notesEqual(item.note, note))     continue;
+        if (item.noteId !== noteId)     continue;
 
         if (item.start <= beat && beat <= itemEnd(item)) {
             return true;
@@ -487,7 +480,7 @@ export function sortAndIndexTimeline(chart: SequencerChart) {
         }
 
         if (a.type === TIMELINE_ITEM_NOTE && b.type === TIMELINE_ITEM_NOTE) {
-            return compareMusicNotes(a.note, b.note);
+            return a.noteId - b.noteId;
         }
 
         return a.type - b.type;
@@ -655,17 +648,14 @@ export function transposeItems(
     for (let i = startIdx; i <= endIdx; i++) {
         const item = timeline[i];
         if (item.type === TIMELINE_ITEM_NOTE) {
-            if (item.note.noteIndex !== undefined) {
-                notesToEdit.push(item);
-            }
+            notesToEdit.push(item);
         }
     }
 
     sequencerChartRemoveItems(chart, notesToEdit);
 
     for (const note of notesToEdit) {
-        assert(note.note.noteIndex !== undefined);
-        note.note.noteIndex += halfSteps;
+        note.noteId += halfSteps;
     }
 
     sequencerChartInsertItems(chart, notesToEdit);
@@ -724,14 +714,12 @@ export function newTimelineItemMeasureDefault() {
     return newTimelineItemMeasure(0);
 }
 
-export function newTimelineItemNote(musicNote: MusicNote, start: number, len: number): NoteItem {
-    assert(!!musicNote.sample || musicNote.noteIndex !== undefined);
-
+export function newTimelineItemNote(noteId: number, start: number, len: number): NoteItem {
     return {
         type: TIMELINE_ITEM_NOTE,
         start,
         length: len,
-        note: { ...musicNote },
+        noteId,
         _scheduledStart: 0,
         _index: 0,
         _scheduledEnd: 0,
@@ -740,7 +728,7 @@ export function newTimelineItemNote(musicNote: MusicNote, start: number, len: nu
 }
 
 export function newTimelineItemNoteDefault() {
-    return newTimelineItemNote({ noteIndex: 0 }, 0, 1);
+    return newTimelineItemNote(0, 0, 1);
 }
 
 // TODO (javescript maintainers): add structs to the language, its a no brainer
@@ -748,7 +736,7 @@ export function copyTimelineItem<T extends TimelineItem>(item: T): T {
     let result: T;
     switch (item.type) {
         case TIMELINE_ITEM_NOTE: {
-            result = newTimelineItemNote(item.note, item.start, item.length) as T;
+            result = newTimelineItemNote(item.noteId, item.start, item.length) as T;
         } break;
         case TIMELINE_ITEM_MEASURE: {
             result = newTimelineItemMeasure(item.start) as T;
@@ -768,7 +756,7 @@ export function timelineItemsEqual<T extends TimelineItem>(a: T, b: T): boolean 
     switch (a.type) {
         case TIMELINE_ITEM_NOTE: 
             return b.type === TIMELINE_ITEM_NOTE && a.start === b.start &&
-                notesEqual(a.note, b.note) &&
+                a.noteId === b.noteId && 
                 a.length === b.length;
         case TIMELINE_ITEM_MEASURE: 
             return b.type === TIMELINE_ITEM_MEASURE && a.start === b.start;
@@ -781,7 +769,7 @@ export function timelineItemsEqual<T extends TimelineItem>(a: T, b: T): boolean 
 export function timelineItemToString<T extends TimelineItem>(item: T): string {
     switch (item.type) {
         case TIMELINE_ITEM_NOTE: 
-            return "Note: " + item._index + " " + getMusicNoteText(item.note);
+            return "Note: " + item._index + " " + getMusicNoteText(item.noteId);
         case TIMELINE_ITEM_MEASURE: 
             return "Measure: " + item._index;
         case TIMELINE_ITEM_BPM: 

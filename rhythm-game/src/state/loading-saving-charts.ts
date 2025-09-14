@@ -1,8 +1,19 @@
 import { unreachable } from "src/utils/assert";
 import { autoMigrate, recursiveCloneNonComputedFields } from "src/utils/serialization-utils";
 import { GlobalContext } from "src/views/app";
-import { newChart, newTimelineItemBpmChangeDefault, newTimelineItemMeasureDefault, newTimelineItemNoteDefault, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
+import {
+    newChart,
+    newTimelineItemBpmChangeDefault,
+    newTimelineItemMeasureDefault,
+    newTimelineItemNoteDefault,
+    NoteItem,
+    TIMELINE_ITEM_BPM,
+    TIMELINE_ITEM_MEASURE,
+    TIMELINE_ITEM_NOTE
+} from "src/state/sequencer-chart";
 import { newSavedState, SavedState } from "./saved-state";
+import { Sample } from "src/assets/samples/all-samples";
+import { sampleToNoteIdx } from "./keyboard-state";
 
 const SAVED_STATE_KEY = "rhythmGameSavedState";
 
@@ -26,7 +37,26 @@ export function loadSaveState(): SavedState {
             if (item.type === TIMELINE_ITEM_BPM) {
                 chart.timeline[i] = autoMigrate(item, newTimelineItemBpmChangeDefault);
             } else if (item.type === TIMELINE_ITEM_NOTE) {
+                // at least one of these fields must be set
+                type MusicNoteOld = {
+                    noteIndex?: number;
+                    sample?: Sample;
+                }
+
+                // @ts-expect-error old field we removed - note
+                const sample = (item.note as MusicNoteOld | undefined)?.sample;
+                // @ts-expect-error old field we removed - note
+                const noteIndex = (item.note as MusicNoteOld | undefined)?.noteIndex;
+
                 chart.timeline[i] = autoMigrate(item, newTimelineItemNoteDefault);
+
+                if (sample || noteIndex) {
+                    if (noteIndex) {
+                        (chart.timeline[i] as NoteItem).noteId = noteIndex;
+                    } else if (sample) {
+                        (chart.timeline[i] as NoteItem).noteId = sampleToNoteIdx(sample);
+                    }
+                }
             } else if (item.type === TIMELINE_ITEM_MEASURE) {
                 chart.timeline[i] = autoMigrate(item, newTimelineItemMeasureDefault);
             } else {
@@ -43,6 +73,7 @@ export function loadSaveState(): SavedState {
 }
 
 export function saveAllState(ctx: GlobalContext) {
+    return;
     const { savedState } = ctx;
     const serialzed = recursiveCloneNonComputedFields(savedState);
 
