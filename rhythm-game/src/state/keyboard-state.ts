@@ -34,8 +34,35 @@ export function getKeyForNote(state: KeyboardState, noteId: number): InstrumentK
     return state.flatKeys.find(k => k.noteId === noteId);
 }
 
+function getLowerCase(key: string) {
+    switch (key) {
+        case "!": return "1";
+        case "@": return "2";
+        case "#": return "3";
+        case "$": return "4";
+        case "%": return "5";
+        case "^": return "6";
+        case "&": return "7";
+        case "*": return "8";
+        case "(": return "9";
+        case ")": return "0";
+        case "_": return "-";
+        case "+": return "=";
+        case "{": return "[";
+        case "}": return "]";
+        case "|": return "\\";
+        case ":": return ";";
+        case "\"": return "'";
+        case ">": return ".";
+        case "<": return ",";
+        case "?": return "/";
+    }
+
+    return key.toLowerCase();
+}
+
 export function getKeyForKeyboardKey(state: KeyboardState, key: string): InstrumentKey | undefined {
-    return state.flatKeys.find(k => k.keyboardKey === key.toLowerCase());
+    return state.flatKeys.find(k => k.keyboardKey === getLowerCase(key));
 }
 
 function newKey(k: string): InstrumentKey {

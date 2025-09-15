@@ -1,15 +1,16 @@
 import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
 import {
     CommandItem,
+    FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxAfter,
     getBeatsForTime,
     getBeatsIndexesExclusive,
     getBpmChangeItemBeforeBeats,
-    itemEnd,
     getItemEndTime,
     getItemIdxAtBeat,
     getItemStartTime,
     getTimeForBeats,
+    itemEnd,
     newTimelineItemNote,
     NoteItem,
     SequencerChart,
@@ -22,15 +23,15 @@ import {
     TimelineItem,
     TimelineItemBpmChange,
     transposeItems,
-    FRACTIONAL_UNITS_PER_BEAT,
 } from "src/state/sequencer-chart";
-import { unreachable } from "src/utils/assert";
+import { assert, unreachable } from "src/utils/assert";
 
 export const SEQUENCER_ROW_COLS = 8;
 
 export type SequencerState = {
     keyEditFilterModalOpen: boolean;
-    keyEditFilter: boolean[]; // NOTE: use the getter for this one
+    notesFilter: Set<number>;
+    keyEditFilterRangeIdx0: number; 
 
     cursor: number; 
     cursorSnap: number;
@@ -64,9 +65,6 @@ export type SequencerState = {
     _lastBpmChange: TimelineItemBpmChange | undefined;
 
 };
-
-export function isNoteFiltered() {
-}
 
 export function getCursorStartTime(state: SequencerState): number {
     return getTimeForBeats(state._currentChart, state.cursor);
@@ -266,7 +264,8 @@ export function newSequencerState(currentChart: SequencerChart): SequencerState 
         _visitedBuffer: [],
 
         keyEditFilterModalOpen: false,
-        keyEditFilter: [],
+        notesFilter: new Set<number>(),
+        keyEditFilterRangeIdx0: -1,
 
         cursor: 0,
         cursorSnap: FRACTIONAL_UNITS_PER_BEAT / 4,
@@ -587,11 +586,12 @@ export function shiftSelectedItems(sequencer: SequencerState, beats: number) {
     sequencer.rangeSelectEnd   += beats;
 }
 
-export function shiftItemsAfterCursor(s: SequencerState, amount: number) {
+// NOTE: potentially very expensive
+export function shiftItemsAfterCursor(s: SequencerState, beats: number) {
     const cursorStart = s.cursor;
     const rightOfCursorIdx = getBeatIdxAfter(s._currentChart, cursorStart);
 
-    sequencerChartShiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, amount);
+    sequencerChartShiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, beats);
 }
 
 export function transposeSelectedItems(sequencer: SequencerState, halfSteps: number) {
@@ -602,4 +602,5 @@ export function transposeSelectedItems(sequencer: SequencerState, halfSteps: num
 
     transposeItems(sequencer._currentChart, startIdx, endIdx, halfSteps);
 }
+
 

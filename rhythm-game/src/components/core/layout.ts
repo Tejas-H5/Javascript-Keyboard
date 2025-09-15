@@ -131,16 +131,13 @@ export function imRelative(c: ImCache) {
     }
 }
 
-export function imBg(c: ImCache, colour: string, transition?: number) {
+export function imBg(c: ImCache, colour: string) {
     if (imMemo(c, colour)) {
         elSetStyle(c, "backgroundColor", colour);
-        if (transition) {
-            elSetStyle(c, "transition", colour);
-        }
     }
 }
 
-export function imTextColor(c: ImCache, colour: string) {
+export function imFg(c: ImCache, colour: string) {
     if (imMemo(c, colour)) {
         elSetStyle(c, "color", colour);
     }

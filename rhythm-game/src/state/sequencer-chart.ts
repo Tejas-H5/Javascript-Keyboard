@@ -18,7 +18,7 @@ export type SequencerChart = {
         enabled: boolean;
         items: TimelineMutation[];
         idx: number;
-    }
+    },
 };
 
 export const MUTATION_INSERT = 1;
@@ -306,6 +306,14 @@ export function isBeatWithin(item: TimelineItem, cursorBeats: number): boolean {
 export function itemEnd(item: TimelineItem): number {
     return item.start + item.length;
 }
+
+
+export function isNoteInFilter(notesFilter: Set<number>, item: TimelineItem) {
+    if (notesFilter.size === 0) return true;
+    if (item.type !== TIMELINE_ITEM_NOTE) return true;
+    return notesFilter.has(item.noteId);
+}
+
 
 export function sequencerChartInsertItems(chart: SequencerChart, itemsToInsert: TimelineItem[]) {
     itemsToInsert = itemsToInsert.filter(item => !isDegenerateItem(item));

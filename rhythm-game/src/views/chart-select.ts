@@ -1,5 +1,5 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, imTextColor, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, imFg, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { InstrumentKey } from "src/state/keyboard-state";
@@ -125,7 +125,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                 }
 
                                 imBg(c, chartSelected ? cssVars.mg : cssVars.bg);
-                                imTextColor(c, chartSelected ? cssVars.bg : "");
+                                imFg(c, chartSelected ? cssVars.bg : "");
 
                                 imStr(c, chart.name);
                                 if (elHasMousePress(c)) {

@@ -31,6 +31,7 @@ import { assert } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
 import { ImCache, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
 import { clamp } from "src/utils/math-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
@@ -40,11 +41,38 @@ import { newGameplayState } from "./gameplay";
 import { imSoundLab } from "./sound-lab-view";
 
 
+type AllKeysState = {
+    keys: KeyState[];
+
+    ctrlKey:  KeyState;
+    shiftKey: KeyState;
+    altKey:   KeyState;
+};
+
+function newAllKeysState(): AllKeysState {
+    const state: AllKeysState = {
+        keys: [],
+
+        ctrlKey:  newKeyState("Ctrl", "Control", "Meta"),
+        shiftKey: newKeyState("Shift", "Shift"),
+        altKey:   newKeyState("Alt", "Alt"),
+    };
+
+    for (const k in state) {
+        const key = k as keyof typeof state;
+        if (key !== "keys") state.keys.push(state[key]); 
+    }
+
+    return state;
+}
+
 export type GlobalContext = {
     keyboard: KeyboardState;
     sequencer: SequencerState;
     ui: UIState;
     savedState: SavedState;
+
+    allKeysState: AllKeysState;
 
     keyPressState: KeyPressState | null;
     keyReleaseState: KeyPressState | null;
@@ -56,8 +84,11 @@ export type GlobalContext = {
 export function newGlobalContext(saveState: SavedState) {
     const firstChart = getOrCreateCurrentChart(saveState);
 
+    const keyboard = newKeyboardState();
+
     const ctx: GlobalContext = {
-        keyboard: newKeyboardState(),
+        keyboard,
+        allKeysState: newAllKeysState(),
         sequencer: newSequencerState(firstChart),
         ui: newUiState(),
         savedState: saveState,
@@ -73,6 +104,7 @@ export function newGlobalContext(saveState: SavedState) {
 
     return ctx;
 }
+
 
 // I know I'll need ctx here. I just can't prove it ...
 export function playKeyPressForUI(ctx: GlobalContext, key: InstrumentKey) {
@@ -138,7 +170,7 @@ export function addNewUserChart(ctx: GlobalContext) {
     return result;
 }
 
-function handleKeyUp(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
+function handleKeyRelased(ctx: GlobalContext, keyPressState: KeyPressState): boolean {
     const { key } = keyPressState;
 
     if (key === "Shift") {
@@ -161,10 +193,6 @@ function handleKeyUp(ctx: GlobalContext, keyPressState: KeyPressState): boolean 
     }
 
     return false;
-}
-
-export function resetSequencer(ctx: GlobalContext) {
-    ctx.sequencer = newSequencerState(ctx.sequencer._currentChart);
 }
 
 export function copyNotesToTempStore(ctx: GlobalContext, startIdx: number, endIdx: number): boolean {
@@ -377,10 +405,13 @@ export function imApp(
     const { ui } = ctx;
 
     const { keyDown, keyUp, blur } = getGlobalEventSystem().keyboard;
+
     ctx.keyPressState = null;
     ctx.keyReleaseState = null;
     ctx.blurredState = false;
     ctx.handled = false;
+
+    handleKeysLifecycle(ctx.allKeysState.keys, keyDown, keyUp, blur);
 
     // NOTE: this is not quite how I would do key input today - this
     // app has gone through a lot of rewrites as I was improving the framework 
@@ -412,7 +443,7 @@ export function imApp(
         const keyReleaseState = newKeyPressState(keyUp);
         ctx.keyReleaseState = keyReleaseState;
         getKeyPressState(keyUp, keyReleaseState);
-        if (handleKeyUp(ctx, keyReleaseState)) {
+        if (handleKeyRelased(ctx, keyReleaseState)) {
             keyUp.preventDefault();
             ctx.handled = true;
         }

@@ -1,5 +1,5 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW } from "src/components/core/layout";
+import { BLOCK, COL, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, imFg, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
 import { DEBUG_UNDO_BUFFER } from "src/debug-flags";
@@ -7,6 +7,7 @@ import {
     getKeyForKeyboardKey,
     getKeyForNote,
     getMusicNoteText,
+    InstrumentKey,
     KeyboardState,
 } from "src/state/keyboard-state";
 import { isSaving } from "src/state/loading-saving-charts";
@@ -44,16 +45,15 @@ import {
 } from "src/state/sequencer-state";
 import { filteredCopy } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imIf, imIfEnd, imMemo, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
 import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { GlobalContext, } from "./app";
 import { cssVarsApp } from "./styling";
+import { getCurrentOscillatorGainForOwner, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface";
 
-
-export function getItemSequencerText(globalState: KeyboardState, item: TimelineItem): string {
+export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
-        const key = getKeyForNote(globalState, item.noteId);
         const keyText = key ? key.text.toUpperCase() : "<no key!>";
         return keyText + " " + getMusicNoteText(item.noteId);
     }
@@ -94,6 +94,8 @@ type SequencerUIState = {
     currentCursorAnimated: number;
     cursorSnapAnimated: number;
 
+    allNotesVisible: boolean;
+
     leftExtentBeats: number;
     rightExtentBeats: number;
     leftExtentBeatsAnimated: number;
@@ -116,6 +118,8 @@ function newSequencerState(): SequencerUIState {
 
         notesToPlay: [],
         itemsUnderCursor: new Set(),
+
+        allNotesVisible: false,
         
         currentCursorAnimated: -1,
         cursorSnapAnimated: 4,
@@ -134,6 +138,8 @@ function newSequencerState(): SequencerUIState {
         measures: [],
     };
 }
+
+const noItems: TimelineItem[] = [];
 
 /**
  * This component handles both the editing UI and the gameplay UI
@@ -307,6 +313,10 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
             imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
+            if (imButtonIsClicked(c, "All visible", s.allNotesVisible)) {
+                s.allNotesVisible = !s.allNotesVisible;
+            }
+
             if (imButtonIsClicked(c, (loadSaveModal.open ? ">" : "<") + "Load/Save")) {
                 loadSaveModal.open = !loadSaveModal.open;
             }
@@ -414,15 +424,52 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     } imForEnd(c);
                 }
 
-                imLayout(c, COL); imJustify(c); imSize(c, 0, NA, 100, PERCENT); {
-                    imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s);
-                    imSequencerNotesUI(c, "measures", s.measures, null, ctx, s);
+                let hasFilter = sequencer.notesFilter.size > 0;
 
-                    imFor(c); for (const entry of s.noteOrder) {
-                        assert(!!entry.firstItem);
-                        const text = getItemSequencerText(ctx.keyboard, entry.firstItem);
-                        imSequencerNotesUI(c, text, entry.items, entry.previewItems, ctx, s);
-                    } imForEnd(c);
+                imLayout(c, COL); imJustify(c); imSize(c, 0, NA, 100, PERCENT); {
+                    imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s, false);
+                    imSequencerNotesUI(c, "measures", s.measures, null, ctx, s, false);
+
+                    if (imMemo(c, s.allNotesVisible)) {
+                        elSetStyle(c, "fontSize", s.allNotesVisible ? "13px" : "");
+                    }
+
+                    if (imIf(c) && s.allNotesVisible) {
+                        imFor(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
+                            const key = ctx.keyboard.flatKeys[i];
+                            const entry = s.notesMap.get(key.noteId);
+                            const faded = hasFilter && !sequencer.notesFilter.has(key.noteId);
+                            if (entry?.firstItem) {
+                                const text = getItemSequencerText(entry.firstItem, key);
+                                imSequencerNotesUI(c, text, entry.items, entry.previewItems, ctx, s, faded);
+                            } else {
+                                const text = getMusicNoteText(key.noteId);
+                                imSequencerNotesUI(c, text, noItems, noItems, ctx, s, faded);
+                            }
+                        } imForEnd(c);
+                    } else {
+                        imIfElse(c);
+
+                        imFor(c); for (const entry of s.noteOrder) {
+                            assert(!!entry.firstItem);
+                            const key = getKeyForNote(ctx.keyboard, entry.firstItem.noteId);
+                            if (!key) {
+                                continue;
+                            }
+
+                            const text = getItemSequencerText(entry.firstItem, key);
+                            const faded = hasFilter && !sequencer.notesFilter.has(key.noteId);
+                            imSequencerNotesUI(
+                                c,
+                                text,
+                                entry.items,
+                                entry.previewItems,
+                                ctx,
+                                s,
+                                faded
+                            );
+                        } imForEnd(c);
+                    } imIfEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
 
@@ -502,67 +549,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         } imLayoutEnd(c);
 
         if (imIf(c) && sequencer.keyEditFilterModalOpen) {
-            imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
-                imLayout(c, COL); imAbsolute(c, 10, PX, 10, PX, 10, PX, 10, PX); imBg(c, cssVars.bg); {
-                    imLayout(c, ROW); imAlign(c); imJustify(c); {
-                        imStr(c, "Set edit filter - edits will only apply to these notes. Press keys to select, shift to range-select");
-                    } imLayoutEnd(c);
-
-                    const root = imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
-                        if (isFirstishRender(c)) {
-                            elSetStyle(c, "lineHeight", "1");
-                        }
-
-                        const height = root.clientHeight;
-                        if (imMemo(c, height)) {
-                            elSetStyle(c, "fontSize", (root.clientHeight / ctx.keyboard.flatKeys.length) + "px");
-                        }
-
-                        imLayout(c, COL); {
-                            imFor(c); for (const key of ctx.keyboard.flatKeys) {
-                                imLayout(c, BLOCK); {
-                                    imStr(c, key.noteText);
-                                } imLayoutEnd(c);
-                            } imForEnd(c);
-                        } imLayoutEnd(c);
-
-                        imLayout(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
-
-                        imLayout(c, COL); imFlex(c); {
-                            imFor(c); for (const key of ctx.keyboard.flatKeys) {
-                                const normalized = 1;
-                                imLayout(c, BLOCK); imBg(c, cssVarsApp.fg); {
-                                    if (isFirstishRender(c)) {
-                                        elSetStyle(c, "color", cssVars.bg);
-                                    }
-
-                                    imSize(c, 100 * normalized, PERCENT, 100, PERCENT);
-                                    imStr(c, "x");
-                                } imLayoutEnd(c);
-                            } imForEnd(c);
-                        } imLayoutEnd(c);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
-
-            if (!ctx.handled) {
-                let handled = false;
-                const keyPress = ctx.keyPressState;
-                if (keyPress) {
-                    if (keyPress.key === "Escape") {
-                        sequencer.keyEditFilterModalOpen = false;
-                        handled = true;
-                    }
-
-                    const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, keyPress.key);
-                    if (instrumentKey && !keyPress.shiftPressed && !keyPress.altPressed && !keyPress.ctrlPressed) {
-                        handled = true;
-                    }
-                }
-
-
-                ctx.handled = handled;
-            }
+            imFilterModal(c, s, ctx, sequencer, ctx.keyboard); 
         } imIfEnd(c);
 
     } imLayoutEnd(c);
@@ -623,32 +610,39 @@ function imSequencerNotesUI(
     items: TimelineItem[], 
     previewItems: TimelineItem[] | null, 
     ctx: GlobalContext, 
-    s: SequencerUIState
+    s: SequencerUIState,
+    faded: boolean,
 ) {
     let count = items.length;
     if (previewItems) count += previewItems.length;
 
-    if (imIf(c) && count > 0) {
-        imLayout(c, BLOCK); imRelative(c); imPadding(
-            c,
-            10, PX, 3, PX, 
-            10, PX, 3, PX, 
-        ); {
-            imStr(c, text);
+    const compact = !!s.allNotesVisible;
 
-            imFor(c); for (const item of items) {
-                const text = getItemSequencerText(ctx.keyboard, item);
-                imSequencerTrackTimelineItem(c, text, item, ctx, s);
-            } imForEnd(c);
+    imLayout(c, BLOCK); imRelative(c); imPadding(
+        c,
+        compact ? 0 : 10, PX, 3, PX, 
+        compact ? 0 : 10, PX, 3, PX, 
+    ); {
+        if (imMemo(c, faded)) {
+            elSetStyle(c, "color", faded ? cssVars.mg : "");
+        }
 
-            if (imIf(c) && previewItems) {
-                imFor(c); for (const item of previewItems) {
-                    const text = getItemSequencerText(ctx.keyboard, item);
-                    imSequencerTrackTimelineItem(c, text, item, ctx, s);
-                } imEndFor(c);
-            } imEndIf(c);
-        } imLayoutEnd(c);
-    } imIfEnd(c);
+        imStr(c, text);
+
+        imFor(c); for (const item of items) {
+            const key = item.type === TIMELINE_ITEM_NOTE ? getKeyForNote(ctx.keyboard, item.noteId) : undefined;
+            const text = getItemSequencerText(item, key);
+            imSequencerTrackTimelineItem(c, text, item, ctx, s, compact);
+        } imForEnd(c);
+
+        if (imIf(c) && previewItems) {
+            imFor(c); for (const item of previewItems) {
+                const key = item.type === TIMELINE_ITEM_NOTE ? getKeyForNote(ctx.keyboard, item.noteId) : undefined;
+                const text = getItemSequencerText(item, key);
+                imSequencerTrackTimelineItem(c, text, item, ctx, s, compact);
+            } imEndFor(c);
+        } imEndIf(c);
+    } imLayoutEnd(c);
 }
 
 function imSequencerTrackTimelineItem(
@@ -656,7 +650,8 @@ function imSequencerTrackTimelineItem(
     text: string,
     item: TimelineItem,
     ctx: GlobalContext,
-    s: SequencerUIState
+    s: SequencerUIState,
+    compact: boolean
 ) {
     const left = s.leftExtentBeatsAnimated;
     const right = s.rightExtentBeatsAnimated;
@@ -695,9 +690,16 @@ function imSequencerTrackTimelineItem(
         if (isFirstishRender(c)) {
             elSetClass(c, cn.noWrap);
             elSetStyle(c,"overflowX", "clip");
-            elSetStyle(c,"padding", "3px 10px");
             elSetStyle(c,"border", `1px solid ${cssVarsApp.fg}`);
             elSetStyle(c,"boxSizing", "border-box");
+        }
+
+        if (imMemo(c, compact)) {
+            if (compact) {
+                elSetStyle(c, "padding", "0px");
+            } else {
+                elSetStyle(c, "padding", "3px 10px");
+            }
         }
 
         elSetStyle(c,"backgroundColor", isBeingPlayed ? cssVarsApp.playback : isUnderCursor ? cssVarsApp.bg2 : cssVarsApp.bg);
@@ -814,3 +816,180 @@ function imBpmInput(c: ImCache, value: number): number | null {
     return result;
 }
 
+function imFilterModal(
+    c: ImCache,
+    s: SequencerUIState,
+    ctx: GlobalContext,
+    sequencer: SequencerState,
+    keyboard: KeyboardState,
+) {
+
+    if (imMemo(c, true)) {
+        sequencer.keyEditFilterRangeIdx0 = -1;
+    }
+
+    const keyPress = ctx.keyPressState;
+    let instrumentKey;
+    if (keyPress) {
+    } else {
+        instrumentKey = null;
+    }
+
+    imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+        imLayout(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
+            imLayout(c, ROW); imAlign(c); imJustify(c); {
+                imStr(c, "Edit filter - shift to range-select");
+            } imLayoutEnd(c);
+
+            const root = imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
+                if (isFirstishRender(c)) {
+                    elSetStyle(c, "lineHeight", "1");
+                }
+
+                const height = root.clientHeight;
+                if (imMemo(c, height)) {
+                    elSetStyle(c, "fontSize", (root.clientHeight / ctx.keyboard.flatKeys.length) + "px");
+                }
+
+                imLayout(c, COL); imAlign(c, END); {
+                    imFor(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
+                        const key = ctx.keyboard.flatKeys[i];
+                        imLayout(c, BLOCK); {
+                            let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
+
+                            imBg(c, hasPress ? cssVars.fg : "");
+                            imFg(c, hasPress ? cssVars.bg : "");
+
+                            imStr(c, getMusicNoteText(key.noteId));
+                        } imLayoutEnd(c);
+                    } imForEnd(c);
+                } imLayoutEnd(c);
+
+                imLayout(c, COL); {
+                    imFor(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
+                        const key = ctx.keyboard.flatKeys[i];
+                        imLayout(c, BLOCK); {
+
+                            let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
+
+                            imBg(c, hasPress ? cssVars.fg : "");
+                            imFg(c, hasPress ? cssVars.bg : "");
+
+                            imStr(c, "(");
+                            imStr(c, key.text);
+                            imStr(c, ")");
+                        } imLayoutEnd(c);
+                    } imForEnd(c);
+                } imLayoutEnd(c);
+
+                imLayout(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
+
+                imLayout(c, COL); imFlex(c); {
+                    imFor(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
+                        const key = ctx.keyboard.flatKeys[i];
+                        const normalized = 1;
+                        imLayout(c, BLOCK); {
+                            if (isFirstishRender(c)) {
+                                elSetStyle(c, "color", cssVars.bg);
+                            }
+
+                            const inFilter = sequencer.notesFilter.has(key.noteId);
+
+                            let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
+                            if (imMemo(c, hasPress) && hasPress) {
+
+                                if (ctx.allKeysState.shiftKey.held) {
+                                    let min = Math.min(sequencer.keyEditFilterRangeIdx0, key.index);
+                                    if (min === -1) min = 0;
+                                    let max = Math.max(sequencer.keyEditFilterRangeIdx0, key.index);
+
+                                    let value = true;
+                                    for (let i = min; i <= max; i++) {
+                                        if (i === sequencer.keyEditFilterRangeIdx0) {
+                                            continue;
+                                        }
+
+                                        const key = keyboard.flatKeys[i];
+                                        if (sequencer.notesFilter.has(key.noteId)) {
+                                            // if any other keys are true, we want to erase.
+                                            value = false;
+                                            break;
+                                        }
+                                    }
+
+                                    for (let i = min; i <= max; i++) {
+                                        const key = keyboard.flatKeys[i];
+                                        if (value) {
+                                            sequencer.notesFilter.add(key.noteId);
+                                        } else {
+                                            sequencer.notesFilter.delete(key.noteId);
+                                        }
+                                    }
+                                    sequencer.keyEditFilterRangeIdx0 = key.index;
+                                } else {
+                                    if (inFilter) {
+                                        sequencer.notesFilter.delete(key.noteId);
+                                    } else {
+                                        sequencer.notesFilter.add(key.noteId);
+                                    }
+                                    sequencer.keyEditFilterRangeIdx0 = key.index;
+                                }
+                            }
+
+                            if (isFirstishRender(c)) {
+                                elSetStyle(c, "transition", "background-color 0.2s");
+                            }
+
+                            let isVisible = !!s.notesMap.has(key.noteId);
+
+                            imBg(c, inFilter ? cssVars.fg : "");
+                            imFg(c, inFilter ? cssVars.bg : (isVisible ? "" : cssVars.mg));
+
+                            imSize(c, 100 * normalized, PERCENT, 100, PERCENT);
+
+
+                            // HACK: Load-bearing text!
+                            imStr(c, isVisible ? "onscreen" : "offscreen");
+                        } imLayoutEnd(c);
+                    } imForEnd(c);
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
+
+    if (!ctx.handled) {
+        let handled = false;
+        const keyPress = ctx.keyPressState;
+
+        if (keyPress) {
+            const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, keyPress.key);
+
+            if (keyPress.key === "Escape") {
+                sequencer.keyEditFilterModalOpen = false;
+                handled = true;
+            }
+
+            // We want to handle shift, actually
+            if (instrumentKey && !keyPress.altPressed && !keyPress.ctrlPressed) {
+                pressKey(instrumentKey.index, instrumentKey.noteId, keyPress.isRepeat);
+                handled = true;
+            }
+        }
+
+        if (ctx.keyReleaseState) {
+            const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, ctx.keyReleaseState.key);
+            
+            if (instrumentKey) {
+                releaseKey(instrumentKey.index, instrumentKey.noteId);
+            }
+
+            handled = true;
+        }
+
+        if (ctx.blurredState) {
+            releaseAllKeys();
+        }
+
+        ctx.handled = handled;
+    }
+}

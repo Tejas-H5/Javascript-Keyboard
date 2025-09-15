@@ -1,4 +1,4 @@
-import { BLOCK, COL, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, imTextColor, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, imFg, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { getCurrentOscillatorGainForOwner, pressKey, setScheduledPlaybackTime, } from "src/dsp/dsp-loop-interface";
@@ -285,7 +285,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 imBg(c, colours.barColor.toString());
             } imLayoutEnd(c);
 
-            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c); imTextColor(c, colours.textColor.toCssString()); {
+            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c); imFg(c, colours.textColor.toCssString()); {
                 if (isFirstishRender(c)) {
                     elSetStyle(c, "zIndex", "1");
                 }
@@ -499,7 +499,7 @@ function imLetter(
 
     imLayout(c, COL); imSize(c, 40, PX, 0, NA); imAlign(c); imJustify(c);  {
         imBg(c, s.bgColor.toString());
-        imTextColor(c, s.textColor.toString());
+        imFg(c, s.textColor.toString());
 
         imLayout(c, BLOCK); {
             if (isFirstishRender(c)) {
@@ -521,11 +521,11 @@ function im3DLookingText(c: ImCache, value: Stringifyable) {
                 elSetStyle(c, "transform", "translate(3px, 3px)");
             }
 
-            imTextColor(c, cssVars.bg);
+            imFg(c, cssVars.bg);
             imStr(c, value);
         } imLayoutEnd(c);
         imLayout(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-            imTextColor(c, cssVars.fg);
+            imFg(c, cssVars.fg);
             imStr(c, value);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
