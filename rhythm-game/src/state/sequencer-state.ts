@@ -128,6 +128,7 @@ export function getCurrentItemIdx(state: SequencerState): number {
 // else, it union-differences itself from any notes of the same note. (there will only be one such note if all you do is call `setTimelineNoteAtPosition` all the time)
 export function setTimelineNoteAtPosition(
     chart: SequencerChart,
+    notesFilter: Set<number>,
     rangeStart: number, 
     rangeLen: number,
     noteId: number,
@@ -168,14 +169,14 @@ export function setTimelineNoteAtPosition(
             notesToRemove.push(item);
         }
 
-        sequencerChartRemoveItems(chart, notesToRemove);
+        sequencerChartRemoveItems(chart, notesToRemove, notesFilter);
 
         if (isNoteValid) {
             const newNoteStart = newNoteStartBeats;
             const newNoteLen = newNoteEndBeats - newNoteStartBeats;
             const newNote = newTimelineItemNote(noteId, newNoteStart, newNoteLen);
 
-            sequencerChartInsertItems(chart, [newNote]);
+            sequencerChartInsertItems(chart, [newNote], notesFilter);
         }
     } else {
         const notesToAdd: NoteItem[] = [];
@@ -222,8 +223,8 @@ export function setTimelineNoteAtPosition(
             }
         }
 
-        sequencerChartRemoveItems(chart, notesToRemove);
-        sequencerChartInsertItems(chart, notesToAdd);
+        sequencerChartRemoveItems(chart, notesToRemove, notesFilter);
+        sequencerChartInsertItems(chart, notesToAdd, notesFilter);
     }
 }
 
@@ -236,9 +237,9 @@ export function recomputeSequencerState(sequencer: SequencerState) {
     }
 }
 
-export function deleteRange(chart: SequencerChart, start: number, end: number) {
-    const toRemove = chart.timeline.slice(start, end + 1);
-    sequencerChartRemoveItems(chart, toRemove);
+export function deleteRange(chart: SequencerChart, notesFilter: Set<number>, start: number, end: number) {
+    const toRemove = chart.timeline.slice(start, end + 1).filter(item => item.type !== TIMELINE_ITEM_MEASURE);
+    sequencerChartRemoveItems(chart, toRemove, notesFilter);
 }
 
 
@@ -574,16 +575,16 @@ export function getNonOverlappingThreadsSubset(
     }
 }
 
-export function shiftSelectedItems(sequencer: SequencerState, beats: number) {
-    const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
+export function shiftSelectedItems(s: SequencerState, beats: number) {
+    const [startIdx, endIdx] = getSelectionStartEndIndexes(s);
     if (startIdx === -1 || endIdx === -1) {
         return;
     }
 
-    sequencerChartShiftItems(sequencer._currentChart, startIdx, endIdx, beats);
+    sequencerChartShiftItems(s._currentChart, s.notesFilter, startIdx, endIdx, beats);
 
-    sequencer.rangeSelectStart += beats;
-    sequencer.rangeSelectEnd   += beats;
+    s.rangeSelectStart += beats;
+    s.rangeSelectEnd   += beats;
 }
 
 // NOTE: potentially very expensive
@@ -591,16 +592,22 @@ export function shiftItemsAfterCursor(s: SequencerState, beats: number) {
     const cursorStart = s.cursor;
     const rightOfCursorIdx = getBeatIdxAfter(s._currentChart, cursorStart);
 
-    sequencerChartShiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, beats);
+    sequencerChartShiftItems(s._currentChart, s.notesFilter, rightOfCursorIdx, s._currentChart.timeline.length - 1, beats);
 }
 
-export function transposeSelectedItems(sequencer: SequencerState, halfSteps: number) {
-    const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
+export function transposeSelectedItems(s: SequencerState, halfSteps: number) {
+    const [startIdx, endIdx] = getSelectionStartEndIndexes(s);
     if (startIdx === -1 || endIdx === -1) {
         return;
     }
 
-    transposeItems(sequencer._currentChart, startIdx, endIdx, halfSteps);
+    if (s.notesFilter.size > 0) {
+        // notes just dissapear, due to implementation.
+        // can't be bothered fixing atm.
+        return;
+    }
+
+    transposeItems(s._currentChart, s.notesFilter, startIdx, endIdx, halfSteps);
 }
 
 

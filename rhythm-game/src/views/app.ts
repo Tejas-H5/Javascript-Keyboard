@@ -22,6 +22,7 @@ import {
     SequencerChart,
     sequencerChartInsertItems,
     sortAndIndexTimeline,
+    TIMELINE_ITEM_MEASURE,
     undoEdit
 } from "src/state/sequencer-chart";
 import { newSequencerState, SequencerState } from "src/state/sequencer-state";
@@ -204,7 +205,9 @@ export function copyNotesToTempStore(ctx: GlobalContext, startIdx: number, endId
 
     const tl = sequencer._currentChart.timeline;
 
-    ui.copied.items = tl.slice(startIdx, endIdx + 1).map(copyTimelineItem);
+    ui.copied.items = tl.slice(startIdx, endIdx + 1)
+        .filter(item => item.type !== TIMELINE_ITEM_MEASURE)
+        .map(copyTimelineItem);
 
     ui.copied.positionStart = Math.min(
         sequencer.cursor,
@@ -240,7 +243,7 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
         return newItem;
     });
 
-    sequencerChartInsertItems(sequencer._currentChart, newNotes);
+    sequencerChartInsertItems(sequencer._currentChart, newNotes, sequencer.notesFilter);
 
     return true;
 }

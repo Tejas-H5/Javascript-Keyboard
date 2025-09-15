@@ -146,6 +146,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
         for (const note of sequencer.notesToPreview) {
             setTimelineNoteAtPosition(
                 chart,
+                sequencer.notesFilter,
                 note.start,
                 sequencer.cursorSnap,
                 note.noteId,
@@ -161,7 +162,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
         if (hasRangeSelection(sequencer)) {
             const [start, end] = getSelectionStartEndIndexes(sequencer);
             if (start !== -1 && end !== -1) {
-                deleteRange(chart, start, end);
+                deleteRange(chart, sequencer.notesFilter, start, end);
                 clearRangeSelection(sequencer, false);
                 return true;
             }
@@ -177,6 +178,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
             for (const note of sequencer.notesToPreview) {
                 setTimelineNoteAtPosition(
                     chart,
+                    sequencer.notesFilter,
                     note.start,
                     sequencer.cursorSnap,
                     note.noteId,
@@ -322,7 +324,7 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
     if ((keyUpper === "X") && ctrlPressed) {
         const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
         if (copyNotesToTempStore(ctx, startIdx, endIdx)) {
-            deleteRange(chart, startIdx, endIdx);
+            deleteRange(chart, sequencer.notesFilter, startIdx, endIdx);
 
             return true;
         }
@@ -365,10 +367,10 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
         const idx = timelineMeasureAtBeatsIdx(chart, cursorStartBeats);
         if (idx === -1) {
             const start = sequencer.cursor;
-            sequencerChartInsertItems(chart, [newTimelineItemMeasure(start)]);
+            sequencerChartInsertItems(chart, [newTimelineItemMeasure(start)], sequencer.notesFilter);
         } else {
             const measure = chart.timeline[idx];
-            sequencerChartRemoveItems(chart, [measure]);
+            sequencerChartRemoveItems(chart, [measure], sequencer.notesFilter);
         }
         return true;
     }
@@ -377,12 +379,12 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
         const start = sequencer.cursor;
         const bpmChange = getBpmChangeItemBeforeBeats(chart, start);
         if (bpmChange && start ===  bpmChange.start) {
-            sequencerChartRemoveItems(chart, [bpmChange]);
+            sequencerChartRemoveItems(chart, [bpmChange], sequencer.notesFilter);
         } else {
             const start = sequencer.cursor;
             const bpm = getBpm(bpmChange);
             const newBpmChange = newTimelineItemBpmChange(start, bpm);
-            sequencerChartInsertItems(chart, [newBpmChange]);
+            sequencerChartInsertItems(chart, [newBpmChange], sequencer.notesFilter);
         }
         return true;
     }

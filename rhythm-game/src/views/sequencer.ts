@@ -292,12 +292,12 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     const value = imBpmInput(c, getBpm(lastBpmChange));
                     if (value !== null) {
                         if (lastBpmChange) {
-                            sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange]);
+                            sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange], sequencer.notesFilter);
                             lastBpmChange.bpm = value;
                         } else {
                             lastBpmChange = newTimelineItemBpmChange(0, value);
                         }
-                        sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange]);
+                        sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange], sequencer.notesFilter);
                     }
                 }
 
