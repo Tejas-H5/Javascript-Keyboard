@@ -328,6 +328,10 @@ export function imGet<T>(
  * let s; s = imGetInline(c, fn);
  * if (!s) s = imSet(c, { blah });
  * ```ts
+ * Or more concise:
+ * let s; s = imGetInline(c, fn) ?? imSet(c, { blah });
+ * ```ts
+ * ```
  */
 export function imGetInline(
     c: ImCache,

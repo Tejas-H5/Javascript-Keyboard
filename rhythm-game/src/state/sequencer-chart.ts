@@ -2,15 +2,16 @@ import { arrayAt, filterInPlace, findLastIndexOf } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { beatsToMs, msToBeats } from "src/utils/music-theory-utils";
 import { getMusicNoteText } from "./keyboard-state";
+import { removeDocumentAndWindowEventListeners } from "src/utils/im-dom";
+import { numbersToVariableLengthBase64, variableLengthBase64ToNumbers } from "src/utils/vlbase64";
 
 export type SequencerChart = {
     name: string;
+    cursor: number;
 
     // NOTE: do not mutate the notes directly. Instead, remove, deep-copy, and insert the notes
     timeline: TimelineItem[];
 
-    cursorStart: number;
-    cursorDivisor: number;
 
     _lastUpdated: number;
     _tempBuffer: TimelineItem[];
@@ -19,6 +20,13 @@ export type SequencerChart = {
         items: TimelineMutation[];
         idx: number;
     },
+};
+
+// A compressed char that aims to minimize it's size when saved as JSON
+export type SequencerChartCompressed = {
+    n: string; // SequencerChart.name,
+    c: number; // SequencerChart.cursor,
+    t: string; // SequencerChart.timeline
 };
 
 export const MUTATION_INSERT = 1;
@@ -33,8 +41,7 @@ export function newChart(name: string = ""): SequencerChart {
     return {
         name,
         timeline: [],
-        cursorStart: 0,
-        cursorDivisor: 4,
+        cursor: 0,
 
         _lastUpdated: 0,
         _tempBuffer: [],
@@ -58,7 +65,6 @@ export function newTimelineItemBpmChange(
         type: TIMELINE_ITEM_BPM,
         bpm,
         start,
-        length: 0,
         _scheduledStart: 0,
         _index: 0,
         _shouldDelete: false,
@@ -111,7 +117,6 @@ export function getBeatOffset(timelinePoint: TimelinePoint): number {
 // Can be interpreted as a position, or a length
 type BaseTimelineItem = {
     start:  number; // integer - fractional beat
-    length: number; // length in fractional beats
 
     _scheduledStart: number;
     _index: number;
@@ -120,6 +125,7 @@ type BaseTimelineItem = {
 
 export type NoteItem = BaseTimelineItem & {
     type: typeof TIMELINE_ITEM_NOTE;
+    length: number; // length in fractional beats
     noteId: number;
 
     _scheduledEnd: number;
@@ -300,11 +306,16 @@ export function getItemEndTime(item: TimelineItem): number {
 
 
 export function isBeatWithin(item: TimelineItem, cursorBeats: number): boolean {
-    return item.start <= cursorBeats && cursorBeats <= (item.start + item.length);
+    return item.start <= cursorBeats && cursorBeats <= itemEnd(item);
 }
 
 export function itemEnd(item: TimelineItem): number {
-    return item.start + item.length;
+    return item.start + itemLength(item);
+}
+
+export function itemLength(item: TimelineItem): number {
+    if (item.type === TIMELINE_ITEM_NOTE) return item.length;
+    return 0;
 }
 
 
@@ -676,7 +687,6 @@ export function newTimelineItemMeasure(start: number): TimelineItemMeasure {
     return {
         type: TIMELINE_ITEM_MEASURE,
         start,
-        length: 0,
         _scheduledStart: 0,
         _index: 0,
         _shouldDelete: false,
@@ -752,3 +762,76 @@ export function timelineItemToString<T extends TimelineItem>(item: T): string {
 }
 
 
+export function chartToCompressed(chart: SequencerChart): SequencerChartCompressed {
+    const timelineAsNumbers = timelineToNumbers(chart.timeline);
+    return {
+        n: chart.name,
+        c: chart.cursor,
+        t: numbersToVariableLengthBase64(timelineAsNumbers),
+    };
+
+}
+
+export function chartFromCompressed(compressed: SequencerChartCompressed): SequencerChart {
+    const chart = newChart(compressed.n);
+    chart.cursor = compressed.c;
+    const timelineAsNumbers = variableLengthBase64ToNumbers(compressed.t);
+    chart.timeline = timelineFromNumbers(timelineAsNumbers);
+    return chart;
+}
+
+function timelineToNumbers(timeline: TimelineItem[]): number[] {
+    const result: number[] = [];
+
+    for (let i = 0; i < timeline.length; i++) {
+        const item = timeline[i];
+        result.push(item.type);
+        result.push(item.start);
+        switch (item.type) {
+            case TIMELINE_ITEM_NOTE: {
+                result.push(item.length);
+                result.push(item.noteId);
+            } break;
+            case TIMELINE_ITEM_BPM: {
+                result.push(item.bpm);
+            } break;
+            case TIMELINE_ITEM_MEASURE: {
+                // nothing, as of yet
+            } break;
+            default: unreachable(item);
+        }
+        // If we need to extend our item for any reason, we
+        // can start writing 1s here, and check if its a 0 or a 1.
+        result.push(0);
+    }
+
+    return result;
+}
+
+function timelineFromNumbers(numbers: number[]): TimelineItem[] {
+    let result: TimelineItem[] = [];
+
+    for (let i = 0; i < numbers.length;) {
+        const type = numbers[i]; i++;
+        const start = numbers[i]; i++;
+        switch (type) {
+            case TIMELINE_ITEM_NOTE: {
+                const length = numbers[i]; i++;
+                const noteId = numbers[i]; i++;
+                result.push(newTimelineItemNote(noteId, start, length));
+            } break;
+            case TIMELINE_ITEM_BPM: {
+                const bpm = numbers[i]; i++;
+                result.push(newTimelineItemBpmChange(start, bpm));
+            } break;
+            case TIMELINE_ITEM_MEASURE: {
+                result.push(newTimelineItemMeasure(start));
+            } break;
+            default: assert(false); // can't be reached.
+        }
+
+        assert(numbers[i] === 0); i++;
+    }
+
+    return result;
+}

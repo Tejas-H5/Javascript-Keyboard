@@ -1,8 +1,8 @@
-import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, imFg, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW } from "src/components/core/layout";
+import { imButton, imButtonIsClicked } from "src/components/button";
+import { BLOCK, COL, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, imFg, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW, imScrollOverflow } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
-import { DEBUG_UNDO_BUFFER } from "src/debug-flags";
+import { DEBUG_UNDO_BUFFER, TEST_EDIT_VIEW_EXPORT, TEST_EDIT_VIEW_IMPORT } from "src/debug-flags";
 import {
     getKeyForKeyboardKey,
     getKeyForNote,
@@ -13,6 +13,7 @@ import {
 import { isSaving } from "src/state/loading-saving-charts";
 import { previewNotes } from "src/state/playing-pausing";
 import {
+    chartToCompressed,
     CommandItem,
     FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxBefore,
@@ -22,6 +23,7 @@ import {
     itemEnd,
     newTimelineItemBpmChange,
     NoteItem,
+    SequencerChart,
     sequencerChartInsertItems,
     sequencerChartRemoveItems,
     TIMELINE_ITEM_BPM,
@@ -45,12 +47,17 @@ import {
 } from "src/state/sequencer-state";
 import { filteredCopy } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
-import { EL_B, EL_I, elSetClass, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
+import { EL_B, EL_I, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { GlobalContext, } from "./app";
 import { cssVarsApp } from "./styling";
 import { getCurrentOscillatorGainForOwner, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface";
+import { recursiveCloneNonComputedFields } from "src/utils/serialization-utils";
+import { copyToClipboard } from "src/utils/clipboard";
+import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
+import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
+import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
@@ -108,6 +115,9 @@ type SequencerUIState = {
     commandsList: CommandItem[]
     bpmChanges: TimelineItemBpmChange[];
     measures: TimelineItemMeasure[];
+
+    exportModalOpen: boolean;
+    importModalOpen: boolean;
 };
 
 function newSequencerState(): SequencerUIState {
@@ -136,6 +146,9 @@ function newSequencerState(): SequencerUIState {
         commandsList: [],
         bpmChanges: [],
         measures: [],
+
+        exportModalOpen: !!TEST_EDIT_VIEW_EXPORT,
+        importModalOpen: !!TEST_EDIT_VIEW_IMPORT,
     };
 }
 
@@ -312,6 +325,14 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             } imLayoutEnd(c);
 
             imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+
+            if (imButtonIsClicked(c, "Import", s.importModalOpen)) {
+                s.importModalOpen = true;
+            }
+
+            if (imButtonIsClicked(c, "Export", s.exportModalOpen)) {
+                s.exportModalOpen = true;
+            }
 
             if (imButtonIsClicked(c, "All visible", s.allNotesVisible)) {
                 s.allNotesVisible = !s.allNotesVisible;
@@ -550,6 +571,28 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
         if (imIf(c) && sequencer.keyEditFilterModalOpen) {
             imFilterModal(c, s, ctx, sequencer, ctx.keyboard); 
+        } imIfEnd(c);
+
+        if (imIf(c) && s.importModalOpen) {
+            imImportModal(c, ctx);
+
+            if (!ctx.handled) {
+                if (ctx.keyPressState?.key === "Escape") {
+                    s.importModalOpen = false;
+                    ctx.handled = true;
+                }
+            }
+        } imIfEnd(c);
+
+        if (imIf(c) && s.exportModalOpen) {
+            imExportModal(c, sequencer._currentChart);
+
+            if (!ctx.handled) {
+                if (ctx.keyPressState?.key === "Escape") {
+                    s.exportModalOpen = false;
+                    ctx.handled = true;
+                }
+            }
         } imIfEnd(c);
 
     } imLayoutEnd(c);
@@ -992,4 +1035,96 @@ function imFilterModal(
 
         ctx.handled = handled;
     }
+}
+
+function imExportModal(
+    c: ImCache,
+    chart: SequencerChart
+) {
+    imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+        imLayout(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
+            let s; s = imGetInline(c, imExportModal) ?? imSet(c, {
+                buttonText: "Copy to clipboard",
+                serializedJson: "",
+                sizeMb: 0,
+            });
+
+            if (imMemo(c, true)) {
+                const serialized = chartToCompressed(chart);
+                const text = JSON.stringify(serialized);
+                const sizeInBytes = utf8ByteLength(text)
+                s.serializedJson = text;
+                s.sizeMb = bytesToMegabytes(sizeInBytes);
+            }
+
+            imLayout(c, COL); imFlex(c); imScrollOverflow(c, true); {
+                imLayout(c, BLOCK); {
+                    elSetStyle(c, "userSelect", "none");
+                    imStr(c, s.sizeMb.toPrecision(3));
+                    imStr(c, "mb");
+                } imLayoutEnd(c);
+                imLayout(c, BLOCK); imFlex(c); {
+                    elSetStyle(c, "wordBreak", "break-all");
+                    imStr(c, s.serializedJson);
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
+            if (imButtonIsClicked(c, s.buttonText)) {
+                copyToClipboard(s.serializedJson)
+                    .then(() => {
+                        s.buttonText = "Copied " + s.sizeMb.toPrecision(3) + "mb of JSON!";
+                        setTimeout(() => s.buttonText = "Copy to clipboard", 2000);
+                    })
+                    .catch(e => console.error(e));
+            }
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
+}
+
+function imImportModal(
+    c: ImCache,
+    ctx: GlobalContext,
+) {
+    imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+        imLayout(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
+            let s; s = imGetInline(c, imExportModal) ?? imSet(c, {
+                importJson: "",
+                nameOverride: "",
+            });
+
+            if (imMemo(c, true)) {
+                s.importJson = "";
+            }
+
+            imLayout(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+                imStr(c, "Data to import:");
+            } imLayoutEnd(c);
+            imLayout(c, COL); imFlex(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+                const [, textArea] = imTextAreaBegin(c, {
+                    value: s.importJson,
+                    placeholder: "Paste in the JSON you exported"
+                }); {
+                    const input = imOn(c, EV_INPUT);
+                    if (input) {
+                        s.importJson = textArea.value;
+                    }
+                } imTextAreaEnd(c);
+            } imLayoutEnd(c);
+            imLayout(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+                imStr(c, "New name (optional):");
+            } imLayoutEnd(c);
+            imLayout(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+                const input = imTextInputBegin(c, {
+                    value: s.nameOverride,
+                    placeholder: "Provide a new name here"
+                }); {
+                    const ev = imOn(c, EV_INPUT);
+                    if (ev) {
+                        s.nameOverride = input.root.value;
+                    }
+                } imTextInputEnd(c);
+            } imLayoutEnd(c);
+            if (imButtonIsClicked(c, "Import")) {
+            }
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
 }

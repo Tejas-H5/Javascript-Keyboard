@@ -101,7 +101,7 @@ export function newGlobalContext(saveState: SavedState) {
 
     setCurrentChart(ctx, ctx.sequencer._currentChart);
 
-    ctx.sequencer.cursor = ctx.sequencer._currentChart.cursorStart;
+    ctx.sequencer.cursor = ctx.sequencer._currentChart.cursor;
 
     return ctx;
 }
@@ -134,10 +134,10 @@ export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
 
 export function setCurrentChart(ctx: GlobalContext, chart: SequencerChart) {
     const sequencer = ctx.sequencer;
-    sequencer._currentChart.cursorStart = sequencer.cursor;
+    sequencer._currentChart.cursor = sequencer.cursor;
 
     sequencer._currentChart = chart;
-    sequencer.cursor = chart.cursorStart;
+    sequencer.cursor = chart.cursor;
     sortAndIndexTimeline(sequencer._currentChart);
 
     assert(ctx.savedState.userCharts.indexOf(chart) !== -1);
