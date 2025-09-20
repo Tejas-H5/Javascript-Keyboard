@@ -43,7 +43,9 @@ import { APP_VIEW_PLAY_CHART } from "src/state/ui-state";
 import { filterInPlace } from "src/utils/array-utils";
 import {
     ImCache,
+    imEndFor,
     imEndIf,
+    imFor,
     imIf
 } from "src/utils/im-core";
 import {
@@ -60,6 +62,7 @@ import {
     setViewChartSelect,
     undoSequencerEdit
 } from "./app";
+import { runCancellableAsyncFn } from "src/utils/promise-utils";
 
 const OVERPLAY_MS = 1000;
 
@@ -412,8 +415,8 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
     const { ui } = ctx;
 
     const loadSaveModal = ui.loadSave.modal;
-    const currentChart = ui.chartSelect.currentChart.valOrLoading;
-    const currentChartMetadata = ui.chartSelect.currentChartMetadata;
+    const chartSelect = ui.chartSelect;
+    const currentChart = chartSelect.currentChart;
 
     imLayout(c, COL); imSize(c, 33, PERCENT, 0, NA); imAlign(c, STRETCH); {
         imLayout(c, BLOCK); {
@@ -452,13 +455,17 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
                 key === "Delete"
             ) {
                 // Optimistic deletion
-                filterInPlace(
-                    ctx.ui.chartSelect.loadedChartMetadata.val,
-                    (metadata) => metadata !== currentChartMetadata
-                );
+                {
+                    filterInPlace(
+                        chartSelect.availableCharts,
+                        (metadata) => !metadata.id || metadata.id !== currentChart.id
+                    );
 
-                getChartRepository()
-                    .then(repo => deleteChart(repo, currentChart))
+                    runCancellableAsyncFn(deleteChart, async (task) => {
+                        const repo = await getChartRepository(); if (task.done) return;
+                        await deleteChart(repo, currentChart);
+                    });
+                }
 
                 handled = true;
             } else if (keyUpper === "R") {
@@ -476,11 +483,10 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
     }
 
 
-    return;
-
+    // const currentCharts = imGetOrLoadCurrentChart(c, ctx);
 
     // imLayout(c, COL); imSize(c, 33, PERCENT, 0, NA); imAlign(c, STRETCH); {
-    //     imFor(c); for (let i = 0; i <= ctx.savedState.userCharts.length; i++) {
+    //     imFor(c); for (let i = 0; i <= currentCharts.length; i++) {
     //         imLayout(c, ROW); {
     //             const chart = i < ctx.savedState.userCharts.length ? ctx.savedState.userCharts[i] : null;
     //             const isFocused = i === loadSaveModal.idx;

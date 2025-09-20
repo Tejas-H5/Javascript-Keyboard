@@ -2,36 +2,33 @@ import { imButtonIsClicked } from "src/components/button";
 import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
-import { getChartRepository, getSavedChartData } from "src/state/chart-repository";
+import { getChartRepository, getSavedChartFull } from "src/state/chart-repository";
 import { InstrumentKey } from "src/state/keyboard-state";
-import { getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
+import { CHART_STATUS_BUNDLED, getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
 import { setSequencerChart } from "src/state/sequencer-state";
-import { arrayAt } from "src/utils/array-utils";
+import { ChartSelectState } from "src/state/ui-state";
 import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax } from "src/utils/math-utils";
+import { runCancellableAsyncFn } from "src/utils/promise-utils";
 import { GlobalContext, playKeyPressForUI, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
 import { cssVarsApp } from "./styling";
-import { loadAsyncVal } from "src/utils/promise-utils";
 
 function handleChartSelectKeyDown(
     ctx: GlobalContext,
-    currentChart: SequencerChart | null
+    s: ChartSelectState
 ): boolean {
     if (!ctx.keyPressState) return false;
 
     const { key, keyUpper, listNavAxis } = ctx.keyPressState;
 
-    const ui = ctx.ui.chartSelect;
-    const loadedCharts = ui.loadedChartMetadata.val;
-
-    if (ui.idx >= loadedCharts.length) {
-        ui.idx = loadedCharts.length - 1;
+    if (s.idx >= s.availableCharts.length) {
+        s.idx = s.availableCharts.length - 1;
     }
 
-    if (currentChart && keyUpper === "E") {
-        setViewEditChart(ctx, currentChart);
+    if (s.currentChart && keyUpper === "E") {
+        setViewEditChart(ctx, s.currentChart);
         return true;
     }
 
@@ -40,12 +37,12 @@ function handleChartSelectKeyDown(
         return true;
     }
 
-    if (currentChart && key === "Enter") {
-        setSequencerChart(ctx.sequencer, currentChart);
-        if (currentChart.timeline.length === 0) {
-            setViewEditChart(ctx, currentChart);
+    if (s.currentChart && key === "Enter") {
+        setSequencerChart(ctx.sequencer, s.currentChart);
+        if (s.currentChart.timeline.length === 0) {
+            setViewEditChart(ctx, s.currentChart);
         } else {
-            setViewPlayCurrentChart(ctx, currentChart);
+            setViewPlayCurrentChart(ctx, s.currentChart);
         }
         return true;
     }
@@ -55,38 +52,44 @@ function handleChartSelectKeyDown(
         return true;
     }
 
-    if (listNavAxis !== 0 && loadedCharts.length > 0) {
+    if (listNavAxis !== 0 && s.availableCharts.length > 0) {
         // We need to update the modal index too. because that used to be our source of truth xD
-        setCurrentChartIdx(ctx, ui.idx + listNavAxis);
+        setCurrentChartIdx(ctx, s.idx + listNavAxis);
     }
 
     return false;
 }
 
-function imGetOrLoadCurrentChart(c: ImCache, ctx: GlobalContext) {
-    const ui = ctx.ui.chartSelect;
-    const loadedCharts = ui.loadedChartMetadata.val;
-    const currentChartMetadata = arrayAt(loadedCharts, ui.idx);
-    const currentChart = ui.currentChart.valOrLoading;
+export function reloadChartDataAsync(c: ChartSelectState) {
+    if (c.idx < 0 || c.idx >= c.availableCharts.length) return;
 
-    if (imMemo(c, currentChartMetadata) && currentChartMetadata) {
-        loadAsyncVal(ui.currentChart, 
-            getChartRepository()
-                .then(repo => getSavedChartData(repo, currentChartMetadata))
-        );
+    const currentChartMeta = c.availableCharts[c.idx];
+    if (c.currentChart) {
+        if (c.currentChart.id === currentChartMeta.id) return;
+        if (
+            c.currentChart._status === CHART_STATUS_BUNDLED && currentChartMeta.bundled && 
+            c.currentChart.name === currentChartMeta.name
+        ) {
+            return;
+        } 
     }
 
-    return currentChart;
+    runCancellableAsyncFn(getSavedChartFull, async (task) => {
+        const repo = await getChartRepository();                       if (task.done) return;
+        const chart = await getSavedChartFull(repo, currentChartMeta); if (task.done) return;
+        c.currentChart = chart;
+    });
 }
 
 export function imChartSelect(c: ImCache, ctx: GlobalContext) {
-    const ui = ctx.ui.chartSelect;
-    const loadedCharts = ui.loadedChartMetadata.val;
-    const currentChartMetadata = arrayAt(loadedCharts, ui.idx);
-    const currentChart = imGetOrLoadCurrentChart(c, ctx);
+    const s = ctx.ui.chartSelect;
 
     if (!ctx.handled) {
-        ctx.handled = handleChartSelectKeyDown(ctx, currentChart);
+        ctx.handled = handleChartSelectKeyDown(ctx, s);
+    }
+
+    if (imMemo(c, s.idx)) {
+        reloadChartDataAsync(s);
     }
 
     const keyPressState = ctx.keyPressState;
@@ -116,16 +119,16 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
         imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
             imLayout(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX); {
                 const scrollContainer = imLayout(c, COL); imFlex(c); imScrollOverflow(c, true); {
-                    if (imIf(c) && loadedCharts.length > 0) {
-                        imFor(c); for (let i = 0; i < loadedCharts.length; i++) {
-                            const chart = loadedCharts[i];
+                    if (imIf(c) && s.availableCharts.length > 0) {
+                        imFor(c); for (let i = 0; i < s.availableCharts.length; i++) {
+                            const chart = s.availableCharts[i];
 
                             const root = imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
                                 if (elHasMouseOver(c)) {
-                                    ui.idx = i;
+                                    s.idx = i;
                                 }
 
-                                const chartSelected = ui.idx === i;
+                                const chartSelected = s.idx === i;
                                 const chartSelectedChanged = imMemo(c, chartSelected);
                                 if (chartSelectedChanged && chartSelected) {
                                     scrollIntoViewVH(scrollContainer, root, 0.5);
@@ -139,33 +142,41 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                 imFg(c, chartSelected ? cssVars.bg : "");
 
                                 imStr(c, chart.name);
-                                if (currentChart && elHasMousePress(c)) {
-                                    setViewPlayCurrentChart(ctx, currentChart);
+                                if (s.currentChart && elHasMousePress(c)) {
+                                    setViewPlayCurrentChart(ctx, s.currentChart);
                                 }
                             } imLayoutEnd(c);
                         } imForEnd(c);
                     } else {
                         imIfElse(c);
                         imLayout(c, BLOCK); {
-                            imStr(c, "No songs yet! You'll need to make some yourself");
+                            // We have react-suspense at home. xD
+                            // Actually we don't. I'm pretty sure it can be done though, but prob not worth the effort yet.
+                            // It is a combination of pushing promises onto a global state stack,
+                            // and then rendering the loading component to a background node while we evaluate the promises,
+                            // and then switch the fallback out with the final component once the promises have loaded.
+                            // I simply can't be bothered implementing it because I don't need it.
+                            // The API would be similar to imIf()/imIfElse()/imIfEnd() but without
+                            // an actual if statement. 
+                            imStr(c, "Loading...");
                         } imLayoutEnd(c);
                     } imIfEnd(c);
                 } imLayoutEnd(c);
                 imLayout(c, ROW); imGap(c, 5, PX); {
 
-                    if (imIf(c) && currentChart) {
-                        if (imIf(c) && currentChart.timeline.length === 0) {
+                    if (imIf(c) && s.currentChart) {
+                        if (imIf(c) && s.currentChart.timeline.length === 0) {
                             imStr(c, "Empty chart");
                         } else {
                             imIfElse(c);
 
                             if (imButtonIsClicked(c, "Play")) {
-                                setViewPlayCurrentChart(ctx, currentChart);
+                                setViewPlayCurrentChart(ctx, s.currentChart);
                             }
                         } imIfEnd(c);
 
                         if (imButtonIsClicked(c, "Edit")) {
-                            setViewEditChart(ctx, currentChart);
+                            setViewEditChart(ctx, s.currentChart);
                         }
                     } else {
                         imIfElse(c);
@@ -190,19 +201,17 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
 
             imLine(c, LINE_VERTICAL, 1);
 
-            if (imIf(c) && currentChart) {
+            if (imIf(c) && s.currentChart) {
                 imLayout(c, COL); imFlex(c); {
-                    if (imIf(c) && currentChartMetadata) {
-                        imEl(c, EL_H2); {
-                            imLayout(c, ROW); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                                imLayout(c, ROW); imFlex(c, 7); imJustify(c); {
-                                    imStr(c, currentChartMetadata.name);
-                                } imLayoutEnd(c);
+                    imEl(c, EL_H2); {
+                        imLayout(c, ROW); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+                            imLayout(c, ROW); imFlex(c, 7); imJustify(c); {
+                                imStr(c, s.currentChart.name);
                             } imLayoutEnd(c);
-                        } imElEnd(c, EL_H2);
-                    } imIfEnd(c);
+                        } imLayoutEnd(c);
+                    } imElEnd(c, EL_H2);
 
-                    imChartStatistics(c, ctx, currentChart);
+                    imChartStatistics(c, ctx, s.currentChart);
                 } imLayoutEnd(c);
             } else {
                 imIfElse(c);

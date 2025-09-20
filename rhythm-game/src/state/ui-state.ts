@@ -1,7 +1,6 @@
-import { newChart, SequencerChart, TimelineItem } from "src/state/sequencer-chart";
+import { SequencerChart, TimelineItem } from "src/state/sequencer-chart";
 import { GameplayState } from "src/views/gameplay";
 import { SequencerChartMetadata } from "./chart-repository";
-import { AsyncValue, newAsyncValue } from "src/utils/promise-utils";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -15,16 +14,21 @@ export type AppView = typeof APP_VIEW_STARTUP |
     typeof APP_VIEW_EDIT_CHART |
     typeof APP_VIEW_SOUND_LAB;
 
+export type ChartSelectState = {
+    loading: boolean;
+    loadCounter: number;
+
+    availableCharts: SequencerChartMetadata[];
+    idx: number;
+
+    // Needs to be loaded in
+    currentChart: SequencerChart | null;
+}
+
 export type UIState = {
     currentView: AppView;
 
-    chartSelect: {
-        // TODO: sorting
-        loadedChartMetadata: AsyncValue<SequencerChartMetadata[]>;
-        currentChartMetadata: SequencerChartMetadata | null;
-        currentChart: AsyncValue<SequencerChart>;
-        idx: number;
-    },
+    chartSelect: ChartSelectState;
 
     loadSave: {
         saveStateTimeout: number;
@@ -55,10 +59,12 @@ export function newUiState(): UIState {
         currentView: APP_VIEW_STARTUP,
 
         chartSelect: {
-            loadedChartMetadata: newAsyncValue([], null),
-            currentChartMetadata: null,
-            currentChart: newAsyncValue(newChart("First chart"), null),
+            loading: false,
+            loadCounter: 0,
+
+            availableCharts: [],
             idx: 0,
+            currentChart: null,
         },
 
         loadSave: {

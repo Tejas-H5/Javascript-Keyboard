@@ -31,7 +31,7 @@ import { ImCache, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
 import { clamp } from "src/utils/math-utils";
-import { loadAsyncVal } from "src/utils/promise-utils";
+import { runCancellableAsyncFn } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
@@ -119,7 +119,7 @@ export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
     ctx.ui.chartSelect.idx = clamp(
         i,
         0,
-        ctx.ui.chartSelect.loadedChartMetadata.val.length - 1
+        ctx.ui.chartSelect.availableCharts.length - 1
     );
 }
 
@@ -258,12 +258,14 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             case APP_VIEW_CHART_SELECT: {
                 editView.lastCursor = 0;
 
-                loadAsyncVal(
-                    chartSelect.loadedChartMetadata,
-                    getChartRepository()
-                        .then(repo => getSavedChartsMetadata(repo))
-                        .then(charts => charts.sort((a, b) => a.name.localeCompare(b.name))) // TODO: sort by difficulty
-                );
+                runCancellableAsyncFn(getSavedChartsMetadata, async (task) => {
+                    const repo = await getChartRepository();           if (task.done) return;
+                    const charts = await getSavedChartsMetadata(repo); if (task.done) return;
+
+                    charts.sort((a, b) => a.name.localeCompare(b.name));
+                    chartSelect.availableCharts = charts;
+                });
+
             } break;
             case APP_VIEW_PLAY_CHART: {
                 let startFrom = editView.lastCursor;

@@ -750,6 +750,10 @@ export type ImMemoResult
  * NOTE: NaN !== NaN. So your memo will fire every frame. 
  * I'm still diliberating on how to handle this.
  * For now, you can handle it.
+ *
+ * NOTE: All 'responding to state changing' in your app can be done via imMemo. 
+ * However, in many cases it can be better to simply do the thing
+ * whenever you yourself set this state.
  */
 export function imMemo(c: ImCache, val: unknown): ImMemoResult {
     /**

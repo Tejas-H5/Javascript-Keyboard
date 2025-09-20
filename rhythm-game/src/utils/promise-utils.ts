@@ -1,66 +1,92 @@
-export type AsyncValue<T, L = null> = {
-    val: T;
-    err: Error | null;
-    valOrLoading: T | L;
-    errOrLoading: Error | L;
-    loading: boolean;
-    loadCounter: 0,
-};
+// I am not a fan of async-await for various reasons. Main reasons:
+// - Makes async code look like synchronous code - obfuscates the true nature of the code, which leads to incorrect assumptions about what it does.
+// - The `async` keyword propagates it's usage up function calls, turning otherwise simple and easy to debug sync functions into async ones.
+//
+// I am also not a fan of async programming in general. 
+// As soon as your code or data becomes 'async', the complexity can massively go up if not handled correctly.
+// Sometimes the performance boost is worth it, and other times, you are doing web stuff or integrating with async APIs, so you
+// are forced to uose it.
+//
+// One such complexity is that if I have a list of metadata for posts, and I only want to fetch the actual post when I 
+// scroll to it, for example - depending on the size of the posts, it may take a different amount of time for each request to resolve.
+// Your code then needs some way to discard/cancel the 'old' request before it sends out another one, so that we
+// don't end up with:
+//
+// fetch post 1
+// fetch post 2
+// update store to contain post 2 
+// update store to contain post 1
+//
+// Promises don't have any notion of 'cancellation', so you will need to build this in yourself somehow. 
+// Maybe promise.race([a, b]) can work, if promise a is the request, and b is something that resolves when we call cancel() on some wrapper object
+// manually. But the code you wrote in the first branch still churning along. How do you get the remaining steps in the pipeline to automatically
+// stop/early return without just checking for a cancelled variable after every `await` instruction? 
+//
+// I was trying to code a Promise wrapper that would respect ordering of requests somehow, but 
+// I'm just not able to get the types to work. I've settled on something simpler.
 
-export function newAsyncValue<T, L>(initialValue: T, loadingValue: L): AsyncValue<T, L> {
-    return {
-        val: initialValue,
-        err: null,
-        valOrLoading: loadingValue,
-        errOrLoading: loadingValue,
-        loading: false,
-        loadCounter: 0,
-    };
+let taskId = 0;
+const taskMap = new Map<any, Task>();
+
+class Task {
+    done = false;
+
+    constructor(
+        public readonly key: any,
+        public readonly taskId: number,
+    ) {
+    }
+
+    // A task can be 'completed' whenever we no longer care about it's results.
+    // This is because 
+    // a) it's been cancelled
+    // b) superceeded by another request
+    // c) has completed successfuly and ran all the way through
+    complete() {
+        this.done = true;
+        taskMap.delete(this.taskId);
+    }
 }
 
-export async function loadAsyncVal<T>(
-    asyncVal: AsyncValue<T>,
-    promiseToUse: Promise<T>,
-) {
-    asyncVal.loadCounter++;
-    const thisLoad = asyncVal.loadCounter;
+export function getTask(key: any): Task | undefined {
+    return taskMap.get(key);
+}
 
-    asyncVal.loading = true;
-    // Don't clear out .err
-    asyncVal.errOrLoading = null;
-    asyncVal.valOrLoading = null;
+export function getOrCreateTask(key: any): Task {
+    const block = taskMap.get(key);
+    if (block) {
+        block.complete();
+    }
 
-    const returnPromise = promiseToUse
-        .then(val => {
-            if (asyncVal.loadCounter === thisLoad) {
-                asyncVal.val = val;
-                asyncVal.valOrLoading = val;
-                asyncVal.err = null;
-                asyncVal.errOrLoading = null;
-            } else {
-                console.log("Promise dropped!");
-            }
-        })
+    const newTaskId = taskId++;
+    const taskInfo = new Task(key, newTaskId);
+    return taskInfo;
+}
 
-    returnPromise
-        .catch(err => {
-            if (asyncVal.loadCounter === thisLoad) {
-                // Don't clear out prev. value
-                asyncVal.err = err;
-                asyncVal.errOrLoading = err;
-                asyncVal.valOrLoading = null;
-                console.error("An error occured loading this async value", err);
-            } else {
-                console.error("An error occured loading this promise (but this promise was dropped!) ", err);
-            }
-        })
-        .finally(() => {
-            if (asyncVal.loadCounter === thisLoad) {
-                asyncVal.loading = false;
-            } else {
-                console.log("Promise dropped!");
-            }
-        });
+export function isTaskIdValidForKey(taskId: number, key: any) {
+    return taskMap.get(key)?.taskId === taskId;
+} 
 
-    return returnPromise;
+export function clearTaskIdForKey(taskId: number, key: any) {
+    if (isTaskIdValidForKey(key, taskId)) {
+        taskMap.delete(key);
+    }
+}
+
+export function getAllTasks() {
+    return taskMap;
+}
+
+// `key` is just any value that is unique to this particular action.
+// It's kinda like react-query, but also like Java where you can synchronize on random objects you have lying around
+export async function runCancellableAsyncFn(key: any, fn: (taskInfo: Task) => Promise<void>) {
+    const task = getOrCreateTask(key);
+
+    try { 
+        await fn(task);
+    } catch (err) {
+        console.error("An error occured in a cancellable async function: ", key, err);
+    }
+
+    task.complete();
 }

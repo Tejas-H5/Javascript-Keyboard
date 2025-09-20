@@ -76,7 +76,7 @@ export async function getSavedChartsMetadata(
     return items;
 }
 
-export async function getSavedChartData(
+export async function getSavedChartFull(
     r: ChartRepository,
     meta: SequencerChartMetadata,
     tx?: ReadTx,
