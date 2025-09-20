@@ -11,12 +11,14 @@ import {
     getItemStartTime,
     getTimeForBeats,
     itemEnd,
+    newChart,
     newTimelineItemNote,
     NoteItem,
     SequencerChart,
     sequencerChartInsertItems,
     sequencerChartRemoveItems,
     sequencerChartShiftItems,
+    sortAndIndexTimeline,
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
@@ -24,7 +26,7 @@ import {
     TimelineItemBpmChange,
     transposeItems,
 } from "src/state/sequencer-chart";
-import { assert, unreachable } from "src/utils/assert";
+import { unreachable } from "src/utils/assert";
 
 export const SEQUENCER_ROW_COLS = 8;
 
@@ -256,9 +258,9 @@ export function isItemPlaying(state: SequencerState, item: TimelineItem): boolea
     return getItemStartTime(item) <= currentTime && currentTime <= getItemEndTime(item);
 }
 
-export function newSequencerState(currentChart: SequencerChart): SequencerState {
+export function newSequencerState(): SequencerState {
     const sequencer: SequencerState = {
-        _currentChart: currentChart,
+        _currentChart: newChart("Sequencer default chart"),
         _trackIdx: 0,
         _timelineTempBuffer: [],
         _nonOverlappingItems: [],
@@ -610,4 +612,9 @@ export function transposeSelectedItems(s: SequencerState, halfSteps: number) {
     transposeItems(s._currentChart, s.notesFilter, startIdx, endIdx, halfSteps);
 }
 
-
+export function setSequencerChart(sequencer: SequencerState, chart: SequencerChart) {
+    sequencer._currentChart.cursor = sequencer.cursor;
+    sequencer._currentChart = chart;
+    sequencer.cursor = chart.cursor;
+    sortAndIndexTimeline(sequencer._currentChart);
+}

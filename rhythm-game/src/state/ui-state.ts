@@ -1,5 +1,7 @@
-import { SequencerChart, TimelineItem } from "src/state/sequencer-chart";
+import { newChart, SequencerChart, TimelineItem } from "src/state/sequencer-chart";
 import { GameplayState } from "src/views/gameplay";
+import { SequencerChartMetadata } from "./chart-repository";
+import { AsyncValue, newAsyncValue } from "src/utils/promise-utils";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -17,8 +19,10 @@ export type UIState = {
     currentView: AppView;
 
     chartSelect: {
-        // A sorted lists of charts
-        loadedCharts: SequencerChart[];
+        // TODO: sorting
+        loadedChartMetadata: AsyncValue<SequencerChartMetadata[]>;
+        currentChartMetadata: SequencerChartMetadata | null;
+        currentChart: AsyncValue<SequencerChart>;
         idx: number;
     },
 
@@ -27,7 +31,6 @@ export type UIState = {
 
         modal: {
             open: boolean;
-            idx: number;
             isRenaming: boolean;
         }
     }
@@ -52,7 +55,9 @@ export function newUiState(): UIState {
         currentView: APP_VIEW_STARTUP,
 
         chartSelect: {
-            loadedCharts: [],
+            loadedChartMetadata: newAsyncValue([], null),
+            currentChartMetadata: null,
+            currentChart: newAsyncValue(newChart("First chart"), null),
             idx: 0,
         },
 
@@ -62,7 +67,6 @@ export function newUiState(): UIState {
             modal: {
                 isRenaming: false,
                 open: false,
-                idx: 0,
             }
         },
 

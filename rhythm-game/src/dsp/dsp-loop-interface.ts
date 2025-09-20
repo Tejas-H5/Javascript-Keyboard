@@ -175,7 +175,6 @@ export async function initDspLoopInterface({
     // URL.revokeObjectURL(url);
     const dspLoopNode = new AudioWorkletNode(audioCtx, "dsp-loop");
     dspLoopNode.onprocessorerror = (e) => {
-        // @ts-expect-error it does exist tho
         const message = e.message;
         console.error("dsp process error:", message, e);
     }

@@ -1,18 +1,18 @@
 import { arrayAt, filterInPlace, findLastIndexOf } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { beatsToMs, msToBeats } from "src/utils/music-theory-utils";
-import { getMusicNoteText } from "./keyboard-state";
-import { removeDocumentAndWindowEventListeners } from "src/utils/im-dom";
 import { numbersToVariableLengthBase64, variableLengthBase64ToNumbers } from "src/utils/vlbase64";
+import { getMusicNoteText } from "./keyboard-state";
 
 export type SequencerChart = {
+    id: number;
     name: string;
     cursor: number;
 
     // NOTE: do not mutate the notes directly. Instead, remove, deep-copy, and insert the notes
     timeline: TimelineItem[];
 
-
+    _status: SequencerChartStatus;
     _lastUpdated: number;
     _tempBuffer: TimelineItem[];
     _undoBuffer: { 
@@ -22,8 +22,18 @@ export type SequencerChart = {
     },
 };
 
+export const CHART_STATUS_UNSAVED = 0;
+export const CHART_STATUS_SAVED   = 1;
+export const CHART_STATUS_BUNDLED = 2;
+
+export type SequencerChartStatus 
+    = typeof CHART_STATUS_UNSAVED 
+    | typeof CHART_STATUS_SAVED   
+    | typeof CHART_STATUS_BUNDLED ;
+
 // A compressed char that aims to minimize it's size when saved as JSON
 export type SequencerChartCompressed = {
+    i: number; // SequencerChart.id,
     n: string; // SequencerChart.name,
     c: number; // SequencerChart.cursor,
     t: string; // SequencerChart.timeline
@@ -39,10 +49,12 @@ type TimelineMutation = {
 
 export function newChart(name: string = ""): SequencerChart {
     return {
+        id: -1,
         name,
         timeline: [],
         cursor: 0,
 
+        _status: CHART_STATUS_UNSAVED,
         _lastUpdated: 0,
         _tempBuffer: [],
         _undoBuffer: { items: [], idx: -1, enabled: true }
@@ -765,11 +777,11 @@ export function timelineItemToString<T extends TimelineItem>(item: T): string {
 export function chartToCompressed(chart: SequencerChart): SequencerChartCompressed {
     const timelineAsNumbers = timelineToNumbers(chart.timeline);
     return {
+        i: chart.id,
         n: chart.name,
         c: chart.cursor,
         t: numbersToVariableLengthBase64(timelineAsNumbers),
     };
-
 }
 
 export function chartFromCompressed(compressed: SequencerChartCompressed): SequencerChart {

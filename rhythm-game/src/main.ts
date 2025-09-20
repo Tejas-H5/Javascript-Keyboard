@@ -1,15 +1,15 @@
 import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
+import { getAllBundledCharts } from "./assets/bundled-charts";
 import { BLOCK, imLayout, imLayoutEnd } from "./components/core/layout";
 import { fpsMarkRenderingEnd, fpsMarkRenderingStart, newFpsCounterState } from "./components/fps-counter";
-import { TEST_EDIT_VIEW, TEST_CHART, TEST_GAMEPLAY, TEST_CHART_SELECT_VIEW } from "./debug-flags";
+import { TEST_CHART_SELECT_VIEW, TEST_EDIT_VIEW, TEST_GAMEPLAY } from "./debug-flags";
 import { loadSaveState } from "./state/loading-saving-charts";
-import { getChart } from "./state/saved-state";
 import { syncPlayback } from "./state/sequencer-state";
 import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
 import { ImCache, imCacheBegin, imCacheEnd, imCatch, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import { imApp, newGlobalContext, setCurrentChart, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
+import { imApp, newGlobalContext, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
 
 const saveState = loadSaveState();
 const globalContext = newGlobalContext(saveState);
@@ -89,14 +89,13 @@ initCssbStyles();
         TEST_GAMEPLAY ||
         TEST_CHART_SELECT_VIEW
     ) {
-        const chart = getChart(globalContext.savedState, TEST_CHART);
+        const chart = getAllBundledCharts().find(c => c.name);
         assert(!!chart);
-        setCurrentChart(globalContext, chart);
 
         if (TEST_EDIT_VIEW) {
-            setViewEditChart(globalContext);
+            setViewEditChart(globalContext, chart);
         } else if (TEST_GAMEPLAY) {
-            setViewPlayCurrentChart(globalContext);
+            setViewPlayCurrentChart(globalContext, chart);
         } else if (TEST_CHART_SELECT_VIEW) {
             setViewChartSelect(globalContext);
         }

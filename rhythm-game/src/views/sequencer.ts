@@ -277,7 +277,6 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 imStr(c, "Currently editing ");
                 imEl(c, EL_I); {
                     imStr(c, sequencer._currentChart.name);
-                    assert(ctx.savedState.userCharts.indexOf(sequencer._currentChart) !== -1);
                 } imElEnd(c, EL_I);
                 imStr(c, "");
             } imElEnd(c, EL_B);

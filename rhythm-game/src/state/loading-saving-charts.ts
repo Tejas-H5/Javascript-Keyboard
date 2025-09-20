@@ -1,19 +1,6 @@
-import { unreachable } from "src/utils/assert";
 import { autoMigrate, recursiveCloneNonComputedFields } from "src/utils/serialization-utils";
 import { GlobalContext } from "src/views/app";
-import {
-    newChart,
-    newTimelineItemBpmChangeDefault,
-    newTimelineItemMeasureDefault,
-    newTimelineItemNoteDefault,
-    NoteItem,
-    TIMELINE_ITEM_BPM,
-    TIMELINE_ITEM_MEASURE,
-    TIMELINE_ITEM_NOTE
-} from "src/state/sequencer-chart";
 import { newSavedState, SavedState } from "./saved-state";
-import { Sample } from "src/assets/samples/all-samples";
-import { sampleToNoteIdx } from "./keyboard-state";
 
 const SAVED_STATE_KEY = "rhythmGameSavedState";
 
@@ -27,6 +14,9 @@ export function loadSaveState(): SavedState {
 
     loadedState = autoMigrate(loadedState, newSavedState);
 
+    // loadedState.userCharts = [];
+
+    /**
     for (let i = 0; i < loadedState.userCharts.length; i++) {
         let chart = loadedState.userCharts[i];
         chart = autoMigrate(chart, newChart);
@@ -64,16 +54,16 @@ export function loadSaveState(): SavedState {
             }
         }
     }
+    */
 
-    if (loadedState.userCharts.length === 0) {
-        // TODO: insert premade charts here.
-    }
+    // if (loadedState.userCharts.length === 0) {
+    //     // TODO: insert premade charts here.
+    // }
 
     return loadedState;
 }
 
 export function saveAllState(ctx: GlobalContext) {
-    return;
     const { savedState } = ctx;
     const serialzed = recursiveCloneNonComputedFields(savedState);
 

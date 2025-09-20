@@ -2,6 +2,7 @@ import { COL, imFixed, imLayout, imLayoutEnd, PX } from "src/components/core/lay
 import { FpsCounterState } from "src/components/fps-counter";
 import { TEST_RESULTS_VIEW } from "src/debug-flags";
 import { releaseAllKeys, releaseKey, schedulePlayback, setScheduledPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { getChartRepository, getSavedChartsMetadata } from "src/state/chart-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     saveStateDebounced,
@@ -11,8 +12,6 @@ import {
     stopPlaying
 } from "src/state/playing-pausing";
 import {
-    getChartIdx,
-    getOrCreateCurrentChart,
     SavedState
 } from "src/state/saved-state";
 import {
@@ -21,19 +20,18 @@ import {
     redoEdit,
     SequencerChart,
     sequencerChartInsertItems,
-    sortAndIndexTimeline,
     TIMELINE_ITEM_MEASURE,
     undoEdit
 } from "src/state/sequencer-chart";
-import { newSequencerState, SequencerState } from "src/state/sequencer-state";
+import { newSequencerState, SequencerState, setSequencerChart } from "src/state/sequencer-state";
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
 import { filterInPlace } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
 import { ImCache, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
 import { clamp } from "src/utils/math-utils";
+import { loadAsyncVal } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
@@ -83,14 +81,14 @@ export type GlobalContext = {
 };
 
 export function newGlobalContext(saveState: SavedState) {
-    const firstChart = getOrCreateCurrentChart(saveState);
+    // const firstChart = getOrCreateCurrentChart(saveState);
 
     const keyboard = newKeyboardState();
 
     const ctx: GlobalContext = {
         keyboard,
         allKeysState: newAllKeysState(),
-        sequencer: newSequencerState(firstChart),
+        sequencer: newSequencerState(),
         ui: newUiState(),
         savedState: saveState,
         keyPressState: null,
@@ -99,7 +97,7 @@ export function newGlobalContext(saveState: SavedState) {
         handled: false,
     };
 
-    setCurrentChart(ctx, ctx.sequencer._currentChart);
+    setSequencerChart(ctx.sequencer, ctx.sequencer._currentChart);
 
     ctx.sequencer.cursor = ctx.sequencer._currentChart.cursor;
 
@@ -118,56 +116,15 @@ export function playKeyPressForUI(ctx: GlobalContext, key: InstrumentKey) {
 }
 
 export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
-    const loadSaveModal = ctx.ui.loadSave.modal;
-    loadSaveModal.idx = clamp(i, 0, ctx.savedState.userCharts.length);
-
-    if (loadSaveModal.idx >= ctx.savedState.userCharts.length) {
-        return;
-    }
-
-    setCurrentChart(ctx, ctx.savedState.userCharts[loadSaveModal.idx]);
-
-    ctx.savedState.lastUserChartIdx = loadSaveModal.idx;
-
-    saveStateDebounced(ctx);
-}
-
-export function setCurrentChart(ctx: GlobalContext, chart: SequencerChart) {
-    const sequencer = ctx.sequencer;
-    sequencer._currentChart.cursor = sequencer.cursor;
-
-    sequencer._currentChart = chart;
-    sequencer.cursor = chart.cursor;
-    sortAndIndexTimeline(sequencer._currentChart);
-
-    assert(ctx.savedState.userCharts.indexOf(chart) !== -1);
-}
-
-export function deleteChart(ctx: GlobalContext, name: string) {
-    const { savedState, sequencer } = ctx;
-
-    let idx = getChartIdx(savedState, name);
-    if (idx === -1) return null;
-
-    savedState.userCharts.splice(idx, 1);
-
-    const loadSaveModal = ctx.ui.loadSave.modal;
-    loadSaveModal.idx = clamp(loadSaveModal.idx, 0, savedState.userCharts.length - 1);
-
-    if (idx === savedState.userCharts.length) {
-        idx--;
-    }
-
-    if (idx < 0) {
-        sequencer._currentChart = getOrCreateCurrentChart(savedState);
-    } else {
-        sequencer._currentChart = savedState.userCharts[idx];
-    }
+    ctx.ui.chartSelect.idx = clamp(
+        i,
+        0,
+        ctx.ui.chartSelect.loadedChartMetadata.val.length - 1
+    );
 }
 
 export function addNewUserChart(ctx: GlobalContext) {
     const result = newChart("new chart");
-    ctx.savedState.userCharts.push(result);
     return result;
 }
 
@@ -249,7 +206,8 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
 }
 
 
-export function setViewEditChart(ctx: GlobalContext) {
+export function setViewEditChart(ctx: GlobalContext, chart: SequencerChart) {
+    setSequencerChart(ctx.sequencer, chart);
     setCurrentView(ctx, APP_VIEW_EDIT_CHART);
 }
 
@@ -257,7 +215,8 @@ export function setViewSoundLab(ctx: GlobalContext) {
     setCurrentView(ctx, APP_VIEW_SOUND_LAB);
 }
 
-export function setViewPlayCurrentChart(ctx: GlobalContext) {
+export function setViewPlayCurrentChart(ctx: GlobalContext, chart: SequencerChart) {
+    setSequencerChart(ctx.sequencer, chart);
     setCurrentView(ctx, APP_VIEW_PLAY_CHART);
 }
 
@@ -298,13 +257,13 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             } break;
             case APP_VIEW_CHART_SELECT: {
                 editView.lastCursor = 0;
-                chartSelect.loadedCharts = [
-                    ...ctx.savedState.userCharts,
-                ];
-                chartSelect.loadedCharts.sort((a, b) => {
-                    // TODO: short by chart difficulty instead
-                    return a.name.localeCompare(b.name);
-                });
+
+                loadAsyncVal(
+                    chartSelect.loadedChartMetadata,
+                    getChartRepository()
+                        .then(repo => getSavedChartsMetadata(repo))
+                        .then(charts => charts.sort((a, b) => a.name.localeCompare(b.name))) // TODO: sort by difficulty
+                );
             } break;
             case APP_VIEW_PLAY_CHART: {
                 let startFrom = editView.lastCursor;

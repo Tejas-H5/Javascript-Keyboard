@@ -1,35 +1,37 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, imFg, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
+import { getChartRepository, getSavedChartData } from "src/state/chart-repository";
 import { InstrumentKey } from "src/state/keyboard-state";
-import { getChartIdx } from "src/state/saved-state";
 import { getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
+import { setSequencerChart } from "src/state/sequencer-state";
 import { arrayAt } from "src/utils/array-utils";
 import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
-import { arrayMax, clamp } from "src/utils/math-utils";
-import { GlobalContext, playKeyPressForUI, setCurrentChart, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
+import { arrayMax } from "src/utils/math-utils";
+import { GlobalContext, playKeyPressForUI, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
 import { cssVarsApp } from "./styling";
+import { loadAsyncVal } from "src/utils/promise-utils";
 
-function handleChartSelectKeyDown(ctx: GlobalContext): boolean {
+function handleChartSelectKeyDown(
+    ctx: GlobalContext,
+    currentChart: SequencerChart | null
+): boolean {
     if (!ctx.keyPressState) return false;
 
     const { key, keyUpper, listNavAxis } = ctx.keyPressState;
 
-    if (ctx.savedState.userCharts.length === 0) {
-        throw new Error("Didn't expect to have zero charts. Developer shipped this game without adding the charts they've made xD");
-    }
-
     const ui = ctx.ui.chartSelect;
+    const loadedCharts = ui.loadedChartMetadata.val;
 
-    if (ui.idx >= ui.loadedCharts.length) {
-        ui.idx = ui.loadedCharts.length - 1;
+    if (ui.idx >= loadedCharts.length) {
+        ui.idx = loadedCharts.length - 1;
     }
-    const currentChart = ui.loadedCharts[ui.idx];
-    if (keyUpper === "E") {
-        setViewEditChart(ctx);
+
+    if (currentChart && keyUpper === "E") {
+        setViewEditChart(ctx, currentChart);
         return true;
     }
 
@@ -38,12 +40,12 @@ function handleChartSelectKeyDown(ctx: GlobalContext): boolean {
         return true;
     }
 
-    if (key === "Enter") {
-        setCurrentChart(ctx, currentChart);
+    if (currentChart && key === "Enter") {
+        setSequencerChart(ctx.sequencer, currentChart);
         if (currentChart.timeline.length === 0) {
-            setViewEditChart(ctx);
+            setViewEditChart(ctx, currentChart);
         } else {
-            setViewPlayCurrentChart(ctx);
+            setViewPlayCurrentChart(ctx, currentChart);
         }
         return true;
     }
@@ -53,28 +55,41 @@ function handleChartSelectKeyDown(ctx: GlobalContext): boolean {
         return true;
     }
 
-    if (listNavAxis !== 0) {
-        ui.idx = clamp(ui.idx + listNavAxis, 0, ui.loadedCharts.length - 1);
-
-        const chart = ui.loadedCharts[ui.idx];
-        const idx = getChartIdx(ctx.savedState, chart.name);
-
+    if (listNavAxis !== 0 && loadedCharts.length > 0) {
         // We need to update the modal index too. because that used to be our source of truth xD
-        setCurrentChartIdx(ctx, idx);
+        setCurrentChartIdx(ctx, ui.idx + listNavAxis);
     }
 
     return false;
 }
 
-export function imChartSelect(c: ImCache, ctx: GlobalContext) {
-    if (!ctx.handled) {
-        ctx.handled = handleChartSelectKeyDown(ctx);
+function imGetOrLoadCurrentChart(c: ImCache, ctx: GlobalContext) {
+    const ui = ctx.ui.chartSelect;
+    const loadedCharts = ui.loadedChartMetadata.val;
+    const currentChartMetadata = arrayAt(loadedCharts, ui.idx);
+    const currentChart = ui.currentChart.valOrLoading;
+
+    if (imMemo(c, currentChartMetadata) && currentChartMetadata) {
+        loadAsyncVal(ui.currentChart, 
+            getChartRepository()
+                .then(repo => getSavedChartData(repo, currentChartMetadata))
+        );
     }
 
+    return currentChart;
+}
+
+export function imChartSelect(c: ImCache, ctx: GlobalContext) {
     const ui = ctx.ui.chartSelect;
+    const loadedCharts = ui.loadedChartMetadata.val;
+    const currentChartMetadata = arrayAt(loadedCharts, ui.idx);
+    const currentChart = imGetOrLoadCurrentChart(c, ctx);
+
+    if (!ctx.handled) {
+        ctx.handled = handleChartSelectKeyDown(ctx, currentChart);
+    }
+
     const keyPressState = ctx.keyPressState;
-    const charts = ui.loadedCharts;
-    const currentChart = arrayAt(ui.loadedCharts, ui.idx);
 
     if (keyPressState) {
         const { vAxis, hAxis, key } = keyPressState;
@@ -101,9 +116,9 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
         imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
             imLayout(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX); {
                 const scrollContainer = imLayout(c, COL); imFlex(c); imScrollOverflow(c, true); {
-                    if (imIf(c) && charts.length > 0) {
-                        imFor(c); for (let i = 0; i < charts.length; i++) {
-                            const chart = charts[i];
+                    if (imIf(c) && loadedCharts.length > 0) {
+                        imFor(c); for (let i = 0; i < loadedCharts.length; i++) {
+                            const chart = loadedCharts[i];
 
                             const root = imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
                                 if (elHasMouseOver(c)) {
@@ -116,10 +131,6 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                     scrollIntoViewVH(scrollContainer, root, 0.5);
                                 }
 
-                                if (chartSelected) {
-                                    setCurrentChart(ctx, chart);
-                                }
-
                                 if (isFirstishRender(c)) {
                                     elSetStyle(c, "transition", "background-color .1s ease, width .1s ease");
                                 }
@@ -128,9 +139,8 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                 imFg(c, chartSelected ? cssVars.bg : "");
 
                                 imStr(c, chart.name);
-                                if (elHasMousePress(c)) {
-                                    setCurrentChart(ctx, chart);
-                                    setViewPlayCurrentChart(ctx);
+                                if (currentChart && elHasMousePress(c)) {
+                                    setViewPlayCurrentChart(ctx, currentChart);
                                 }
                             } imLayoutEnd(c);
                         } imForEnd(c);
@@ -142,6 +152,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                     } imIfEnd(c);
                 } imLayoutEnd(c);
                 imLayout(c, ROW); imGap(c, 5, PX); {
+
                     if (imIf(c) && currentChart) {
                         if (imIf(c) && currentChart.timeline.length === 0) {
                             imStr(c, "Empty chart");
@@ -149,13 +160,19 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                             imIfElse(c);
 
                             if (imButtonIsClicked(c, "Play")) {
-                                setViewPlayCurrentChart(ctx);
+                                setViewPlayCurrentChart(ctx, currentChart);
                             }
                         } imIfEnd(c);
 
                         if (imButtonIsClicked(c, "Edit")) {
-                            setViewEditChart(ctx);
+                            setViewEditChart(ctx, currentChart);
                         }
+                    } else {
+                        imIfElse(c);
+
+                        imLayout(c, BLOCK); {
+                            imStr(c, "Loading....");
+                        } imLayoutEnd(c);
                     } imIfEnd(c);
 
                     imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
@@ -175,17 +192,23 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
 
             if (imIf(c) && currentChart) {
                 imLayout(c, COL); imFlex(c); {
-                    if (imIf(c) && currentChart) {
+                    if (imIf(c) && currentChartMetadata) {
                         imEl(c, EL_H2); {
                             imLayout(c, ROW); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                                 imLayout(c, ROW); imFlex(c, 7); imJustify(c); {
-                                    imStr(c, currentChart.name);
+                                    imStr(c, currentChartMetadata.name);
                                 } imLayoutEnd(c);
                             } imLayoutEnd(c);
                         } imElEnd(c, EL_H2);
                     } imIfEnd(c);
 
                     imChartStatistics(c, ctx, currentChart);
+                } imLayoutEnd(c);
+            } else {
+                imIfElse(c);
+
+                imLayout(c, BLOCK); {
+                    imStr(c, "Loading....");
                 } imLayoutEnd(c);
             } imIfEnd(c);
         } imLayoutEnd(c);

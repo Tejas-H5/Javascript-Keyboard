@@ -120,7 +120,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
             if (ctx.keyPressState.key === "Enter") {
                 // restart this chart
 
-                setViewPlayCurrentChart(ctx);
+                setViewPlayCurrentChart(ctx, ctx.sequencer._currentChart);
             }
         }
     }
