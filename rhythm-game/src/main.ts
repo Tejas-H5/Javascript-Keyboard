@@ -1,15 +1,15 @@
 import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
-import { getAllBundledCharts } from "./assets/bundled-charts";
 import { BLOCK, imLayout, imLayoutEnd } from "./components/core/layout";
 import { fpsMarkRenderingEnd, fpsMarkRenderingStart, newFpsCounterState } from "./components/fps-counter";
-import { TEST_CHART_SELECT_VIEW, TEST_COPY_MODAL, TEST_EDIT_VIEW, TEST_GAMEPLAY } from "./debug-flags";
+import { TEST_CHART, TEST_CHART_SELECT_VIEW, TEST_COPY_MODAL, TEST_EDIT_VIEW, TEST_GAMEPLAY, TEST_LOAD_SAVE } from "./debug-flags";
 import { loadSaveState } from "./state/loading-saving-charts";
 import { syncPlayback } from "./state/sequencer-state";
 import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
 import { ImCache, imCacheBegin, imCacheEnd, imCatch, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import { imApp, newGlobalContext, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
+import { runCancellableAsyncFn } from "./utils/promise-utils";
+import { imApp, loadAvailableChartsAsync, loadCurrentChartAsync, newGlobalContext, openCopyChartModal, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
 
 const saveState = loadSaveState();
 const globalContext = newGlobalContext(saveState);
@@ -90,22 +90,29 @@ initCssbStyles();
         TEST_CHART_SELECT_VIEW ||
         TEST_COPY_MODAL
     ) {
-        const chart = getAllBundledCharts().find(c => c.name);
-        assert(!!chart);
+        runCancellableAsyncFn(imMain, async () => {
+            await loadAvailableChartsAsync(globalContext);
 
-        if (TEST_EDIT_VIEW) {
-            setViewEditChart(globalContext, chart);
-        } else if (TEST_GAMEPLAY) {
-            setViewPlayCurrentChart(globalContext, chart);
-        } else if (TEST_CHART_SELECT_VIEW) {
-            setViewChartSelect(globalContext);
-        } else if (TEST_COPY_MODAL) {
-            globalContext.ui.copyModal = { 
-                message: "This is a test modal",
-                chartToCopy: chart,
-                newName: chart.name + " Copy",
-            };
-        }
+            const chartMeta = globalContext.ui.chartSelect.availableCharts.find(c => c.name === TEST_CHART);
+            assert(!!chartMeta);
+            await loadCurrentChartAsync(globalContext, chartMeta);
+
+            const chart = globalContext.ui.chartSelect.currentChart;
+            assert(!!chart);
+
+            if (TEST_EDIT_VIEW) {
+                setViewEditChart(globalContext, chart);
+                if (TEST_LOAD_SAVE) {
+                    setLoadSaveModalOpen(globalContext, true);
+                }
+            } else if (TEST_GAMEPLAY) {
+                setViewPlayCurrentChart(globalContext, chart);
+            } else if (TEST_CHART_SELECT_VIEW) {
+                setViewChartSelect(globalContext);
+            } else if (TEST_COPY_MODAL) {
+                openCopyChartModal(globalContext, chart, "This is a test modal");
+            }
+        });
     }
 
 })();

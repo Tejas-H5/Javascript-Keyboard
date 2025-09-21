@@ -1,8 +1,11 @@
-import { imButton, imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, END, imAbsolute, imAlign, imBg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imSize, imFg, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW, imScrollOverflow } from "src/components/core/layout";
+import { imButtonIsClicked } from "src/components/button";
+import { BLOCK, COL, END, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imScrollOverflow, imSize, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
+import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
+import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
 import { DEBUG_UNDO_BUFFER, TEST_EDIT_VIEW_EXPORT, TEST_EDIT_VIEW_IMPORT } from "src/debug-flags";
+import { getCurrentOscillatorGainForOwner, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface";
 import {
     getKeyForKeyboardKey,
     getKeyForNote,
@@ -12,13 +15,14 @@ import {
 } from "src/state/keyboard-state";
 import { previewNotes } from "src/state/playing-pausing";
 import {
-    compressChart,
     CommandItem,
+    compressChart,
     FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxBefore,
     getBeatsIndexesInclusive,
     getBpm,
     isBeatWithin,
+    isReadonlyChart,
     itemEnd,
     newTimelineItemBpmChange,
     NoteItem,
@@ -46,19 +50,14 @@ import {
 } from "src/state/sequencer-state";
 import { filteredCopy } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGet, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
-import { EL_B, EL_DIV, EL_I, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
-import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
-import { GlobalContext, } from "./app";
-import { cssVarsApp } from "./styling";
-import { getCurrentOscillatorGainForOwner, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface";
-import { recursiveCloneNonComputedFields } from "src/utils/serialization-utils";
 import { copyToClipboard } from "src/utils/clipboard";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
+import { EL_B, EL_I, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
+import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
-import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
-import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
-import { imInfiniteProgress } from "src/app-components/infinite-progress";
+import { GlobalContext, isSavingAnyChart, setLoadSaveModalOpen, } from "./app";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view";
+import { cssVarsApp } from "./styling";
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
@@ -300,7 +299,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
     imLayout(c, COL); imGap(c, 5, PX); imFlex(c); imRelative(c); {
         imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
-            if (imIf(c) && !loadSaveModal.open) {
+            if (imIf(c) && !loadSaveModal._open) {
                 imEl(c, EL_B); {
                     imStr(c, "Currently editing ");
                     imEl(c, EL_I); {
@@ -365,8 +364,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     s.allNotesVisible = !s.allNotesVisible;
                 }
 
-                if (imButtonIsClicked(c, (loadSaveModal.open ? ">" : "<") + "Load/Save")) {
-                    loadSaveModal.open = !loadSaveModal.open;
+                if (imButtonIsClicked(c, (loadSaveModal._open ? ">" : "<") + "Load/Save")) {
+                    setLoadSaveModalOpen(ctx, loadSaveModal._open);
                 }
             } else {
                 imIfElse(c);
@@ -586,19 +585,45 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             imLine(c, LINE_HORIZONTAL, 1);
 
             imLayout(c, ROW); imJustify(c); {
+                if (isFirstishRender(c)) {
+                    elSetStyle(c, "fontSize", "18px");
+                }
+
                 const idxText = "note " + s.cursorIdx;
                 const timelinePosText = timelinePosToString(sequencer.cursor);
                 const root = imLayout(c, BLOCK); imFlex(c); {
-                    if (imIf(c) && ui.editView.chartSaveTimerSeconds > 0) {
-                        const t = ui.editView.chartSaveTimerSeconds / CHART_SAVE_DEBOUNCE_SECONDS;
+                    let isSaving = isSavingAnyChart();
 
-                        const numDots = Math.floor((1.0 - t) * 10);
-                        imStr(c, "Saving" + ".".repeat(numDots));
+                    if (imIf(c) && (ui.editView.chartSaveTimerSeconds > 0 || isSaving)) {
+                        let message = "This chart is readonly, changes won't be saved";
+
+                        if (!isReadonlyChart(chart)) {
+                            if (isSaving) {
+                                message = "Saving";
+                            } else {
+                                const t = ui.editView.chartSaveTimerSeconds / CHART_SAVE_DEBOUNCE_SECONDS;
+                                const numDots = Math.floor((1.0 - t) * 10);
+                                message = "Awaiting save" + ".".repeat(numDots);
+                            }
+                        }
+
+                        imStr(c, message);
                     } else {
                         imIfElse(c);
 
                         elSetStyle(c, "opacity", "1", root);
                         imStr(c, "Ready");
+                    } imIfEnd(c);
+
+                    const numToUndo = chart._undoBuffer.idx + 1;
+                    if (imIf(c) && numToUndo > 0) {
+                        imStr(c, "|");
+                        imStr(c, numToUndo + " undo");
+                    } imIfEnd(c);
+                    const numToRedo = chart._undoBuffer.items.length - chart._undoBuffer.idx - 1;
+                    if (imIf(c) && numToRedo > 0) {
+                        imStr(c, "|");
+                        imStr(c, numToRedo + " redo");
                     } imIfEnd(c);
                 } imLayoutEnd(c);
                 imStr(c, idxText + " | " + timelinePosText);

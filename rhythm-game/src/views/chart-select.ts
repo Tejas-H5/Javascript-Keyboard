@@ -1,20 +1,16 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
+import { BLOCK, CENTER, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
-import { getChartRepository, getSavedChartFull } from "src/state/chart-repository";
 import { InstrumentKey } from "src/state/keyboard-state";
 import { CHART_STATUS_BUNDLED, getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
-import { setSequencerChart } from "src/state/sequencer-state";
 import { ChartSelectState } from "src/state/ui-state";
 import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
-import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { EL_B, EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax } from "src/utils/math-utils";
-import { runCancellableAsyncFn } from "src/utils/promise-utils";
-import { GlobalContext, playKeyPressForUI, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
+import { GlobalContext, openCopyChartModal, playKeyPressForUI, setCurrentChart, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
 import { cssVarsApp } from "./styling";
-import { arrayAt } from "src/utils/array-utils";
 
 function handleChartSelectKeyDown(
     ctx: GlobalContext,
@@ -30,11 +26,7 @@ function handleChartSelectKeyDown(
 
     if (s.currentChart && keyUpper === "E") {
         if (s.currentChart._savedStatus === CHART_STATUS_BUNDLED) {
-            ctx.ui.copyModal = {
-                message: "Bundled charts cannot be edited directly, and need to be copied first",
-                chartToCopy: s.currentChart,
-                newName: s.currentChart.name + " Copy",
-            };
+            openCopyChartModal(ctx, s.currentChart, "Bundled charts cannot be edited directly, and need to be copied first");
         } else {
             setViewEditChart(ctx, s.currentChart);
         }
@@ -47,7 +39,7 @@ function handleChartSelectKeyDown(
     }
 
     if (s.currentChart && key === "Enter") {
-        setSequencerChart(ctx.sequencer, s.currentChart);
+        setCurrentChart(ctx, s.currentChart);
         if (s.currentChart.timeline.length === 0) {
             setViewEditChart(ctx, s.currentChart);
         } else {
@@ -62,47 +54,14 @@ function handleChartSelectKeyDown(
     }
 
     if (listNavAxis !== 0 && s.availableCharts.length > 0) {
-        // We need to update the modal index too. because that used to be our source of truth xD
         setCurrentChartIdx(ctx, s.idx + listNavAxis);
     }
 
     return false;
 }
 
-export function reloadChartDataAsync(c: ChartSelectState) {
-    if (c.idx < 0 || c.idx >= c.availableCharts.length) return;
-
-    const currentChartMeta = c.availableCharts[c.idx];
-    if (c.currentChart) {
-        if (c.currentChart.id === currentChartMeta.id) return;
-        if (
-            c.currentChart._savedStatus === CHART_STATUS_BUNDLED && currentChartMeta.bundled && 
-            c.currentChart.name === currentChartMeta.name
-        ) {
-            return;
-        } 
-    }
-
-    runCancellableAsyncFn(getSavedChartFull, async (task) => {
-        const repo = await getChartRepository();                       
-        if (task.done) {
-            return;
-        }
-        const chart = await getSavedChartFull(repo, currentChartMeta);
-        if (task.done) {
-            return;
-        }
-        c.currentChart = chart;
-    });
-}
-
 export function imChartSelect(c: ImCache, ctx: GlobalContext) {
     const s = ctx.ui.chartSelect;
-
-    const currentChartMetadata = arrayAt(s.availableCharts, s.idx);
-    if (imMemo(c, currentChartMetadata)) {
-        reloadChartDataAsync(s);
-    }
 
     const keyPressState = ctx.keyPressState;
 
@@ -208,14 +167,32 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
             imLine(c, LINE_VERTICAL, 1);
 
             if (imIf(c) && s.currentChart) {
+                const bundled = s.currentChart._savedStatus === CHART_STATUS_BUNDLED;
                 imLayout(c, COL); imFlex(c); {
-                    imEl(c, EL_H2); {
-                        imLayout(c, ROW); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                            imLayout(c, ROW); imFlex(c, 7); imJustify(c); {
-                                imStr(c, s.currentChart.name);
+                    imLayout(c, ROW); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imAlign(c, CENTER); {
+                        imEl(c, EL_H2); {
+                            imLayout(c, ROW); {
+                                imLayout(c, ROW); imFlex(c, 7); {
+                                    imStr(c, s.currentChart.name);
+                                } imLayoutEnd(c);
+                            } imLayoutEnd(c);
+                        } imElEnd(c, EL_H2);
+
+                        imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+
+                        imLayout(c, COL); {
+                            imLayout(c, BLOCK); {
+                                // TODO: charts to record creator info
+                                imEl(c, EL_B); { imStr(c, "Mapper: "); } imElEnd(c, EL_B);
+                                imStr(c, bundled ? "TejasH5" : "Some player");
+                            } imLayoutEnd(c);
+                            imLayout(c, BLOCK); {
+                                // TODO: charts to record creator info
+                                imEl(c, EL_B); { imStr(c, "Music: "); } imElEnd(c, EL_B);
+                                imStr(c, "TODO: store this info somehow");
                             } imLayoutEnd(c);
                         } imLayoutEnd(c);
-                    } imElEnd(c, EL_H2);
+                    } imLayoutEnd(c);
 
                     imChartStatistics(c, ctx, s.currentChart);
                 } imLayoutEnd(c);

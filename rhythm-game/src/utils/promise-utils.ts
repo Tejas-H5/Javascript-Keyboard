@@ -1,29 +1,14 @@
-// I am not a fan of async-await for various reasons. Main reasons:
-// - Makes async code look like synchronous code - obfuscates the true nature of the code, which leads to incorrect assumptions about what it does.
-// - The `async` keyword propagates it's usage up function calls, turning otherwise simple and easy to debug sync functions into async ones.
-//
-// I am also not a fan of async programming in general. 
-// As soon as your code or data becomes 'async', the complexity can massively go up if not handled correctly.
-// Sometimes the performance boost is worth it, and other times, you are doing web stuff or integrating with async APIs, so you
-// are forced to uose it.
-//
-// One such complexity is that if I have a list of metadata for posts, and I only want to fetch the actual post when I 
-// scroll to it, for example - depending on the size of the posts, it may take a different amount of time for each request to resolve.
-// Your code then needs some way to discard/cancel the 'old' request before it sends out another one, so that we
-// don't end up with:
-//
-// fetch post 1
-// fetch post 2
-// update store to contain post 2 
-// update store to contain post 1
-//
-// Promises don't have any notion of 'cancellation', so you will need to build this in yourself somehow. 
-// Maybe promise.race([a, b]) can work, if promise a is the request, and b is something that resolves when we call cancel() on some wrapper object
-// manually. But the code you wrote in the first branch still churning along. How do you get the remaining steps in the pipeline to automatically
-// stop/early return without just checking for a cancelled variable after every `await` instruction? 
-//
-// I was trying to code a Promise wrapper that would respect ordering of requests somehow, but 
-// I'm just not able to get the types to work. I've settled on something simpler.
+// I am not a fan of async-await for various reasons. But it is way better than thenables or the callback approach.
+// My preference would be blocking operations, that we could then schedule manually to be async like `runAsync(() => normalFn())`;
+// But afaik we don't really have that here.
+// The promise pipeline can also be good, if we could do stuff like
+// newPipeline()
+//      .then(blah).catch(balh)
+//      .then(balh2).catch(blah2)
+//  
+//  Except the .catch returns a new promise that is like A | void, which sucks. 
+// And I haven't been able to figure out hwo to wrap the promises such that they don't do that,
+// so we'll just have to use async/await I suppose.
 
 let taskId = 0;
 const taskMap = new Map<any, Task>();

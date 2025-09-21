@@ -2,6 +2,8 @@ import { IDBPDatabase, IDBPTransaction, openDB } from "idb";
 import { CHART_STATUS_BUNDLED, CHART_STATUS_UNSAVED, compressChart, SequencerChart, SequencerChartCompressed, uncompressChart } from "./sequencer-chart";
 import { assert } from "src/utils/assert";
 import { getAllBundledCharts } from "src/assets/bundled-charts";
+import { sleepForMs } from "src/utils/promise-utils";
+import { TEST_ASYNCHRONICITY } from "src/debug-flags";
 
 type ChartRepository = {
     db: IDBPDatabase<unknown>;
@@ -55,6 +57,10 @@ export async function getSavedChartsMetadata(
     r: ChartRepository,
     tx?: ReadTx,
 ): Promise<SequencerChartMetadata[]> {
+    if (TEST_ASYNCHRONICITY) {
+        await sleepForMs(100 + Math.random() * 500);
+    }
+
     if (!tx) tx = newReadTx(r);
 
     const metadataStore = tx.objectStore(tables.chart_metadata);
@@ -75,6 +81,10 @@ export async function getSavedChartFull(
     meta: SequencerChartMetadata,
     tx?: ReadTx,
 ): Promise<SequencerChart> {
+    if (TEST_ASYNCHRONICITY) {
+        await sleepForMs(100 + Math.random() * 500);
+    }
+
     const id = meta.id;
     if (!tx) tx = newReadTx(r);
     if (!id) {
@@ -111,6 +121,10 @@ export async function saveChart(
     chart: SequencerChart,
     tx?: WriteTx
 ): Promise<void> {
+    if (TEST_ASYNCHRONICITY) {
+        await sleepForMs(100 + Math.random() * 500);
+    }
+
     if (!tx) tx = newWriteTx(repo);
     if (chart._savedStatus === CHART_STATUS_BUNDLED) {
         throw new Error("Can't save a bundled chart. Copy it first");
@@ -141,6 +155,10 @@ export async function deleteChart(
     chart: SequencerChart,
     tx?: WriteTx
 ): Promise<void> {
+    if (TEST_ASYNCHRONICITY) {
+        await sleepForMs(100 + Math.random() * 500);
+    }
+
     if (!tx) tx = newWriteTx(r);
     if (chart._savedStatus === CHART_STATUS_BUNDLED) {
         throw new Error("Can't delete a bundled chart");

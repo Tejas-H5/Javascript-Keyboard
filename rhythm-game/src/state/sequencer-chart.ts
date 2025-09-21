@@ -853,3 +853,7 @@ function timelineFromNumbers(numbers: number[]): TimelineItem[] {
 
     return result;
 }
+
+export function isReadonlyChart(chart: SequencerChart) {
+    return chart._savedStatus === CHART_STATUS_BUNDLED;
+}

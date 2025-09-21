@@ -1,16 +1,16 @@
+import { imInfiniteProgress } from "src/app-components/infinite-progress";
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonIsClicked } from "src/components/button";
 import { BLOCK, COL, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { CopyModalState } from "src/state/ui-state";
-import { ImCache, imIf, imIfElse, imIfEnd, imMemo, isFirstishRender } from "src/utils/im-core";
-import { elSetStyle, imStr } from "src/utils/im-dom";
-import { GlobalContext, loadAvailableChartsAsync, setCurrentChartIdx } from "./app";
-import { cssVarsApp } from "./styling";
-import { imInfiniteProgress } from "src/app-components/infinite-progress";
-import { cancelAsyncFn, runCancellableAsyncFn } from "src/utils/promise-utils";
 import { getChartRepository, saveChart } from "src/state/chart-repository";
 import { CHART_STATUS_UNSAVED } from "src/state/sequencer-chart";
+import { CopyModalState } from "src/state/ui-state";
+import { ImCache, imIf, imIfElse, imIfEnd, isFirstishRender } from "src/utils/im-core";
+import { elSetStyle, imStr } from "src/utils/im-dom";
+import { cancelAsyncFn, runCancellableAsyncFn } from "src/utils/promise-utils";
+import { GlobalContext, loadAvailableChartsAsync, setCurrentChartIdxByName } from "./app";
+import { cssVarsApp } from "./styling";
 
 export function imCopyModal(c: ImCache, ctx: GlobalContext, s: CopyModalState) {
     let copy = false;
@@ -136,10 +136,7 @@ function handleCopyChart(ctx: GlobalContext, s: CopyModalState) {
                 return;
             }
 
-            const idx = ctx.ui.chartSelect.availableCharts.findIndex(m => m.name === shallowCopy.name);
-            if (idx !== -1) {
-                setCurrentChartIdx(ctx, idx);
-            }
+            setCurrentChartIdxByName(ctx, s.newName);
         }, 
         err => {
             s.error = "Unexpected error: " + err;
@@ -147,3 +144,4 @@ function handleCopyChart(ctx: GlobalContext, s: CopyModalState) {
         }
     ).finally(() => ctx.ui.copyModal = null);
 }
+

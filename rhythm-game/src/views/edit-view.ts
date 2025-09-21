@@ -1,6 +1,7 @@
-import { BLOCK, COL, imAlign, imFlex, imLayout, imLayoutEnd, imSize, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
+import { imTextInputOneLine } from "src/app-components/text-input-one-line";
+import { BLOCK, COL, imAlign, imFg, imFlex, imLayout, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
 import { pressKey } from "src/dsp/dsp-loop-interface";
-import { deleteChart, getChartRepository, saveChart } from "src/state/chart-repository";
+import { deleteChart, getChartRepository } from "src/state/chart-repository";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
     playAll,
@@ -20,7 +21,6 @@ import {
     newTimelineItemBpmChange,
     newTimelineItemMeasure,
     newTimelineItemNote,
-    SequencerChart,
     sequencerChartInsertItems,
     sequencerChartRemoveItems,
     timelineMeasureAtBeatsIdx
@@ -34,18 +34,16 @@ import {
     handleMovementAbsolute,
     hasRangeSelection,
     recomputeState,
-    SequencerState,
     setCursorSnap,
     setTimelineNoteAtPosition,
     shiftItemsAfterCursor,
     shiftSelectedItems,
     transposeSelectedItems
 } from "src/state/sequencer-state";
-import { APP_VIEW_PLAY_CHART } from "src/state/ui-state";
+import { APP_VIEW_PLAY_CHART, EditViewState } from "src/state/ui-state";
 import { filterInPlace } from "src/utils/array-utils";
 import {
     getDeltaTimeSeconds,
-    getRenderCount,
     ImCache,
     imElse,
     imEndFor,
@@ -60,25 +58,26 @@ import {
     elSetStyle,
     imStr
 } from "src/utils/im-dom";
-import { getTask, runCancellableAsyncFn, sleepForMs } from "src/utils/promise-utils";
+import { runCancellableAsyncFn } from "src/utils/promise-utils";
 import { imSequencer } from "src/views/sequencer";
 import {
-    addNewUserChart,
     copyNotesToTempStore,
     GlobalContext,
+    openCopyChartModal,
     pasteNotesFromTempStore,
     redoSequencerEdit,
+    saveCurrentChartDebouncedAsync,
+    setCurrentChart,
     setCurrentChartIdx,
+    setLoadSaveModalOpen,
     setViewChartSelect,
     undoSequencerEdit
 } from "./app";
 import { cssVarsApp } from "./styling";
-import { imTextInputOneLine } from "src/app-components/text-input-one-line";
-import { assert } from "src/utils/assert";
 
 const OVERPLAY_MS = 1000;
 
-function handleEditChartKeyDown(ctx: GlobalContext): boolean {
+function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): boolean {
     if (!ctx.keyPressState) return false;
 
     const {
@@ -94,9 +93,8 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
 
     const loadSaveModal = ui.loadSave.modal;
 
-    if (isLoadSavePressed && !loadSaveModal.open) {
-        loadSaveModal.open = true;
-        loadSaveModal.isRenaming = false;
+    if (isLoadSavePressed && !loadSaveModal._open) {
+        setLoadSaveModalOpen(ctx, true);
         return true;
     } 
 
@@ -394,22 +392,6 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
 }
 
 
-const SAVE_CHART_TASK_PREFIX = "SAVE_CHART_";
-
-function saveCurrentChartDebouncedAsync(ctx: GlobalContext, sequencer: SequencerState) {
-    const chart = sequencer._currentChart;
-    assert(chart.id > 0);
-
-    runCancellableAsyncFn(SAVE_CHART_TASK_PREFIX + chart.id, async (task) => {
-        const repo = await getChartRepository();
-        if (task.done) {
-            return;
-        }
-
-        await saveChart(repo, chart);
-    });
-}
-
 export const CHART_SAVE_DEBOUNCE_SECONDS = 0.5;
 
 export function imEditView(c: ImCache, ctx: GlobalContext) {
@@ -420,30 +402,27 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
 
     recomputeState(sequencer);
 
-
-    if (imMemo(c, ctx.sequencer._currentChart._lastUpdated)) {
+    if (imMemo(c, sequencer._currentChart._lastUpdated)) {
         s.chartSaveTimerSeconds = CHART_SAVE_DEBOUNCE_SECONDS;
     }
 
     if (s.chartSaveTimerSeconds >= 0) {
         s.chartSaveTimerSeconds -= getDeltaTimeSeconds(c);
         if (s.chartSaveTimerSeconds < 0) {
-            saveCurrentChartDebouncedAsync(ctx, sequencer);
-            s.chartSaveTimerSeconds = -1;
+            saveCurrentChartDebouncedAsync(ctx, sequencer, s);
         }
     }
 
     const currentTime = getCurrentPlayingTime(sequencer);
     const duration = getPlaybackDuration(sequencer._currentChart);
     if (currentTime > duration + OVERPLAY_MS) {
-        saveCurrentChartDebouncedAsync(ctx, sequencer);
         stopPlaying(ctx);
     }
 
     imLayout(c, ROW); imFlex(c); {
         imSequencer(c, ctx);
 
-        if (imIf(c) && loadSaveModal.open) {
+        if (imIf(c) && loadSaveModal._open) {
             imLoadSaveModal(c, ctx);
         } imEndIf(c);
     } imLayoutEnd(c);
@@ -452,10 +431,11 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
     // can decide to handle inputs for themselves if they want. 
     // Not doing this in the other views yet, but that should change.
     if (!ctx.handled) {
-        ctx.handled = handleEditChartKeyDown(ctx);
+        ctx.handled = handleEditChartKeyDown(ctx, s);
     }
 }
 
+// It's actually more of a sidebar popout thing
 function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
     const { ui } = ctx;
 
@@ -466,7 +446,7 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
     imLayout(c, COL); imSize(c, 33, PERCENT, 0, NA); imAlign(c, STRETCH); {
         imFor(c); for (let i = 0; i < chartSelect.availableCharts.length; i++) {
             imLayout(c, ROW); {
-                const chart = i < chartSelect.availableCharts.length ? chartSelect.availableCharts[i] : null;
+                const chart = chartSelect.availableCharts[i];
                 const isFocused = i === chartSelect.idx;
 
                 const shouldRename = isFocused && s.isRenaming && chart;
@@ -488,14 +468,13 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
                     imElse(c);
 
                     imLayout(c, BLOCK); {
-                        let name;
-                        if (chart === null) {
-                            name = "[+ new chart]";
-                        } else {
-                            name = chart.name || "untitled"
-                        }
-
+                        let name = chart.name || "untitled"
                         imStr(c, name);
+                        if (imIf(c) && chart?.bundled) {
+                            imLayout(c, INLINE); imFg(c, cssVarsApp.error); {
+                                imStr(c, " (readonly)");
+                            } imLayoutEnd(c);
+                        } imIfEnd(c);
                     } imLayoutEnd(c);
                 } imEndIf(c);
             } imLayoutEnd(c);
@@ -514,7 +493,9 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
                 imLayout(c, BLOCK); imStr(c, "[Enter] -> start editing"); imLayoutEnd(c);
                 imLayout(c, BLOCK); imStr(c, "[R] -> rename"); imLayoutEnd(c);
                 imLayout(c, BLOCK); imStr(c, "[N] -> new"); imLayoutEnd(c);
-                imLayout(c, BLOCK); imStr(c, "[D] -> duplicate"); imLayoutEnd(c);
+                if (imIf(c) && currentChart) {
+                    imLayout(c, BLOCK); imStr(c, "[C] -> copy"); imLayoutEnd(c);
+                } imIfEnd(c);
                 imLayout(c, BLOCK); imStr(c, "[X] -> delete"); imLayoutEnd(c);
             } else {
                 imIfElse(c);
@@ -529,27 +510,49 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
     // handle keys
     if (ctx.keyPressState) {
         let handled = false;
-        let closeSaveModal = false;
 
-        const { key, keyUpper, listNavAxis, isLoadSavePressed } = ctx.keyPressState;
+        const { key, keyUpper, listNavAxis, isLoadSavePressed, shiftPressed } = ctx.keyPressState;
 
         if (s.isRenaming) {
             // the input component over there will handle these.
         } else {
             if (listNavAxis !== 0) {
-                setCurrentChartIdx(ctx, ui.chartSelect.idx + listNavAxis);
+                stopPlaying(ctx);
+                runCancellableAsyncFn(setCurrentChartIdx, async (task) => {
+                    await setCurrentChartIdx(ctx, ui.chartSelect.idx + listNavAxis)
+                    if (task.done) {
+                        return;
+                    }
+
+                    playAll(ctx);
+                });
                 handled = true;
             } else if (key === "Enter") {
-                if (currentChart) {
-                    // Preview this chart
-                    playAll(ctx);
+                if (shiftPressed) {
+                    // TODO: create new chart here
+                    // const chart = addNewUserChart(ctx);
                 } else {
-                    const chart = addNewUserChart(ctx);
+                    // The current chart has already been selected. We just need to close this modal
+                    setLoadSaveModalOpen(ctx, false);
                 }
 
                 handled = true;
             } else if (key === "Escape" || isLoadSavePressed) {
-                closeSaveModal = true;
+                if (ctx.sequencer.isPlaying) {
+                    stopPlaying(ctx, true);
+                } else if (
+                    s.chartBeforeOpen && 
+                    s.chartMetadataBeforeOpen && 
+                    chartSelect.currentChart !== s.chartBeforeOpen
+                ) {
+                    // Spaghetti ahh code
+                    chartSelect.currentChart = s.chartBeforeOpen;
+                    chartSelect.currentChartMetadata = s.chartMetadataBeforeOpen;
+                    setCurrentChart(ctx, s.chartBeforeOpen);
+                } else {
+                    setLoadSaveModalOpen(ctx, false);
+                }
+
                 handled = true;
             } else if (
                 currentChart && 
@@ -575,18 +578,17 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
 
                 handled = true;
             } else if (keyUpper === "R") {
-                s.isRenaming = true;
+                // TODO: proper renaming, persisted to indexeddb
+                // s.isRenaming = true;
+                // handled = true;
+            } else if (currentChart && keyUpper === "C") {
+                openCopyChartModal(ctx, currentChart, "Copy this chart");
                 handled = true;
             }
         }
 
-        if (closeSaveModal) {
-            s.open = false;
-            stopPlaying(ctx);
-        }
-
         ctx.handled = handled;
     }
-
 }
+
 

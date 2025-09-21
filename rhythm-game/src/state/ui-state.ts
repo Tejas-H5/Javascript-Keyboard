@@ -24,6 +24,12 @@ export type ChartSelectState = {
 
     // Needs to be loaded in
     currentChart: SequencerChart | null;
+    currentChartMetadata: SequencerChartMetadata | null;
+}
+
+export type EditViewState = {
+    lastCursor: number;
+    chartSaveTimerSeconds: number;
 }
 
 export type CopyModalState = {
@@ -35,32 +41,28 @@ export type CopyModalState = {
     error?: string;
 };
 
+export type LoadSaveState = {
+    saveStateTimeout: number;
+    modal: {
+        _open: boolean;
+        isRenaming: boolean;
+        helpEnabled: boolean;
+        chartBeforeOpen: SequencerChart | null;
+        chartMetadataBeforeOpen: SequencerChartMetadata | null;
+    }
+};
+
+// NOTE: there is no reason why this can't just be on GlobalContext directly
 export type UIState = {
     currentView: AppView;
-
     chartSelect: ChartSelectState;
-
-    loadSave: {
-        saveStateTimeout: number;
-        modal: {
-            open: boolean;
-            isRenaming: boolean;
-            helpEnabled: boolean;
-        }
-    };
-
+    loadSave: LoadSaveState;
     copyModal: CopyModalState | null;
-
     copied: {
         items: TimelineItem[];
         positionStart: number;
     }
-
-    editView: {
-        lastCursor: number;
-        chartSaveTimerSeconds: number;
-    };
-
+    editView: EditViewState;
     playView: {
         result: GameplayState | null;
     }
@@ -79,6 +81,7 @@ export function newUiState(): UIState {
             availableChartsInvalidated: false,
             idx: 0,
             currentChart: null,
+            currentChartMetadata: null,
         },
 
         loadSave: {
@@ -87,7 +90,9 @@ export function newUiState(): UIState {
             modal: {
                 helpEnabled: false,
                 isRenaming: false,
-                open: false,
+                _open: false,
+                chartBeforeOpen: null,
+                chartMetadataBeforeOpen: null,
             }
         },
 
