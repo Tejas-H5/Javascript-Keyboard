@@ -25,8 +25,6 @@
 // I was trying to code a Promise wrapper that would respect ordering of requests somehow, but 
 // I'm just not able to get the types to work. I've settled on something simpler.
 
-import { setTimelineNoteAtPosition } from "src/state/sequencer-state";
-
 let taskId = 0;
 const taskMap = new Map<any, Task>();
 
@@ -46,7 +44,7 @@ class Task {
     // c) has completed successfuly and ran all the way through
     complete() {
         this.done = true;
-        taskMap.delete(this.taskId);
+        taskMap.delete(this.key);
     }
 }
 
@@ -61,8 +59,9 @@ export function getOrCreateTask(key: any): Task {
     }
 
     const newTaskId = taskId++;
-    const taskInfo = new Task(key, newTaskId);
-    return taskInfo;
+    const task = new Task(key, newTaskId);
+    taskMap.set(key, task);
+    return task;
 }
 
 export function isTaskIdValidForKey(taskId: number, key: any) {

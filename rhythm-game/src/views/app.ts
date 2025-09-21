@@ -1,12 +1,9 @@
-import { COL, imFixed, imLayout, imLayoutEnd, PX } from "src/components/core/layout";
-import { FpsCounterState } from "src/components/fps-counter";
+import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, NA, PX } from "src/components/core/layout";
+import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { TEST_RESULTS_VIEW } from "src/debug-flags";
 import { releaseAllKeys, releaseKey, schedulePlayback, setScheduledPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getChartRepository, getSavedChartsMetadata } from "src/state/chart-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
-import {
-    saveStateDebounced,
-} from "src/state/loading-saving-charts";
 import {
     startPlaying,
     stopPlaying
@@ -24,21 +21,21 @@ import {
     undoEdit
 } from "src/state/sequencer-chart";
 import { newSequencerState, SequencerState, setSequencerChart } from "src/state/sequencer-state";
-import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, ChartSelectState, newUiState, UIState } from "src/state/ui-state";
+import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
 import { filterInPlace } from "src/utils/array-utils";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
-import { ImCache, imIf, imIfEnd, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
+import { ImCache, imFor, imForEnd, imIf, imIfEnd, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
 import { clamp } from "src/utils/math-utils";
-import { runCancellableAsyncFn } from "src/utils/promise-utils";
+import { getAllTasks, runCancellableAsyncFn } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
+import { imCopyModal } from "./copy-modal";
 import { newGameplayState } from "./gameplay";
 import { imSoundLab } from "./sound-lab-view";
-import { imCopyModal } from "./copy-modal";
 
 
 type AllKeysState = {
@@ -423,6 +420,7 @@ export function imApp(
     }
 
     imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+
         if (imIf(c) && ui.copyModal) {
             imCopyModal(c, ctx, ui.copyModal);
         } imIfEnd(c);
@@ -437,6 +435,28 @@ export function imApp(
                 imEl(c, EL_H2); imStr(c, `TODO: implement ${ui.currentView} ...`); imElEnd(c, EL_H2);
             } break;
         } imSwitchEnd(c);
+
+        // diagnostic info
+        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imBg(c, `rgba(255, 255, 255, 0.6)`); {
+            imFpsCounterSimple(c, fps);
+            imExtraDiagnosticInfo(c);
+
+            // Info about background tasks
+            imLayout(c, BLOCK); {
+                const tasks = getAllTasks();
+                imFor(c); for (const [k, v] of tasks) {
+                    let name = typeof k === "function" ? k.name : k;
+
+                    imLayout(c, BLOCK); {
+                        imStr(c, "k=");
+                        imStr(c, name);
+                        imStr(c, ", ");
+                        imStr(c, v.done ? "working" : "done");
+                    } imLayoutEnd(c);
+                } imForEnd(c);
+            } imLayoutEnd(c);
+        } imLayoutEnd(c);
+
     } imLayoutEnd(c);
 
     if (ctx.handled && ctx.keyPressState) {
