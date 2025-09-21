@@ -4,9 +4,11 @@
 export const TEST_EDIT_VIEW    = 0;
 export const TEST_EDIT_VIEW_EXPORT = 0;
 export const TEST_EDIT_VIEW_IMPORT = 0;
+export const TEST_COPY_MODAL = 0;
 export const TEST_CHART = "Melange";
 export const DEBUG_UNDO_BUFFER = 0;
 export const TEST_CHART_SELECT_VIEW = 0;
+
 
 export const TEST_GAMEPLAY     = 0;
 export const TEST_RESULTS_VIEW = 0;

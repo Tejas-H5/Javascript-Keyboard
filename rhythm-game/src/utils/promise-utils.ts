@@ -25,6 +25,8 @@
 // I was trying to code a Promise wrapper that would respect ordering of requests somehow, but 
 // I'm just not able to get the types to work. I've settled on something simpler.
 
+import { setTimelineNoteAtPosition } from "src/state/sequencer-state";
+
 let taskId = 0;
 const taskMap = new Map<any, Task>();
 
@@ -79,14 +81,36 @@ export function getAllTasks() {
 
 // `key` is just any value that is unique to this particular action.
 // It's kinda like react-query, but also like Java where you can synchronize on random objects you have lying around
-export async function runCancellableAsyncFn(key: any, fn: (taskInfo: Task) => Promise<void>) {
+export async function runCancellableAsyncFn(
+    key: any,
+    fn: (taskInfo: Task) => Promise<void>,
+    onError?: (err: any) => void,
+) {
     const task = getOrCreateTask(key);
+
+    const t0 = performance.now();
 
     try { 
         await fn(task);
+
+        let name = typeof key === "function" ? key.name: key;
+        console.log("async task " + name + " completed in " + (performance.now() - t0) + "ms");
     } catch (err) {
         console.error("An error occured in a cancellable async function: ", key, err);
+        onError?.(err);
     }
 
+
     task.complete();
+}
+
+export function cancelAsyncFn(key: any) {
+    const task = getTask(key);
+    task?.complete();
+}
+
+export function sleepForMs(ms: number) {
+    return new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), ms);
+    });
 }

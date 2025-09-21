@@ -14,10 +14,11 @@ import { arrayMax } from "src/utils/math-utils";
 import { runCancellableAsyncFn } from "src/utils/promise-utils";
 import { GlobalContext, playKeyPressForUI, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
 import { cssVarsApp } from "./styling";
+import { arrayAt } from "src/utils/array-utils";
 
 function handleChartSelectKeyDown(
     ctx: GlobalContext,
-    s: ChartSelectState
+    s: ChartSelectState,
 ): boolean {
     if (!ctx.keyPressState) return false;
 
@@ -28,7 +29,15 @@ function handleChartSelectKeyDown(
     }
 
     if (s.currentChart && keyUpper === "E") {
-        setViewEditChart(ctx, s.currentChart);
+        if (s.currentChart._savedStatus === CHART_STATUS_BUNDLED) {
+            ctx.ui.copyModal = {
+                message: "Bundled charts cannot be edited directly, and need to be copied first",
+                chartToCopy: s.currentChart,
+                newName: s.currentChart.name + " Copy",
+            };
+        } else {
+            setViewEditChart(ctx, s.currentChart);
+        }
         return true;
     }
 
@@ -67,7 +76,7 @@ export function reloadChartDataAsync(c: ChartSelectState) {
     if (c.currentChart) {
         if (c.currentChart.id === currentChartMeta.id) return;
         if (
-            c.currentChart._status === CHART_STATUS_BUNDLED && currentChartMeta.bundled && 
+            c.currentChart._savedStatus === CHART_STATUS_BUNDLED && currentChartMeta.bundled && 
             c.currentChart.name === currentChartMeta.name
         ) {
             return;
@@ -75,8 +84,14 @@ export function reloadChartDataAsync(c: ChartSelectState) {
     }
 
     runCancellableAsyncFn(getSavedChartFull, async (task) => {
-        const repo = await getChartRepository();                       if (task.done) return;
-        const chart = await getSavedChartFull(repo, currentChartMeta); if (task.done) return;
+        const repo = await getChartRepository();                       
+        if (task.done) {
+            return;
+        }
+        const chart = await getSavedChartFull(repo, currentChartMeta);
+        if (task.done) {
+            return;
+        }
         c.currentChart = chart;
     });
 }
@@ -84,11 +99,8 @@ export function reloadChartDataAsync(c: ChartSelectState) {
 export function imChartSelect(c: ImCache, ctx: GlobalContext) {
     const s = ctx.ui.chartSelect;
 
-    if (!ctx.handled) {
-        ctx.handled = handleChartSelectKeyDown(ctx, s);
-    }
-
-    if (imMemo(c, s.idx)) {
+    const currentChartMetadata = arrayAt(s.availableCharts, s.idx);
+    if (imMemo(c, currentChartMetadata)) {
         reloadChartDataAsync(s);
     }
 
@@ -97,21 +109,15 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
     if (keyPressState) {
         const { vAxis, hAxis, key } = keyPressState;
 
-        if (!ctx.handled) {
-            // UI sound effects (before other key events)
-            if (vAxis < 0 || hAxis < 0) {
-                playKeyPressForUI(ctx, ctx.keyboard.keys[1][6]);
-                ctx.handled = true;
-            } else if (vAxis > 0 || hAxis > 0) {
-                playKeyPressForUI(ctx, ctx.keyboard.keys[1][8]);
-                ctx.handled = true;
-            } else if (key === "Enter") {
-                playKeyPressForUI(ctx, ctx.keyboard.keys[1][5]);
-                ctx.handled = true;
-            } else if (key === "Escape") {
-                playKeyPressForUI(ctx, ctx.keyboard.keys[1][1]);
-                ctx.handled = true;
-            }
+        // UI sound effects (before other key events)
+        if (vAxis < 0 || hAxis < 0) {
+            playKeyPressForUI(ctx, ctx.keyboard.keys[1][6]);
+        } else if (vAxis > 0 || hAxis > 0) {
+            playKeyPressForUI(ctx, ctx.keyboard.keys[1][8]);
+        } else if (key === "Enter") {
+            playKeyPressForUI(ctx, ctx.keyboard.keys[1][5]);
+        } else if (key === "Escape") {
+            playKeyPressForUI(ctx, ctx.keyboard.keys[1][1]);
         }
     }
 
@@ -222,6 +228,10 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
             } imIfEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
+
+    if (!ctx.handled) {
+        ctx.handled = handleChartSelectKeyDown(ctx, s);
+    }
 }
 
 function imChartStatistics(

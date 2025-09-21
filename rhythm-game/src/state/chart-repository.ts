@@ -1,5 +1,5 @@
 import { IDBPDatabase, IDBPTransaction, openDB } from "idb";
-import { CHART_STATUS_BUNDLED, chartToCompressed, SequencerChart, SequencerChartCompressed } from "./sequencer-chart";
+import { CHART_STATUS_BUNDLED, CHART_STATUS_UNSAVED, compressChart, SequencerChart, SequencerChartCompressed, uncompressChart } from "./sequencer-chart";
 import { assert } from "src/utils/assert";
 import { getAllBundledCharts } from "src/assets/bundled-charts";
 
@@ -26,7 +26,7 @@ export async function getChartRepository(): Promise<ChartRepository> {
                 autoIncrement: true,
             });
             db.createObjectStore(tables.chart_data, {
-                keyPath: "id",
+                keyPath: "i",
                 autoIncrement: false,
             });
         },
@@ -45,18 +45,12 @@ export async function getChartRepository(): Promise<ChartRepository> {
     return repo;
 }
 
-export type SequencerChartMetadata = {
-    id?: number;
-    bundled?: boolean;
-    name: string;
-};
+export type SequencerChartMetadata 
+    = Partial<Pick<SequencerChart, "id">>  // undefined id -> create instead of update
+    & Pick<SequencerChart, "name">
+    & { bundled?: boolean; };
 
-export type SequencerChartData = {
-    id?: number;
-    data: string;
-};
-
-// For now, let's just return everything, it's not super clear how the pagination API needs to look like.
+// For now, let's just return everything, it's not clear how pagination API needs to look like yet
 export async function getSavedChartsMetadata(
     r: ChartRepository,
     tx?: ReadTx,
@@ -103,30 +97,43 @@ export async function getSavedChartFull(
     assert(id >= 0);
 
     assert(typeof id === "number");
-    const item = await r.db.get(tables.chart_data, IDBKeyRange.only(id));
 
-    return item;
+    const compressedChart = await r.db.get(tables.chart_data, IDBKeyRange.only(id));
+
+    // TODO: we can change the status after the first modification, or something like that
+    const chart = uncompressChart(compressedChart, CHART_STATUS_UNSAVED);
+
+    return chart;
 }
 
 export async function saveChart(
-    r: ChartRepository,
+    repo: ChartRepository,
     chart: SequencerChart,
     tx?: WriteTx
 ): Promise<void> {
-    if (!tx) tx = newWriteTx(r);
-    if (chart._status === CHART_STATUS_BUNDLED) {
+    if (!tx) tx = newWriteTx(repo);
+    if (chart._savedStatus === CHART_STATUS_BUNDLED) {
         throw new Error("Can't save a bundled chart. Copy it first");
     }
 
-    const chartCompressed = chartToCompressed(chart);
-    const metadata = toChartMetadata(chartCompressed);
-    const data     = toChartData(chartCompressed);
+    const chartCompressed = compressChart(chart);
+    let metadata = toChartMetadata(chartCompressed);
 
     const metadataStore = tx.objectStore(tables.chart_metadata);
     const dataStore     = tx.objectStore(tables.chart_data);
 
-    await metadataStore.put(metadata);
-    await dataStore.put(data);
+    let id = metadata.id;
+    if (id !== undefined) {
+        await metadataStore.put(metadata);
+    } else {
+        const key = await metadataStore.add(metadata);
+        const newId = key.valueOf();
+        assert(typeof newId === "number");
+        id = newId;
+    }
+
+    chartCompressed.i = id;
+    await dataStore.put(chartCompressed);
 }
 
 export async function deleteChart(
@@ -135,7 +142,7 @@ export async function deleteChart(
     tx?: WriteTx
 ): Promise<void> {
     if (!tx) tx = newWriteTx(r);
-    if (chart._status === CHART_STATUS_BUNDLED) {
+    if (chart._savedStatus === CHART_STATUS_BUNDLED) {
         throw new Error("Can't delete a bundled chart");
     }
 
@@ -149,17 +156,15 @@ export async function deleteChart(
 }
 
 function toChartMetadata(chart: SequencerChartCompressed): SequencerChartMetadata {
-    return {
-        id: chart.i < 0 ? undefined : chart.i,
+    let result: SequencerChartMetadata = {
         name: chart.n,
     };
-}
 
-function toChartData(chart: SequencerChartCompressed): SequencerChartData {
-    return {
-        id: chart.i < 0 ? undefined : chart.i,
-        data: JSON.stringify(chart),
-    };
+    if (chart.i !== undefined && chart.i > 0) {
+        result.id = chart.i;
+    }
+
+    return result;
 }
 
 type WriteTx = IDBPTransaction<unknown, string[], "readwrite"> & { __WriteTx: void };

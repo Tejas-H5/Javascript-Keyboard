@@ -24,10 +24,10 @@ import {
     undoEdit
 } from "src/state/sequencer-chart";
 import { newSequencerState, SequencerState, setSequencerChart } from "src/state/sequencer-state";
-import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, newUiState, UIState } from "src/state/ui-state";
+import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, ChartSelectState, newUiState, UIState } from "src/state/ui-state";
 import { filterInPlace } from "src/utils/array-utils";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
-import { ImCache, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
+import { ImCache, imIf, imIfEnd, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
 import { clamp } from "src/utils/math-utils";
@@ -38,6 +38,7 @@ import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
 import { newGameplayState } from "./gameplay";
 import { imSoundLab } from "./sound-lab-view";
+import { imCopyModal } from "./copy-modal";
 
 
 type AllKeysState = {
@@ -257,15 +258,6 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             } break;
             case APP_VIEW_CHART_SELECT: {
                 editView.lastCursor = 0;
-
-                runCancellableAsyncFn(getSavedChartsMetadata, async (task) => {
-                    const repo = await getChartRepository();           if (task.done) return;
-                    const charts = await getSavedChartsMetadata(repo); if (task.done) return;
-
-                    charts.sort((a, b) => a.name.localeCompare(b.name));
-                    chartSelect.availableCharts = charts;
-                });
-
             } break;
             case APP_VIEW_PLAY_CHART: {
                 let startFrom = editView.lastCursor;
@@ -388,11 +380,15 @@ export function imApp(
         getKeyPressState(keyDown, keyPressState);
 
         if (ctx.keyPressState) {
-            const { keyUpper, ctrlPressed, shiftPressed } = ctx.keyPressState;
+            const { key, keyUpper, ctrlPressed, shiftPressed } = ctx.keyPressState;
+
+            const typingText = isEditingTextSomewhereInDocument() &&
+                key !== "Escape" &&
+                key !== "Enter";
 
             if (
                 // allow typing into text fields
-                isEditingTextSomewhereInDocument() ||
+                typingText ||
                 // allow inspecting the element
                 (keyUpper === "I" && ctrlPressed && shiftPressed) ||
                 // allow refreshing page
@@ -422,11 +418,15 @@ export function imApp(
         ctx.blurredState = true;
     }
 
-    if (imMemo(c, ctx.sequencer._currentChart._lastUpdated)) {
-        saveStateDebounced(ctx);
+    if (imMemo(c, ctx.ui.chartSelect.availableChartsInvalidated)) {
+        loadAvailableChartsAsync(ctx);
     }
 
     imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+        if (imIf(c) && ui.copyModal) {
+            imCopyModal(c, ctx, ui.copyModal);
+        } imIfEnd(c);
+
         imSwitch(c, ui.currentView); switch(ui.currentView) { 
             case APP_VIEW_STARTUP:      imStartupView(c, ctx); break;
             case APP_VIEW_CHART_SELECT: imChartSelect(c, ctx); break;
@@ -444,4 +444,23 @@ export function imApp(
             ctx.keyPressState.e.preventDefault();
         }
     }
+}
+
+export async function loadAvailableChartsAsync(ctx: GlobalContext) {
+    ctx.ui.chartSelect.availableChartsInvalidated = false;
+
+    runCancellableAsyncFn(getSavedChartsMetadata, async (task) => {
+        const repo = await getChartRepository(); 
+        if (task.done) {
+            return;
+        }
+
+        const charts = await getSavedChartsMetadata(repo);
+        if (task.done) {
+            return;
+        }
+
+        charts.sort((a, b) => a.name.localeCompare(b.name));
+        ctx.ui.chartSelect.availableCharts = charts;
+    });
 }

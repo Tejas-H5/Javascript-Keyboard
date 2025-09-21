@@ -12,7 +12,7 @@ export type SequencerChart = {
     // NOTE: do not mutate the notes directly. Instead, remove, deep-copy, and insert the notes
     timeline: TimelineItem[];
 
-    _status: SequencerChartStatus;
+    _savedStatus: SequencerChartSavedStatus;
     _lastUpdated: number;
     _tempBuffer: TimelineItem[];
     _undoBuffer: { 
@@ -26,7 +26,7 @@ export const CHART_STATUS_UNSAVED = 0;
 export const CHART_STATUS_SAVED   = 1;
 export const CHART_STATUS_BUNDLED = 2;
 
-export type SequencerChartStatus 
+export type SequencerChartSavedStatus 
     = typeof CHART_STATUS_UNSAVED 
     | typeof CHART_STATUS_SAVED   
     | typeof CHART_STATUS_BUNDLED ;
@@ -54,7 +54,7 @@ export function newChart(name: string = ""): SequencerChart {
         timeline: [],
         cursor: 0,
 
-        _status: CHART_STATUS_UNSAVED,
+        _savedStatus: CHART_STATUS_UNSAVED,
         _lastUpdated: 0,
         _tempBuffer: [],
         _undoBuffer: { items: [], idx: -1, enabled: true }
@@ -774,7 +774,7 @@ export function timelineItemToString<T extends TimelineItem>(item: T): string {
 }
 
 
-export function chartToCompressed(chart: SequencerChart): SequencerChartCompressed {
+export function compressChart(chart: SequencerChart): SequencerChartCompressed {
     const timelineAsNumbers = timelineToNumbers(chart.timeline);
     return {
         i: chart.id,
@@ -784,11 +784,17 @@ export function chartToCompressed(chart: SequencerChart): SequencerChartCompress
     };
 }
 
-export function chartFromCompressed(compressed: SequencerChartCompressed): SequencerChart {
+export function uncompressChart(compressed: SequencerChartCompressed, saveStatus: SequencerChartSavedStatus): SequencerChart {
+    // Metadata, id
     const chart = newChart(compressed.n);
+    chart.id = compressed.i;
     chart.cursor = compressed.c;
+
+    // Timeline
     const timelineAsNumbers = variableLengthBase64ToNumbers(compressed.t);
     chart.timeline = timelineFromNumbers(timelineAsNumbers);
+    chart._savedStatus = saveStatus;
+
     return chart;
 }
 

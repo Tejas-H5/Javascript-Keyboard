@@ -1,6 +1,6 @@
 import { BLOCK, COL, imAlign, imFlex, imLayout, imLayoutEnd, imSize, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
 import { pressKey } from "src/dsp/dsp-loop-interface";
-import { deleteChart, getChartRepository } from "src/state/chart-repository";
+import { deleteChart, getChartRepository, saveChart } from "src/state/chart-repository";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
     playAll,
@@ -20,6 +20,7 @@ import {
     newTimelineItemBpmChange,
     newTimelineItemMeasure,
     newTimelineItemNote,
+    SequencerChart,
     sequencerChartInsertItems,
     sequencerChartRemoveItems,
     timelineMeasureAtBeatsIdx
@@ -33,6 +34,7 @@ import {
     handleMovementAbsolute,
     hasRangeSelection,
     recomputeState,
+    SequencerState,
     setCursorSnap,
     setTimelineNoteAtPosition,
     shiftItemsAfterCursor,
@@ -42,15 +44,23 @@ import {
 import { APP_VIEW_PLAY_CHART } from "src/state/ui-state";
 import { filterInPlace } from "src/utils/array-utils";
 import {
+    getDeltaTimeSeconds,
+    getRenderCount,
     ImCache,
+    imElse,
     imEndFor,
     imEndIf,
     imFor,
-    imIf
+    imIf,
+    imIfElse,
+    imIfEnd,
+    imMemo
 } from "src/utils/im-core";
 import {
+    elSetStyle,
     imStr
 } from "src/utils/im-dom";
+import { getTask, runCancellableAsyncFn, sleepForMs } from "src/utils/promise-utils";
 import { imSequencer } from "src/views/sequencer";
 import {
     addNewUserChart,
@@ -62,7 +72,9 @@ import {
     setViewChartSelect,
     undoSequencerEdit
 } from "./app";
-import { runCancellableAsyncFn } from "src/utils/promise-utils";
+import { cssVarsApp } from "./styling";
+import { imTextInputOneLine } from "src/app-components/text-input-one-line";
+import { assert } from "src/utils/assert";
 
 const OVERPLAY_MS = 1000;
 
@@ -382,16 +394,49 @@ function handleEditChartKeyDown(ctx: GlobalContext): boolean {
 }
 
 
+const SAVE_CHART_TASK_PREFIX = "SAVE_CHART_";
+
+function saveCurrentChartDebouncedAsync(ctx: GlobalContext, sequencer: SequencerState) {
+    const chart = sequencer._currentChart;
+    assert(chart.id > 0);
+
+    runCancellableAsyncFn(SAVE_CHART_TASK_PREFIX + chart.id, async (task) => {
+        const repo = await getChartRepository();
+        if (task.done) {
+            return;
+        }
+
+        await saveChart(repo, chart);
+    });
+}
+
+export const CHART_SAVE_DEBOUNCE_SECONDS = 0.5;
+
 export function imEditView(c: ImCache, ctx: GlobalContext) {
     const { sequencer, ui } = ctx;
 
     const loadSaveModal = ui.loadSave.modal;
+    const s = ui.editView;
 
     recomputeState(sequencer);
+
+
+    if (imMemo(c, ctx.sequencer._currentChart._lastUpdated)) {
+        s.chartSaveTimerSeconds = CHART_SAVE_DEBOUNCE_SECONDS;
+    }
+
+    if (s.chartSaveTimerSeconds >= 0) {
+        s.chartSaveTimerSeconds -= getDeltaTimeSeconds(c);
+        if (s.chartSaveTimerSeconds < 0) {
+            saveCurrentChartDebouncedAsync(ctx, sequencer);
+            s.chartSaveTimerSeconds = -1;
+        }
+    }
 
     const currentTime = getCurrentPlayingTime(sequencer);
     const duration = getPlaybackDuration(sequencer._currentChart);
     if (currentTime > duration + OVERPLAY_MS) {
+        saveCurrentChartDebouncedAsync(ctx, sequencer);
         stopPlaying(ctx);
     }
 
@@ -414,13 +459,70 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
 function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
     const { ui } = ctx;
 
-    const loadSaveModal = ui.loadSave.modal;
+    const s = ui.loadSave.modal;
     const chartSelect = ui.chartSelect;
     const currentChart = chartSelect.currentChart;
 
     imLayout(c, COL); imSize(c, 33, PERCENT, 0, NA); imAlign(c, STRETCH); {
+        imFor(c); for (let i = 0; i < chartSelect.availableCharts.length; i++) {
+            imLayout(c, ROW); {
+                const chart = i < chartSelect.availableCharts.length ? chartSelect.availableCharts[i] : null;
+                const isFocused = i === chartSelect.idx;
+
+                const shouldRename = isFocused && s.isRenaming && chart;
+
+                if (imMemo(c, isFocused)) {
+                    elSetStyle(c, "backgroundColor", isFocused ? cssVarsApp.bg2 : "");
+                }
+
+                if (imIf(c) && shouldRename) {
+                    const ev = imTextInputOneLine(c, chart.name);
+                    if (ev) {
+                        if (ev.newName !== undefined) {
+                            chart.name = ev.newName;
+                        } else if (ev.submit || ev.cancel) {
+                            s.isRenaming = false;
+                        }
+                    }
+                } else {
+                    imElse(c);
+
+                    imLayout(c, BLOCK); {
+                        let name;
+                        if (chart === null) {
+                            name = "[+ new chart]";
+                        } else {
+                            name = chart.name || "untitled"
+                        }
+
+                        imStr(c, name);
+                    } imLayoutEnd(c);
+                } imEndIf(c);
+            } imLayoutEnd(c);
+        } imEndFor(c);
+
+        imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+
         imLayout(c, BLOCK); {
-            imStr(c, "TODO: rewrite");
+            if (!ctx.handled && ctx.keyPressState?.keyUpper === "H") {
+                s.helpEnabled = !s.helpEnabled;
+                ctx.handled = true;
+            }
+
+            if (imIf(c) && s.helpEnabled) {
+                imLayout(c, BLOCK); imStr(c, "[Up/Down] -> move, preview"); imLayoutEnd(c);
+                imLayout(c, BLOCK); imStr(c, "[Enter] -> start editing"); imLayoutEnd(c);
+                imLayout(c, BLOCK); imStr(c, "[R] -> rename"); imLayoutEnd(c);
+                imLayout(c, BLOCK); imStr(c, "[N] -> new"); imLayoutEnd(c);
+                imLayout(c, BLOCK); imStr(c, "[D] -> duplicate"); imLayoutEnd(c);
+                imLayout(c, BLOCK); imStr(c, "[X] -> delete"); imLayoutEnd(c);
+            } else {
+                imIfElse(c);
+
+                imStr(c, "[H] to toggle help");
+            } imIfEnd(c);
+
+
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 
@@ -431,7 +533,7 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
 
         const { key, keyUpper, listNavAxis, isLoadSavePressed } = ctx.keyPressState;
 
-        if (loadSaveModal.isRenaming) {
+        if (s.isRenaming) {
             // the input component over there will handle these.
         } else {
             if (listNavAxis !== 0) {
@@ -451,7 +553,7 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
                 handled = true;
             } else if (
                 currentChart && 
-                currentChart._status !== CHART_STATUS_BUNDLED &&
+                currentChart._savedStatus !== CHART_STATUS_BUNDLED &&
                 key === "Delete"
             ) {
                 // Optimistic deletion
@@ -462,106 +564,29 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
                     );
 
                     runCancellableAsyncFn(deleteChart, async (task) => {
-                        const repo = await getChartRepository(); if (task.done) return;
+                        const repo = await getChartRepository();
+                        if (task.done) {
+                            return;
+                        }
+
                         await deleteChart(repo, currentChart);
                     });
                 }
 
                 handled = true;
             } else if (keyUpper === "R") {
-                loadSaveModal.isRenaming = true;
+                s.isRenaming = true;
                 handled = true;
             }
         }
 
         if (closeSaveModal) {
-            loadSaveModal.open = false;
+            s.open = false;
             stopPlaying(ctx);
         }
 
         ctx.handled = handled;
     }
 
-
-    // const currentCharts = imGetOrLoadCurrentChart(c, ctx);
-
-    // imLayout(c, COL); imSize(c, 33, PERCENT, 0, NA); imAlign(c, STRETCH); {
-    //     imFor(c); for (let i = 0; i <= currentCharts.length; i++) {
-    //         imLayout(c, ROW); {
-    //             const chart = i < ctx.savedState.userCharts.length ? ctx.savedState.userCharts[i] : null;
-    //             const isFocused = i === loadSaveModal.idx;
-    //
-    //             const shouldRename = isFocused && loadSaveModal.isRenaming && chart;
-    //             const shouldRenameChanged = imMemo(c, shouldRename);
-    //
-    //             elSetStyle(c, "backgroundColor", isFocused ? cssVarsApp.bg2 : "");
-    //
-    //             if (imIf(c) && shouldRename) {
-    //                 const input = imTextInputBegin(c, {
-    //                     value: chart.name,
-    //                     placeholder: "enter new name",
-    //                 }); {
-    //                     if (imMemo(c, true)) {
-    //                         setTimeout(() => {
-    //                             input.root.focus();
-    //                             input.root.select();
-    //                         }, 1);
-    //                     }
-    //
-    //                     if (isFirstishRender(c)) {
-    //                         elSetStyle(c, "width", "100%");
-    //                     }
-    //
-    //                     if (shouldRenameChanged) {
-    //                         input.root.focus();
-    //                         input.root.selectionStart = 0;
-    //                         input.root.selectionEnd = chart.name.length;
-    //                     }
-    //
-    //                     const inputEvent = imOn(c, EV_INPUT);
-    //                     if (inputEvent) {
-    //                         chart.name = input.root.value;
-    //                     }
-    //
-    //                     const keyDown = imOn(c, EV_KEYDOWN);
-    //                     if (keyDown) {
-    //                         if (keyDown.key === "Enter" || keyDown.key === "Escape") {
-    //                             loadSaveModal.isRenaming = false;
-    //                         }
-    //                     }
-    //                 } imTextInputEnd(c);
-    //             } else {
-    //                 imElse(c);
-    //
-    //                 imLayout(c, BLOCK); {
-    //                     let name;
-    //                     if (chart === null) {
-    //                         name = "[+ new chart]";
-    //                     } else {
-    //                         name = chart.name || "untitled"
-    //                     }
-    //
-    //                     imStr(c, name);
-    //
-    //                     if (elHasMousePress(c)) {
-    //                         // TODO: fix up mouse interactions
-    //                         // if (chart) {
-    //                         //     setCurrentChart(ctx, chart);
-    //                         // } else {
-    //                         //     const newChart = addNewUserChart(ctx);
-    //                         //     setCurrentChart(ctx, newChart);
-    //                         // }
-    //                     }
-    //                 } imLayoutEnd(c);
-    //             } imEndIf(c);
-    //         } imLayoutEnd(c);
-    //     } imEndFor(c);
-    //
-    //     imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
-    //
-    //     imLayout(c, BLOCK); {
-    //         imStr(c, "[R] to rename");
-    //     } imLayoutEnd(c);
-    // } imLayoutEnd(c);
-
 }
+

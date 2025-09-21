@@ -15,6 +15,7 @@ import {
     globalStateStackPop,
     globalStateStackPush,
     globalStateStackGet,
+    CACHE_ANIMATION_DELTA_TIME_SECONDS,
 } from "./im-core";
 
 export type ValidElement = HTMLElement | SVGElement;

@@ -56,8 +56,6 @@ export function imSize(
     if (size.width !== width || size.wType !== wType) {
         size.width = width;
         size.wType = wType;
-        // elSetStyle(c, "minWidth", getSize(width, wType));
-        // elSetStyle(c, "maxWidth", getSize(width, wType));
         elSetStyle(c, "width", getSize(width, wType));
     }
 

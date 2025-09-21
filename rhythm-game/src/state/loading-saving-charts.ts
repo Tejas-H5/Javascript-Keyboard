@@ -82,7 +82,3 @@ export function saveStateDebounced(ctx: GlobalContext) {
     }, 100);
 }
 
-export function isSaving(ctx: GlobalContext) {
-    return !!ctx.ui.loadSave.saveStateTimeout;
-}
-

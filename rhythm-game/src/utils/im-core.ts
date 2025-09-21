@@ -1,4 +1,4 @@
-// IM-CORE 1.043
+// IM-CORE 1.044
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
@@ -51,14 +51,15 @@ export const CACHE_IS_RENDERING                 = 7;
 export const CACHE_RENDER_COUNT                 = 8;
 export const CACHE_ANIMATE_FN                   = 9;
 export const CACHE_ANIMATION_ID                 = 10;
-export const CACHE_ANIMATION_TIME               = 11;
-export const CACHE_ANIMATION_DELTA_TIME_SECONDS = 12;
-export const CACHE_ITEMS_ITERATED               = 13;
-export const CACHE_ITEMS_ITERATED_LAST_FRAME    = 14; // Useful performance metric
-export const CACHE_TOTAL_DESTRUCTORS            = 15; // Useful memory leak indicator
-export const CACHE_TOTAL_MAP_ENTRIES            = 16; // Useful memory leak indicator
-export const CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME = 17; 
-export const CACHE_ENTRIES_START                = 18;
+export const CACHE_ANIMATION_TIME_LAST          = 11;
+export const CACHE_ANIMATION_TIME               = 12;
+export const CACHE_ANIMATION_DELTA_TIME_SECONDS = 13;
+export const CACHE_ITEMS_ITERATED               = 14;
+export const CACHE_ITEMS_ITERATED_LAST_FRAME    = 15; // Useful performance metric
+export const CACHE_TOTAL_DESTRUCTORS            = 16; // Useful memory leak indicator
+export const CACHE_TOTAL_MAP_ENTRIES            = 17; // Useful memory leak indicator
+export const CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME = 18; // Useful memory leak indicator
+export const CACHE_ENTRIES_START                = 19;
 
 
 export const REMOVE_LEVEL_NONE = 1;
@@ -146,19 +147,22 @@ export function imCacheBegin(
 
         c[CACHE_RERENDER_FN] = () => {
             if (c[CACHE_IS_RENDERING] === true) {
+                // we can't rerender right here, so we'll queue a rerender at the end of the component
                 c[CACHE_NEEDS_RERENDER] = true;
             } else {
                 renderFn(c);
             }
         };
 
+        // Deltatime should naturally reach 0 on 'rerenders'. Not sure how it will work for manual rendering.
+        c[CACHE_ANIMATION_TIME] = 0;
+        c[CACHE_ANIMATION_TIME_LAST] = 0;
+
         if ((flags & USE_MANUAL_RERENDERING) !== 0) {
-            c[CACHE_ANIMATION_TIME] = 0;
-            c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 1 / 30;
             c[CACHE_ANIMATE_FN] = noOp;
             c[CACHE_ANIMATION_ID] = null;
         } else if ((flags & USE_ANIMATION_FRAME) !== 0) {
-            c[CACHE_ANIMATION_TIME] = 0;
+
             c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 0;
             c[CACHE_ANIMATE_FN] = (t: number) => {
                 if (c[CACHE_IS_RENDERING] === true) {
@@ -167,9 +171,7 @@ export function imCacheBegin(
                     return;
                 }
 
-                const lastT = c[CACHE_ANIMATION_TIME];
                 c[CACHE_ANIMATION_TIME] = t;
-                c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = (t - lastT) / 1000.0;
                 renderFn(c);
             };
             c[CACHE_ANIMATION_ID] = 0;
@@ -187,6 +189,13 @@ export function imCacheBegin(
     c[CACHE_TOTAL_MAP_ENTRIES] = 0;
     c[CACHE_CURRENT_WAITING_FOR_SET] = false;
     c[CACHE_RENDER_COUNT]++;
+
+    if ((flags & USE_ANIMATION_FRAME) !== 0) {
+        c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = (c[CACHE_ANIMATION_TIME] - c[CACHE_ANIMATION_TIME_LAST]) / 1000;
+        c[CACHE_ANIMATION_TIME_LAST] = c[CACHE_ANIMATION_TIME];
+    } else {
+        c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 1 / 30;
+    }
 
     imCacheEntriesBegin(c, c[CACHE_ROOT_ENTRIES], imCacheBegin, c, INTERNAL_TYPE_CACHE);
 

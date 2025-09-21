@@ -19,11 +19,21 @@ export type ChartSelectState = {
     loadCounter: number;
 
     availableCharts: SequencerChartMetadata[];
+    availableChartsInvalidated: boolean;
     idx: number;
 
     // Needs to be loaded in
     currentChart: SequencerChart | null;
 }
+
+export type CopyModalState = {
+    message: string;
+    chartToCopy: SequencerChart;
+    newName: string;
+
+    initiated?: boolean;
+    error?: string;
+};
 
 export type UIState = {
     currentView: AppView;
@@ -32,12 +42,14 @@ export type UIState = {
 
     loadSave: {
         saveStateTimeout: number;
-
         modal: {
             open: boolean;
             isRenaming: boolean;
+            helpEnabled: boolean;
         }
-    }
+    };
+
+    copyModal: CopyModalState | null;
 
     copied: {
         items: TimelineItem[];
@@ -46,7 +58,8 @@ export type UIState = {
 
     editView: {
         lastCursor: number;
-    }
+        chartSaveTimerSeconds: number;
+    };
 
     playView: {
         result: GameplayState | null;
@@ -63,6 +76,7 @@ export function newUiState(): UIState {
             loadCounter: 0,
 
             availableCharts: [],
+            availableChartsInvalidated: false,
             idx: 0,
             currentChart: null,
         },
@@ -71,10 +85,13 @@ export function newUiState(): UIState {
             saveStateTimeout: 0,
 
             modal: {
+                helpEnabled: false,
                 isRenaming: false,
                 open: false,
             }
         },
+
+        copyModal: null,
 
         copied: {
             positionStart: 0,
@@ -83,6 +100,7 @@ export function newUiState(): UIState {
 
         editView: {
             lastCursor: 0,
+            chartSaveTimerSeconds: -1,
         },
 
         playView: {
