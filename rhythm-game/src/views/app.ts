@@ -1,8 +1,8 @@
 import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, NA, PX } from "src/components/core/layout";
 import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
-import { TEST_RESULTS_VIEW } from "src/debug-flags";
+import { TEST_ASYNCHRONICITY, TEST_RESULTS_VIEW } from "src/debug-flags";
 import { releaseAllKeys, releaseKey, schedulePlayback, setScheduledPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { getChartRepository, getSavedChartFull, getSavedChartsMetadata, saveChart, SequencerChartMetadata } from "src/state/chart-repository";
+import { ChartRepository, queryChart } from "src/state/chart-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     startPlaying,
@@ -13,7 +13,6 @@ import {
 } from "src/state/saved-state";
 import {
     copyTimelineItem,
-    isReadonlyChart,
     newChart,
     redoEdit,
     SequencerChart,
@@ -21,27 +20,27 @@ import {
     TIMELINE_ITEM_MEASURE,
     undoEdit
 } from "src/state/sequencer-chart";
-import { newSequencerState, SequencerState, setSequencerChart } from "src/state/sequencer-state";
-import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, ChartSelectState, EditViewState, newUiState, UIState } from "src/state/ui-state";
-import { arrayAt, filterInPlace } from "src/utils/array-utils";
+import { SequencerState, setSequencerChart } from "src/state/sequencer-state";
+import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state";
+import { filterInPlace } from "src/utils/array-utils";
+import { assert, unreachable } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imIf, imIfEnd, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
 import { clamp } from "src/utils/math-utils";
-import { getAllTasks, runCancellableAsyncFn } from "src/utils/promise-utils";
+import { getAllLoadingAsyncData, newAsyncData } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
-import { imCopyModal } from "./copy-modal";
+import { loadAvailableCharts, runSaveCurrentChartTask } from "./background-tasks";
 import { newGameplayState } from "./gameplay";
 import { imSoundLab } from "./sound-lab-view";
-
+import { imUpdateModal } from "./update-modal";
 
 type AllKeysState = {
     keys: KeyState[];
-
     ctrlKey:  KeyState;
     shiftKey: KeyState;
     altKey:   KeyState;
@@ -67,19 +66,27 @@ function newAllKeysState(): AllKeysState {
 export type GlobalContext = {
     keyboard: KeyboardState;
     sequencer: SequencerState;
+
     ui: UIState;
+
     savedState: SavedState;
 
-    allKeysState: AllKeysState;
+    repo: ChartRepository;
 
+
+    // TODO: input state
+    allKeysState: AllKeysState;
     keyPressState: KeyPressState | null;
     keyReleaseState: KeyPressState | null;
     blurredState: boolean;
-
     handled: boolean;
 };
 
-export function newGlobalContext(saveState: SavedState) {
+export function newGlobalContext(
+    saveState: SavedState,
+    repo: ChartRepository,
+    sequencer: SequencerState,
+) {
     // const firstChart = getOrCreateCurrentChart(saveState);
 
     const keyboard = newKeyboardState();
@@ -87,9 +94,10 @@ export function newGlobalContext(saveState: SavedState) {
     const ctx: GlobalContext = {
         keyboard,
         allKeysState: newAllKeysState(),
-        sequencer: newSequencerState(),
+        sequencer: sequencer,
         ui: newUiState(),
         savedState: saveState,
+        repo: repo,
         keyPressState: null,
         keyReleaseState: null,
         blurredState: false,
@@ -114,53 +122,30 @@ export function playKeyPressForUI(ctx: GlobalContext, key: InstrumentKey) {
     }]);
 }
 
-
-export function setCurrentChartIdxByName(ctx: GlobalContext, name: string) {
-    const idx = ctx.ui.chartSelect.availableCharts.findIndex(m => m.name === name);
-    if (idx !== -1) {
-        setCurrentChartIdx(ctx, idx);
-    }
+export function getChartIndexForId(ctx: GlobalContext, id: number): number {
+    const result = ctx.ui.chartSelect.availableCharts.findIndex(m => m.id === id);
+    return result;
 }
 
-export async function setCurrentChartIdx(ctx: GlobalContext, i: number) {
+export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
     const chartSelect = ctx.ui.chartSelect;
+    chartSelect.idx = clamp(i, 0, chartSelect.availableCharts.length - 1);
 
-    chartSelect.idx = clamp(
-        i,
-        0,
-        chartSelect.availableCharts.length - 1
-    );
-
-    await selectCurrentChartAsync(ctx, chartSelect);
-}
-
-export async function selectCurrentChartAsync(ctx: GlobalContext, chartSelect: ChartSelectState) {
-    const metadata = arrayAt(chartSelect.availableCharts, chartSelect.idx);
-    if (metadata && chartSelect.currentChartMetadata !== metadata) {
-        await loadCurrentChartAsync(ctx, metadata);
+    const metadata = getCurrentChartMetadata(chartSelect);
+    if (!metadata) {
+        return null;
     }
-}
 
+    if (chartSelect.currentChartLoadingId === metadata.id) {
+        return null;
+    }
 
-export async function loadCurrentChartAsync(ctx: GlobalContext, metadata: SequencerChartMetadata) {
-    const chartSelect = ctx.ui.chartSelect;
-    const sequencer = ctx.sequencer;
+    chartSelect.currentChart.cancel();
+    chartSelect.currentChartLoadingId = metadata.id;
+    chartSelect.currentChart = queryChart(ctx.repo, metadata.id)
+        .then(c => setSequencerChart(ctx.sequencer, c));
 
-    chartSelect.currentChartMetadata = metadata;
-
-    await runCancellableAsyncFn(getSavedChartFull, async (task) => {
-        const repo = await getChartRepository();
-        if (task.done) {
-            return;
-        }
-        const chart = await getSavedChartFull(repo, metadata);
-        if (task.done) {
-            return;
-        }
-
-        chartSelect.currentChart = chart;
-        setSequencerChart(sequencer, chart);
-    });
+    return chartSelect.currentChart;
 }
 
 export function addNewUserChart(ctx: GlobalContext) {
@@ -246,21 +231,30 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
 }
 
 
-export function setViewEditChart(ctx: GlobalContext, chart: SequencerChart) {
+export function setViewEditChart(ctx: GlobalContext) {
     setCurrentView(ctx, APP_VIEW_EDIT_CHART);
-    setCurrentChart(ctx, chart);
 }
 
-export function setCurrentChart(ctx: GlobalContext, chart: SequencerChart) {
-    setSequencerChart(ctx.sequencer, chart);
-    setCurrentChartIdxByName(ctx, chart.name);
-}
+export function openChartUpdateModal(
+    ctx: GlobalContext,
+    chart: SequencerChart,
+    operation: OperationType,
+    message: string
+) {
+    let newName;
+    switch(operation) {
+        case NAME_OPERATION_COPY:   newName = chart.name + " Copy"; break;
+        case NAME_OPERATION_RENAME: newName = chart.name;           break;
+        case NAME_OPERATION_CREATE: newName = "New chart";          break;
+        default: unreachable(operation);
+    }
 
-export function openCopyChartModal(ctx: GlobalContext, chart: SequencerChart, message: string) {
-    ctx.ui.copyModal = {
+    ctx.ui.updateModal = {
         message: message,
-        chartToCopy: chart,
-        newName: chart.name + " Copy",
+        operation: operation,
+        chartToUpdate: chart,
+        newName: newName,
+        updateResult: newAsyncData("", async () => false),
     };
 }
 
@@ -268,9 +262,8 @@ export function setViewSoundLab(ctx: GlobalContext) {
     setCurrentView(ctx, APP_VIEW_SOUND_LAB);
 }
 
-export function setViewPlayCurrentChart(ctx: GlobalContext, chart: SequencerChart) {
+export function setViewPlayCurrentChart(ctx: GlobalContext) {
     setCurrentView(ctx, APP_VIEW_PLAY_CHART);
-    setCurrentChart(ctx, chart);
 }
 
 export function setViewChartSelect(ctx: GlobalContext) {
@@ -310,6 +303,11 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             } break;
             case APP_VIEW_CHART_SELECT: {
                 editView.lastCursor = 0;
+
+                loadAvailableCharts(ctx).then((availableCharts) => {
+                    const idx = clamp(ctx.ui.chartSelect.idx, 0, availableCharts.length - 1);
+                    setCurrentChartIdx(ctx,idx);
+                });
             } break;
             case APP_VIEW_PLAY_CHART: {
                 let startFrom = editView.lastCursor;
@@ -471,13 +469,13 @@ export function imApp(
     }
 
     if (imMemo(c, ctx.ui.chartSelect.availableChartsInvalidated)) {
-        loadAvailableChartsAsync(ctx);
+        loadAvailableCharts(ctx);
     }
 
     imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
 
-        if (imIf(c) && ui.copyModal) {
-            imCopyModal(c, ctx, ui.copyModal);
+        if (imIf(c) && ui.updateModal) {
+            imUpdateModal(c, ctx, ui.updateModal);
         } imIfEnd(c);
 
         imSwitch(c, ui.currentView); switch(ui.currentView) { 
@@ -498,15 +496,14 @@ export function imApp(
 
             // Info about background tasks
             imLayout(c, BLOCK); {
-                const tasks = getAllTasks();
-                imFor(c); for (const [k, v] of tasks) {
-                    let name = typeof k === "function" ? k.name : k;
-
-                    imLayout(c, BLOCK); {
-                        imStr(c, "k=");
-                        imStr(c, name);
-                        imStr(c, ", ");
-                        imStr(c, v.done ? "working" : "done");
+                const tasks = getAllLoadingAsyncData();
+                imFor(c); for (const t of tasks) {
+                    imLayout(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
+                        const ms = performance.now() - t.startedAt;
+                        imStr(c, TEST_ASYNCHRONICITY ? "[TEST]" : "");
+                        imStr(c, Math.round(ms));
+                        imStr(c, "ms |");
+                        imStr(c, t.name);
                     } imLayoutEnd(c);
                 } imForEnd(c);
             } imLayoutEnd(c);
@@ -521,69 +518,17 @@ export function imApp(
     }
 }
 
-export async function loadAvailableChartsAsync(ctx: GlobalContext) {
-    ctx.ui.chartSelect.availableChartsInvalidated = false;
-
-    await runCancellableAsyncFn(getSavedChartsMetadata, async (task) => {
-        const repo = await getChartRepository(); 
-        if (task.done) {
-            return;
-        }
-
-        const charts = await getSavedChartsMetadata(repo);
-        if (task.done) {
-            return;
-        }
-
-        charts.sort((a, b) => a.name.localeCompare(b.name));
-        ctx.ui.chartSelect.availableCharts = charts;
-    });
-}
-
-const SAVE_CHART_TASK_PREFIX = "SAVE_CHART_";
-
-export function isSavingAnyChart() {
-    const tasks = getAllTasks();
-    for (const k of tasks.keys()) {
-        if (typeof k === "string" && k.startsWith(SAVE_CHART_TASK_PREFIX)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-export function saveCurrentChartDebouncedAsync(
+export function setLoadSaveModalOpen(
     ctx: GlobalContext,
-    sequencer: SequencerState,
-    editView: EditViewState,
+    currentChart: SequencerChart,
+    open: boolean
 ) {
-    editView.chartSaveTimerSeconds = -1;
-
-    const chart = sequencer._currentChart;
-    if (isReadonlyChart(chart)) {
-        // Shouldn't save charts without a valid id. It's probably a bundled chart
-        return;
-    }
-
-    runCancellableAsyncFn(SAVE_CHART_TASK_PREFIX + chart.id, async (task) => {
-        const repo = await getChartRepository();
-        if (task.done) {
-            return;
-        }
-
-        await saveChart(repo, chart);
-    });
-}
-
-export function setLoadSaveModalOpen(ctx: GlobalContext, open: boolean) {
     const ui = ctx.ui;
     ui.loadSave.modal._open = open;
     if (open) {
-        saveCurrentChartDebouncedAsync(ctx, ctx.sequencer, ui.editView);
-        ui.loadSave.modal.chartBeforeOpen = ctx.ui.chartSelect.currentChart;
-        ui.loadSave.modal.chartMetadataBeforeOpen = ctx.ui.chartSelect.currentChartMetadata;
+        runSaveCurrentChartTask(ctx);
+        ui.loadSave.modal.chartBeforeOpen = currentChart;
     } else {
         ui.loadSave.modal.chartBeforeOpen = null;
-        ui.loadSave.modal.chartMetadataBeforeOpen = null;
     }
 }

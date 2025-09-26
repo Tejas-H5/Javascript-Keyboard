@@ -1,16 +1,15 @@
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { BLOCK, COL, imAlign, imFg, imFlex, imLayout, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
 import { pressKey } from "src/dsp/dsp-loop-interface";
-import { deleteChart, getChartRepository } from "src/state/chart-repository";
+import { deleteChart, } from "src/state/chart-repository";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
-    playAll,
     playFromCursor,
     playFromLastMeasure,
     stopPlaying
 } from "src/state/playing-pausing";
 import {
-    CHART_STATUS_BUNDLED,
+    CHART_STATUS_READONLY,
     FRACTIONAL_UNITS_PER_BEAT,
     getBpm,
     getBpmChangeItemBeforeBeats,
@@ -18,6 +17,7 @@ import {
     getLastMeasureBeats,
     getNextMeasureBeats,
     getPlaybackDuration,
+    newChart,
     newTimelineItemBpmChange,
     newTimelineItemMeasure,
     newTimelineItemNote,
@@ -40,8 +40,7 @@ import {
     shiftSelectedItems,
     transposeSelectedItems
 } from "src/state/sequencer-state";
-import { APP_VIEW_PLAY_CHART, EditViewState } from "src/state/ui-state";
-import { filterInPlace } from "src/utils/array-utils";
+import { APP_VIEW_PLAY_CHART, EditViewState, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME } from "src/state/ui-state";
 import {
     getDeltaTimeSeconds,
     ImCache,
@@ -58,21 +57,20 @@ import {
     elSetStyle,
     imStr
 } from "src/utils/im-dom";
-import { runCancellableAsyncFn } from "src/utils/promise-utils";
-import { imSequencer } from "src/views/sequencer";
+import { imSequencer } from "src/views/edit-view-sequencer";
 import {
     copyNotesToTempStore,
+    getChartIndexForId,
     GlobalContext,
-    openCopyChartModal,
+    openChartUpdateModal,
     pasteNotesFromTempStore,
     redoSequencerEdit,
-    saveCurrentChartDebouncedAsync,
-    setCurrentChart,
     setCurrentChartIdx,
     setLoadSaveModalOpen,
     setViewChartSelect,
     undoSequencerEdit
 } from "./app";
+import { runSaveCurrentChartTask } from "./background-tasks";
 import { cssVarsApp } from "./styling";
 
 const OVERPLAY_MS = 1000;
@@ -94,7 +92,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
     const loadSaveModal = ui.loadSave.modal;
 
     if (isLoadSavePressed && !loadSaveModal._open) {
-        setLoadSaveModalOpen(ctx, true);
+        setLoadSaveModalOpen(ctx, chart, true);
         return true;
     } 
 
@@ -409,7 +407,8 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
     if (s.chartSaveTimerSeconds >= 0) {
         s.chartSaveTimerSeconds -= getDeltaTimeSeconds(c);
         if (s.chartSaveTimerSeconds < 0) {
-            saveCurrentChartDebouncedAsync(ctx, sequencer, s);
+            runSaveCurrentChartTask(ctx);
+            s.chartSaveTimerSeconds = -1;
         }
     }
 
@@ -441,7 +440,7 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
 
     const s = ui.loadSave.modal;
     const chartSelect = ui.chartSelect;
-    const currentChart = chartSelect.currentChart;
+    const currentChart = chartSelect.currentChart.data;
 
     imLayout(c, COL); imSize(c, 33, PERCENT, 0, NA); imAlign(c, STRETCH); {
         imFor(c); for (let i = 0; i < chartSelect.availableCharts.length; i++) {
@@ -508,7 +507,7 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
     } imLayoutEnd(c);
 
     // handle keys
-    if (ctx.keyPressState) {
+    if (!ctx.handled && ctx.keyPressState && currentChart) {
         let handled = false;
 
         const { key, keyUpper, listNavAxis, isLoadSavePressed, shiftPressed } = ctx.keyPressState;
@@ -518,14 +517,7 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
         } else {
             if (listNavAxis !== 0) {
                 stopPlaying(ctx);
-                runCancellableAsyncFn(setCurrentChartIdx, async (task) => {
-                    await setCurrentChartIdx(ctx, ui.chartSelect.idx + listNavAxis)
-                    if (task.done) {
-                        return;
-                    }
-
-                    playAll(ctx);
-                });
+                setCurrentChartIdx(ctx, ui.chartSelect.idx + listNavAxis)
                 handled = true;
             } else if (key === "Enter") {
                 if (shiftPressed) {
@@ -533,7 +525,7 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
                     // const chart = addNewUserChart(ctx);
                 } else {
                     // The current chart has already been selected. We just need to close this modal
-                    setLoadSaveModalOpen(ctx, false);
+                    setLoadSaveModalOpen(ctx, currentChart, false);
                 }
 
                 handled = true;
@@ -542,47 +534,31 @@ function imLoadSaveModal(c: ImCache, ctx: GlobalContext) {
                     stopPlaying(ctx, true);
                 } else if (
                     s.chartBeforeOpen && 
-                    s.chartMetadataBeforeOpen && 
-                    chartSelect.currentChart !== s.chartBeforeOpen
+                    currentChart.id !== s.chartBeforeOpen.id
                 ) {
-                    // Spaghetti ahh code
-                    chartSelect.currentChart = s.chartBeforeOpen;
-                    chartSelect.currentChartMetadata = s.chartMetadataBeforeOpen;
-                    setCurrentChart(ctx, s.chartBeforeOpen);
+                    // TODO: consider - Is the tail wagging the dog here?
+                    const idx = getChartIndexForId(ctx, s.chartBeforeOpen.id);
+                    setCurrentChartIdx(ctx, idx);
                 } else {
-                    setLoadSaveModalOpen(ctx, false);
+                    setLoadSaveModalOpen(ctx, currentChart, false);
                 }
 
                 handled = true;
             } else if (
                 currentChart && 
-                currentChart._savedStatus !== CHART_STATUS_BUNDLED &&
-                key === "Delete"
+                currentChart._savedStatus !== CHART_STATUS_READONLY &&
+                (key === "Delete" || keyUpper === "X")
             ) {
-                // Optimistic deletion
-                {
-                    filterInPlace(
-                        chartSelect.availableCharts,
-                        (metadata) => !metadata.id || metadata.id !== currentChart.id
-                    );
-
-                    runCancellableAsyncFn(deleteChart, async (task) => {
-                        const repo = await getChartRepository();
-                        if (task.done) {
-                            return;
-                        }
-
-                        await deleteChart(repo, currentChart);
-                    });
-                }
-
+                deleteChart(ctx.repo, currentChart);
                 handled = true;
-            } else if (keyUpper === "R") {
-                // TODO: proper renaming, persisted to indexeddb
-                // s.isRenaming = true;
-                // handled = true;
+            } else if (currentChart && keyUpper === "R") {
+                openChartUpdateModal(ctx, currentChart, NAME_OPERATION_RENAME, "Rename chart");
+                handled = true;
+            } else if (keyUpper === "N") {
+                openChartUpdateModal(ctx, newChart(""), NAME_OPERATION_CREATE, "Create new chart");
+                handled = true;
             } else if (currentChart && keyUpper === "C") {
-                openCopyChartModal(ctx, currentChart, "Copy this chart");
+                openChartUpdateModal(ctx, currentChart, NAME_OPERATION_COPY , "Copy this chart");
                 handled = true;
             }
         }

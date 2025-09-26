@@ -3,16 +3,27 @@ import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonIsClicked } from "src/components/button";
 import { BLOCK, COL, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { getChartRepository, saveChart } from "src/state/chart-repository";
-import { CHART_STATUS_UNSAVED } from "src/state/sequencer-chart";
-import { CopyModalState } from "src/state/ui-state";
+import { saveChart } from "src/state/chart-repository";
+import { CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
+import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "src/state/ui-state";
+import { unreachable } from "src/utils/assert";
 import { ImCache, imIf, imIfElse, imIfEnd, isFirstishRender } from "src/utils/im-core";
 import { elSetStyle, imStr } from "src/utils/im-dom";
-import { cancelAsyncFn, runCancellableAsyncFn } from "src/utils/promise-utils";
-import { GlobalContext, loadAvailableChartsAsync, setCurrentChartIdxByName } from "./app";
+import { GlobalContext } from "./app";
 import { cssVarsApp } from "./styling";
+import { newAsyncData } from "src/utils/promise-utils";
 
-export function imCopyModal(c: ImCache, ctx: GlobalContext, s: CopyModalState) {
+function getButtonText(o: OperationType): string {
+    switch(o) {
+        case NAME_OPERATION_CREATE: return "Create";
+        case NAME_OPERATION_COPY:   return "Copy";
+        case NAME_OPERATION_RENAME: return "Rename";
+    }
+}
+
+// TODO: retest
+
+export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalState) {
     let copy = false;
     let escape = false;
 
@@ -22,7 +33,7 @@ export function imCopyModal(c: ImCache, ctx: GlobalContext, s: CopyModalState) {
         }
 
         imLayout(c, COL); imBg(c, cssVars.bg); imSize(c, 70, PERCENT, 0, NA); imPadding(c,10, PX, 10, PX, 10, PX, 10, PX); {
-            if (imIf(c) && !s.initiated) {
+            if (imIf(c) && !s.operation) {
                 imLayout(c, ROW); imJustify(c); {
                     imStr(c, s.message);
                 } imLayoutEnd(c);
@@ -40,14 +51,14 @@ export function imCopyModal(c: ImCache, ctx: GlobalContext, s: CopyModalState) {
                             }
                         }
 
-                        if (imIf(c) && s.error) {
+                        if (imIf(c) && s.updateResult.err) {
                             imLayout(c, ROW); imFg(c, cssVarsApp.error); {
-                                imStr(c, s.error);
+                                imStr(c, s.updateResult.err);
                             } imLayoutEnd(c);
                         } imIfEnd(c);
                     } imLayoutEnd(c);
 
-                    if (imButtonIsClicked(c, "Copy")) {
+                    if (imButtonIsClicked(c, getButtonText(s.operation))) {
                         copy = true;
                     }
 
@@ -78,15 +89,12 @@ export function imCopyModal(c: ImCache, ctx: GlobalContext, s: CopyModalState) {
     }
 
     if (copy) {
-        if (!s.initiated) {
-            handleCopyChart(ctx, s);
-        }
+        handleCopyChart(ctx, s);
     } else if (escape) {
-        if (!s.initiated) {
-            ctx.ui.copyModal = null;
+        if (!s.updateResult.isLoading()) {
+            ctx.ui.updateModal = null;
         } else {
-            cancelAsyncFn(handleCopyChart);
-            s.initiated = false;
+            s.updateResult.cancel();
             s.message = "Aborted.";
         }
     } 
@@ -95,53 +103,54 @@ export function imCopyModal(c: ImCache, ctx: GlobalContext, s: CopyModalState) {
     ctx.handled = true;
 }
 
-function handleCopyChart(ctx: GlobalContext, s: CopyModalState) {
-    s.error = "";
-    if (!s.newName) {
-        s.error = "Your name is empty";
-        return;
-    } 
-
-    const availableCharts = ctx.ui.chartSelect.availableCharts;
-    if (availableCharts.find(c => c.name === s.newName)) {
-        s.error = "A chart with this name already exists";
+function handleCopyChart(ctx: GlobalContext, s: UpdateModalState) {
+    if (s.updateResult.isLoading()) {
         return;
     }
 
-    s.initiated = true;
-    s.message = "Copying [" + s.chartToCopy.name + " -> " + s.newName + "] ...";
-
-    runCancellableAsyncFn(
-        handleCopyChart,
-        async (task) => {
-            const repo = await getChartRepository();
-            if (task.done) {
-                return;
-            }
-
-            // NOTE: we can avoid name collisions here instead, potentially
-
-            const shallowCopy = { ...s.chartToCopy };
-            shallowCopy.id = -1;
-            shallowCopy.name = s.newName;
-            shallowCopy._savedStatus = CHART_STATUS_UNSAVED;
-
-            await saveChart(repo, shallowCopy);
-            if (task.done) {
-                return;
-            }
-
-            await loadAvailableChartsAsync(ctx);
-            if (task.done) {
-                return;
-            }
-
-            setCurrentChartIdxByName(ctx, s.newName);
-        }, 
-        err => {
-            s.error = "Unexpected error: " + err;
-            s.initiated = false;
+    s.updateResult = newAsyncData(handleCopyChart.name, async () => {
+        if (!s.newName) {
+            throw new Error("Your name is empty");
         }
-    ).finally(() => ctx.ui.copyModal = null);
+
+        const availableCharts = ctx.ui.chartSelect.availableCharts;
+        if (availableCharts.find(c => c.name === s.newName)) {
+            throw new Error("A chart with this name already exists");
+        }
+
+        switch (s.operation) {
+            case NAME_OPERATION_RENAME: {
+                s.message = "Renaming [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
+
+                const toRename = { ...s.chartToUpdate };
+                toRename.name = s.newName;
+                toRename._savedStatus = CHART_STATUS_UNSAVED;
+
+                await saveChart(ctx.repo, toRename);
+            } break;
+            case NAME_OPERATION_CREATE: {
+                s.message = "Creating " + s.newName + "] ...";
+
+                const toCreate = newChart(s.newName);
+
+                await saveChart(ctx.repo, toCreate);
+            } break;
+            case NAME_OPERATION_COPY: {
+                s.message = "Copying [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
+
+                const toCopy = { ...s.chartToUpdate };
+                toCopy.id = -1;
+                toCopy.name = s.newName;
+                toCopy._savedStatus = CHART_STATUS_UNSAVED;
+
+                await saveChart(ctx.repo, toCopy);
+            } break;
+            default: unreachable(s.operation);
+        }
+
+        ctx.ui.updateModal = null;
+
+        return true;
+    });
 }
 

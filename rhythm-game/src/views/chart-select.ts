@@ -3,13 +3,22 @@ import { BLOCK, CENTER, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLa
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { InstrumentKey } from "src/state/keyboard-state";
-import { CHART_STATUS_BUNDLED, getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
-import { ChartSelectState } from "src/state/ui-state";
+import { CHART_STATUS_READONLY, getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
+import { ChartSelectState, NAME_OPERATION_COPY } from "src/state/ui-state";
 import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { EL_B, EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax } from "src/utils/math-utils";
-import { GlobalContext, openCopyChartModal, playKeyPressForUI, setCurrentChart, setCurrentChartIdx, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab, setViewStartScreen } from "./app";
+import {
+    GlobalContext,
+    openChartUpdateModal,
+    playKeyPressForUI,
+    setCurrentChartIdx,
+    setViewEditChart,
+    setViewPlayCurrentChart,
+    setViewSoundLab,
+    setViewStartScreen
+} from "./app";
 import { cssVarsApp } from "./styling";
 
 function handleChartSelectKeyDown(
@@ -20,15 +29,17 @@ function handleChartSelectKeyDown(
 
     const { key, keyUpper, listNavAxis } = ctx.keyPressState;
 
+    const currentChart = s.currentChart.data;
+
     if (s.idx >= s.availableCharts.length) {
         s.idx = s.availableCharts.length - 1;
     }
 
-    if (s.currentChart && keyUpper === "E") {
-        if (s.currentChart._savedStatus === CHART_STATUS_BUNDLED) {
-            openCopyChartModal(ctx, s.currentChart, "Bundled charts cannot be edited directly, and need to be copied first");
+    if (currentChart && keyUpper === "E") {
+        if (currentChart._savedStatus === CHART_STATUS_READONLY) {
+            openChartUpdateModal(ctx, currentChart, NAME_OPERATION_COPY, "Bundled charts cannot be edited directly, and need to be copied first");
         } else {
-            setViewEditChart(ctx, s.currentChart);
+            setViewEditChart(ctx);
         }
         return true;
     }
@@ -38,12 +49,11 @@ function handleChartSelectKeyDown(
         return true;
     }
 
-    if (s.currentChart && key === "Enter") {
-        setCurrentChart(ctx, s.currentChart);
-        if (s.currentChart.timeline.length === 0) {
-            setViewEditChart(ctx, s.currentChart);
+    if (currentChart && key === "Enter") {
+        if (currentChart.timeline.length === 0) {
+            setViewEditChart(ctx);
         } else {
-            setViewPlayCurrentChart(ctx, s.currentChart);
+            setViewPlayCurrentChart(ctx);
         }
         return true;
     }
@@ -80,6 +90,9 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
         }
     }
 
+    const currentChart = s.availableCharts.length > 0 &&
+        s.currentChart.data;
+
     imLayout(c, COL); imFlex(c); {
         imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
             imLayout(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX); {
@@ -107,8 +120,8 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                 imFg(c, chartSelected ? cssVars.bg : "");
 
                                 imStr(c, chart.name);
-                                if (s.currentChart && elHasMousePress(c)) {
-                                    setViewPlayCurrentChart(ctx, s.currentChart);
+                                if (currentChart && elHasMousePress(c)) {
+                                    setViewPlayCurrentChart(ctx);
                                 }
                             } imLayoutEnd(c);
                         } imForEnd(c);
@@ -129,19 +142,19 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                 } imLayoutEnd(c);
                 imLayout(c, ROW); imGap(c, 5, PX); {
 
-                    if (imIf(c) && s.currentChart) {
-                        if (imIf(c) && s.currentChart.timeline.length === 0) {
+                    if (imIf(c) && currentChart) {
+                        if (imIf(c) && currentChart.timeline.length === 0) {
                             imStr(c, "Empty chart");
                         } else {
                             imIfElse(c);
 
                             if (imButtonIsClicked(c, "Play")) {
-                                setViewPlayCurrentChart(ctx, s.currentChart);
+                                setViewPlayCurrentChart(ctx);
                             }
                         } imIfEnd(c);
 
                         if (imButtonIsClicked(c, "Edit")) {
-                            setViewEditChart(ctx, s.currentChart);
+                            setViewEditChart(ctx);
                         }
                     } else {
                         imIfElse(c);
@@ -166,8 +179,8 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
 
             imLine(c, LINE_VERTICAL, 1);
 
-            if (imIf(c) && s.currentChart) {
-                const bundled = s.currentChart._savedStatus === CHART_STATUS_BUNDLED;
+            if (imIf(c) && currentChart) {
+                const bundled = currentChart._savedStatus === CHART_STATUS_READONLY;
                 imLayout(c, COL); imFlex(c); {
                     imLayout(c, ROW); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imAlign(c, CENTER); {
                         imEl(c, EL_H2); {
@@ -194,7 +207,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                         } imLayoutEnd(c);
                     } imLayoutEnd(c);
 
-                    imChartStatistics(c, ctx, s.currentChart);
+                    imChartStatistics(c, ctx, currentChart);
                 } imLayoutEnd(c);
             } else {
                 imIfElse(c);

@@ -55,9 +55,10 @@ import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGet
 import { EL_B, EL_I, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
-import { GlobalContext, isSavingAnyChart, setLoadSaveModalOpen, } from "./app";
+import { GlobalContext, setLoadSaveModalOpen, } from "./app";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view";
 import { cssVarsApp } from "./styling";
+import { isSavingAnyChart } from "./background-tasks";
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
@@ -365,7 +366,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 }
 
                 if (imButtonIsClicked(c, (loadSaveModal._open ? ">" : "<") + "Load/Save")) {
-                    setLoadSaveModalOpen(ctx, loadSaveModal._open);
+                    setLoadSaveModalOpen(ctx, chart, loadSaveModal._open);
                 }
             } else {
                 imIfElse(c);

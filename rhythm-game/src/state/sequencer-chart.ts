@@ -22,14 +22,18 @@ export type SequencerChart = {
     },
 };
 
-export const CHART_STATUS_UNSAVED = 0;
-export const CHART_STATUS_SAVED   = 1;
-export const CHART_STATUS_BUNDLED = 2;
+export function isBundledChartId(id: number) {
+    return id <= 0;
+}
 
-export type SequencerChartSavedStatus 
-    = typeof CHART_STATUS_UNSAVED 
-    | typeof CHART_STATUS_SAVED   
-    | typeof CHART_STATUS_BUNDLED ;
+export const CHART_STATUS_UNSAVED  = 0;
+export const CHART_STATUS_SAVED    = 1;
+export const CHART_STATUS_READONLY = 2;
+
+export type SequencerChartSavedStatus
+    = typeof CHART_STATUS_UNSAVED
+    | typeof CHART_STATUS_SAVED
+    | typeof CHART_STATUS_READONLY;
 
 // A compressed char that aims to minimize it's size when saved as JSON
 export type SequencerChartCompressed = {
@@ -855,5 +859,5 @@ function timelineFromNumbers(numbers: number[]): TimelineItem[] {
 }
 
 export function isReadonlyChart(chart: SequencerChart) {
-    return chart._savedStatus === CHART_STATUS_BUNDLED;
+    return chart._savedStatus === CHART_STATUS_READONLY;
 }

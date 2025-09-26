@@ -1,6 +1,6 @@
 import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
 import {
-    CHART_STATUS_BUNDLED,
+    CHART_STATUS_READONLY,
     CommandItem,
     FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxAfter,
@@ -262,7 +262,7 @@ export function isItemPlaying(state: SequencerState, item: TimelineItem): boolea
 export function newSequencerState(): SequencerState {
     const chart = newChart("Sequencer default chart");
     // prevent accidental saving
-    chart._savedStatus = CHART_STATUS_BUNDLED;
+    chart._savedStatus = CHART_STATUS_READONLY;
 
     const sequencer: SequencerState = {
         _currentChart: chart,

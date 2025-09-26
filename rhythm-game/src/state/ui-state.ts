@@ -1,6 +1,8 @@
-import { SequencerChart, TimelineItem } from "src/state/sequencer-chart";
+import { newChart, SequencerChart, TimelineItem } from "src/state/sequencer-chart";
 import { GameplayState } from "src/views/gameplay";
 import { SequencerChartMetadata } from "./chart-repository";
+import { arrayAt } from "src/utils/array-utils";
+import { AsyncData, newAsyncData } from "src/utils/promise-utils";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -22,9 +24,12 @@ export type ChartSelectState = {
     availableChartsInvalidated: boolean;
     idx: number;
 
-    // Needs to be loaded in
-    currentChart: SequencerChart | null;
-    currentChartMetadata: SequencerChartMetadata | null;
+    currentChart: AsyncData<SequencerChart>;
+    currentChartLoadingId: number | null;
+}
+
+export function getCurrentChartMetadata(state: ChartSelectState): SequencerChartMetadata | null {
+    return arrayAt(state.availableCharts, state.idx) ?? null;
 }
 
 export type EditViewState = {
@@ -32,13 +37,23 @@ export type EditViewState = {
     chartSaveTimerSeconds: number;
 }
 
-export type CopyModalState = {
-    message: string;
-    chartToCopy: SequencerChart;
-    newName: string;
+// These operations all specifically require us to input a new name
+export const NAME_OPERATION_COPY   = 1;
+export const NAME_OPERATION_RENAME = 2;
+export const NAME_OPERATION_CREATE = 3;
 
-    initiated?: boolean;
-    error?: string;
+export type OperationType 
+    = typeof NAME_OPERATION_COPY
+    | typeof NAME_OPERATION_RENAME
+    | typeof NAME_OPERATION_CREATE;
+
+export type UpdateModalState = {
+    message:       string;
+    operation:     OperationType;
+    chartToUpdate: SequencerChart;
+    newName:       string;
+    
+    updateResult: AsyncData<boolean>;
 };
 
 export type LoadSaveState = {
@@ -48,16 +63,17 @@ export type LoadSaveState = {
         isRenaming: boolean;
         helpEnabled: boolean;
         chartBeforeOpen: SequencerChart | null;
-        chartMetadataBeforeOpen: SequencerChartMetadata | null;
     }
 };
 
-// NOTE: there is no reason why this can't just be on GlobalContext directly
+// NOTE: there is no reason why this can't just be on GlobalContext directly.
+// TODO: do this
 export type UIState = {
     currentView: AppView;
+    // TODO: deprecate
     chartSelect: ChartSelectState;
     loadSave: LoadSaveState;
-    copyModal: CopyModalState | null;
+    updateModal: UpdateModalState | null;
     copied: {
         items: TimelineItem[];
         positionStart: number;
@@ -80,8 +96,8 @@ export function newUiState(): UIState {
             availableCharts: [],
             availableChartsInvalidated: false,
             idx: 0,
-            currentChart: null,
-            currentChartMetadata: null,
+            currentChart: newAsyncData("", async () => newChart("First chart")),
+            currentChartLoadingId: null,
         },
 
         loadSave: {
@@ -92,11 +108,10 @@ export function newUiState(): UIState {
                 isRenaming: false,
                 _open: false,
                 chartBeforeOpen: null,
-                chartMetadataBeforeOpen: null,
             }
         },
 
-        copyModal: null,
+        updateModal: null,
 
         copied: {
             positionStart: 0,

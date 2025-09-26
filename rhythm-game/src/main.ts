@@ -3,52 +3,121 @@ import { BLOCK, imLayout, imLayoutEnd } from "./components/core/layout";
 import { fpsMarkRenderingEnd, fpsMarkRenderingStart, newFpsCounterState } from "./components/fps-counter";
 import { TEST_CHART, TEST_CHART_SELECT_VIEW, TEST_COPY_MODAL, TEST_EDIT_VIEW, TEST_GAMEPLAY, TEST_LOAD_SAVE } from "./debug-flags";
 import { loadSaveState } from "./state/loading-saving-charts";
-import { syncPlayback } from "./state/sequencer-state";
+import { newSequencerState, syncPlayback } from "./state/sequencer-state";
+import { getCurrentChartMetadata, NAME_OPERATION_COPY } from "./state/ui-state";
 import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
-import { ImCache, imCacheBegin, imCacheEnd, imCatch, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
+import { ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import { runCancellableAsyncFn } from "./utils/promise-utils";
-import { imApp, loadAvailableChartsAsync, loadCurrentChartAsync, newGlobalContext, openCopyChartModal, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
+import { newAsyncData } from "./utils/promise-utils";
+import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartIdx, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
+import { loadChartMetadataList, newChartRepository, queryChart } from "./state/chart-repository";
 
-const saveState = loadSaveState();
-const globalContext = newGlobalContext(saveState);
+const programState = newAsyncData("Entrypoint", async () => {
+    // Our code only works after we've established a connection with our
+    // IndexedDB instance, and the audio context has loaded.
+    
+    const repoPromise = newChartRepository();
+
+    const sequencer = newSequencerState();
+    const dspPromise = initDspLoopInterface({
+        render: () => {
+            const dspInfo = getDspInfo();
+
+            if (sequencer.isPlaying) {
+                // Allow playback to go off the end, so that downstream code may react to this.
+                if (dspInfo.scheduledPlaybackTime !== -1) {
+                    syncPlayback(sequencer, dspInfo.scheduledPlaybackTime, dspInfo.isPaused);
+                } 
+            } 
+        }
+    });
+
+    const saveState = loadSaveState();
+
+    const [repo, dspVoid] = await Promise.all([repoPromise, dspPromise]);
+
+    const ctx = newGlobalContext(
+        saveState,
+        repo,
+        sequencer,
+    );
+
+    if (
+        TEST_EDIT_VIEW || 
+        TEST_GAMEPLAY ||
+        TEST_CHART_SELECT_VIEW ||
+        TEST_COPY_MODAL
+    ) {
+
+        loadChartMetadataList(repo).then((charts) => {
+            const idx = charts.findIndex(c => c.name === TEST_CHART);
+            const metadata = getCurrentChartMetadata(ctx.ui.chartSelect);
+            assert(!!metadata);
+            ctx.ui.chartSelect.availableCharts = charts;
+            setCurrentChartIdx(ctx, idx)?.then((chart) => {
+                if (TEST_EDIT_VIEW) {
+                    setViewEditChart(ctx);
+                    if (TEST_LOAD_SAVE) {
+                        setLoadSaveModalOpen(ctx, chart, true);
+                    }
+                } else if (TEST_GAMEPLAY) {
+                    setViewPlayCurrentChart(ctx);
+                } else if (TEST_CHART_SELECT_VIEW) {
+                    setViewChartSelect(ctx);
+                } else if (TEST_COPY_MODAL) {
+                    openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
+                }
+            });
+        });
+    }
+
+    return ctx;
+});
 
 function imMainInner(c: ImCache) {
-    const fps = imState(c, newFpsCounterState);
-    fpsMarkRenderingStart(fps);
+    const globalContext = programState.data;
 
-    const tryState = imTry(c); try {
-        const { err } = tryState;
-        if (imIf(c) && !err) {
-            imApp(c, globalContext, fps);
-        } else {
-            imIfElse(c);
+    if (imIf(c) && globalContext) {
+        const fps = imState(c, newFpsCounterState);
+        fpsMarkRenderingStart(fps);
 
-            imLayout(c, BLOCK); {
-                imEl(c, EL_H2); imStr(c, "An error occured..."); imElEnd(c, EL_H2);
+        const tryState = imTry(c); try {
+            const { err } = tryState;
+            if (imIf(c) && !err) {
+                imApp(c, globalContext, fps);
+            } else {
+                imIfElse(c);
+
                 imLayout(c, BLOCK); {
-                    imStr(c, err);
-                } imLayoutEnd(c);
-
-                if (imIf(c) && err instanceof Error && err.stack) {
+                    imEl(c, EL_H2); imStr(c, "An error occured..."); imElEnd(c, EL_H2);
                     imLayout(c, BLOCK); {
-                        if (isFirstishRender(c)) {
-                            elSetStyle(c, "fontFamily", "monospace");
-                            elSetStyle(c, "whiteSpace", "pre");
-                        }
-
-                        imStr(c, err.stack);
+                        imStr(c, err);
                     } imLayoutEnd(c);
-                } imIfEnd(c);
-            } imLayoutEnd(c);
-        } imIfEnd(c);
-    } catch(err) {
-        imCatch(c, tryState, err);
-        console.error("An error in the render loop:", err);
-    } imTryEnd(c, tryState);
 
-    fpsMarkRenderingEnd(fps);
+                    if (imIf(c) && err instanceof Error && err.stack) {
+                        imLayout(c, BLOCK); {
+                            if (isFirstishRender(c)) {
+                                elSetStyle(c, "fontFamily", "monospace");
+                                elSetStyle(c, "whiteSpace", "pre");
+                            }
+
+                            imStr(c, err.stack);
+                        } imLayoutEnd(c);
+                    } imIfEnd(c);
+                } imLayoutEnd(c);
+            } imIfEnd(c);
+        } catch (err) {
+            imCatch(c, tryState, err);
+            console.error("An error in the render loop:", err);
+        } imTryEnd(c, tryState);
+
+        fpsMarkRenderingEnd(fps);
+    } else {
+        imIfElse(c);
+
+        imLayout(c, BLOCK); imStr(c, "Loading..."); imLayoutEnd(c);
+    } imEndIf(c);
 }
 
 function imMain(c: ImCache) {
@@ -65,54 +134,3 @@ const cGlobal: ImCache = [];
 imMain(cGlobal);
 
 initCssbStyles();
-
-// initialize the app.
-(async () => {
-    await initDspLoopInterface({
-        render: () => {
-            const dspInfo = getDspInfo();
-            const sequencer = globalContext.sequencer;
-
-            if (sequencer.isPlaying) {
-                // Allow playback to go off the end, so that downstream code may react to this.
-                if (dspInfo.scheduledPlaybackTime !== -1) {
-                    syncPlayback(sequencer, dspInfo.scheduledPlaybackTime, dspInfo.isPaused);
-                } 
-            } 
-        }
-    });
-
-    // Our code only works after the audio context has loaded.
-
-    if (
-        TEST_EDIT_VIEW || 
-        TEST_GAMEPLAY ||
-        TEST_CHART_SELECT_VIEW ||
-        TEST_COPY_MODAL
-    ) {
-        runCancellableAsyncFn(imMain, async () => {
-            await loadAvailableChartsAsync(globalContext);
-
-            const chartMeta = globalContext.ui.chartSelect.availableCharts.find(c => c.name === TEST_CHART);
-            assert(!!chartMeta);
-            await loadCurrentChartAsync(globalContext, chartMeta);
-
-            const chart = globalContext.ui.chartSelect.currentChart;
-            assert(!!chart);
-
-            if (TEST_EDIT_VIEW) {
-                setViewEditChart(globalContext, chart);
-                if (TEST_LOAD_SAVE) {
-                    setLoadSaveModalOpen(globalContext, true);
-                }
-            } else if (TEST_GAMEPLAY) {
-                setViewPlayCurrentChart(globalContext, chart);
-            } else if (TEST_CHART_SELECT_VIEW) {
-                setViewChartSelect(globalContext);
-            } else if (TEST_COPY_MODAL) {
-                openCopyChartModal(globalContext, chart, "This is a test modal");
-            }
-        });
-    }
-
-})();
