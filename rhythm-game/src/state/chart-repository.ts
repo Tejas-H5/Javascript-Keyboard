@@ -1,5 +1,5 @@
 import { getAllBundledCharts } from "src/assets/bundled-charts";
-import { TEST_ASYNCHRONICITY } from "src/debug-flags";
+import { debugFlags, getTestSleepMs } from "src/debug-flags";
 import { assert } from "src/utils/assert";
 import * as idb from "src/utils/indexed-db";
 import { AsyncData, newAsyncData, sleepForMs } from "src/utils/promise-utils";
@@ -49,18 +49,60 @@ function assertAndGetAllCharts(repo: ChartRepository) {
     return repo.allCharts.data;
 }
 
+export function reindexCharts(charts: SequencerChartMetadata[]) {
+    for (let i = 0; i < charts.length; i++) {
+        charts[i]._index = i;
+    }
+}
+
 export function loadChartMetadataList(repo: ChartRepository) {
     repo.allCharts.cancel();
     repo.allCharts = newAsyncData(loadChartMetadataList.name, async () => {
         const tx     = await chartRepositoryReadTx(repo);
         const charts = await idb.getAll(tx, tables.chartMetadata);
-        if (TEST_ASYNCHRONICITY) {
-            await sleepForMs(100 + Math.random() * 500)
+
+        const testSleepMs = getTestSleepMs(debugFlags);
+        if (testSleepMs) {
+            await sleepForMs(testSleepMs)
         }
+
+        const bundled = getAllBundledCharts()
+            .map(toChartMetadata);
+
+        charts.push(...bundled);
+
+        reindexCharts(charts);
 
         return charts;
     });
     return repo.allCharts;
+}
+
+export async function cleanupChartRepo(repo: ChartRepository) {
+    let cleanedUp: any[] = [];
+
+    const tx = await chartRepositoryWriteTx(repo);
+    const metadatas = await idb.getAll(tx, tables.chartMetadata);
+    for (const chart of metadatas) {
+        const data = await idb.getOne(tx, tables.chartData, chart.id);
+        if (isBundledChartId(chart.id) || !data) {
+            await idb.deleteOne(tx, tables.chartMetadata, chart.id);
+            cleanedUp.push(chart);
+        }
+    }
+
+    const datas = await idb.getAll(tx, tables.chartData);
+    for (const chart of datas) {
+        const metadata = await idb.getOne(tx, tables.chartMetadata, chart.i);
+        if (isBundledChartId(chart.i) || !metadata) {
+            await idb.deleteOne(tx, tables.chartData, chart.i);
+            cleanedUp.push(chart);
+        }
+    }
+
+    if (cleanedUp.length > 0) {
+        console.warn("Cleaned up non-matching or wrongly saved records: ", cleanedUp);
+    }
 }
 
 
@@ -76,9 +118,7 @@ async function chartRepositoryWriteTx(repo: ChartRepository) {
     return tx;
 }
 
-export type SequencerChartMetadata 
-    = Pick<SequencerChart, "id" | "name">
-    & { bundled?: boolean; };
+export type SequencerChartMetadata = Pick<SequencerChart, "id" | "name"> & { _index: number; };
 
 export function queryChart(repo: ChartRepository, id: number): AsyncData<SequencerChart> {
     return newAsyncData(queryChart.name, async () => {
@@ -97,8 +137,9 @@ export function queryChart(repo: ChartRepository, id: number): AsyncData<Sequenc
 
         const tx = await chartRepositoryReadTx(repo);
         const compressedChart = await idb.getOne(tx, tables.chartData, id);
-        if (TEST_ASYNCHRONICITY) {
-            await sleepForMs(100 + Math.random() * 500);
+        const testSleepMs = getTestSleepMs(debugFlags);
+        if (testSleepMs) {
+            await sleepForMs(testSleepMs)
         }
 
         if (!compressedChart) {
@@ -116,47 +157,67 @@ export type SaveResult = 0 | { error: string; }
 
 export function saveChart(repo: ChartRepository, chart: SequencerChart): AsyncData<SaveResult> {
     return newAsyncData(saveChart.name, async () => {
-        if (chart._savedStatus === CHART_STATUS_READONLY) {
+        if (isBundledChartId(chart.id)) {
             return { error: "Can't save a bundled chart. Copy it first" };
+        }
+        if (chart._savedStatus === CHART_STATUS_READONLY) {
+            return { error: "Can't save a readonly chart. Copy it first" };
+        }
+
+        const tx = await chartRepositoryWriteTx(repo);
+        const existingMetadata = await idb.getOne(tx, tables.chartMetadata, chart.id);
+        if (!existingMetadata) {
+            throw new Error("Metadata doesn't already exist");
+        }
+        const existingData = await idb.getOne(tx, tables.chartData, chart.id);
+        if (!existingData) {
+            throw new Error("Data doesn't already exist");
         }
 
         const chartCompressed = compressChart(chart);
-        let metadata = toChartMetadata(chartCompressed);
+        let metadata = toChartMetadata(chart);
 
-        const tx = await chartRepositoryWriteTx(repo);
+        await idb.putOne(tx, tables.chartMetadata, metadata);
+        await idb.putOne(tx, tables.chartData, chartCompressed);
 
-        let id = metadata.id;
-        if (id !== undefined) {
-            await idb.updateOne(tx, tables.chartMetadata, metadata);
-        } else {
-            const key = await idb.createOne(tx, tables.chartMetadata, metadata);
-            const newId = key.valueOf();
-            assert(typeof newId === "number");
-            id = newId;
-            metadata.id = newId;
-
-            // Since we know what happens to the list when we create an item in the database, we can 
-            // simply do the same on our side as well, rather than reloading all entries from the database.
-
-            const allCharts = assertAndGetAllCharts(repo);
-            const idx = allCharts.findIndex(val => val.id === newId);
-            if (idx === -1) {
-                allCharts.push(metadata);
-            }
+        if (chart._savedStatus === CHART_STATUS_UNSAVED) {
+            chart._savedStatus = CHART_STATUS_SAVED;
         }
 
-        chartCompressed.i = id;
-        await idb.updateOne(tx, tables.chartData, chartCompressed);
-
-        // TODO: early return if already saved. 
-        // But only after we start setting the unsaved status properly
-        chart._savedStatus = CHART_STATUS_SAVED;
-
-        if (TEST_ASYNCHRONICITY) {
-            await sleepForMs(100 + Math.random() * 500);
+        const testSleepMs = getTestSleepMs(debugFlags);
+        if (testSleepMs) {
+            await sleepForMs(testSleepMs)
         }
 
         return 0;
+    });
+}
+
+export function createChart(
+    repo: ChartRepository,
+    chart: SequencerChart
+): AsyncData<number> {
+    return newAsyncData(createChart.name, async () => {
+        const tx = await chartRepositoryWriteTx(repo);
+
+        const data     = compressChart(chart);
+        const metadata = toChartMetadata(chart);
+        const validKey = await idb.createOne(tx, tables.chartMetadata, metadata);
+        // Link the data to the metadata
+        const id = validKey.valueOf(); assert(typeof id === "number");
+        data.i = id;
+        await idb.putOne(tx, tables.chartData, data);
+
+        // Since we know what happens to the list when we create an item in the database, we can 
+        // simply do the same on our side as well, rather than reloading all entries from the database.
+
+        const allCharts = assertAndGetAllCharts(repo);
+        const idx = allCharts.findIndex(val => val.id === id);
+        if (idx === -1) {
+            allCharts.push(metadata);
+        }
+
+        return id;
     });
 }
 
@@ -179,21 +240,18 @@ export async function deleteChart(
     await idb.deleteOne(tx, tables.chartMetadata, chartToDelete.id);
     await idb.deleteOne(tx, tables.chartData, chartToDelete.id);
 
-    if (TEST_ASYNCHRONICITY) {
-        await sleepForMs(100 + Math.random() * 500);
+    const testSleepMs = getTestSleepMs(debugFlags);
+    if (testSleepMs) {
+        await sleepForMs(testSleepMs)
     }
 }
 
-function toChartMetadata(chart: SequencerChartCompressed): SequencerChartMetadata {
+function toChartMetadata(chart: SequencerChart): SequencerChartMetadata {
     let result: SequencerChartMetadata = {
-        id:   chart.i,
-        name: chart.n,
+        id:   chart.id,
+        name: chart.name,
+        _index: 0,
     };
-
-    if (chart.i !== undefined && chart.i > 0) {
-        result.id = chart.i;
-    }
-
     return result;
 }
 

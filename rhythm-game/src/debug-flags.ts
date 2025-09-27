@@ -3,22 +3,57 @@
 
 export const IS_PROD = import.meta.env.PROD;
 
+const ON_EVERYWHERE = 1;
 const ON = IS_PROD ? 0 : 1;
 const OFF = 0;
 
-export const TEST_EDIT_VIEW         = ON;
-export const TEST_LOAD_SAVE         = ON;
+type Flag = 0 | 1;
 
-export const TEST_EDIT_VIEW_EXPORT  = OFF;
-export const TEST_EDIT_VIEW_IMPORT  = OFF;
-export const TEST_COPY_MODAL        = OFF;
-export const TEST_CHART             = "Melange Copy";
-export const DEBUG_UNDO_BUFFER      = OFF;
-export const TEST_CHART_SELECT_VIEW = OFF;
+export type DebugFlags = {
+    testEditView: Flag;
+    testLoadSave: Flag;
 
-export const TEST_GAMEPLAY          = OFF;
-export const TEST_RESULTS_VIEW      = OFF;
+    testEditViewExport: Flag;
+    testEditViewImport: Flag;
+    testCopyModal: Flag;
+    testChart: string;
+    debuUndoBuffer: Flag;
+    testChartSelectView: Flag;
+
+    testGameplay: Flag;
+    testResultsView: Flag;
+
+    testFixDatabase: Flag;
+
+    testAsync: Flag;
+    testAsyncALittle: Flag;
+};
+
+export const debugFlags: DebugFlags = {
+    testEditView: OFF,
+    testLoadSave: OFF,
+
+    testEditViewExport: OFF,
+    testEditViewImport: OFF,
+    testCopyModal:      OFF,
+    testChart:          "Melange",
+    debuUndoBuffer:     OFF,
+    testChartSelectView:OFF,
+
+    testGameplay: OFF,
+    testResultsView: OFF,
+
+    testFixDatabase: OFF,
+
+    testAsync: ON,
+    testAsyncALittle: ON_EVERYWHERE,
+};
+
 
 // NOTE: to test this correctly if at all, put the timeout _after_ something that might be a single API request
-export const TEST_ASYNCHRONICITY    = ON;
+export function getTestSleepMs(f: DebugFlags): number {
+    if (f.testAsync) return 100 + 1000 * Math.random();
+    if (f.testAsyncALittle) return 10 + 100 * Math.random();
+    return 0;
+}
 

@@ -54,9 +54,10 @@
  * ```
  */
 export type AsyncData<T> = {
-    // for debug/visualisation/profling purposes
-    name: string; 
-    startedAt: number;
+    // for debug/visualisation/profling purposes.
+    // NOTE: don't use any field names where we could accidentally not use data.<name>
+    debuggingName: string;  
+    t0: number;
     data: T | null;
     err: Error | null; 
 
@@ -70,15 +71,8 @@ export type AsyncData<T> = {
     // If cancelled, none of the callbacks will fire.
     //
 
-    // Should the API be updated to be like
-    // then 
-    //      .catch
-    //      .finally
-    // then
-    //      .catch
-    //      .finall
-    //
-    // i.e each catch and finally only applies to the last `then` ? I think it should.
+    // I did not know it at the time, but apparently the `await` keyword can be used
+    // on any type which has a 'then' method on it, including this one...
 
     then:    (fn?: (val: T) => void) => AsyncData<T>;
     catch:   (fn?: (err: Error) => void) => AsyncData<T>;
@@ -100,8 +94,8 @@ export function getAllLoadingAsyncData() {
 /** See {@link AsyncData} docs */
 export function newAsyncData<T>(name: string, loadFn: (d: AsyncData<T>) => Promise<T>): AsyncData<T> {
     const d: AsyncData<T> = {
-        name: name,
-        startedAt: performance.now(),
+        debuggingName: name,
+        t0: performance.now(),
         data: null,
         err: null,
 

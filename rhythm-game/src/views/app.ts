@@ -1,8 +1,8 @@
 import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, NA, PX } from "src/components/core/layout";
 import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
-import { TEST_ASYNCHRONICITY, TEST_RESULTS_VIEW } from "src/debug-flags";
+import { debugFlags, getTestSleepMs } from "src/debug-flags";
 import { releaseAllKeys, releaseKey, schedulePlayback, setScheduledPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { ChartRepository, queryChart } from "src/state/chart-repository";
+import { ChartRepository, queryChart, SequencerChartMetadata } from "src/state/chart-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     startPlaying,
@@ -23,9 +23,9 @@ import {
 import { SequencerState, setSequencerChart } from "src/state/sequencer-state";
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state";
 import { filterInPlace } from "src/utils/array-utils";
-import { assert, unreachable } from "src/utils/assert";
+import { unreachable } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
-import { ImCache, imFor, imForEnd, imIf, imIfEnd, imMemo, imSwitch, imSwitchEnd } from "src/utils/im-core";
+import { ImCache, imFor, imForEnd, imIf, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
 import { clamp } from "src/utils/math-utils";
@@ -122,28 +122,16 @@ export function playKeyPressForUI(ctx: GlobalContext, key: InstrumentKey) {
     }]);
 }
 
-export function getChartIndexForId(ctx: GlobalContext, id: number): number {
-    const result = ctx.ui.chartSelect.availableCharts.findIndex(m => m.id === id);
-    return result;
-}
-
-export function setCurrentChartIdx(ctx: GlobalContext, i: number) {
+export function setCurrentChartMeta(ctx: GlobalContext, metadata: SequencerChartMetadata) {
     const chartSelect = ctx.ui.chartSelect;
-    chartSelect.idx = clamp(i, 0, chartSelect.availableCharts.length - 1);
+    chartSelect.currentChartMeta = metadata;
 
-    const metadata = getCurrentChartMetadata(chartSelect);
-    if (!metadata) {
-        return null;
+    if (chartSelect.currentChartLoadingId !== metadata.id) {
+        chartSelect.currentChart.cancel();
+        chartSelect.currentChartLoadingId = metadata.id;
+        chartSelect.currentChart = queryChart(ctx.repo, metadata.id)
+            .then(c => setSequencerChart(ctx.sequencer, c));
     }
-
-    if (chartSelect.currentChartLoadingId === metadata.id) {
-        return null;
-    }
-
-    chartSelect.currentChart.cancel();
-    chartSelect.currentChartLoadingId = metadata.id;
-    chartSelect.currentChart = queryChart(ctx.repo, metadata.id)
-        .then(c => setSequencerChart(ctx.sequencer, c));
 
     return chartSelect.currentChart;
 }
@@ -305,8 +293,9 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 editView.lastCursor = 0;
 
                 loadAvailableCharts(ctx).then((availableCharts) => {
-                    const idx = clamp(ctx.ui.chartSelect.idx, 0, availableCharts.length - 1);
-                    setCurrentChartIdx(ctx,idx);
+                    if (availableCharts.length > 0) {
+                        setCurrentChartMeta(ctx, availableCharts[0]);
+                    }
                 });
             } break;
             case APP_VIEW_PLAY_CHART: {
@@ -315,7 +304,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 playView.result = null;
 
                 // Testing results screen
-                if (TEST_RESULTS_VIEW) {
+                if (debugFlags.testResultsView) {
                     const result = newGameplayState(newKeyboardState(), newChart("Test chart name"));
                     result.score = 199
                     result.bestPossibleScore = 200;
@@ -468,10 +457,6 @@ export function imApp(
         ctx.blurredState = true;
     }
 
-    if (imMemo(c, ctx.ui.chartSelect.availableChartsInvalidated)) {
-        loadAvailableCharts(ctx);
-    }
-
     imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
 
         if (imIf(c) && ui.updateModal) {
@@ -499,11 +484,12 @@ export function imApp(
                 const tasks = getAllLoadingAsyncData();
                 imFor(c); for (const t of tasks) {
                     imLayout(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
-                        const ms = performance.now() - t.startedAt;
-                        imStr(c, TEST_ASYNCHRONICITY ? "[TEST]" : "");
+                        const ms = performance.now() - t.t0;
+                        const testDelay = getTestSleepMs(debugFlags);
+                        imStr(c, testDelay ? "[TEST]" : "");
                         imStr(c, Math.round(ms));
                         imStr(c, "ms |");
-                        imStr(c, t.name);
+                        imStr(c, t.debuggingName);
                     } imLayoutEnd(c);
                 } imForEnd(c);
             } imLayoutEnd(c);
@@ -518,17 +504,21 @@ export function imApp(
     }
 }
 
-export function setLoadSaveModalOpen(
-    ctx: GlobalContext,
-    currentChart: SequencerChart,
-    open: boolean
-) {
+export function setLoadSaveModalOpen(ctx: GlobalContext) {
     const ui = ctx.ui;
-    ui.loadSave.modal._open = open;
-    if (open) {
-        runSaveCurrentChartTask(ctx);
-        ui.loadSave.modal.chartBeforeOpen = currentChart;
-    } else {
-        ui.loadSave.modal.chartBeforeOpen = null;
-    }
+    ui.loadSave.modal._open = true;
+    runSaveCurrentChartTask(ctx);
+    const currentChartMeta = getCurrentChartMetadata(ctx);
+    ui.loadSave.modal.chartBeforeOpenMeta = currentChartMeta;
+}
+
+export function setLoadSaveModalClosed(ctx: GlobalContext) {
+    const ui = ctx.ui;
+    ui.loadSave.modal._open = false;
+    ui.loadSave.modal.chartBeforeOpenMeta = null;
+}
+
+const empty: SequencerChartMetadata[] = [];
+export function getAllCharts(ctx: GlobalContext): SequencerChartMetadata[] {
+    return ctx.repo.allCharts.data ?? empty;
 }

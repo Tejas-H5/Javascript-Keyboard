@@ -130,7 +130,7 @@ export function abortTransaction(tx: ReadTransaction | WriteTransaction) {
 
 export type ValidKey = string | number;
 
-export function getOne<T>(tx: ReadTransaction, table: Table<T>,  key: ValidKey): Promise<T | undefined> {
+export function getOne<T>(tx: ReadTransaction, table: Table<T>, key: ValidKey): Promise<T | undefined> {
     return new Promise<T | undefined>((resolve, reject) => {
         const store = tx.raw.objectStore(table.name);
         const txGetRequest: IDBRequest<T> = store.get(key);
@@ -150,7 +150,9 @@ export function getAll<T>(tx: ReadTransaction, table: Table<T>): Promise<T[]> {
 
 // TODO: use cursors for pagination and range scans
 
-export function updateOne<T>(tx: WriteTransaction, table: Table<T>, value: T): Promise<void> {
+// You can use this to either create something, if you're generating IDs yourself,
+// or to edit an existing thing
+export function putOne<T>(tx: WriteTransaction, table: Table<T>, value: T): Promise<void> {
     return new Promise<void>((resolve, reject) => {
         const store = tx.raw.objectStore(table.name);
         const txGetRequest: IDBRequest = store.put(value);
@@ -162,7 +164,7 @@ export function updateOne<T>(tx: WriteTransaction, table: Table<T>, value: T): P
 export function deleteOne<T>(tx: WriteTransaction, table: Table<T>, id: ValidKey): Promise<void> {
     return new Promise<void>((resolve, reject) => {
         const store = tx.raw.objectStore(table.name);
-        const txGetRequest: IDBRequest = store.delete(id);
+        const txGetRequest: IDBRequest = store.delete(IDBKeyRange.only(id));
         txGetRequest.onsuccess = () => resolve(txGetRequest.result);
         txGetRequest.onerror   = (err) => reject(err);
     });
@@ -173,7 +175,7 @@ export function createOne<T extends object>(tx: WriteTransaction, table: Table<T
         const store = tx.raw.objectStore(table.name);
         const payload: Record<string, any> = { ...value };
         delete payload[table.keyPath];
-        const txGetRequest: IDBRequest = store.add(value);
+        const txGetRequest: IDBRequest = store.add(payload);
         txGetRequest.onsuccess = () => resolve(txGetRequest.result);
         txGetRequest.onerror   = (err) => reject(err);
     });

@@ -4,7 +4,6 @@ import { cn, cssVars } from "src/components/core/stylesheets";
 import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
 import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
-import { DEBUG_UNDO_BUFFER, TEST_EDIT_VIEW_EXPORT, TEST_EDIT_VIEW_IMPORT } from "src/debug-flags";
 import { getCurrentOscillatorGainForOwner, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface";
 import {
     getKeyForKeyboardKey,
@@ -59,6 +58,7 @@ import { GlobalContext, setLoadSaveModalOpen, } from "./app";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view";
 import { cssVarsApp } from "./styling";
 import { isSavingAnyChart } from "./background-tasks";
+import { debugFlags } from "src/debug-flags";
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
@@ -148,8 +148,8 @@ function newSequencerState(): SequencerUIState {
         bpmChanges: [],
         measures: [],
 
-        exportModalOpen: !!TEST_EDIT_VIEW_EXPORT,
-        importModalOpen: !!TEST_EDIT_VIEW_IMPORT,
+        exportModalOpen: !!debugFlags.testEditViewExport,
+        importModalOpen: !!debugFlags.testEditViewImport,
     };
 }
 
@@ -366,7 +366,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 }
 
                 if (imButtonIsClicked(c, (loadSaveModal._open ? ">" : "<") + "Load/Save")) {
-                    setLoadSaveModalOpen(ctx, chart, loadSaveModal._open);
+                    setLoadSaveModalOpen(ctx);
                 }
             } else {
                 imIfElse(c);
@@ -393,7 +393,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 } imLayoutEnd(c);
             } imIfEnd(c);
 
-            if (DEBUG_UNDO_BUFFER) {
+            if (!!debugFlags.debuUndoBuffer) {
                 // Debug visualizer for the undo buffer
                 imLayout(c, BLOCK); {
                     let i = 0;

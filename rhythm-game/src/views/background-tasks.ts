@@ -1,16 +1,17 @@
-import { loadChartMetadataList, saveChart, SaveResult } from "src/state/chart-repository";
+import { loadChartMetadataList, reindexCharts, saveChart, SaveResult } from "src/state/chart-repository";
 import { isReadonlyChart, } from "src/state/sequencer-chart";
 import { AsyncData } from "src/utils/promise-utils";
 import { GlobalContext } from "./app";
+import { getCurrentChartMetadata } from "src/state/ui-state";
 
 // TODO: doesn't need to be here. does it?
 // Separate code by concern. not by 'is it a background task or not?'. xd
 
+
 export function loadAvailableCharts(ctx: GlobalContext) {
     const result = loadChartMetadataList(ctx.repo).then(metadata => {
-        const availableCharts = [...metadata]; 
-        availableCharts.sort((a, b) => a.name.localeCompare(b.name));
-        ctx.ui.chartSelect.availableCharts = availableCharts;
+        metadata.sort((a, b) => a.name.localeCompare(b.name));
+        reindexCharts(metadata);
     });
     return result;
 }

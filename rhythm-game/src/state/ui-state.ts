@@ -3,6 +3,7 @@ import { GameplayState } from "src/views/gameplay";
 import { SequencerChartMetadata } from "./chart-repository";
 import { arrayAt } from "src/utils/array-utils";
 import { AsyncData, newAsyncData } from "src/utils/promise-utils";
+import { GlobalContext } from "src/views/app";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -19,17 +20,14 @@ export type AppView = typeof APP_VIEW_STARTUP |
 export type ChartSelectState = {
     loading: boolean;
     loadCounter: number;
-
-    availableCharts: SequencerChartMetadata[];
-    availableChartsInvalidated: boolean;
-    idx: number;
+    currentChartMeta: SequencerChartMetadata | null;
 
     currentChart: AsyncData<SequencerChart>;
     currentChartLoadingId: number | null;
 }
 
-export function getCurrentChartMetadata(state: ChartSelectState): SequencerChartMetadata | null {
-    return arrayAt(state.availableCharts, state.idx) ?? null;
+export function getCurrentChartMetadata(ctx: GlobalContext): SequencerChartMetadata | null {
+    return ctx.ui.chartSelect.currentChartMeta;
 }
 
 export type EditViewState = {
@@ -62,7 +60,7 @@ export type LoadSaveState = {
         _open: boolean;
         isRenaming: boolean;
         helpEnabled: boolean;
-        chartBeforeOpen: SequencerChart | null;
+        chartBeforeOpenMeta: SequencerChartMetadata | null;
     }
 };
 
@@ -70,7 +68,6 @@ export type LoadSaveState = {
 // TODO: do this
 export type UIState = {
     currentView: AppView;
-    // TODO: deprecate
     chartSelect: ChartSelectState;
     loadSave: LoadSaveState;
     updateModal: UpdateModalState | null;
@@ -93,9 +90,8 @@ export function newUiState(): UIState {
             loading: false,
             loadCounter: 0,
 
-            availableCharts: [],
-            availableChartsInvalidated: false,
-            idx: 0,
+            // actually used to track our position in the list
+            currentChartMeta: null, 
             currentChart: newAsyncData("", async () => newChart("First chart")),
             currentChartLoadingId: null,
         },
@@ -107,7 +103,7 @@ export function newUiState(): UIState {
                 helpEnabled: false,
                 isRenaming: false,
                 _open: false,
-                chartBeforeOpen: null,
+                chartBeforeOpenMeta: null,
             }
         },
 

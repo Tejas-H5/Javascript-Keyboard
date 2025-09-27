@@ -1,17 +1,18 @@
 import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
 import { BLOCK, imLayout, imLayoutEnd } from "./components/core/layout";
 import { fpsMarkRenderingEnd, fpsMarkRenderingStart, newFpsCounterState } from "./components/fps-counter";
-import { TEST_CHART, TEST_CHART_SELECT_VIEW, TEST_COPY_MODAL, TEST_EDIT_VIEW, TEST_GAMEPLAY, TEST_LOAD_SAVE } from "./debug-flags";
+import { debugFlags } from "./debug-flags";
+import { cleanupChartRepo, newChartRepository } from "./state/chart-repository";
 import { loadSaveState } from "./state/loading-saving-charts";
 import { newSequencerState, syncPlayback } from "./state/sequencer-state";
-import { getCurrentChartMetadata, NAME_OPERATION_COPY } from "./state/ui-state";
+import { NAME_OPERATION_COPY } from "./state/ui-state";
 import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
 import { ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
 import { newAsyncData } from "./utils/promise-utils";
-import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartIdx, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
-import { loadChartMetadataList, newChartRepository, queryChart } from "./state/chart-repository";
+import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
+import { loadAvailableCharts } from "./views/background-tasks";
 
 const programState = newAsyncData("Entrypoint", async () => {
     // Our code only works after we've established a connection with our
@@ -43,29 +44,37 @@ const programState = newAsyncData("Entrypoint", async () => {
         sequencer,
     );
 
+    if (debugFlags.testFixDatabase) {
+        await cleanupChartRepo(repo);
+    }
+
     if (
-        TEST_EDIT_VIEW || 
-        TEST_GAMEPLAY ||
-        TEST_CHART_SELECT_VIEW ||
-        TEST_COPY_MODAL
+        debugFlags.testEditView ||
+        debugFlags.testGameplay ||
+        debugFlags.testChartSelectView ||
+        debugFlags.testCopyModal
     ) {
 
-        loadChartMetadataList(repo).then((charts) => {
-            const idx = charts.findIndex(c => c.name === TEST_CHART);
-            const metadata = getCurrentChartMetadata(ctx.ui.chartSelect);
-            assert(!!metadata);
-            ctx.ui.chartSelect.availableCharts = charts;
-            setCurrentChartIdx(ctx, idx)?.then((chart) => {
-                if (TEST_EDIT_VIEW) {
+        loadAvailableCharts(ctx).finally((d) => {
+            const charts = d.data;
+            assert(!!charts);
+            const meta = charts.find(c => c.name === debugFlags.testChart);
+            assert(!!meta);
+            setCurrentChartMeta(ctx, meta).finally((d) => {
+                const chart = d.data;
+                assert(!!chart);
+                if (debugFlags.testEditView) {
                     setViewEditChart(ctx);
-                    if (TEST_LOAD_SAVE) {
-                        setLoadSaveModalOpen(ctx, chart, true);
+                    if (debugFlags.testLoadSave) {
+                        setLoadSaveModalOpen(ctx);
                     }
-                } else if (TEST_GAMEPLAY) {
+                } else if (debugFlags.testGameplay) {
                     setViewPlayCurrentChart(ctx);
-                } else if (TEST_CHART_SELECT_VIEW) {
+                } else if (debugFlags.testChartSelectView) {
                     setViewChartSelect(ctx);
-                } else if (TEST_COPY_MODAL) {
+                } 
+
+                if (debugFlags.testCopyModal) {
                     openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
                 }
             });

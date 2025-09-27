@@ -3,15 +3,16 @@ import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonIsClicked } from "src/components/button";
 import { BLOCK, COL, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { saveChart } from "src/state/chart-repository";
-import { CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
+import { createChart, saveChart } from "src/state/chart-repository";
+import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
 import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "src/state/ui-state";
 import { unreachable } from "src/utils/assert";
 import { ImCache, imIf, imIfElse, imIfEnd, isFirstishRender } from "src/utils/im-core";
 import { elSetStyle, imStr } from "src/utils/im-dom";
-import { GlobalContext } from "./app";
+import { getAllCharts as getAllChartMetadatas, GlobalContext, setCurrentChartMeta } from "./app";
 import { cssVarsApp } from "./styling";
 import { newAsyncData } from "src/utils/promise-utils";
+import { loadAvailableCharts } from "./background-tasks";
 
 function getButtonText(o: OperationType): string {
     switch(o) {
@@ -33,7 +34,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
         }
 
         imLayout(c, COL); imBg(c, cssVars.bg); imSize(c, 70, PERCENT, 0, NA); imPadding(c,10, PX, 10, PX, 10, PX, 10, PX); {
-            if (imIf(c) && !s.operation) {
+            if (imIf(c) && !s.updateResult.isLoading()) {
                 imLayout(c, ROW); imJustify(c); {
                     imStr(c, s.message);
                 } imLayoutEnd(c);
@@ -113,10 +114,12 @@ function handleCopyChart(ctx: GlobalContext, s: UpdateModalState) {
             throw new Error("Your name is empty");
         }
 
-        const availableCharts = ctx.ui.chartSelect.availableCharts;
-        if (availableCharts.find(c => c.name === s.newName)) {
+        const existing = ctx.repo.allCharts.data?.find(c => c.name === s.newName);
+        if (existing) {
             throw new Error("A chart with this name already exists");
         }
+
+        let updatedId;
 
         switch (s.operation) {
             case NAME_OPERATION_RENAME: {
@@ -124,16 +127,22 @@ function handleCopyChart(ctx: GlobalContext, s: UpdateModalState) {
 
                 const toRename = { ...s.chartToUpdate };
                 toRename.name = s.newName;
-                toRename._savedStatus = CHART_STATUS_UNSAVED;
+                if (toRename._savedStatus === CHART_STATUS_SAVED) {
+                    toRename._savedStatus = CHART_STATUS_UNSAVED;
+                }
+
+                updatedId = toRename.id;
 
                 await saveChart(ctx.repo, toRename);
+                await loadAvailableCharts(ctx);
             } break;
             case NAME_OPERATION_CREATE: {
                 s.message = "Creating " + s.newName + "] ...";
 
                 const toCreate = newChart(s.newName);
 
-                await saveChart(ctx.repo, toCreate);
+                updatedId = await createChart(ctx.repo, toCreate);
+                await loadAvailableCharts(ctx);
             } break;
             case NAME_OPERATION_COPY: {
                 s.message = "Copying [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
@@ -143,9 +152,16 @@ function handleCopyChart(ctx: GlobalContext, s: UpdateModalState) {
                 toCopy.name = s.newName;
                 toCopy._savedStatus = CHART_STATUS_UNSAVED;
 
-                await saveChart(ctx.repo, toCopy);
+                updatedId = await createChart(ctx.repo, toCopy);
             } break;
             default: unreachable(s.operation);
+        }
+
+        await loadAvailableCharts(ctx);
+        const availableCharts = getAllChartMetadatas(ctx);
+        const created = availableCharts.find(c => c.id === updatedId);
+        if (created) {
+            setCurrentChartMeta(ctx, created);
         }
 
         ctx.ui.updateModal = null;
