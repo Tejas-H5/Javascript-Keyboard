@@ -1094,6 +1094,9 @@ function imExportModal(
     chart: SequencerChart
 ) {
     imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+        if (isFirstishRender(c)) {
+            elSetStyle(c, "zIndex", "10");
+        }
         imLayout(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
             let s; s = imGetInline(c, imExportModal) ?? imSet(c, {
                 buttonText: "Copy to clipboard",
