@@ -155,7 +155,6 @@ export function sampleToNoteIdx(sample: Sample) {
         case "crash2": offset = 7; break;
         case "rand1":  offset = 8; break;
         case "rand2":  offset = 9; break;
-        case "snare":  offset = 10; break;
     }
 
     return BASE_NOTE + offset;
