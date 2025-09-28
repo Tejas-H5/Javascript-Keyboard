@@ -20,7 +20,7 @@ import {
     getBeatIdxBefore,
     getBeatsIndexesInclusive,
     getBpm,
-    isBeatWithin,
+    isBeatWithinInclusve,
     isReadonlyChart,
     itemEnd,
     newTimelineItemBpmChange,
@@ -248,7 +248,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         // check if we've got any new things in the set, and then play them.
         {
             for (const note of s.itemsUnderCursor) {
-                if (!isBeatWithin(note, currentCursor)) {
+                if (!isBeatWithinInclusve(note, currentCursor)) {
                     s.itemsUnderCursor.delete(note);
                 }
             }
@@ -256,7 +256,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             s.notesToPlay.length = 0;
             for (const notes of s.notesMap.values()) {
                 for (const note of notes.items) {
-                    if (isBeatWithin(note, currentCursor)) {
+                    if (isBeatWithinInclusve(note, currentCursor)) {
                         if (!s.itemsUnderCursor.has(note)) {
                             s.notesToPlay.push(note);
                         }
@@ -763,7 +763,7 @@ function imSequencerTrackTimelineItem(
         if (hasRangeSelection(sequencer)) {
             isUnderCursor = isItemRangeSelected(sequencer, item);
         } else {
-            isUnderCursor = isBeatWithin(item, cursorStart);
+            isUnderCursor = isBeatWithinInclusve(item, cursorStart);
         }
 
         isBeingPlayed = isItemBeingPlayed(sequencer, item);

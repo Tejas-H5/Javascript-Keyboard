@@ -112,6 +112,9 @@ export function pressKey(id: number, noteId: number, isRepeat: boolean) {
 
     resumeAudio();
 
+    // pull-push cache.
+    // gameplay code also relies on these values updating as soon as we press the key, rather
+    // than waiting for the oscilator messaging port round-trip
     setCurrentOscillatorGain(id, 1);
 
     const sample = noteIdToSample(noteId);

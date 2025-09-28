@@ -88,6 +88,18 @@ export async function cleanupChartRepo(repo: ChartRepository) {
         if (isBundledChartId(chart.id) || !data) {
             await idb.deleteOne(tx, tables.chartMetadata, chart.id);
             cleanedUp.push(chart);
+        } else {
+            let modified = false;
+
+            if (data.n.trim() !== data.n) {
+                data.n = data.n.trim();
+                modified = true;
+            }
+
+            if (modified) {
+                await idb.putOne(tx, tables.chartData, data);
+                cleanedUp.push(chart);
+            }
         }
     }
 
@@ -97,6 +109,18 @@ export async function cleanupChartRepo(repo: ChartRepository) {
         if (isBundledChartId(chart.i) || !metadata) {
             await idb.deleteOne(tx, tables.chartData, chart.i);
             cleanedUp.push(chart);
+        } else {
+            let modified = false;
+
+            if (metadata.name.trim() !== metadata.name) {
+                metadata.name = metadata.name.trim();
+                modified = true;
+            }
+
+            if (modified) {
+                await idb.putOne(tx, tables.chartMetadata, metadata);
+                cleanedUp.push(chart);
+            }
         }
     }
 

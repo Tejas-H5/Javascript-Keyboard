@@ -426,8 +426,6 @@ export type NoteMapEntry = {
     previewItems: NoteItem[];
 };
 
-// NOTE: Our date model might be wrong. 
-// This might need to become the core datastructure, rather than a derived view.
 export function getTimelineMusicNoteThreads(
     sequencer: SequencerState,
     startBeats: number,

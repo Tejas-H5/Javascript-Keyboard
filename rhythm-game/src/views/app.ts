@@ -312,7 +312,10 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 } 
 
                 setScheduledPlaybackVolume(0.1);
-                startPlaying(ctx, startFrom - 2, undefined, { isUserDriven: true });
+                startPlaying(ctx, startFrom - 2, undefined, {
+                    isUserDriven: true,
+                    speed: debugFlags.testGameplaySlow ? 0.1 : undefined,
+                });
             } break;
         }
     }

@@ -115,8 +115,8 @@ export const DEFAULT_BPM = 120;
 //
 // 720 is a good number, because it divides perfectly with 1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16.
 // Aka every divisor we might ever want for our charts. Sorry in advance to all the jazz people that wanted 7 or 11. 
-// I'm sure your idea is still doable, and that being 1/720 beats off every now and then isn't really a deal anyway.
-// Even when we divide INT_MAX by 720, we still have 800,000 beats available to us for a song - more than enough.
+// I'm sure your idea is still doable, and that being 1/720 beats off every now and then isn't really a big deal anyway.
+// Even when we divide INT_MAX by 720, we still have 800,000 'real' beats available to us for a song - more than enough.
 // It was chosen from https://en.wikipedia.org/wiki/Highly_composite_number
 export const FRACTIONAL_UNITS_PER_BEAT = 720;
 
@@ -321,8 +321,12 @@ export function getItemEndTime(item: TimelineItem): number {
 }
 
 
-export function isBeatWithin(item: TimelineItem, cursorBeats: number): boolean {
+export function isBeatWithinInclusve(item: TimelineItem, cursorBeats: number): boolean {
     return item.start <= cursorBeats && cursorBeats <= itemEnd(item);
+}
+
+export function isBeatWithinExclusive(item: TimelineItem, cursorBeats: number): boolean {
+    return item.start <= cursorBeats && cursorBeats < itemEnd(item);
 }
 
 export function itemEnd(item: TimelineItem): number {
@@ -547,10 +551,8 @@ export function getBpmBeats(bpmChange: TimelineItemBpmChange | undefined): numbe
     return bpmChange.start;
 }
 
-
-export function getLastMeasureBeats(chart: SequencerChart, beats: number): number {
+export function getLastMeasureIndex(chart: SequencerChart, beats: number): number {
     const timeline = chart.timeline;
-    if (timeline.length === 0) return 0;
 
     let idx = -1;
     for (let i = timeline.length - 1; i >= 0; i--) {
@@ -562,8 +564,17 @@ export function getLastMeasureBeats(chart: SequencerChart, beats: number): numbe
             break;
         }
     }
+
+    return idx;
+}
+
+export function getLastMeasureBeats(chart: SequencerChart, beats: number): number {
+    const timeline = chart.timeline;
+    if (timeline.length === 0) return 0;
+
+    const idx = getLastMeasureIndex(chart, beats);
     if (idx === -1) {
-        return beats;
+        return 0;
     }
 
     const item = timeline[idx];
