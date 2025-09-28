@@ -4,7 +4,7 @@
 // It seems like it's OK to import types though.
 
 import { newFunctionUrl } from "src/utils/web-workers";
-import { ScheduledKeyPress } from "./dsp-loop-interface";
+import { ScheduledKeyPress, schedulePlayback } from "./dsp-loop-interface";
 import { clamp, derivative, lerp, max, min, moveTowards } from "src/utils/math-utils";
 import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
 import { filterInPlace } from "src/utils/array-utils";
@@ -429,13 +429,9 @@ function processSample(s: DspState, idx: number) {
                 }
             }
 
-            // setSchedueldPlaybackPaused
+            // Pause playback as required
             {
-                let wantedPausedState = !allUserNotes;
-                if (s.trackPlayback.isPaused !== wantedPausedState) {
-                }
-
-                s.trackPlayback.isPaused = wantedPausedState;
+                s.trackPlayback.isPaused = !allUserNotes;
                 s.trackPlayback.shouldSendUiUpdateSignals = true;
             }
         }
@@ -459,26 +455,32 @@ function processSample(s: DspState, idx: number) {
 
             currentlyPlaying.push(nextItem);
 
-            const sample = noteIdToSample(nextItem.noteId);
-            if (sample) {
-                const osc = getOrCreatePlayingSample(s, nextItem.keyId);
-                osc.inputs = {
-                    sample: sample,
-                };
-                osc.state.sampleIdx = 0;
-                osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
-            } else {
-                const osc = getOrCreatePlayingOscillator(s, nextItem.keyId);
-                osc.inputs = {
-                    noteId: nextItem.noteId,
-                    signal: 1,
-                };
-                osc.state.pressedTime = osc.state.time;
-                osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
+            if (!s.playSettings.isUserDriven) {
+                // Only play scheduled keys if user-driven playback has been disabled.
+                // maybe in the future, we'll want some keys to be user driven and others
+                // to be automated. 
+
+
+                const sample = noteIdToSample(nextItem.noteId);
+                if (sample) {
+                    const osc = getOrCreatePlayingSample(s, nextItem.keyId);
+                    osc.inputs = {
+                        sample: sample,
+                    };
+                    osc.state.sampleIdx = 0;
+                    osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
+                } else {
+                    const osc = getOrCreatePlayingOscillator(s, nextItem.keyId);
+                    osc.inputs = {
+                        noteId: nextItem.noteId,
+                        signal: 1,
+                    };
+                    osc.state.pressedTime = osc.state.time;
+                    osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
+                }
+
+                trackPlayback.shouldSendUiUpdateSignals = true;
             }
-
-
-            trackPlayback.shouldSendUiUpdateSignals = true;
         }
 
         // stop playback once we've reached the last note, and
@@ -497,7 +499,12 @@ function processSample(s: DspState, idx: number) {
             const scheduled = currentlyPlaying[i];
             if (scheduled.timeEnd < trackPlayback.scheduledPlaybackTime) {
                 const osc = getOrCreatePlayingOscillator(s, scheduled.keyId);
-                osc.inputs.signal = 0;
+
+                if (!s.playSettings.isUserDriven) {
+                    // Only automate the release of keys a user has actually pressed. 
+                    osc.inputs.signal = 0;
+                }
+
                 currentlyPlaying[i] = currentlyPlaying[currentlyPlaying.length - 1];
                 currentlyPlaying.pop();
                 i--;
@@ -811,7 +818,7 @@ export function getDspLoopClassUrl(): string {
                     this.sendCurrentPlayingMessageBack();
                     return;
                 }
-                
+
                 dspReceiveMessage(this.s, e);
             }
         }

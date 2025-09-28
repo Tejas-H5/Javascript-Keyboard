@@ -8,7 +8,7 @@ import { newSequencerState, syncPlayback } from "./state/sequencer-state";
 import { NAME_OPERATION_COPY } from "./state/ui-state";
 import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
-import { ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
+import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
 import { newAsyncData } from "./utils/promise-utils";
 import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
@@ -87,7 +87,10 @@ const programState = newAsyncData("Entrypoint", async () => {
 function imMainInner(c: ImCache) {
     const globalContext = programState.data;
 
+
     if (imIf(c) && globalContext) {
+        globalContext.deltaTime = getDeltaTimeSeconds(c);
+
         const fps = imState(c, newFpsCounterState);
         fpsMarkRenderingStart(fps);
 

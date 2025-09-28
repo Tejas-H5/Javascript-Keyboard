@@ -28,6 +28,15 @@ export function inverseLerp(value: number, start: number, end: number) {
     return (value - start) / (end - start);
 }
 
+// This order might be easier to remember?
+export function inverseLerp2(start: number, value: number, end: number) {
+    if (start === end) {
+        return value;
+    }
+
+    return (value - start) / (end - start);
+}
+
 export function clamp(val: number, min: number, max: number) {
     if (val < min) return min;
     if (val > max) return max;

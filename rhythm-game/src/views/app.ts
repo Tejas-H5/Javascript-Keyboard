@@ -66,6 +66,7 @@ function newAllKeysState(): AllKeysState {
 export type GlobalContext = {
     keyboard: KeyboardState;
     sequencer: SequencerState;
+    deltaTime: number;
 
     ui: UIState;
 
@@ -102,6 +103,7 @@ export function newGlobalContext(
         keyReleaseState: null,
         blurredState: false,
         handled: false,
+        deltaTime: 0,
     };
 
     setSequencerChart(ctx.sequencer, ctx.sequencer._currentChart);

@@ -220,8 +220,6 @@ export function newAsyncData<T>(name: string, loadFn: (d: AsyncData<T>) => Promi
             }
         });
 
-    console.log("New async data", d);
-
     return d;
 }
 

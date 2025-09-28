@@ -1,4 +1,4 @@
-import { BLOCK, COL, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, INLINE, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { debugFlags } from "src/debug-flags";
@@ -33,9 +33,10 @@ import { assert } from "src/utils/assert";
 import { copyColor, lerpColor, newColor } from "src/utils/colour";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imGet, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
-import { clamp, inverseLerp, max } from "src/utils/math-utils";
+import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
 import { cssVarsApp, getCurrentTheme } from "./styling";
+import { replaceCss } from "vite-plugin-singlefile";
 
 const SIGNAL_LOOKAHEAD_BEATS   = 1 * FRACTIONAL_UNITS_PER_BEAT;
 const GAMEPLAY_LOOKAHEAD_BEATS = 3 * FRACTIONAL_UNITS_PER_BEAT;
@@ -119,7 +120,9 @@ function newVerticalNoteThreadState() {
 
 export type GameplayState = {
     currentBeat: number;
+    currentBeatAnimated: number;
     end: number;
+    endAnimated: number;
     midpoint: number;
     notesMap: Map<number, NoteMapEntry>;
     commandsList: CommandItem[];
@@ -145,6 +148,17 @@ export type GameplayState = {
         timerSeconds: number;
 
         maxScoreThisMeasure: number;
+
+        rewindAnimation: {
+            t: number;
+            started: boolean;
+            requiredScore: number;
+            actualScore: number;
+            blinkState: boolean;
+            rewindAmount: number;
+            animatedCursorBeats: number;
+            targetCursorBeats: number;
+        };
     };
 
     score: number;
@@ -153,8 +167,12 @@ export type GameplayState = {
     chartName: string;
 };
 
+
 type GameplayKeyState = {
     keyHeld: boolean;
+    // Shouldn't be able to move between multiple keys without releasing and pressing.
+    // Don't want the game to award people full score for just holding down all the keys all the time.
+    keyReleasedAtLeastOnce: boolean; 
     lastPressedItem: NoteItem | null;
     lastItemScore: number;
     lastItemScoreMissed: number;
@@ -176,7 +194,9 @@ export function newGameplayState(
         chartName: chart.name,
 
         currentBeat: 0,
+        currentBeatAnimated: 0,
         end: 0,
+        endAnimated: 0,
         midpoint: 0,
         notesMap: new Map(),
         keysMap: new Map(),
@@ -189,6 +209,7 @@ export function newGameplayState(
                 lastItemScore: 0,
                 lastItemScoreMissed: 0,
                 keyHeld: false,
+                keyReleasedAtLeastOnce: false,
 
                 lastPressedBeatQuantized: -1,
             };
@@ -209,12 +230,25 @@ export function newGameplayState(
             scoreMissedThisMeasure: 0,
 
             maxScoreThisMeasure: 0,
+
+            rewindAnimation: {
+                t: 0,
+                started: false,
+                requiredScore: 0,
+                actualScore: 0,
+                blinkState: false,
+                rewindAmount: 0,
+                animatedCursorBeats: 0,
+                targetCursorBeats: 0,
+            },
         },
     };
 }
 
 function handleGameplayKeyDown(ctx: GlobalContext, gameplayState: GameplayState): boolean {
     let result = false;
+
+    const rewindStarted = gameplayState.practiceMode.rewindAnimation.started;
 
     if (ctx.keyPressState)  {
         const { key, isRepeat } = ctx.keyPressState;
@@ -226,7 +260,11 @@ function handleGameplayKeyDown(ctx: GlobalContext, gameplayState: GameplayState)
         } else {
             const instrumentKey = getKeyForKeyboardKey(keyboard, key);
             if (instrumentKey) {
-                pressKey(instrumentKey.index, instrumentKey.noteId, isRepeat);
+                if (!rewindStarted) {
+                    // Don't allow key presses during the rewind
+                    pressKey(instrumentKey.index, instrumentKey.noteId, isRepeat);
+                }
+
                 result = true;
             }
         }
@@ -278,7 +316,14 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     }
 
     gameplayState.currentBeat = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
+    if (gameplayState.practiceMode.rewindAnimation.started) {
+        gameplayState.currentBeatAnimated = gameplayState.practiceMode.rewindAnimation.animatedCursorBeats;
+    } else {
+        gameplayState.currentBeatAnimated = gameplayState.currentBeat; 
+    }
+
     gameplayState.end = gameplayState.currentBeat + GAMEPLAY_LOADAHEAD_BEATS;
+    gameplayState.endAnimated = gameplayState.currentBeatAnimated + GAMEPLAY_LOOKAHEAD_BEATS;
 
     const dt = getDeltaTimeSeconds(c);
 
@@ -293,10 +338,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
     // Required so that we can process certain inputs
     const EXTRA_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
-
     getTimelineMusicNoteThreads(
         ctx.sequencer, 
-        gameplayState.currentBeat - EXTRA_BEATS, gameplayState.end + EXTRA_BEATS,
+        gameplayState.currentBeatAnimated - EXTRA_BEATS, gameplayState.end + EXTRA_BEATS,
         gameplayState.notesMap, gameplayState.commandsList
     );
 
@@ -308,21 +352,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
         ctx.handled = handleGameplayKeyDown(ctx, gameplayState);
     }
 
-    const PRACTICE_MODE_HOLD_TIME_SECONDS = 1;
-
     const practiceMode = gameplayState.practiceMode;
-    if (!practiceMode.enabled) {
-        if (practiceMode.buttonHeld) {
-            if (practiceMode.timerSeconds > PRACTICE_MODE_HOLD_TIME_SECONDS) {
-                practiceMode.enabled = true;
-                // this is just the first rewind. Afterwards, 
-                // we rewind automatically whenever we didn't score enough in a measure.
-                gamplayPracticeModeRewind(ctx, gameplayState, gameplayState.currentBeat);
-            }
-            practiceMode.timerSeconds += dt;
-        }
-    }
-
     updatePracticeMode(ctx, gameplayState, chart);
 
     imLayout(c, COL); imFlex(c); imJustify(c); {
@@ -369,8 +399,17 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
                 imLayout(c, ROW); imFlex(c); imJustify(c); imRelative(c); {
                     let val;
-                    if (gameplayState.practiceMode.enabled) {
-                        val = "practice mode";
+                    const anim = practiceMode.rewindAnimation;
+                    if (anim.started) {
+                        if (practiceMode.rewindAnimation.rewindAmount) {
+                            val = " rewinding" + ".".repeat(Math.ceil(3 * practiceMode.rewindAnimation.rewindAmount));
+                        } else {
+                            const needed = anim.requiredScore - anim.actualScore;
+                            // TODO (low priority): this text can be more entertaining.
+                            val = `Needed ${needed} more score.`;
+                        }
+                    } else if (gameplayState.practiceMode.enabled) {
+                        val = "practice mode - measure " + (practiceMode.nextMeasureIdx + 1);
                     } else if (gameplayState.practiceMode.buttonHeld) {
                         const remaining = PRACTICE_MODE_HOLD_TIME_SECONDS - gameplayState.practiceMode.timerSeconds;
                         val = "hold for practice mode in " + remaining.toFixed(1) + "s..."
@@ -390,22 +429,14 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             }
                         }
 
-                        imStr(c, "Measure ")
-                        imStr(c, practiceMode.nextMeasureIdx + 1); 
+                        imLayout(c, INLINE); imFg(c, practiceMode.rewindAnimation.blinkState ? "#F00" : ""); {
+                            imStr(c, gameplayState.score);
+                        } imLayoutEnd(c);
 
-                        imStr(c, ": ");
-
-                        imStr(c, gameplayState.score);
                         imStr(c, " / ");
 
                         const requiredScore = practiceMode.scoreThisMeasure + practiceMode.maxScoreThisMeasure;
                         imStr(c, requiredScore);
-                        // imStr(c, " - ("); 
-                        // imStr(c, practiceMode.scoreSinceThisMeasure);
-                        // imStr(c, " + "); 
-                        // imStr(c, practiceMode.scoreMissedSinceThisMeasure);
-                        // imStr(c, ") /"); 
-                        // imStr(c, practiceMode.maxScoreThisMeasure);
                     } else {
                         imIfElse(c);
                         imStr(c, progressPercent); imStr(c, "%");
@@ -465,7 +496,8 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
                                 imFor(c); for (let i = 0; i < thread.length; i++) {
                                     const item = thread[i];
-                                    const currentBeat = sGameplay.currentBeat;
+                                    const currentBeat = sGameplay.currentBeatAnimated;
+                                    const gameplayAreaEndBeat = sGameplay.endAnimated;
 
                                     const s = imState(c, newBarState);
                                     const currentBeatInItem = isBeatWithinInclusve(item, currentBeat);
@@ -474,7 +506,6 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
                                     updateCurrentItemScore(gameplayState, keyState, item, keySignal);
 
-                                    const gameplayAreaEndBeat = currentBeat + GAMEPLAY_LOOKAHEAD_BEATS;
                                     let heightPercent = 100 * item.length / GAMEPLAY_LOOKAHEAD_BEATS;
                                     let bottomPercent = 100 * inverseLerp(item.start, currentBeat, gameplayAreaEndBeat);
                                     if (bottomPercent <= 0) {
@@ -614,24 +645,26 @@ function updateCurrentItemScore(
 ) {
     const currentBeat = gameplayState.currentBeat;
     const beatWithinItem = isBeatWithinInclusve(item, currentBeat);
+
+    let keyPressed = false;
+    let keyReleased = false;
+    if (!keyState.keyHeld && !!keySignal) {
+        keyPressed = true;
+        keyState.keyHeld = true;
+    } else if (!keySignal && keyState.keyHeld) {
+        keyState.keyHeld = false;
+        keyState.keyReleasedAtLeastOnce = true;
+        keyReleased = true;
+    }
+
     if (beatWithinItem) {
         let itemChanged = false;
-        if (keyState.lastPressedItem !== item) {
+        if (keyState.lastPressedItem !== item && keyState.keyReleasedAtLeastOnce) {
             keyState.lastPressedItem = item;
             keyState.lastItemScore = 0;
             keyState.lastItemScoreMissed = 0;
-
+            keyState.keyReleasedAtLeastOnce = false;
             itemChanged = true;
-        }
-
-        let keyPressed = false;
-        let keyReleased = false;
-        if (!keyState.keyHeld && !!keySignal) {
-            keyPressed = true;
-            keyState.keyHeld = true;
-        } else if (!keySignal && keyState.keyHeld) {
-            keyState.keyHeld = false;
-            keyReleased = true;
         }
 
         // Pressing a note works by establishing a grid on an individual note,
@@ -691,10 +724,10 @@ function updateCurrentItemScore(
 function gamplayPracticeModeRewind(
     ctx: GlobalContext,
     gameplayState: GameplayState,
-    fromBeat: number
+    toBeats: number
 ) {
     const chart = ctx.sequencer._currentChart;
-    const newTime  = getTimeForBeats(chart, fromBeat);
+    const newTime  = getTimeForBeats(chart, toBeats);
     setScheduledPlaybackTime(newTime);
 
     gameplayState.score = gameplayState.practiceMode.scoreThisMeasure;
@@ -706,6 +739,7 @@ function gamplayPracticeModeRewind(
     }
 }
 
+const PRACTICE_MODE_HOLD_TIME_SECONDS = 1;
 
 function updatePracticeMode(
     ctx: GlobalContext,
@@ -713,61 +747,113 @@ function updatePracticeMode(
     chart: SequencerChart,
 ) {
     const practiceMode = gameplayState.practiceMode;
+    if (!practiceMode.enabled) {
+        if (practiceMode.buttonHeld) {
+            if (practiceMode.timerSeconds > PRACTICE_MODE_HOLD_TIME_SECONDS) {
+                practiceMode.enabled = true;
+                // this is just the first rewind. Afterwards, 
+                // we rewind automatically whenever we didn't score enough in a measure.
 
-    // Compute current measure:
-    // |         |         |      |           |   |             |
-    // ^         ^                                     ^             ^
-    // start    measure 0                       final measure       end of chart
-    //
-    // The measures are actual timeline items, whic doesn't include the start and end of the chart,
-    // so we'll need to account for those. 
-    // This is also why practiceMode.nextMeasureIdx = measures.length;.
-
-    const measures = gameplayState.practiceMode.measures;
-    practiceMode.nextMeasureIdx = measures.length;
-    for (let i = 0; i < measures.length; i++) {
-        const measure = measures[i];
-        if (measure.start >= gameplayState.currentBeat) {
-            practiceMode.nextMeasureIdx = i;
-            break;
+                gamplayPracticeModeRewind(ctx, gameplayState, gameplayState.currentBeat);
+            }
+            practiceMode.timerSeconds += ctx.deltaTime;
         }
     }
 
-    // Did it change? anything need to be done?
-    if (practiceMode.nextMeasureIdxLast !== practiceMode.nextMeasureIdx) {
-        const prevMeasureIdx = practiceMode.nextMeasureIdxLast;
+    if (practiceMode.rewindAnimation.started) {
 
-        let rewound = false;
-        if (practiceMode.enabled) {
-            // If we missed too many times, go back to the last measure, so we can try again
-            
-            const requiredScore = practiceMode.scoreThisMeasure + practiceMode.maxScoreThisMeasure;
-            const TOO_MANY_MISSES = 5;
-            if (requiredScore - gameplayState.score > TOO_MANY_MISSES) {
-                rewound = true;
+        const anim = practiceMode.rewindAnimation;
+        let t0 = 0, t1 = 0;
 
-                const measureToRewindTo = arrayAt(measures, prevMeasureIdx - 1);
+        anim.blinkState = true;
+        anim.rewindAmount = 0;
 
-                const measureBeat = measureToRewindTo ? measureToRewindTo.start : 0;
-
-                gamplayPracticeModeRewind(ctx, gameplayState, measureBeat);
+        for (let i = 0; i < 5; i++) {
+            t0 = t1; t1 += 0.2;
+            if (t1 < anim.t) {
+                anim.blinkState = !anim.blinkState;
             }
         }
 
-        if (!rewound) {
-            practiceMode.nextMeasureIdxLast = practiceMode.nextMeasureIdx;
-            gameplayState.practiceMode.scoreThisMeasure = gameplayState.score;
-            gameplayState.practiceMode.scoreMissedThisMeasure = gameplayState.scoreMissed;
-        } else {
-            // Don't compute next measure's scores
-            practiceMode.nextMeasureIdx = practiceMode.nextMeasureIdxLast;
+        const rewindDurationSeconds = 0.5;
+        t0 = t1; t1 += rewindDurationSeconds;
+
+        anim.animatedCursorBeats = gameplayState.currentBeat;
+        if (t0 <= anim.t && anim.t <= t1) {
+            const t = inverseLerp2(t0, anim.t, t1);
+            anim.animatedCursorBeats = lerp(gameplayState.currentBeat, anim.targetCursorBeats, t);
+            anim.rewindAmount = t;
         }
+
+        if (anim.t > t1) {
+            anim.started = false;
+            gamplayPracticeModeRewind(ctx, gameplayState, anim.targetCursorBeats);
+        }
+
+        anim.t += ctx.deltaTime;
+    } else {
+
+        // Compute current measure:
+        // |         |         |      |           |   |             |
+        // ^         ^                                     ^             ^
+        // start    measure 0                       final measure       end of chart
+        //
+        // The measures are actual timeline items, whic doesn't include the start and end of the chart,
+        // so we'll need to account for those. 
+        // This is also why practiceMode.nextMeasureIdx = measures.length;.
+
+        const measures = gameplayState.practiceMode.measures;
+        practiceMode.nextMeasureIdx = measures.length;
+        for (let i = 0; i < measures.length; i++) {
+            const measure = measures[i];
+            if (measure.start >= gameplayState.currentBeat) {
+                practiceMode.nextMeasureIdx = i;
+                break;
+            }
+        }
+
+        // Did it change? anything need to be done?
+        if (practiceMode.nextMeasureIdxLast !== practiceMode.nextMeasureIdx) {
+            const prevMeasureIdx = practiceMode.nextMeasureIdxLast;
+
+            let rewound = false;
+            if (practiceMode.enabled) {
+                // If we missed too many times, go back to the last measure, so we can try again
+
+                const requiredScore = practiceMode.scoreThisMeasure + practiceMode.maxScoreThisMeasure;
+                const TOO_MANY_MISSES = 5;
+                if (
+                    debugFlags.testPracticeModeRewind ||
+                    requiredScore - gameplayState.score > TOO_MANY_MISSES
+                ) {
+                    rewound = true;
+
+                    const measureToRewindTo = arrayAt(measures, prevMeasureIdx - 1);
+                    const measureBeat = measureToRewindTo ? measureToRewindTo.start : 0;
+
+                    practiceMode.rewindAnimation.started = true;
+                    practiceMode.rewindAnimation.t = 0;
+                    practiceMode.rewindAnimation.targetCursorBeats = measureBeat;
+                    practiceMode.rewindAnimation.requiredScore = requiredScore;
+                    practiceMode.rewindAnimation.actualScore = gameplayState.score;
+                }
+            }
+
+            if (!rewound) {
+                practiceMode.nextMeasureIdxLast = practiceMode.nextMeasureIdx;
+                gameplayState.practiceMode.scoreThisMeasure = gameplayState.score;
+                gameplayState.practiceMode.scoreMissedThisMeasure = gameplayState.scoreMissed;
+            } else {
+                // Don't compute next measure's scores
+                practiceMode.nextMeasureIdx = practiceMode.nextMeasureIdxLast;
+            }
+        }
+
+        const thisMeasure = arrayAt(measures, practiceMode.nextMeasureIdx - 1);
+        const nextMeasure = arrayAt(measures, practiceMode.nextMeasureIdx);
+        let thisMeasureBeat = thisMeasure ? thisMeasure.start : 0;
+        let nextMeasureBeat = nextMeasure ? nextMeasure.start : measures[measures.length - 1].start;
+
+        practiceMode.maxScoreThisMeasure = getBestPossibleScore(chart, thisMeasureBeat, nextMeasureBeat);
     }
-
-    const thisMeasure = arrayAt(measures, practiceMode.nextMeasureIdx - 1);
-    const nextMeasure = arrayAt(measures, practiceMode.nextMeasureIdx);
-    let thisMeasureBeat = thisMeasure ? thisMeasure.start : 0;
-    let nextMeasureBeat = nextMeasure ? nextMeasure.start : measures[measures.length - 1].start;
-
-    practiceMode.maxScoreThisMeasure = getBestPossibleScore(chart, thisMeasureBeat, nextMeasureBeat);
 }
