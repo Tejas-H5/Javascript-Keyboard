@@ -1,6 +1,6 @@
 import { isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
-import { getBeatIdxAfter, getChartDurationInBeats, itemEnd, getItemEndTime, getItemStartTime, getLastMeasureBeats, getTimeForBeats, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE } from "src/state/sequencer-chart";
+import { getBeatIdxAfter, getChartDurationInBeats, itemEnd, getItemEndTime, getItemStartTime, getLastMeasureBeats, getTimeForBeats, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, FRACTIONAL_UNITS_PER_BEAT } from "src/state/sequencer-chart";
 import { getCurrentPlayingBeats, hasRangeSelection, } from "src/state/sequencer-state";
 import { unreachable } from "src/utils/assert";
 import { GlobalContext } from "src/views/app";

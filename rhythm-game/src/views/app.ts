@@ -13,6 +13,7 @@ import {
 } from "src/state/saved-state";
 import {
     copyTimelineItem,
+    FRACTIONAL_UNITS_PER_BEAT,
     newChart,
     redoEdit,
     SequencerChart,
@@ -314,7 +315,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 } 
 
                 setScheduledPlaybackVolume(0.1);
-                startPlaying(ctx, startFrom - 2, undefined, {
+                startPlaying(ctx, startFrom - 2 * FRACTIONAL_UNITS_PER_BEAT, undefined, {
                     isUserDriven: true,
                     speed: debugFlags.testGameplaySlow ? 0.1 : undefined,
                 });

@@ -687,7 +687,7 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
 
     if (e.newPlaybackTime !== undefined) {
         if (trackPlayback.scheduleKeys) {
-            console.log("new playback time");
+            console.log("new playback time", e.newPlaybackTime);
             trackPlayback.scheduledPlaybackTime = e.newPlaybackTime;
             trackPlayback.scheduledPlaybackCurrentIdx = 0;
         }

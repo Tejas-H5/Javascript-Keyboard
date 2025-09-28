@@ -90,28 +90,10 @@ function getMessagesForDesignation(d: Designation): string[] {
     switch(d) {
         case "SSS": return ["HOW"];
         case "SS":  return ["LETS GOOOO!!!!"];
-        case "S":   return ["Amazing!", "Very nice!", ">message goes here<"];
+        case "S":   return ["Amazing!"];
         case "A":   return ["Well done!", "This is a good improvement.", "Yes", "So close", "Missed it by THAT much"];
-        case "B":   return ["Nice!", "Good job!", "This message is randomly generated"];
-        case "C":   return [
-            "You passed!",
-            "Bare minimum!",
-            "De-fault!",
-            "Do worse to unlock the tutorial. Well, kinda"
-        ];
-        case "L":   return [
-            "...",
-            "Taking Ls is the only way to grow as a person", 
-            "This game is hard. Because really, you're learning a full instrument",
-            "We'll get em next time.", "This game is hard. Because really, you're learning a full instrument",
-            "The road is long and hard. Will the destination be worth it? probably not, so make sure you're enjoying yourself",
-            "This game comes with a chart editor, which you may be interested in",
-            "Excess keys being held down do not detract from score",
-            "Press and hold [Backspace] to engage practice mode. You can use it to rewind by a couple seconds, and try again.",
-            "Reminder to sit up straight and hydrate", // https://www.youtube.com/watch?v=A7UkRXNnCeQ
-        ];
     }
-    return ["???"];
+    return ["Press and hold [Backspace] while playing at any time to enter practice mode"];
 }
 
 function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) {

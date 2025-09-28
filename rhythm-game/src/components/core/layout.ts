@@ -358,3 +358,9 @@ export function imAspectRatio(c: ImCache, w: number, h: number) {
         elSetStyle(c, "aspectRatio", w + " / " + h);
     }
 }
+
+export function imZIndex(c: ImCache, z: number) {
+    if (imMemo(c, z)) {
+        elSetStyle(c, "zIndex", "" + z);
+    }
+}

@@ -16,6 +16,7 @@ import { previewNotes } from "src/state/playing-pausing";
 import {
     CommandItem,
     compressChart,
+    computeScheduledTimes,
     FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxBefore,
     getBeatsIndexesInclusive,
