@@ -21,9 +21,6 @@ export type DebugFlags = {
     testChartSelectView: Flag;
     testPracticeMode: Flag;
 
-    testPracticeModeRewind: Flag;
-    testPracticeModeRewindManual: Flag;
-
     testGameplay: Flag;
     testGameplaySlow: Flag;
     testResultsView: Flag;
@@ -41,15 +38,13 @@ export const debugFlags: DebugFlags = {
     testEditViewExport:  OFF,
     testEditViewImport:  OFF,
     testCopyModal:       OFF,
-    testChart:           "test chart",
+    testChart:           "Good old days",
     debuUndoBuffer:      OFF,
     testChartSelectView: OFF,
 
     testGameplaySlow: OFF,
-    testGameplay:     ON,
+    testGameplay:     OFF,
     testPracticeMode: OFF,
-    testPracticeModeRewind: OFF,
-    testPracticeModeRewindManual: OFF,
     testResultsView:  OFF,
 
     testFixDatabase: OFF,

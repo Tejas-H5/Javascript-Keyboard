@@ -8,6 +8,8 @@ type AppTheme = ComponentsCoreTheme & {
     error:    CssColor;
     calm:    CssColor;
     danger:    CssColor;
+    unhit:  CssColor;
+    fullyHit: CssColor;
 };
 
 export const cssVarsApp: Record<keyof AppTheme, string> = {
@@ -17,6 +19,8 @@ export const cssVarsApp: Record<keyof AppTheme, string> = {
     error:     "var(--error)",
     calm:      "var(--calm)",
     danger:    "var(--danger)",
+    unhit:     "var(--unhit)",
+    fullyHit:  "var(--fullyHit)",
 } as const;
 
 const cssb = newCssBuilder();
@@ -72,6 +76,8 @@ const mainTheme = Object.freeze({
     error:     newColorFromHex("#F00"),
     calm:      newColorFromHex("#00AAFF"),
     danger:    newColorFromHex("#FF0000"),
+    unhit:     newColorFromHex("#FF0000"),
+    fullyHit:  newColorFromHex("#0000FF"),
 });
 
 let currentTheme: AppTheme = mainTheme;

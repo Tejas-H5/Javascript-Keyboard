@@ -78,10 +78,10 @@ function getDesignation(score: number, bestPossibleScore: number): Designation {
         return "SSS" 
     }
     if (score === bestPossibleScore) return "SS";
-    if (score > Math.max(bestPossibleScore - 10, bestPossibleScore * 0.98)) return "S";
-    if (score > Math.max(bestPossibleScore - 50, bestPossibleScore * 0.9))  return "A";
-    if (score > Math.max(bestPossibleScore - 100, bestPossibleScore * 0.8)) return "B";
-    if (score > Math.max(bestPossibleScore - 500, bestPossibleScore * 0.7)) return "C";
+    if (score >   bestPossibleScore * 0.98) return "S";
+    if (score >   bestPossibleScore * 0.9)  return "A";
+    if (score >   bestPossibleScore * 0.8) return "B";
+    if (score >   bestPossibleScore * 0.7) return "C";
     return "L";
 }
 

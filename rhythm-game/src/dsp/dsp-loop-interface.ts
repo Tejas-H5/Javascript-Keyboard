@@ -14,9 +14,9 @@ export type ScheduledKeyPress = {
 const audioCtx = new AudioContext()
 const playSettings: DSPPlaySettings = {
     attack: 0.05,
-    decay: 0.3,
-    attackVolume: 0.5,
-    sustainVolume: 0.15,
+    decay: 3,
+    attackVolume: 0.2,
+    sustainVolume: 0.05,
     sustain: 0.5,
     isUserDriven: false,
 };
@@ -105,28 +105,36 @@ export function isAnythingPlaying() {
     return info.currentlyPlaying.some(block => block[1] > 0 && block[2] === 0);
 }
 
+const pressedKeys = new Set<number>();
+
+export function isKeyPressed(keyId: number) {
+    return pressedKeys.has(keyId);
+}
 
 // we keep forgetting to ignore repeats, so I've made it an argument to this method.
-export function pressKey(id: number, noteId: number, isRepeat: boolean) {
+export function pressKey(keyId: number, noteId: number, isRepeat: boolean) {
     if (isRepeat) return false;
 
     resumeAudio();
 
+    pressedKeys.add(keyId);
+
     // pull-push cache.
     // gameplay code also relies on these values updating as soon as we press the key, rather
     // than waiting for the oscilator messaging port round-trip
-    setCurrentOscillatorGain(id, 1);
+    setCurrentOscillatorGain(keyId, 1);
 
     const sample = noteIdToSample(noteId);
     if (sample) {
-        audioLoopDispatch({ playSample: [id, { sample: sample }] })
+        audioLoopDispatch({ playSample: [keyId, { sample: sample }] })
     } else {
-        audioLoopDispatch({ setOscilatorSignal: [id, { noteId: noteId, signal: 1 }] })
+        audioLoopDispatch({ setOscilatorSignal: [keyId, { noteId: noteId, signal: 1 }] })
     }
 }
 
-export function releaseKey(noteIndex: number, noteId: number) {
-    audioLoopDispatch({ setOscilatorSignal: [noteIndex, { noteId: noteId, signal: 0 }] })
+export function releaseKey(keyId: number, noteId: number) {
+    audioLoopDispatch({ setOscilatorSignal: [keyId, { noteId: noteId, signal: 0 }] })
+    pressedKeys.delete(keyId);
 }
 
 export function schedulePlayback(presses: ScheduledKeyPress[]) {
@@ -136,6 +144,7 @@ export function schedulePlayback(presses: ScheduledKeyPress[]) {
 
 export function releaseAllKeys() {
     audioLoopDispatch({ clearAllOscilatorSignals: true });
+    pressedKeys.clear();
 }
 
 function areEqual(a: [number, number, number][], b: [number, number, number][]): boolean {

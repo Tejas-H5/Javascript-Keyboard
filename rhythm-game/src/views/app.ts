@@ -296,9 +296,13 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 editView.lastCursor = 0;
 
                 loadAvailableCharts(ctx).then((availableCharts) => {
-                    if (availableCharts.length > 0) {
-                        setCurrentChartMeta(ctx, availableCharts[0]);
-                    }
+                    if (availableCharts.length === 0) return;
+
+                    const currentChartId = ctx.sequencer._currentChart.id;
+                    let idx = availableCharts.findIndex(c => c.id === currentChartId);
+                    if (idx === -1) idx = 0;
+
+                    setCurrentChartMeta(ctx, availableCharts[idx]);
                 });
             } break;
             case APP_VIEW_PLAY_CHART: {

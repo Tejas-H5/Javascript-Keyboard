@@ -47,6 +47,7 @@ export type SequencerState = {
 
     isPlaying: boolean;
     isPaused: boolean;
+    startBeats: number;
     pausedTime: number;
     startPlayingTime: number; // this is the time IRL we started playing, not the time along the timeline.seq
 
@@ -280,6 +281,7 @@ export function newSequencerState(): SequencerState {
 
         isPlaying: false,
         isPaused: false,
+        startBeats: 0,
         pausedTime: 0,
         startPlayingTime: 0,
         currentHoveredTimelineItemIdx: -1,
