@@ -306,8 +306,6 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 });
             } break;
             case APP_VIEW_PLAY_CHART: {
-                let startFrom = editView.lastCursor;
-
                 playView.result = null;
 
                 // Testing results screen
@@ -319,7 +317,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 } 
 
                 setScheduledPlaybackVolume(0.1);
-                startPlaying(ctx, startFrom - 2 * FRACTIONAL_UNITS_PER_BEAT, undefined, {
+                startPlaying(ctx, -1 * FRACTIONAL_UNITS_PER_BEAT, undefined, {
                     isUserDriven: true,
                     speed: debugFlags.testGameplaySlow ? 0.1 : undefined,
                 });

@@ -28,7 +28,7 @@ import {
 } from "src/state/sequencer-state";
 import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
-import { copyColor, lerpColor, newColor } from "src/utils/colour";
+import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGet, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils";
@@ -489,8 +489,6 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
                         const theme = getCurrentTheme();
 
-                        const backgroundColor = s.currentBgColor.toCssString();
-
                         copyColor(theme.bg, s.currentBgColor);
 
                         if (imIf(c) && instrumentKey.isLeftmost) {
@@ -502,12 +500,6 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             } imLayoutEnd(c);
 
                             imLayout(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
-                                if (isFirstishRender(c)) {
-                                    elSetStyle(c, "transition", "background-color 0.2s");
-                                }
-
-                                elSetStyle(c, "backgroundColor", backgroundColor);
-
                                 imFor(c); for (let i = 0; i < thread.length; i++) {
                                     const item = thread[i];
                                     const s = imState(c, newBarState);
@@ -527,7 +519,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                     }
 
                                     const dt = getDeltaTimeSeconds(c);
-                                    if (currentBeatInItem) {
+                                    if (currentBeatInItem && !keyState.keyHeld) {
                                         // give user an indication that they should care about the fact that this bar has reached the bottom.
                                         // hopefully they'll see the keyboard letter just below it, and try pressing it.
                                         s.animation += dt;
@@ -539,29 +531,12 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                     }
 
 
-                                    const colours = imGetInline(c, imGameplay) ?? imSet(c, {
-                                        progressColor: newColor(0, 0, 0, 0),
-                                    });
-
                                     let color;
-
-                                    if (
-                                        keyState.lastPressedItem === item && 
-                                        isBeatWithinExclusive(item, gameplayState.currentBeat) && 
-                                        keyState.keyHeld
-                                    ) {
-                                        const itemBestPossibleScore = getBestPossibleScoreForNote(keyState.lastPressedItem);
-                                        const progress = (keyState.lastItemScore / itemBestPossibleScore);
-                                        lerpColor(theme.unhit, theme.fullyHit, progress, colours.progressColor);
-                                        color = colours.progressColor.toCssString();
+                                    if (s.animation > 0.5) {
+                                        color = theme.unhit.toCssString();
                                     } else {
-                                        if (s.animation > 0.5) {
-                                            color = theme.unhit.toCssString();
-                                        } else {
-                                            color = cssVarsApp.fg;
-                                        }
+                                        color = cssVarsApp.fg;
                                     }
-
 
                                     imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, heightPercent, PERCENT); {
                                         if (isFirstishRender(c)) {
@@ -592,7 +567,19 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                 }
                             } imLayoutEnd(c);
 
-                            imLetter(c, gameplayState, instrumentKey, thread, keyGain);
+
+                            let letterColor;
+                            if (keyState.keyHeld && keyState.lastPressedItem) {
+                                const itemBestPossibleScore = getBestPossibleScoreForNote(keyState.lastPressedItem);
+                                const progress = (keyState.lastItemScore / itemBestPossibleScore);
+                                if (progress < 0.4)       letterColor = theme.unhit;
+                                else if (progress < 0.95) letterColor = theme.mediumHit;
+                                else                      letterColor = theme.fullyHit;
+                            } else {
+                                letterColor = null;
+                            }
+
+                            imLetter(c, gameplayState, instrumentKey, thread, keyGain, letterColor);
                         } imLayoutEnd(c);
                     }
                 } imEndFor(c);
@@ -612,6 +599,7 @@ function imLetter(
     instrumentKey: InstrumentKey,
     thread: NoteItem[],
     signal: number,
+    letterColor: CssColor | null,
 ) {
     let s; s = imGetInline(c, imLetter) ?? imSet(c, {
         textColor: newColor(0, 0, 0, 1),
@@ -620,15 +608,35 @@ function imLetter(
 
     const theme = getCurrentTheme();
 
-    let distanceToNextNoteNormalized = 1;
+    let next: NoteItem | undefined;
     if (thread.length > 0) {
-        let start = thread[0].start;
-        distanceToNextNoteNormalized = clamp((start - gameplay.currentBeat) / SIGNAL_LOOKAHEAD_BEATS, 0, 1);
+        for (let i = 0; i < thread.length; i++) {
+            const item = thread[i];
+            if (item.start + item.length >= gameplay.currentBeat) {
+                next = item;
+                break;
+            }
+        }
     }
 
-    lerpColor(theme.fg, theme.bg2, distanceToNextNoteNormalized, s.textColor);
-    lerpColor(s.textColor, theme.bg, signal, s.textColor);
-    lerpColor(theme.bg, theme.fg, signal, s.bgColor);
+    let distanceToNextNoteNormalized = 1;
+    if (next) {
+        distanceToNextNoteNormalized = (next.start - gameplay.currentBeat) / SIGNAL_LOOKAHEAD_BEATS;
+
+        if (distanceToNextNoteNormalized > 1) {
+            distanceToNextNoteNormalized = 1;
+        } else if (distanceToNextNoteNormalized < 0) {
+            if (isBeatWithinInclusve(next, gameplay.currentBeat)) {
+                distanceToNextNoteNormalized = 0;
+            } else {
+                distanceToNextNoteNormalized = 1;
+            }
+        }
+    }
+
+    lerpColor(theme.fg, theme.bg2, clamp(distanceToNextNoteNormalized, 0, 1), s.textColor);
+
+    s.bgColor = letterColor ?? theme.bg;
 
     imLayout(c, COL); imSize(c, 40, PX, 0, NA); imAlign(c); imJustify(c); imZIndex(c, 10); {
         imBg(c, s.bgColor.toString());
@@ -758,7 +766,7 @@ function gamplayPracticeModeRewind(
 ) {
     // TODO: fix bug - the offset we end up at is not quite right, but it is close enough for now.
     const chart = ctx.sequencer._currentChart;
-    const newTime  = getTimeForBeats(chart, toBeats - ctx.sequencer.startBeats);
+    const newTime  = getTimeForBeats(chart, toBeats + ctx.sequencer.startBeats);
     setScheduledPlaybackTime(newTime);
 
     gameplayState.practiceMode.rewindAnimation.started = false;

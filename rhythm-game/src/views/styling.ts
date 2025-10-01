@@ -9,6 +9,7 @@ type AppTheme = ComponentsCoreTheme & {
     calm:    CssColor;
     danger:    CssColor;
     unhit:  CssColor;
+    mediumHit: CssColor;
     fullyHit: CssColor;
 };
 
@@ -20,6 +21,7 @@ export const cssVarsApp: Record<keyof AppTheme, string> = {
     calm:      "var(--calm)",
     danger:    "var(--danger)",
     unhit:     "var(--unhit)",
+    mediumHit: "var(--unhit)",
     fullyHit:  "var(--fullyHit)",
 } as const;
 
@@ -69,7 +71,7 @@ export const cnApp = {
     h1: cssb.cn("header1", [` { font-size: 64px }`]),
 };
 
-const mainTheme = Object.freeze({
+const mainTheme = Object.freeze<AppTheme>({
     ...defaultCoreTheme,
     playback:  newColorFromHex("#00F"),
     bpmMarker: newColorFromHex("#A00"),
@@ -77,7 +79,8 @@ const mainTheme = Object.freeze({
     calm:      newColorFromHex("#00AAFF"),
     danger:    newColorFromHex("#FF0000"),
     unhit:     newColorFromHex("#FF0000"),
-    fullyHit:  newColorFromHex("#0000FF"),
+    mediumHit: newColorFromHex("#FFCC00"),
+    fullyHit:  newColorFromHex("#00FF00"),
 });
 
 let currentTheme: AppTheme = mainTheme;
