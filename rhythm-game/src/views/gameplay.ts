@@ -766,8 +766,9 @@ function gamplayPracticeModeRewind(
 ) {
     // TODO: fix bug - the offset we end up at is not quite right, but it is close enough for now.
     const chart = ctx.sequencer._currentChart;
-    const newTime  = getTimeForBeats(chart, toBeats + ctx.sequencer.startBeats);
-    setScheduledPlaybackTime(newTime);
+    const newTime  = getTimeForBeats(chart, toBeats);
+    const timeOffset = getTimeForBeats(chart, ctx.sequencer.startBeats);
+    setScheduledPlaybackTime(newTime - timeOffset);
 
     gameplayState.practiceMode.rewindAnimation.started = false;
     gameplayState.score = gameplayState.practiceMode.scoreThisMeasure;

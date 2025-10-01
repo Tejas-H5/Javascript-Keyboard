@@ -103,12 +103,10 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
 
     const timeline = chart.timeline;
     const startTime = getTimeForBeats(chart, startBeats);
-    const leadInTime =  -startTime;
 
     // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
 
     const scheduledKeyPresses: ScheduledKeyPress[] = [];
-    const startPlaybackFromTime = -leadInTime;
 
     for (let i = 0; i < timeline.length; i++) {
         const item = timeline[i];
@@ -121,7 +119,7 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
         }
 
         if (item.type === TIMELINE_ITEM_NOTE) {
-            pushNotePress(scheduledKeyPresses, keyboard, item, startPlaybackFromTime);
+            pushNotePress(scheduledKeyPresses, keyboard, item, startTime);
             continue;
         }
 
@@ -136,10 +134,10 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
     // TODO: sort prob not needed, since the timeline is sorted already
     scheduledKeyPresses.sort((a, b) => a.time - b.time);
     sequencer.scheduledKeyPresses = scheduledKeyPresses;
-    sequencer.scheduledKeyPressesFirstItemStart = startPlaybackFromTime;
+    sequencer.scheduledKeyPressesFirstItemStart = startTime;
     sequencer.scheduledKeyPressesPlaybackSpeed = speed;
 
-    sequencer.startPlayingTime = performance.now() + leadInTime;
+    sequencer.startPlayingTime = performance.now() - startTime;
     sequencer.isPlaying = true;
     sequencer.isPaused = false;
     sequencer.startBeats = startBeats;
