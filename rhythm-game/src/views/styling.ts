@@ -1,16 +1,17 @@
 import { ComponentsCoreTheme, cssVars, defaultCoreTheme } from "src/components/core/stylesheets";
+import { INTER_FONT_CSS } from "src/fonts/fonts";
 import { CssColor, newColorFromHex } from "src/utils/colour";
 import { newCssBuilder, setCssVars } from "src/utils/cssb";
 
 type AppTheme = ComponentsCoreTheme & {
-    playback: CssColor;
+    playback:  CssColor;
     bpmMarker: CssColor;
-    error:    CssColor;
-    calm:    CssColor;
+    error:     CssColor;
+    calm:      CssColor;
     danger:    CssColor;
-    unhit:  CssColor;
+    unhit:     CssColor;
     mediumHit: CssColor;
-    fullyHit: CssColor;
+    fullyHit:  CssColor;
 };
 
 export const cssVarsApp: Record<keyof AppTheme, string> = {
@@ -28,8 +29,11 @@ export const cssVarsApp: Record<keyof AppTheme, string> = {
 const cssb = newCssBuilder();
 
 cssb.s(`
+
+${INTER_FONT_CSS}
+
 body {
-    font-family: monospace;
+    font-family: MainGameFont;
     font-size: ${cssVars.normalText};
     color: ${cssVars.fg};
     background: ${cssVars.bg};
@@ -37,7 +41,7 @@ body {
 
 textarea {
     all: unset;
-    font-family: monospace;
+    font-family: MainGameFont;
     white-space: pre-wrap;
     padding: 5px;
 }
@@ -48,7 +52,7 @@ textarea:focus {
 
 input {
     all: unset;
-    font-family: monospace;
+    font-family: MainGameFont;
     white-space: pre-wrap;
 }
 
