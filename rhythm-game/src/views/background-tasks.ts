@@ -1,22 +1,12 @@
-import { loadChartMetadataList, reindexCharts, saveChart, SaveResult } from "src/state/chart-repository";
+import { saveChart } from "src/state/chart-repository";
 import { isReadonlyChart, } from "src/state/sequencer-chart";
-import { AsyncData } from "src/utils/promise-utils";
 import { GlobalContext } from "./app";
-import { getCurrentChartMetadata } from "src/state/ui-state";
 
 // TODO: doesn't need to be here. does it?
 // Separate code by concern. not by 'is it a background task or not?'. xd
 
 
-export function loadAvailableCharts(ctx: GlobalContext) {
-    const result = loadChartMetadataList(ctx.repo).then(metadata => {
-        metadata.sort((a, b) => a.name.localeCompare(b.name));
-        reindexCharts(metadata);
-    });
-    return result;
-}
-
-const saveTasks = new Set<AsyncData<SaveResult>>();
+const saveTasks = new Set<number>();
 export function isSavingAnyChart() {
     return saveTasks.size > 0;
 }
@@ -33,7 +23,7 @@ export function runSaveCurrentChartTask(ctx: GlobalContext) {
     editView.chartSaveTimerSeconds = -1;
 
     const saveTask = saveChart(ctx.repo, chart)
-    saveTasks.add(saveTask);
-    saveTask.finally(d => saveTasks.delete(d));
+    saveTasks.add(chart.id);
+    saveTask.then(() => saveTasks.delete(chart.id));
 }
 

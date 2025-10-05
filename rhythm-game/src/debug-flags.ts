@@ -1,6 +1,3 @@
-// A single file with all the test flags to enable/disable various scenarios for testing purposes.
-// If you need a particular view or particular data to be loaded ever time you refresh, this is the place to configure that.
-
 export const IS_PROD = import.meta.env.PROD;
 
 const ON_EVERYWHERE = 1;

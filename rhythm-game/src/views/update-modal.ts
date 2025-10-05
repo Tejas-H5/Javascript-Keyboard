@@ -3,16 +3,15 @@ import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonIsClicked } from "src/components/button";
 import { BLOCK, COL, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { createChart, saveChart } from "src/state/chart-repository";
+import { createChart, loadChartMetadataList, saveChart } from "src/state/chart-repository";
 import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
 import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "src/state/ui-state";
 import { unreachable } from "src/utils/assert";
 import { ImCache, imIf, imIfElse, imIfEnd, isFirstishRender } from "src/utils/im-core";
 import { elSetStyle, imStr } from "src/utils/im-dom";
-import { getAllCharts as getAllChartMetadatas, GlobalContext, setCurrentChartMeta } from "./app";
+import { GlobalContext, setCurrentChartMeta, setLoadSaveModalClosed } from "./app";
 import { cssVarsApp } from "./styling";
-import { newAsyncData } from "src/utils/promise-utils";
-import { loadAvailableCharts } from "./background-tasks";
+import { TrackedPromise } from "src/utils/promise-utils";
 
 function getButtonText(o: OperationType): string {
     switch(o) {
@@ -34,7 +33,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
         }
 
         imLayout(c, COL); imBg(c, cssVars.bg); imSize(c, 70, PERCENT, 0, NA); imPadding(c,10, PX, 10, PX, 10, PX, 10, PX); {
-            if (imIf(c) && !s.updateResult.isLoading()) {
+            if (imIf(c) && !s.updateResult.loading) {
                 imLayout(c, ROW); imJustify(c); {
                     imStr(c, s.message);
                 } imLayoutEnd(c);
@@ -52,9 +51,9 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
                             }
                         }
 
-                        if (imIf(c) && s.updateResult.err) {
+                        if (imIf(c) && s.updateResult.error) {
                             imLayout(c, ROW); imFg(c, cssVarsApp.error); {
-                                imStr(c, s.updateResult.err);
+                                imStr(c, s.updateResult.error);
                             } imLayoutEnd(c);
                         } imIfEnd(c);
                     } imLayoutEnd(c);
@@ -92,7 +91,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     if (copy) {
         handleCopyChart(ctx, s);
     } else if (escape) {
-        if (!s.updateResult.isLoading()) {
+        if (!s.updateResult.loading) {
             ctx.ui.updateModal = null;
         } else {
             s.updateResult.cancel();
@@ -105,16 +104,19 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
 }
 
 function handleCopyChart(ctx: GlobalContext, s: UpdateModalState) {
-    if (s.updateResult.isLoading()) {
+    if (s.updateResult.loading) {
         return;
     }
 
-    s.updateResult = newAsyncData(handleCopyChart.name, async () => {
+    s.newName = s.newName.trim();
+
+    s.updateResult = new TrackedPromise(async () => {
         if (!s.newName) {
             throw new Error("Your name is empty");
         }
 
-        const existing = ctx.repo.allCharts.data?.find(c => c.name === s.newName);
+        const charts = ctx.repo.allChartMetadata;
+        const existing = charts.find(c => c.name === s.newName);
         if (existing) {
             throw new Error("A chart with this name already exists");
         }
@@ -134,15 +136,25 @@ function handleCopyChart(ctx: GlobalContext, s: UpdateModalState) {
                 updatedId = toRename.id;
 
                 await saveChart(ctx.repo, toRename);
-                await loadAvailableCharts(ctx);
+                await loadChartMetadataList(ctx.repo);
             } break;
             case NAME_OPERATION_CREATE: {
                 s.message = "Creating " + s.newName + "] ...";
 
                 const toCreate = newChart(s.newName);
 
-                updatedId = await createChart(ctx.repo, toCreate);
-                await loadAvailableCharts(ctx);
+                const newId = await createChart(ctx.repo, toCreate);
+                updatedId = newId;
+                await loadChartMetadataList(ctx.repo);
+                const charts = ctx.repo.allChartMetadata;
+
+                // After you create a chart, that should become the chart that's selected.
+                const chart = charts.find(c => c.id === newId);
+                if (chart) {
+                    setCurrentChartMeta(ctx, chart)
+                    setLoadSaveModalClosed(ctx);
+                }
+
             } break;
             case NAME_OPERATION_COPY: {
                 s.message = "Copying [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
@@ -157,9 +169,8 @@ function handleCopyChart(ctx: GlobalContext, s: UpdateModalState) {
             default: unreachable(s.operation);
         }
 
-        await loadAvailableCharts(ctx);
-        const availableCharts = getAllChartMetadatas(ctx);
-        const created = availableCharts.find(c => c.id === updatedId);
+        await loadChartMetadataList(ctx.repo);
+        const created = charts.find(c => c.id === updatedId);
         if (created) {
             setCurrentChartMeta(ctx, created);
         }
@@ -167,6 +178,6 @@ function handleCopyChart(ctx: GlobalContext, s: UpdateModalState) {
         ctx.ui.updateModal = null;
 
         return true;
-    });
+    }, "Copying chart");
 }
 

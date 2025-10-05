@@ -2,7 +2,7 @@ import { BLOCK, COL, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, 
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { debugFlags } from "src/debug-flags";
-import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setScheduledPlaybackTime } from "src/dsp/dsp-loop-interface";
+import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setPlaybackTime } from "src/dsp/dsp-loop-interface";
 import {
     getKeyForKeyboardKey,
     InstrumentKey,
@@ -35,9 +35,9 @@ import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-util
 import { GlobalContext, setViewChartSelect } from "./app";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
-const SIGNAL_LOOKAHEAD_BEATS   = 1 * FRACTIONAL_UNITS_PER_BEAT;
-const GAMEPLAY_LOOKAHEAD_BEATS = 3 * FRACTIONAL_UNITS_PER_BEAT;
-const GAMEPLAY_LOADAHEAD_BEATS = 6 * FRACTIONAL_UNITS_PER_BEAT;
+const SIGNAL_LOOKAHEAD_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
+const GAMEPLAY_BEATS_VIEWPORT  = 3 * FRACTIONAL_UNITS_PER_BEAT;
+const GAMEPLAY_BEATS_LOADAHEAD = 6 * FRACTIONAL_UNITS_PER_BEAT;
 
 // every 1/n beats hit = 1 score
 const SCOREABLE_BEAT_QUANTIZATION_REAL_BEATS = 16;
@@ -305,13 +305,8 @@ function handleGameplayKeyDown(ctx: GlobalContext, gameplayState: GameplayState)
 export function imGameplay(c: ImCache, ctx: GlobalContext) {
     const chart = ctx.sequencer._currentChart;
     const keyboard = ctx.keyboard;
-
-    const chartChanged = imMemo(c, chart);
-
-    let gameplayState = imGet(c, newGameplayState);
-    if (!gameplayState || chartChanged) {
-        gameplayState = imSet(c, newGameplayState(ctx.keyboard, chart));
-    }
+    const gameplayState = ctx.gameplay;
+    assert(!!gameplayState);
 
     const durationBeats = getChartDurationInBeats(chart);
     const progressPercent = Math.round(max(100 * gameplayState.currentBeat / durationBeats, 0));
@@ -331,8 +326,8 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
         gameplayState.currentBeatAnimated = gameplayState.currentBeat; 
     }
 
-    gameplayState.end = gameplayState.currentBeat + GAMEPLAY_LOADAHEAD_BEATS;
-    gameplayState.endAnimated = gameplayState.currentBeatAnimated + GAMEPLAY_LOOKAHEAD_BEATS;
+    gameplayState.end = gameplayState.currentBeat + GAMEPLAY_BEATS_LOADAHEAD;
+    gameplayState.endAnimated = gameplayState.currentBeatAnimated + GAMEPLAY_BEATS_VIEWPORT;
 
     const dt = getDeltaTimeSeconds(c);
 
@@ -509,7 +504,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
                                     updateCurrentItemScore(gameplayState, keyState, item);
 
-                                    let heightPercent = 100 * item.length / GAMEPLAY_LOOKAHEAD_BEATS;
+                                    let heightPercent = 100 * item.length / GAMEPLAY_BEATS_VIEWPORT;
                                     let bottomPercent = 100 * inverseLerp(item.start, gameplayState.currentBeatAnimated, sGameplay.endAnimated);
                                     if (bottomPercent <= 0) {
                                         // the bar is below the thing. 
@@ -768,7 +763,7 @@ function gamplayPracticeModeRewind(
     const chart = ctx.sequencer._currentChart;
     const newTime  = getTimeForBeats(chart, toBeats);
     const timeOffset = getTimeForBeats(chart, ctx.sequencer.startBeats);
-    setScheduledPlaybackTime(newTime - timeOffset);
+    setPlaybackTime(newTime - timeOffset);
 
     gameplayState.practiceMode.rewindAnimation.started = false;
     gameplayState.score = gameplayState.practiceMode.scoreThisMeasure;
@@ -789,6 +784,10 @@ function gamplayPracticeModeRewind(
 
 const PRACTICE_MODE_HOLD_TIME_SECONDS = 1;
 
+export function enablePracticeMode(s: GameplayState) {
+    s.practiceMode.enabled = true;
+}
+
 function updatePracticeMode(
     ctx: GlobalContext,
     gameplayState: GameplayState,
@@ -798,15 +797,14 @@ function updatePracticeMode(
     if (!practiceMode.enabled) {
         if (practiceMode.buttonHeld) {
             if (practiceMode.timerSeconds > PRACTICE_MODE_HOLD_TIME_SECONDS) {
-                practiceMode.enabled = true;
-                // this is just the first rewind. Afterwards, 
+                // this is just the first rewind. Afterwards,
                 // we rewind automatically whenever we didn't score enough in a measure.
+                enablePracticeMode(gameplayState);
 
                 // TODO: this code should also invoke the animation
 
                 const measureToRewindTo = arrayAt(gameplayState.measures, gameplayState.practiceMode.nextMeasureIdx - 1);
                 const measureBeat = measureToRewindTo ? measureToRewindTo.start : 0;
-
                 gamplayPracticeModeRewind(ctx, gameplayState, measureBeat);
             }
             practiceMode.timerSeconds += ctx.deltaTime;

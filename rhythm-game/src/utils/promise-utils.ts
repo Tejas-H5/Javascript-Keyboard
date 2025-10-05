@@ -1,226 +1,7 @@
-// I am not a fan of async-await for various reasons.
-// In particular, the async keyword will propagate itself up the function usages.
-// I don't like this, because whenever you mark a function as 'async', you can make far less assumptions about it's execution.
-//
-// However, I have nothing against Promises. In fact, they are required if you want to write any kind of efficient data 
-// fetching code in JavaScript at all. Using async-await will make your code look synchronous, which
-// will make it harder to notice things that can be paralellized.
-//
-// I also believe that 'callback-hell' is a complete non-issue.
-//
-// The benefits of:
-//  - never having to add `async` to any of your functions
-//  - serial and parallel dependency chaings being more obvious
-//  - ability to handle the failure of each individual promise slightly differently, if needed
-//
-// Far outweight any percieved 'hell' from too much indentation.
-//
-// However, I'm finding that the main problem with any form of async/await, or callbacks, is that it is very 
-// easy for them to leak to all of the places that call them, resulting in 
-// all the code that touches them becoming overly complicated.
-//
-// The truth is, if all you're doing is loading assets asynchronously, 
-// then you probably don't need to pollute your codebase with async/await or promises.
-// TODO: test this theory and try to think of a better solution
+const loadingTrackedPromises = new Set<TrackedPromise<any>>();
 
-// I'd also like the ability to, cancel tasks, handle cancellation on a case-by-case basis,
-// replace tasks with newer tasks, use arbitrary scheduling algorithms for tasks
-// and keep track of all the tasks that we've got running. 
-// And it turns out, while being a useful prmitive, promises don't really solve any of this other stuff by themselves.
-
-/** 
- * Represents some asset or action result that we'll get at some point in the future.
- * While similar to Promises, these tend to be more useful in practice, because you can:
- * - Track all async data that is currently loading
- * - 'Cancel' async data that is loading. Right now this just means the callbacks don't get called,
- *      but we can update it to invoke an abort controller in the future
- * - You can still schedule callbacks to get called on completion, error, or both
- 
- * This data was designed to only be loaded by one async method, once.
- * There is no 'reloading' this object - cancel the previous object if needed, throw it away, and load another one in it's place instead.
- * This allows us to maintain a simple mental model, and avoid all sorts of race conditions.
- *
- * For example:
- * ```ts
- * // unintended usage that we built this thing to avoid in the first place:
- * const store = { value: 0, };
- * newAsyncData(() => fetch("/my/api/endpoint/v1/value", { method: "GET" }))
- *      .then(response => store.value = response)
- *
- * // intented usage:
- * const store = { value: newAsyncData(async () => 0), };
- * store.value = newAsyncData(() => fetch("/my/api/endpoint/v1/value", { method: "GET" }));
- *
- * ```
- */
-export type AsyncData<T> = {
-    // for debug/visualisation/profling purposes.
-    // NOTE: don't use any field names where we could accidentally not use data.<name>
-    debuggingName: string;  
-    t0: number;
-    data: T | null;
-    err: Error | null; 
-
-    thenFn:    ((val: T) => void)[] | undefined;
-    catchFn:   ((err: Error) => void)[] | undefined;
-    finallyFn: ((d: AsyncData<T>) => void)[] | undefined;
-
-    // NOTE: semantics are slightly different from Promise<T>.
-    // These methods add handlers to the same data, rather than returning a new instance.
-    // Also, multicast is supported.
-    // If cancelled, none of the callbacks will fire.
-    //
-
-    // I did not know it at the time, but apparently the `await` keyword can be used
-    // on any type which has a 'then' method on it, including this one...
-
-    then:    (fn?: (val: T) => void) => AsyncData<T>;
-    catch:   (fn?: (err: Error) => void) => AsyncData<T>;
-    finally: (fn?: (d: AsyncData<T>) => void) => AsyncData<T>;
-
-    // NOTE: these are static methods that probably didn't need to be fn pointers
-
-    cancel(): void;
-    isLoading(): boolean;
-
-};
-
-const allLoadingAsyncData = new Set<AsyncData<any>>();
-
-export function getAllLoadingAsyncData() {
-    return allLoadingAsyncData;
-}
-
-/** See {@link AsyncData} docs */
-export function newAsyncData<T>(name: string, loadFn: (d: AsyncData<T>) => Promise<T>): AsyncData<T> {
-    const d: AsyncData<T> = {
-        debuggingName: name,
-        t0: performance.now(),
-        data: null,
-        err: null,
-
-        thenFn:     undefined,
-        catchFn:    undefined,
-        finallyFn:  undefined,
-
-        // We need to be able to add these _after_ we return this object, and
-        // still have the callbacks run. This allows us to not need to 
-        // pass 3 lambda parameters into every AsyncData method.
-
-        then(fn) {
-            if (!fn) return d;
-
-            if (d.data !== null) {
-                fn(d.data);
-            } else {
-                if (!d.thenFn) d.thenFn = [];
-                d.thenFn.push(fn);
-            }
-            return d;
-        },
-        catch(fn) {
-            if (!fn) return d;
-
-            if (d.err) {
-                fn(d.err);
-            } else {
-                if (!d.catchFn) d.catchFn = [];
-                d.catchFn.push(fn);
-            }
-            return d;
-        },
-        finally(fn) {
-            if (!fn) return d;
-
-            if (!d.isLoading()) {
-                fn(d);
-            } else {
-                if (!d.finallyFn) d.finallyFn = [];
-                d.finallyFn.push(fn);
-            }
-            return d;
-        },
-
-        cancel() {
-            allLoadingAsyncData.delete(d);
-        },
-
-        isLoading() {
-            return allLoadingAsyncData.has(d);
-        },
-    };
-
-    // Adding it here instead of at the start of load(), so that if calling load() is forgotten, then the 
-    // background task visualiser will still display this
-    allLoadingAsyncData.add(d);
-
-    const promise = loadFn(d);
-
-    // Because we're using a builder pattern, 
-    // our callbacks should always be set to something by now,
-    // so this also works for when `loader` returns a promise that's already resolved.
-
-    promise
-        .then(val => {
-            if (!allLoadingAsyncData.has(d)) {
-                // Task was cancelled. Show is over folks
-                return;
-            }
-
-            if (val == null) {
-                d.err = CANCELLATION_ERROR;
-                if (d.catchFn) {
-                    for (const fn of d.catchFn) {
-                        try {
-                            fn(d.err);
-                        } catch (e) {
-                            console.error("Error in catch event of async task (cancellation pathway)", e);
-                        }
-                    }
-                }
-            } else {
-                d.data = val;
-                if (d.thenFn) {
-                    for (const fn of d.thenFn) {
-                        try {
-                            fn(val);
-                        } catch (e) {
-                            console.error("Error in then event of async task", e);
-                        }
-                    }
-                }
-            }
-        })
-        .catch(err => {
-            // Run this thing regardless of cancellation
-            
-            d.err = toError(err)
-
-            if (d.catchFn === undefined) d.catchFn = defaultErrorHandlers;
-            for (const fn of d.catchFn) {
-                try {
-                    fn(d.err);
-                } catch (e) {
-                    console.error("Error in catch event of async task", e);
-                }
-            }
-        })
-        .finally(() => {
-            // Run this thing regardless of cancellation as well
-
-            allLoadingAsyncData.delete(d);
-            if (d.finallyFn) {
-                for (const fn of d.finallyFn) {
-                    try {
-                        fn(d);
-                    } catch (e) {
-                        console.error("Error in finally event of async task", e);
-                    }
-                }
-            }
-        });
-
-    return d;
+export function getLoadingPromises(): Set<TrackedPromise<any>> {
+    return loadingTrackedPromises;
 }
 
 function toError(err: any): Error {
@@ -228,14 +9,119 @@ function toError(err: any): Error {
     return new Error("" + err);
 }
 
-const defaultErrorHandlers = [
-    (err: Error) => {
-        console.error("An error occured while loadin async data: ", err);
+export function sleepForMs(sleepMs: number) {
+    return new Promise((resolve) => setTimeout(resolve, sleepMs));
+}
+
+class CancelRef {
+    cancelled = false;
+    cancel() {
+        this.cancelled = true;
     }
-];
+}
 
-const CANCELLATION_ERROR = new Error("Cancelled");
+class CancellationError extends Error {}
 
-export function sleepForMs(ms: number): Promise<void> {
-    return new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** 
+ * A Promise<T> wrapper. 
+ * Adds:
+ *  - tracking which ones are loading
+ *  - ability to cancel the next `then` invocation
+ * Removes:
+ *  - catch   -> you can just use errors as values if you actually care about various errors. Typically you just want to log errors.
+ *  - finally -> you can just add some code to the end of your `then` method. 
+ *
+ * Btw. You can still `await` these just like normal promises, since
+ * `await` actually interacts with all thenables, and not just promises!
+ */
+export class TrackedPromise<T> {
+    private _error: Error | undefined;
+    private _value: undefined | T;
+
+    private promise: Promise<T>;
+
+    private readonly cancelRef: CancelRef;
+
+    public t0 = 0;
+
+    constructor(
+        public readonly promiseFn:         () => Promise<T>,
+        public readonly pipelineStageName: string,
+
+        cancelRef?: CancelRef,
+        // Derived promises are created in a 'then' stage - they don't actually start running till they enter the then method.
+        private readonly isDerived?: boolean, 
+    ) {
+        if (!isDerived) {
+            this.t0 = performance.now();
+            loadingTrackedPromises.add(this);
+        }
+
+        this.promise = promiseFn().then((val) => {
+            loadingTrackedPromises.delete(this);
+            this._value = val;
+            return val;
+        });
+
+        this.promise.catch((err) => {
+            loadingTrackedPromises.delete(this);
+            this._error = toError(err);
+            if (err instanceof CancellationError) {
+                console.log("[" + this.pipelineStageName + "] was cancelled");
+            } else {
+                console.error("[" + this.pipelineStageName + "]", err);
+            }
+        });
+
+        this.cancelRef = cancelRef ?? new CancelRef();
+    }
+
+    then<T2>(
+        onfulfilled: ((value: T) => T2 | PromiseLike<T2>),
+        pipelineStageName?: string,
+    ): TrackedPromise<T2> {
+        const newPromise = this.promise.then((val) => {
+            if (this.cancelRef.cancelled) {
+                throw new CancellationError();
+            }
+
+            if (this.isDerived) {
+                newPromiseWrapped.t0 = performance.now();
+                loadingTrackedPromises.add(newPromiseWrapped);
+            }
+
+            newPromiseWrapped.t0 = performance.now();
+
+            return onfulfilled(val);
+        });
+
+        const newPromiseWrapped = new TrackedPromise(
+            () => newPromise,
+            pipelineStageName ?? "Then stage",
+            this.cancelRef,
+            true,
+        );
+
+        return newPromiseWrapped;
+    }
+
+    cancel() {
+        this.cancelRef.cancel();
+    }
+
+    get loading() {
+        return loadingTrackedPromises.has(this);
+    }
+
+    get error() {
+        return this._error;
+    }
+
+    get value() {
+        return this._value;
+    }
+}
+
+export function newDefaultTrackedPrimise<T>(initialValue: T): TrackedPromise<T> {
+    return new TrackedPromise<T>(() => Promise.resolve(initialValue), "Default stage");
 }

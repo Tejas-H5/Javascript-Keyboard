@@ -2,7 +2,7 @@ import { getAllBundledCharts } from "src/assets/bundled-charts";
 import { debugFlags, getTestSleepMs } from "src/debug-flags";
 import { assert } from "src/utils/assert";
 import * as idb from "src/utils/indexed-db";
-import { AsyncData, newAsyncData, sleepForMs } from "src/utils/promise-utils";
+import { sleepForMs, TrackedPromise } from "src/utils/promise-utils";
 import {
     CHART_STATUS_READONLY,
     CHART_STATUS_SAVED,
@@ -13,7 +13,8 @@ import {
     SequencerChartCompressed,
     uncompressChart
 } from "./sequencer-chart";
-import { filterInPlace } from "src/utils/array-utils";
+import { arrayAt, filterInPlace } from "src/utils/array-utils";
+import { clamp } from "src/utils/math-utils";
 
 const tables = {
     chartMetadata: idb.newTable<SequencerChartMetadata>("chart_metadata", "id", idb.KEYGEN_AUTOINCREMENT), 
@@ -22,7 +23,8 @@ const tables = {
 
 export type ChartRepository = {
     db: IDBDatabase;
-    allCharts: AsyncData<SequencerChartMetadata[]>;
+    allChartMetadata: SequencerChartMetadata[];
+    loadingTask: TrackedPromise<void> | null;
 };
 
 export async function newChartRepository(): Promise<ChartRepository> {
@@ -35,29 +37,23 @@ export async function newChartRepository(): Promise<ChartRepository> {
         }
     });
 
-    return {
+    const repo: ChartRepository = {
         db: db,
-        allCharts: newAsyncData<SequencerChartMetadata[]>("", async () => []),
+        allChartMetadata: [],
+        loadingTask: null,
     };
+
+    setChartMetadataList(
+        repo,
+        getAllBundledCharts().map(toChartMetadata)
+    );
+
+    return repo;
 }
 
-// Only call this when the data is expected to be present by this point. I.e:
-// - When you already have a chart, since the only way to know about the id of a chart 
-//      is by looking it up in this array in the first place (in theory)
-function assertAndGetAllCharts(repo: ChartRepository) {
-    assert(!!repo.allCharts.data);
-    return repo.allCharts.data;
-}
-
-export function reindexCharts(charts: SequencerChartMetadata[]) {
-    for (let i = 0; i < charts.length; i++) {
-        charts[i]._index = i;
-    }
-}
-
-export function loadChartMetadataList(repo: ChartRepository) {
-    repo.allCharts.cancel();
-    repo.allCharts = newAsyncData(loadChartMetadataList.name, async () => {
+export function loadChartMetadataList(repo: ChartRepository): TrackedPromise<void> {
+    repo.loadingTask?.cancel();
+    repo.loadingTask = new TrackedPromise(async () => {
         const tx     = await chartRepositoryReadTx(repo);
         const charts = await idb.getAll(tx, tables.chartMetadata);
 
@@ -71,11 +67,20 @@ export function loadChartMetadataList(repo: ChartRepository) {
 
         charts.push(...bundled);
 
-        reindexCharts(charts);
+        setChartMetadataList(repo, charts);
+    }, "Loading chart metadata");
+    return repo.loadingTask;
+}
 
-        return charts;
-    });
-    return repo.allCharts;
+export function setChartMetadataList(repo: ChartRepository, metadata: SequencerChartMetadata[]) {
+    metadata.sort((a, b) => a.name.localeCompare(b.name));
+
+    // reindex _at the end_
+    for (let i = 0; i < metadata.length; i++) {
+        metadata[i]._index = i;
+    }
+
+    repo.allChartMetadata = metadata;
 }
 
 export async function cleanupChartRepo(repo: ChartRepository) {
@@ -144,8 +149,8 @@ async function chartRepositoryWriteTx(repo: ChartRepository) {
 
 export type SequencerChartMetadata = Pick<SequencerChart, "id" | "name"> & { _index: number; };
 
-export function queryChart(repo: ChartRepository, id: number): AsyncData<SequencerChart> {
-    return newAsyncData(queryChart.name, async () => {
+export function queryChart(repo: ChartRepository, id: number): TrackedPromise<SequencerChart> {
+    return new TrackedPromise(async () => {
         if (isBundledChartId(id)) {
             // Bundled charts will load substantially faster, since they come with the game
             const bundled = getAllBundledCharts();
@@ -174,13 +179,13 @@ export function queryChart(repo: ChartRepository, id: number): AsyncData<Sequenc
         // or remove if we think its useless.
         const chart = uncompressChart(compressedChart, CHART_STATUS_UNSAVED);
         return chart;
-    });
+    }, "Query chart");
 }
 
 export type SaveResult = 0 | { error: string; }
 
-export function saveChart(repo: ChartRepository, chart: SequencerChart): AsyncData<SaveResult> {
-    return newAsyncData(saveChart.name, async () => {
+export function saveChart(repo: ChartRepository, chart: SequencerChart): TrackedPromise<SaveResult> {
+    return new TrackedPromise(async () => {
         if (isBundledChartId(chart.id)) {
             return { error: "Can't save a bundled chart. Copy it first" };
         }
@@ -214,14 +219,16 @@ export function saveChart(repo: ChartRepository, chart: SequencerChart): AsyncDa
         }
 
         return 0;
-    });
+    }, "Saving chart");
 }
 
 export function createChart(
     repo: ChartRepository,
     chart: SequencerChart
-): AsyncData<number> {
-    return newAsyncData(createChart.name, async () => {
+): TrackedPromise<number> {
+    chart.name = chart.name.trim();
+
+    return new TrackedPromise(async () => {
         const tx = await chartRepositoryWriteTx(repo);
 
         const data     = compressChart(chart);
@@ -235,14 +242,14 @@ export function createChart(
         // Since we know what happens to the list when we create an item in the database, we can 
         // simply do the same on our side as well, rather than reloading all entries from the database.
 
-        const allCharts = assertAndGetAllCharts(repo);
+        const allCharts = repo.allChartMetadata;
         const idx = allCharts.findIndex(val => val.id === id);
         if (idx === -1) {
             allCharts.push(metadata);
         }
 
         return id;
-    });
+    }, "Creating chart");
 }
 
 export async function deleteChart(
@@ -258,8 +265,9 @@ export async function deleteChart(
     if (chartToDelete.id <= 0) return;
 
     // Optimistic delete
-    const allCharts = assertAndGetAllCharts(repo);
+    const allCharts = repo.allChartMetadata;
     filterInPlace(allCharts, chart => chartToDelete.id !== chart.id);
+    setChartMetadataList(repo, allCharts);
 
     await idb.deleteOne(tx, tables.chartMetadata, chartToDelete.id);
     await idb.deleteOne(tx, tables.chartData, chartToDelete.id);
@@ -270,7 +278,7 @@ export async function deleteChart(
     }
 }
 
-function toChartMetadata(chart: SequencerChart): SequencerChartMetadata {
+export function toChartMetadata(chart: SequencerChart): SequencerChartMetadata {
     let result: SequencerChartMetadata = {
         id:   chart.id,
         name: chart.name,
@@ -279,3 +287,16 @@ function toChartMetadata(chart: SequencerChart): SequencerChartMetadata {
     return result;
 }
 
+export function findChartMetadata(repo: ChartRepository, id: number): SequencerChartMetadata | undefined {
+    return repo.allChartMetadata.find(chart => chart.id === id);
+}
+
+// You would mainly use this for list navigation, and not to actually find which chart 
+// is actually at a particular index
+export function getChartAtIndex(repo: ChartRepository, idx: number): SequencerChartMetadata {
+    idx = clamp(idx, 0, repo.allChartMetadata.length - 1);
+    const result = arrayAt(repo.allChartMetadata, idx);
+    // We can only do this, because our game is pre-bundled with some 'official' charts.
+    assert(!!result);
+    return result;
+}

@@ -1,5 +1,5 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, CENTER, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { InstrumentKey } from "src/state/keyboard-state";
@@ -7,10 +7,9 @@ import { CHART_STATUS_READONLY, getChartDurationInBeats, NoteItem, SequencerChar
 import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "src/state/ui-state";
 import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
-import { EL_B, EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax, clamp } from "src/utils/math-utils";
 import {
-    getAllCharts,
     GlobalContext,
     openChartUpdateModal,
     playKeyPressForUI,
@@ -21,14 +20,14 @@ import {
     setViewStartScreen
 } from "./app";
 import { cssVarsApp } from "./styling";
-import { getAll } from "src/utils/indexed-db";
+import { getCurrentChart } from "src/state/sequencer-state";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
     if (!ctx.keyPressState) return false;
 
     const { key, keyUpper, listNavAxis } = ctx.keyPressState;
 
-    const currentChart = s.currentChart.data;
+    const currentChart = s.currentChart.loading ? null : getCurrentChart(ctx);
 
     if (currentChart && keyUpper === "E") {
         if (currentChart._savedStatus === CHART_STATUS_READONLY) {
@@ -69,7 +68,7 @@ function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): bool
 export function moveChartSelection(ctx: GlobalContext, listNavAxis: number) {
     if (listNavAxis === 0) return;
 
-    const availableCharts = getAllCharts(ctx);
+    const availableCharts = ctx.repo.allChartMetadata;
     if (availableCharts.length === 0) return;
 
     let result;
@@ -106,8 +105,8 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
         }
     }
 
-    const availableCharts = getAllCharts(ctx);
-    const currentChart = availableCharts.length > 0 && s.currentChart.data;
+    const availableCharts = ctx.repo.allChartMetadata;
+    const currentChart = s.currentChart.loading ? null : getCurrentChart(ctx);
 
     imLayout(c, COL); imFlex(c); {
         imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
@@ -198,28 +197,33 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
             if (imIf(c) && currentChart) {
                 const bundled = currentChart._savedStatus === CHART_STATUS_READONLY;
                 imLayout(c, COL); imFlex(c); {
-                    imLayout(c, ROW); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imAlign(c, CENTER); {
+                    imLayout(c, COL); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                         imEl(c, EL_H2); {
                             imLayout(c, ROW); {
-                                imLayout(c, ROW); imFlex(c, 7); {
+                                imLayout(c, ROW); {
                                     imStr(c, currentChart.name);
+                                } imLayoutEnd(c);
+
+                                imLayout(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
+
+                                imLayout(c, ROW); {
+                                    imStr(c, "<Artist Name>");
+                                } imLayoutEnd(c);
+
+                                imLayout(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
+
+                                imLayout(c, ROW); {
+                                    imStr(c, bundled ? "TejasH5" : "Some player");
                                 } imLayoutEnd(c);
                             } imLayoutEnd(c);
                         } imElEnd(c, EL_H2);
 
-                        imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                        imLayout(c, BLOCK); {
+                            if (isFirstishRender(c)) {
+                                elSetStyle(c, "whiteSpace", "pre-wrap");
+                            }
 
-                        imLayout(c, COL); {
-                            imLayout(c, BLOCK); {
-                                // TODO: charts to record creator info
-                                imEl(c, EL_B); { imStr(c, "Mapper: "); } imElEnd(c, EL_B);
-                                imStr(c, bundled ? "TejasH5" : "Some player");
-                            } imLayoutEnd(c);
-                            imLayout(c, BLOCK); {
-                                // TODO: charts to record creator info
-                                imEl(c, EL_B); { imStr(c, "Music: "); } imElEnd(c, EL_B);
-                                imStr(c, "TODO: store this info somehow");
-                            } imLayoutEnd(c);
+                            imStr(c, "<Artist name>\n<View link> | <purchase link>\nI made this map because blah blah blah balh. blah blah blah. I hope you like it!");
                         } imLayoutEnd(c);
                     } imLayoutEnd(c);
 

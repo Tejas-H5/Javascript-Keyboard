@@ -1,8 +1,8 @@
 import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, NA, PX } from "src/components/core/layout";
 import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { debugFlags, getTestSleepMs } from "src/debug-flags";
-import { releaseAllKeys, releaseKey, schedulePlayback, setScheduledPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { ChartRepository, queryChart, SequencerChartMetadata } from "src/state/chart-repository";
+import { releaseAllKeys, releaseKey, schedulePlayback, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { ChartRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/chart-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     startPlaying,
@@ -21,24 +21,23 @@ import {
     TIMELINE_ITEM_MEASURE,
     undoEdit
 } from "src/state/sequencer-chart";
-import { SequencerState, setSequencerChart } from "src/state/sequencer-state";
+import { getCurrentChart, SequencerState, setSequencerChart } from "src/state/sequencer-state";
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state";
 import { filterInPlace } from "src/utils/array-utils";
-import { unreachable } from "src/utils/assert";
+import { assert, unreachable } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imIf, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
-import { clamp } from "src/utils/math-utils";
-import { getAllLoadingAsyncData, newAsyncData } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
-import { loadAvailableCharts, runSaveCurrentChartTask } from "./background-tasks";
-import { newGameplayState } from "./gameplay";
+import { runSaveCurrentChartTask } from "./background-tasks";
+import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
 import { imSoundLab } from "./sound-lab-view";
 import { imUpdateModal } from "./update-modal";
+import { getLoadingPromises, newDefaultTrackedPrimise } from "src/utils/promise-utils";
 
 type AllKeysState = {
     keys: KeyState[];
@@ -65,8 +64,10 @@ function newAllKeysState(): AllKeysState {
 }
 
 export type GlobalContext = {
-    keyboard: KeyboardState;
+    keyboard:  KeyboardState;
     sequencer: SequencerState;
+    gameplay:  GameplayState | null;
+
     deltaTime: number;
 
     ui: UIState;
@@ -97,6 +98,7 @@ export function newGlobalContext(
         keyboard,
         allKeysState: newAllKeysState(),
         sequencer: sequencer,
+        gameplay: null,
         ui: newUiState(),
         savedState: saveState,
         repo: repo,
@@ -116,7 +118,7 @@ export function newGlobalContext(
 
 
 // I know I'll need ctx here. I just can't prove it ...
-export function playKeyPressForUI(ctx: GlobalContext, key: InstrumentKey) {
+export function playKeyPressForUI(_ctx: GlobalContext, key: InstrumentKey) {
     updatePlaySettings(s => s.isUserDriven = false);
     schedulePlayback([{
         time: 0, timeEnd: 200,
@@ -139,7 +141,7 @@ export function setCurrentChartMeta(ctx: GlobalContext, metadata: SequencerChart
     return chartSelect.currentChart;
 }
 
-export function addNewUserChart(ctx: GlobalContext) {
+export function addNewUserChart(_ctx: GlobalContext) {
     const result = newChart("new chart");
     return result;
 }
@@ -245,7 +247,7 @@ export function openChartUpdateModal(
         operation: operation,
         chartToUpdate: chart,
         newName: newName,
-        updateResult: newAsyncData("", async () => false),
+        updateResult: newDefaultTrackedPrimise(false),
     };
 }
 
@@ -255,6 +257,14 @@ export function setViewSoundLab(ctx: GlobalContext) {
 
 export function setViewPlayCurrentChart(ctx: GlobalContext) {
     setCurrentView(ctx, APP_VIEW_PLAY_CHART);
+}
+
+export function setViewPlayCurrentChartTest(ctx: GlobalContext, time: number) {
+    setCurrentView(ctx, APP_VIEW_PLAY_CHART);
+    setPlaybackTime(time);
+    assert(!!ctx.gameplay);
+    enablePracticeMode(ctx.gameplay);
+    ctx.ui.playView.isTesting = true;
 }
 
 export function setViewChartSelect(ctx: GlobalContext) {
@@ -277,7 +287,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             } break;
             case APP_VIEW_PLAY_CHART: {
                 stopPlaying(ctx);
-                setScheduledPlaybackVolume(1);
+                setPlaybackVolume(1);
             } break;
         }
     }
@@ -295,7 +305,8 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             case APP_VIEW_CHART_SELECT: {
                 editView.lastCursor = 0;
 
-                loadAvailableCharts(ctx).then((availableCharts) => {
+                loadChartMetadataList(ctx.repo).then(() => {
+                    const availableCharts = ctx.repo.allChartMetadata;
                     if (availableCharts.length === 0) return;
 
                     const currentChartId = ctx.sequencer._currentChart.id;
@@ -308,6 +319,9 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             case APP_VIEW_PLAY_CHART: {
                 playView.result = null;
 
+                assert(!!ctx.sequencer._currentChart);
+                ctx.gameplay = newGameplayState(ctx.keyboard, ctx.sequencer._currentChart)
+
                 // Testing results screen
                 if (debugFlags.testResultsView) {
                     const result = newGameplayState(newKeyboardState(), newChart("Test chart name"));
@@ -316,7 +330,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                     playView.result = result;
                 } 
 
-                setScheduledPlaybackVolume(0.1);
+                setPlaybackVolume(0.1);
                 startPlaying(ctx, -1 * FRACTIONAL_UNITS_PER_BEAT, undefined, {
                     isUserDriven: true,
                     speed: debugFlags.testGameplaySlow ? 0.1 : undefined,
@@ -489,7 +503,7 @@ export function imApp(
 
             // Info about background tasks
             imLayout(c, BLOCK); {
-                const tasks = getAllLoadingAsyncData();
+                const tasks = getLoadingPromises();
                 imFor(c); for (const t of tasks) {
                     imLayout(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
                         const ms = performance.now() - t.t0;
@@ -497,7 +511,7 @@ export function imApp(
                         imStr(c, testDelay ? "[TEST]" : "");
                         imStr(c, Math.round(ms));
                         imStr(c, "ms |");
-                        imStr(c, t.debuggingName);
+                        imStr(c, t.pipelineStageName);
                     } imLayoutEnd(c);
                 } imForEnd(c);
             } imLayoutEnd(c);
@@ -524,9 +538,4 @@ export function setLoadSaveModalClosed(ctx: GlobalContext) {
     const ui = ctx.ui;
     ui.loadSave.modal._open = false;
     ui.loadSave.modal.chartBeforeOpenMeta = null;
-}
-
-const empty: SequencerChartMetadata[] = [];
-export function getAllCharts(ctx: GlobalContext): SequencerChartMetadata[] {
-    return ctx.repo.allCharts.data ?? empty;
 }

@@ -1,6 +1,6 @@
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { BLOCK, COL, imAlign, imFg, imFlex, imLayout, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
-import { deleteChart, } from "src/state/chart-repository";
+import { deleteChart, getChartAtIndex, } from "src/state/chart-repository";
 import {
     playAll,
     stopPlaying
@@ -10,7 +10,7 @@ import {
     isBundledChartId,
     newChart
 } from "src/state/sequencer-chart";
-import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME } from "src/state/ui-state";
+import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME } from "src/state/ui-state";
 import {
     ImCache,
     imElse,
@@ -27,7 +27,6 @@ import {
     imStr
 } from "src/utils/im-dom";
 import {
-    getAllCharts,
     GlobalContext,
     openChartUpdateModal,
     setCurrentChartMeta,
@@ -35,6 +34,7 @@ import {
 } from "./app";
 import { cssVarsApp } from "./styling";
 import { moveChartSelection } from "./chart-select";
+import { getCurrentChart } from "src/state/sequencer-state";
 
 
 export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
@@ -42,10 +42,10 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
 
     const s = ui.loadSave.modal;
     const chartSelect = ui.chartSelect;
-    const currentChart = chartSelect.currentChart.data;
+    const currentChart = getCurrentChart(ctx);
 
     imLayout(c, COL); imSize(c, 25, PERCENT, 0, NA); imAlign(c, STRETCH); {
-        const allAvailableCharts = getAllCharts(ctx);
+        const allAvailableCharts = ctx.repo.allChartMetadata;
         imFor(c); for (let i = 0; i < allAvailableCharts.length; i++) {
             imLayout(c, ROW); {
                 const chart = allAvailableCharts[i];
@@ -151,7 +151,12 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                 currentChart._savedStatus !== CHART_STATUS_READONLY &&
                 (key === "Delete" || keyUpper === "X")
             ) {
-                deleteChart(ctx.repo, currentChart);
+                const meta = getCurrentChartMetadata(ctx);
+                if (meta) {
+                    setCurrentChartMeta(ctx, getChartAtIndex(ctx.repo, meta._index));
+                    deleteChart(ctx.repo, currentChart);
+                    chartSelect.currentChartMeta
+                }
                 handled = true;
             } else if (currentChart && keyUpper === "R") {
                 openChartUpdateModal(ctx, currentChart, NAME_OPERATION_RENAME, "Rename chart");

@@ -28,6 +28,7 @@ import {
     transposeItems,
 } from "src/state/sequencer-chart";
 import { unreachable } from "src/utils/assert";
+import { GlobalContext } from "src/views/app";
 
 export const SEQUENCER_ROW_COLS = 8;
 
@@ -344,20 +345,40 @@ export function handleMovement(
     isCtrlPressed: boolean,
     isShiftPressed: boolean,
 ) {
+    const chart = sequencer._currentChart;
+    const currentBeats = sequencer.cursor;
+    let moveToBeats = currentBeats;
+
     if (isCtrlPressed) {
-        amount = Math.sign(amount) * FRACTIONAL_UNITS_PER_BEAT;
+        if (amount < 0) {
+            // Move to the first object before this beat
+            for (let i = chart.timeline.length - 1; i >= 0; i--) {
+                const item = chart.timeline[i];
+                if (item.start < currentBeats) {
+                    moveToBeats = item.start;
+                    break;
+                }
+            }
+        } else if (amount > 0) {
+            // Move to the first object after this beat
+            for (let i = 0; i < chart.timeline.length; i++) {
+                const item = chart.timeline[i];
+                if (item.start > currentBeats) {
+                    moveToBeats = item.start;
+                    break;
+                }
+            }
+        }
+    } else {
+        moveToBeats = currentBeats + amount;
     }
 
-    const cursorBeats = sequencer.cursor;
-    const newStart = cursorBeats + amount;
-
-    handleMovementAbsolute(sequencer, newStart, isCtrlPressed, isShiftPressed);
+    handleMovementAbsolute(sequencer, moveToBeats, isShiftPressed);
 }
 
 export function handleMovementAbsolute(
     sequencer: SequencerState,
     newCursorPos: number,
-    isCtrlPressed: boolean,
     isShiftPressed: boolean,
 ) {
     setIsRangeSelecting(sequencer, isShiftPressed);
@@ -416,9 +437,7 @@ export function isItemRangeSelected(sequencer: SequencerState, item: TimelineIte
     const min = Math.min(start, end);
     const max = Math.max(start, end);
 
-    const itemBeats = item.start;
-
-    return min <= itemBeats && itemBeats <= max;
+    return min <= item.start && item.start < max;
 }
 
 export type NoteMapEntry = { 
@@ -622,4 +641,8 @@ export function setSequencerChart(sequencer: SequencerState, chart: SequencerCha
     sequencer._currentChart = chart;
     sequencer.cursor = chart.cursor;
     sortAndIndexTimeline(sequencer._currentChart);
+}
+
+export function getCurrentChart(ctx: GlobalContext) {
+    return ctx.sequencer._currentChart;
 }

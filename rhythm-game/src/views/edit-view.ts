@@ -220,7 +220,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
             newPos = getLastMeasureBeats(sequencer._currentChart, cursorBeats);
         }
 
-        handleMovementAbsolute(sequencer, newPos, ctrlPressed, shiftPressed);
+        handleMovementAbsolute(sequencer, newPos, shiftPressed);
 
         return true;
     }
@@ -333,13 +333,13 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
     }
 
     if (key === "Home") {
-        handleMovementAbsolute(sequencer, 0, ctrlPressed, shiftPressed);
+        handleMovementAbsolute(sequencer, 0, shiftPressed);
         return true;
     }
 
     if (key === "End") {
         const end = getChartDurationInBeats(chart);
-        handleMovementAbsolute(sequencer, end, ctrlPressed, shiftPressed);
+        handleMovementAbsolute(sequencer, end, shiftPressed);
         return true;
     }
 

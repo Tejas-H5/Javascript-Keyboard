@@ -15,7 +15,7 @@ import {
 } from "src/utils/im-core";
 import { EL_B, EL_I, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp } from "src/utils/math-utils";
-import { GlobalContext, setViewChartSelect, setViewPlayCurrentChart } from "./app";
+import { GlobalContext, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./app";
 import { GameplayState, imGameplay } from "./gameplay";
 
 function handlePlayViewKeyDown(ctx: GlobalContext) {
@@ -23,8 +23,15 @@ function handlePlayViewKeyDown(ctx: GlobalContext) {
 
     const { key } = ctx.keyPressState;
 
+    const s = ctx.ui.playView;
+
     if (key === "Escape") {
-        setViewChartSelect(ctx);
+        if (s.isTesting) {
+            setViewEditChart(ctx);
+        } else {
+            setViewChartSelect(ctx);
+        }
+
         return true;
     }
 

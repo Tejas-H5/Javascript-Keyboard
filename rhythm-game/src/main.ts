@@ -2,22 +2,21 @@ import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
 import { BLOCK, imLayout, imLayoutEnd } from "./components/core/layout";
 import { fpsMarkRenderingEnd, fpsMarkRenderingStart, newFpsCounterState } from "./components/fps-counter";
 import { debugFlags } from "./debug-flags";
-import { cleanupChartRepo, newChartRepository } from "./state/chart-repository";
+import { cleanupChartRepo, loadChartMetadataList, newChartRepository } from "./state/chart-repository";
 import { loadSaveState } from "./state/loading-saving-charts";
-import { newSequencerState, syncPlayback } from "./state/sequencer-state";
+import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state";
 import { NAME_OPERATION_COPY } from "./state/ui-state";
 import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
 import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import { newAsyncData } from "./utils/promise-utils";
 import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
-import { loadAvailableCharts } from "./views/background-tasks";
+import { TrackedPromise } from "./utils/promise-utils";
 
-const programState = newAsyncData("Entrypoint", async () => {
+const programState = new TrackedPromise(async () => {
     // Our code only works after we've established a connection with our
     // IndexedDB instance, and the audio context has loaded.
-    
+
     const repoPromise = newChartRepository();
 
     const sequencer = newSequencerState();
@@ -36,7 +35,7 @@ const programState = newAsyncData("Entrypoint", async () => {
 
     const saveState = loadSaveState();
 
-    const [repo, dspVoid] = await Promise.all([repoPromise, dspPromise]);
+    const [repo, _dspVoid] = await Promise.all([repoPromise, dspPromise]);
 
     const ctx = newGlobalContext(
         saveState,
@@ -54,15 +53,13 @@ const programState = newAsyncData("Entrypoint", async () => {
         debugFlags.testChartSelectView ||
         debugFlags.testCopyModal
     ) {
-
-        loadAvailableCharts(ctx).finally((d) => {
-            const charts = d.data;
-            assert(!!charts);
+        loadChartMetadataList(ctx.repo).then(() => {
+            const charts = ctx.repo.allChartMetadata;
             const meta = charts.find(c => c.name === debugFlags.testChart);
             assert(!!meta);
-            setCurrentChartMeta(ctx, meta).finally((d) => {
-                const chart = d.data;
-                assert(!!chart);
+            setCurrentChartMeta(ctx, meta).then(() => {
+                const chart = getCurrentChart(ctx);
+
                 if (debugFlags.testEditView) {
                     setViewEditChart(ctx);
                     if (debugFlags.testLoadSave) {
@@ -82,10 +79,10 @@ const programState = newAsyncData("Entrypoint", async () => {
     }
 
     return ctx;
-});
+}, "Entrypoint");
 
 function imMainInner(c: ImCache) {
-    const globalContext = programState.data;
+    const globalContext = programState.value;
 
 
     if (imIf(c) && globalContext) {

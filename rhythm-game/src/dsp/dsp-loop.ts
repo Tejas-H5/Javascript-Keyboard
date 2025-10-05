@@ -3,14 +3,14 @@
 // put it in dsp-loop-interface.ts instead.
 // It seems like it's OK to import types though.
 
-import { newFunctionUrl } from "src/utils/web-workers";
-import { ScheduledKeyPress, schedulePlayback } from "./dsp-loop-interface";
-import { clamp, derivative, lerp, max, min, moveTowards } from "src/utils/math-utils";
-import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
+import { BASE_NOTE, noteIdToSample } from "src/state/keyboard-state";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
+import { clamp, derivative, lerp, max, min, moveTowards } from "src/utils/math-utils";
+import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
-import { BASE_NOTE, noteIdToSample } from "src/state/keyboard-state";
+import { newFunctionUrl } from "src/utils/web-workers";
+import { ScheduledKeyPress } from "./dsp-loop-interface";
 
 export type DSPPlaySettings = {
     attack: number;

@@ -4,7 +4,7 @@ import { cn, cssVars } from "src/components/core/stylesheets";
 import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
 import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
-import { getCurrentOscillatorGainForOwner, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface";
+import { getCurrentOscillatorGainForOwner, pressKey, releaseAllKeys, releaseKey, setPlaybackTime } from "src/dsp/dsp-loop-interface";
 import {
     getKeyForKeyboardKey,
     getKeyForNote,
@@ -21,6 +21,8 @@ import {
     getBeatIdxBefore,
     getBeatsIndexesInclusive,
     getBpm,
+    getTimeForBeats,
+    isBeatWithinExclusive,
     isBeatWithinInclusve,
     isReadonlyChart,
     itemEnd,
@@ -55,7 +57,7 @@ import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGet
 import { EL_B, EL_I, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
-import { GlobalContext, setLoadSaveModalOpen, } from "./app";
+import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, } from "./app";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view";
 import { cssVarsApp } from "./styling";
 import { isSavingAnyChart } from "./background-tasks";
@@ -354,6 +356,11 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
                 imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
+                if (imButtonIsClicked(c, "Test", s.importModalOpen)) {
+                    const time = getTimeForBeats(chart, sequencer.cursor);
+                    setViewPlayCurrentChartTest(ctx, time);
+                }
+
                 if (imButtonIsClicked(c, "Import", s.importModalOpen)) {
                     s.importModalOpen = true;
                 }
@@ -645,15 +652,22 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
     if (!ctx.handled) {
         const keyPress = ctx.keyPressState;
         if (keyPress) {
-            let handled = false; {
-                if (keyPress.keyUpper === "F" && keyPress.shiftPressed) {
-                    sequencer.keyEditFilterModalOpen = !sequencer.keyEditFilterModalOpen;
-                    handled = true;
-                }
+            let handled = false; 
 
+            if (keyPress.keyUpper === "F" && keyPress.shiftPressed) {
+                sequencer.keyEditFilterModalOpen = !sequencer.keyEditFilterModalOpen;
+                handled = true;
+            }
 
-            } ctx.handled = handled;
+            ctx.handled = handled;
+
+            if (keyPress.keyUpper === "T" && keyPress.shiftPressed) {
+                const time = getTimeForBeats(chart, sequencer.cursor);
+                setViewPlayCurrentChartTest(ctx, time);
+                handled = true;
+            }
         }
+
     }
 }
 
@@ -764,7 +778,7 @@ function imSequencerTrackTimelineItem(
         if (hasRangeSelection(sequencer)) {
             isUnderCursor = isItemRangeSelected(sequencer, item);
         } else {
-            isUnderCursor = isBeatWithinInclusve(item, cursorStart);
+            isUnderCursor = isBeatWithinExclusive(item, cursorStart);
         }
 
         isBeingPlayed = isItemBeingPlayed(sequencer, item);
@@ -916,13 +930,6 @@ function imFilterModal(
         sequencer.keyEditFilterRangeIdx0 = -1;
     }
 
-    const keyPress = ctx.keyPressState;
-    let instrumentKey;
-    if (keyPress) {
-    } else {
-        instrumentKey = null;
-    }
-
     imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
         if (isFirstishRender(c)) {
             elSetStyle(c, "zIndex", "100");
@@ -944,7 +951,7 @@ function imFilterModal(
                 }
 
                 imLayout(c, COL); imAlign(c, END); {
-                    imFor(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
+                    imFor(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
                         imLayout(c, BLOCK); {
                             let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
@@ -958,7 +965,7 @@ function imFilterModal(
                 } imLayoutEnd(c);
 
                 imLayout(c, COL); {
-                    imFor(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
+                    imFor(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
                         imLayout(c, BLOCK); {
 
@@ -977,7 +984,7 @@ function imFilterModal(
                 imLayout(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
 
                 imLayout(c, COL); imFlex(c); {
-                    imFor(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
+                    imFor(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
                         const normalized = 1;
                         imLayout(c, BLOCK); {

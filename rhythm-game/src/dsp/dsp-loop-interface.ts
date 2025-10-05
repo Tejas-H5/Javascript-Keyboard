@@ -42,12 +42,12 @@ export function getCurrentPlaySettings() {
     return playSettings;
 }
 
-export function setScheduledPlaybackVolume(value: number) {
+export function setPlaybackVolume(value: number) {
     scheduledVolume = value;
     audioLoopDispatch({ scheduleKeysVolume: value });
 }
 
-export function setScheduledPlaybackTime(value: number) {
+export function setPlaybackTime(value: number) {
     audioLoopDispatch({ newPlaybackTime: value });
 }
 

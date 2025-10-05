@@ -29,6 +29,7 @@ for f in files:
 
 # inter-partial - we only need the variable font - supposedly, it can procedurally generate all the other fonts
 # by stretching the various points on the text along various axes, which substantially reduces the filesize.
+# TODO: subset the font - we really don't need every single unicode codepoint glyph xD
 with open(os.path.join(input_path, "inter-partial.css")) as file:
     text = file.read()
 
