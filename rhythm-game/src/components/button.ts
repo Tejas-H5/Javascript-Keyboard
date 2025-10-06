@@ -1,4 +1,4 @@
-import { BLOCK, DisplayType, imLayout, imLayoutEnd } from "src/components/core/layout";
+import { BLOCK, DisplayType, imLayout, imLayoutEnd, INLINE } from "src/components/core/layout";
 import { newCssBuilder } from "src/utils/cssb";
 import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetClass, imStr } from "src/utils/im-dom";
@@ -9,20 +9,31 @@ const cssb = newCssBuilder();
 const cnButton = (() => {
     const transiton = `0.05s linear`;
     return cssb.cn(`button`, [
-        ` { cursor: pointer; user-select: none; background-color: ${cssVars.bg}; color: ${cssVars.fg}; transition: background-color ${transiton}, color ${transiton}; padding: 3px 10px; }`,
-        `.radius {  border-radius: 5px; border: 2px solid ${cssVars.fg}; }`,
-        `.toggled { background-color: ${cssVars.fg}; color: ${cssVars.bg}; }`,
-        `:hover { background-color: ${cssVars.bg2}; color: ${cssVars.fg}; }`,
-        `.toggled:hover { background-color: ${cssVars.fg2}; color: ${cssVars.bg}; }`,
-        `:active { background-color: ${cssVars.mg}; color: ${cssVars.fg}; }`,
-        `.toggled:active { background-color: ${cssVars.mg}; color: ${cssVars.fg}; }`,
+        ` { 
+    cursor: pointer;
+    user-select: none;
+    color: ${cssVars.fg};
+    padding: 5px 0px; 
+    display: flex; align-items: center; justify-content: center;
+}`,
+        ` > .inner { 
+    padding: 0.25rem; 
+    min-width: 1.5rem;
+    display: flex; align-items: center; justify-content: center;
+    background-color: ${cssVars.bg2}; transition: background-color ${transiton}, color ${transiton}; 
+}`,
+        `.toggled > .inner        { background-color: ${cssVars.fg};  color: ${cssVars.bg}; }`,
+        `:hover > .inner          { background-color: ${cssVars.bg2}; color: ${cssVars.fg}; }`,
+        `.toggled:hover > .inner  { background-color: ${cssVars.fg2}; color: ${cssVars.bg}; }`,
+        `:active > .inner         { background-color: ${cssVars.mg};  color: ${cssVars.fg}; }`,
+        `.toggled:active > .inner { background-color: ${cssVars.mg};  color: ${cssVars.fg}; }`,
     ]);
 })();
 
 export function imButton(c: ImCache, toggled = false) {
     if (isFirstishRender(c)) {
         elSetClass(c, cnButton);
-        elSetClass(c, "radius");
+        // elSetClass(c, "radius");
     }
     if (imMemo(c, toggled))  elSetClass(c, "toggled", toggled);
 }
@@ -43,8 +54,14 @@ export function imButtonIsClicked(
     let result = false;
 
     imLayout(c, type); imButton(c, toggled); {
-        imStr(c, text);
-        result = elHasMousePress(c);
+        imLayout(c, INLINE); {
+            if (isFirstishRender(c)) {
+                elSetClass(c, "inner");
+            }
+
+            imStr(c, text);
+            result = elHasMousePress(c);
+        } imLayoutEnd(c);
     } imLayoutEnd(c);
 
     return result;

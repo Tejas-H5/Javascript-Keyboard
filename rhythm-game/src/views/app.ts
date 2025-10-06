@@ -1,7 +1,7 @@
 import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, NA, PX } from "src/components/core/layout";
 import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { debugFlags, getTestSleepMs } from "src/debug-flags";
-import { releaseAllKeys, releaseKey, schedulePlayback, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { ChartRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/chart-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
@@ -331,10 +331,8 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 } 
 
                 setPlaybackVolume(0.1);
-                startPlaying(ctx, -1 * FRACTIONAL_UNITS_PER_BEAT, undefined, {
-                    isUserDriven: true,
-                    speed: debugFlags.testGameplaySlow ? 0.1 : undefined,
-                });
+                startPlaying(ctx, -1 * FRACTIONAL_UNITS_PER_BEAT, undefined, { isUserDriven: true });
+                setPlaybackSpeed(debugFlags.testGameplaySpeed);
             } break;
         }
     }

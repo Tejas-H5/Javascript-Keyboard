@@ -6,6 +6,11 @@ const OFF = 0;
 
 type Flag = 0 | 1;
 
+function getSpeed(val: number) {
+    if (IS_PROD) return 1;
+    return val;
+}
+
 export type DebugFlags = {
     testEditView: Flag;
     testLoadSave: Flag;
@@ -19,7 +24,7 @@ export type DebugFlags = {
     testPracticeMode: Flag;
 
     testGameplay: Flag;
-    testGameplaySlow: Flag;
+    testGameplaySpeed: number;
     testResultsView: Flag;
 
     testFixDatabase: Flag;
@@ -39,10 +44,10 @@ export const debugFlags: DebugFlags = {
     debuUndoBuffer:      OFF,
     testChartSelectView: OFF,
 
-    testGameplay:     ON,
-    testGameplaySlow: OFF,
-    testPracticeMode: OFF,
-    testResultsView:  OFF,
+    testGameplay:      ON,
+    testGameplaySpeed: getSpeed(1),
+    testPracticeMode:  OFF,
+    testResultsView:   OFF,
 
     testFixDatabase: OFF,
 

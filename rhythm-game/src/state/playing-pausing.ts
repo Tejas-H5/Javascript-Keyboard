@@ -89,16 +89,15 @@ export function playAll(ctx : GlobalContext, options: PlayOptions = {}) {
 }
 
 export type PlayOptions = {
-    speed?: number;
     isUserDriven?: boolean;
 };
 
 export function pausePlayback(ctx: GlobalContext) {
-    setSequencerSpeed(ctx, 0);
+    setGlobalPlaybackSpeed(ctx, 0);
 }
 
 export function resumePlayback(ctx: GlobalContext) {
-    setSequencerSpeed(ctx, 1);
+    setGlobalPlaybackSpeed(ctx, 1);
 }
 
 // Not as straightforward as you  might think.
@@ -106,7 +105,7 @@ export function resumePlayback(ctx: GlobalContext) {
 // So the non-dsp code is using a linear equation to estimate the current dsp time based on the last known
 // dsp time. We sync with the DSP loop often enough that it will always be accurate.
 // We cannot change the speed without also resetting the linear equation
-function setSequencerSpeed(ctx: GlobalContext, newSpeed: number) {
+export function setGlobalPlaybackSpeed(ctx: GlobalContext, newSpeed: number) {
     const sequencer = ctx.sequencer;
 
     setSequencerPlaybackSpeed(sequencer, newSpeed);
@@ -120,7 +119,7 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
         endBeats = getChartDurationInBeats(chart) + 1;
     }
 
-    let { speed = 1, isUserDriven = false } = options;
+    let { isUserDriven = false } = options;
 
     stopPlayback(ctx);
 
@@ -160,7 +159,6 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
     scheduledKeyPresses.sort((a, b) => a.time - b.time);
     sequencer.scheduledKeyPresses = scheduledKeyPresses;
     sequencer.scheduledKeyPressesFirstItemStart = startTime;
-    sequencer.scheduledKeyPressesPlaybackSpeed = speed;
 
     sequencer.startPlayingTime = performance.now();
     sequencer.pausedPlaybackTime = 0;

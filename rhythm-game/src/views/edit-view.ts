@@ -1,5 +1,5 @@
 import { imFlex, imLayout, imLayoutEnd, ROW } from "src/components/core/layout";
-import { pressKey } from "src/dsp/dsp-loop-interface";
+import { pressKey, setPlaybackSpeed } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
     playFromCursor,
@@ -235,13 +235,14 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
             return true;
         }
 
-        const speed = ctrlPressed ? 0.5 : 1;
         const isUserDriven = ui.currentView === APP_VIEW_PLAY_CHART;
         if (shiftPressed) {
-            playFromLastMeasure(ctx, { speed, isUserDriven });
+            playFromLastMeasure(ctx, { isUserDriven });
         } else {
-            playFromCursor(ctx, { speed, isUserDriven });
+            playFromCursor(ctx, { isUserDriven });
         }
+
+        setPlaybackSpeed(ctrlPressed ? 0.5 : 1);
 
         return true;
     }

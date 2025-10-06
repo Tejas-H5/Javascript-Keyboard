@@ -2,6 +2,7 @@ import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
 import {
     CHART_STATUS_READONLY,
     CommandItem,
+    FRACTIONAL_UNITS_CLEAN_DIVISORS,
     FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxAfter,
     getBeatsForTime,
@@ -27,7 +28,7 @@ import {
     TimelineItemBpmChange,
     transposeItems,
 } from "src/state/sequencer-chart";
-import { unreachable } from "src/utils/assert";
+import { assert, unreachable } from "src/utils/assert";
 import { GlobalContext } from "src/views/app";
 
 export const SEQUENCER_ROW_COLS = 8;
@@ -110,7 +111,32 @@ export function setIsRangeSelecting(state: SequencerState, value: boolean) {
 }
 
 export function setCursorBeats(sequencer: SequencerState, beats: number) {
-    sequencer.cursor = sequencer.cursorSnap * Math.floor(beats / sequencer.cursorSnap);
+    sequencer.cursor = getSnappedBeats(beats, sequencer.cursorSnap);
+}
+
+export function getSnappedBeats(beats: number, cursorSnap: number) {
+    return cursorSnap * Math.floor(beats / cursorSnap);
+}
+
+export function setCursorBeatsAndGridSnapAsRequired(sequencer: SequencerState, beats: number) {
+    let wantedBeats = getSnappedBeats(beats, sequencer.cursorSnap);
+    let wantedCursorSnap = sequencer.cursorSnap;
+
+    if (beats !== wantedBeats) {
+        for (const cursorDivisor of FRACTIONAL_UNITS_CLEAN_DIVISORS) {
+            assert(FRACTIONAL_UNITS_PER_BEAT % cursorDivisor === 0);
+            const cursorSnap = FRACTIONAL_UNITS_PER_BEAT / cursorDivisor;
+
+            if (beats % cursorSnap === 0) {
+                wantedCursorSnap = cursorSnap;
+                wantedBeats = getSnappedBeats(beats, wantedCursorSnap);
+                break;
+            }
+        }
+    }
+
+    sequencer.cursor = wantedBeats;
+    sequencer.cursorSnap = wantedCursorSnap;
 }
 
 export function setCursorSnap(sequencer: SequencerState, snap: number) {
@@ -316,13 +342,13 @@ export function syncPlayback(sequencer: SequencerState, dspTime: number, dspPaus
     const currentEstimatedScheduledTime = getCurrentPlayingTimeIntoScheduledKeysInternal(sequencer);
 
     sequencer.isPaused = dspPaused;
-    if (dspPaused) {
+    if (dspPaused || (sequencer.playbackSpeed < 0.00001)) {
         sequencer.pausedPlaybackTime = dspTime;
     } else if (sequencer.isPlaying) {
         // resync the current time with the DSP time. 
         // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
         const difference = dspTime - currentEstimatedScheduledTime;
-        sequencer.startPlayingTime -= difference;
+        sequencer.startPlayingTime -= difference / sequencer.playbackSpeed;
     }
 }
 
@@ -331,7 +357,7 @@ function getCurrentPlayingTimeIntoScheduledKeys(state: SequencerState): number {
     return getCurrentPlayingTimeIntoScheduledKeysInternal(state);
 }
 
-function getCurrentPlayingTimeIntoScheduledKeysInternal(sequencer: SequencerState): number {
+export function getCurrentPlayingTimeIntoScheduledKeysInternal(sequencer: SequencerState): number {
     const playbackSpeed = sequencer.isPaused ? 0 : sequencer.playbackSpeed;
     return sequencer.pausedPlaybackTime + (performance.now() - sequencer.startPlayingTime) * playbackSpeed;
 }
@@ -385,7 +411,9 @@ export function handleMovementAbsolute(
     isShiftPressed: boolean,
 ) {
     setIsRangeSelecting(sequencer, isShiftPressed);
-    setCursorBeats(sequencer, newCursorPos);
+
+    setCursorBeatsAndGridSnapAsRequired(sequencer, newCursorPos);
+
     if (sequencer.isRangeSelecting) {
         sequencer.rangeSelectEnd = newCursorPos;
     }

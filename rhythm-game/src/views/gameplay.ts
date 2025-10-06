@@ -1,4 +1,27 @@
-import { BLOCK, COL, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, imZIndex, INLINE, NA, PERCENT, PX, ROW, START, STRETCH } from "src/components/core/layout";
+import { imButtonIsClicked } from "src/components/button";
+import {
+    BLOCK,
+    COL,
+    imAbsolute,
+    imAlign,
+    imBg,
+    imFg,
+    imFlex,
+    imGap,
+    imJustify,
+    imLayout,
+    imLayoutEnd,
+    imRelative,
+    imSize,
+    imZIndex,
+    INLINE,
+    NA,
+    PERCENT,
+    PX,
+    ROW,
+    START,
+    STRETCH
+} from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { debugFlags } from "src/debug-flags";
@@ -33,7 +56,7 @@ import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfEnd, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils";
-import { GlobalContext, setViewChartSelect } from "./app";
+import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
 const SIGNAL_LOOKAHEAD_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
@@ -117,6 +140,7 @@ function newVerticalNoteThreadState() {
 }
 
 export type GameplayState = {
+    dt: number;
     currentBeat: number;
     currentBeatAnimated: number;
     end: number;
@@ -162,7 +186,7 @@ export type GameplayState = {
     bestPossibleScore: number;
     chartName: string;
 
-    pauseMenu: boolean;
+    isPaused: boolean;
 };
 
 
@@ -189,6 +213,7 @@ export function newGameplayState(
     const bestPossibleScore = getBestPossibleScore(chart, 0, Number.MAX_SAFE_INTEGER);
 
     return {
+        dt: 0,
         score: 0,
         scoreMissed: 0,
         bestPossibleScore: bestPossibleScore,
@@ -244,7 +269,7 @@ export function newGameplayState(
             },
         },
 
-        pauseMenu: false,
+        isPaused: false,
     };
 }
 
@@ -258,8 +283,8 @@ function handleGameplayKeyDown(ctx: GlobalContext, s: GameplayState): boolean {
         const { keyboard } = ctx;
 
         if (key === "Escape") {
-            s.pauseMenu = !s.pauseMenu;
-            if (s.pauseMenu) {
+            s.isPaused = !s.isPaused;
+            if (s.isPaused) {
                 pausePlayback(ctx);
             } else {
                 resumePlayback(ctx);
@@ -339,10 +364,10 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     gameplayState.end = gameplayState.currentBeat + GAMEPLAY_BEATS_LOADAHEAD;
     gameplayState.endAnimated = gameplayState.currentBeatAnimated + GAMEPLAY_BEATS_VIEWPORT;
 
-    const dt = getDeltaTimeSeconds(c);
+    gameplayState.dt = gameplayState.isPaused ? 0 : getDeltaTimeSeconds(c);
 
     if (gameplayState.penaltyEnabled) {
-        gameplayState.penaltyTimer += dt;
+        gameplayState.penaltyTimer += gameplayState.dt;
         if (gameplayState.penaltyTimer > PENALTY_QUANTIZATION_SECONDS) {
             gameplayState.penaltyTimer = 0;
 
@@ -450,14 +475,6 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
         imLine(c, LINE_HORIZONTAL, 1);
 
-        imLayout(c, ROW); {
-            imStr(c, " paused time="); imStr(c, ctx.sequencer.pausedPlaybackTime);
-            imStr(c, " speed="); imStr(c, ctx.sequencer.playbackSpeed);
-            imStr(c, " play time="); imStr(c, ctx.sequencer.startPlayingTime);
-        } imLayoutEnd(c);
-
-        imLine(c, LINE_HORIZONTAL, 1);
-
         imLayout(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
             gameplayState.avoidPenalty = true;
 
@@ -478,20 +495,24 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                     const keySignal = isKeyPressed(instrumentKey.index);
                     let keyGain = getCurrentOscillatorGainForOwner(instrumentKey.index, 0);
 
-                    keyState.keyPressedThisFrame = false;
-                    keyState.keyReleasedThisFrame = false;
-                    if (keySignal && !keyState.keyHeld) {
-                        keyState.keyPressedThisFrame = true;
-                        keyState.keyHeld = true;
-                    } else if (!keySignal && keyState.keyHeld) {
-                        keyState.keyHeld = false;
-                        keyState.keyReleasedAtLeastOnce = true;
-                        keyState.keyReleasedThisFrame = true;
-                    }
+                    if (!gameplayState.isPaused) {
+                        // Handle input
 
-                    if (keyState.keyHeld) {
-                        // Enable the penalty mechanic, only after we press any key at least once.
-                        gameplayState.penaltyEnabled = true;
+                        keyState.keyPressedThisFrame = false;
+                        keyState.keyReleasedThisFrame = false;
+                        if (keySignal && !keyState.keyHeld) {
+                            keyState.keyPressedThisFrame = true;
+                            keyState.keyHeld = true;
+                        } else if (!keySignal && keyState.keyHeld) {
+                            keyState.keyHeld = false;
+                            keyState.keyReleasedAtLeastOnce = true;
+                            keyState.keyReleasedThisFrame = true;
+                        }
+
+                        if (keyState.keyHeld) {
+                            // Enable the penalty mechanic, only after we press any key at least once.
+                            gameplayState.penaltyEnabled = true;
+                        }
                     }
 
 
@@ -531,7 +552,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                         bottomPercent = 0;
                                     }
 
-                                    const dt = getDeltaTimeSeconds(c);
+                                    const dt = gameplayState.dt;
                                     if (currentBeatInItem && !keyState.keyHeld) {
                                         // give user an indication that they should care about the fact that this bar has reached the bottom.
                                         // hopefully they'll see the keyboard letter just below it, and try pressing it.
@@ -605,10 +626,31 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 
-    if (imIf(c) && gameplayState.pauseMenu) {
-        imLayout(c, ROW); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-            imStr(c, "Paused");
+    if (imIf(c) && gameplayState.isPaused) {
+        // Pause menu
+
+        imLayout(c, COL); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0,0,0, 0.4`); imZIndex(c, 100); {
+            if (isFirstishRender(c)) {
+                elSetStyle(c, "fontSize", "3em");
+            }
+
+            imLayout(c, BLOCK); {
+                im3DLookingText(c, "Paused");
+            } imLayoutEnd(c);
+
+            if (imButtonIsClicked(c, "Resume")) {
+                gameplayState.isPaused = false;
+            }
+
+            if (imButtonIsClicked(c, "Quit")) {
+                if (ctx.ui.playView.isTesting) {
+                    setViewEditChart(ctx);
+                } else {
+                    setViewChartSelect(ctx);
+                }
+            }
         } imLayoutEnd(c);
+
     } imIfEnd(c);
 }
 
@@ -676,15 +718,11 @@ function imLetter(
 
 function im3DLookingText(c: ImCache, value: Stringifyable) {
     imLayout(c, ROW); imFlex(c); imJustify(c); imRelative(c); {
-        imLayout(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-            if (isFirstishRender(c)) {
-                elSetStyle(c, "transform", "translate(3px, 3px)");
-            }
-
+        imLayout(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 3, PX, 0, PX, 0, PX, 3, PX); {
             imFg(c, cssVars.bg);
             imStr(c, value);
         } imLayoutEnd(c);
-        imLayout(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+        imLayout(c, ROW); imFlex(c); imJustify(c); imZIndex(c, 2); {
             imFg(c, cssVars.fg);
             imStr(c, value);
         } imLayoutEnd(c);
@@ -895,3 +933,4 @@ function updatePracticeMode(
         practiceMode.maxScoreThisMeasure = getBestPossibleScore(chart, thisMeasureBeat, nextMeasureBeat);
     }
 }
+

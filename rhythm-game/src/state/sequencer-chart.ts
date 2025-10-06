@@ -119,6 +119,9 @@ export const DEFAULT_BPM = 120;
 // Even when we divide INT_MAX by 720, we still have 800,000 'real' beats available to us for a song - more than enough.
 // It was chosen from https://en.wikipedia.org/wiki/Highly_composite_number
 export const FRACTIONAL_UNITS_PER_BEAT = 720;
+export const FRACTIONAL_UNITS_CLEAN_DIVISORS = [
+    1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16,
+];
 
 type TimelinePoint = number & { __TimelinePoint: void };
 

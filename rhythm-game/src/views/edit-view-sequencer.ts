@@ -1,10 +1,35 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, END, imAbsolute, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imRelative, imScrollOverflow, imSize, INLINE_BLOCK, NA, NOT_SET, PERCENT, PX, ROW } from "src/components/core/layout";
+import {
+    BLOCK,
+    COL,
+    END,
+    imAbsolute,
+    imAlign,
+    imBg,
+    imFg,
+    imFlex,
+    imGap,
+    imJustify,
+    imLayout,
+    imLayoutEnd,
+    imPadding,
+    imRelative,
+    imScrollOverflow,
+    imSize,
+    INLINE_BLOCK,
+    NA,
+    NOT_SET,
+    PERCENT,
+    PX,
+    REM,
+    ROW
+} from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
 import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
-import { getCurrentOscillatorGainForOwner, pressKey, releaseAllKeys, releaseKey, setPlaybackTime } from "src/dsp/dsp-loop-interface";
+import { debugFlags } from "src/debug-flags";
+import { getCurrentOscillatorGainForOwner, getPlaybackSpeed, pressKey, releaseAllKeys, releaseKey, setPlaybackSpeed } from "src/dsp/dsp-loop-interface";
 import {
     getKeyForKeyboardKey,
     getKeyForNote,
@@ -12,11 +37,10 @@ import {
     InstrumentKey,
     KeyboardState,
 } from "src/state/keyboard-state";
-import { previewNotes } from "src/state/playing-pausing";
+import { previewNotes, setGlobalPlaybackSpeed } from "src/state/playing-pausing";
 import {
     CommandItem,
     compressChart,
-    computeScheduledTimes,
     FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxBefore,
     getBeatsIndexesInclusive,
@@ -40,6 +64,7 @@ import {
     timelineItemToString
 } from "src/state/sequencer-chart";
 import {
+    getCurrentPlayingTimeIntoScheduledKeysInternal,
     getSelectionStartEndIndexes,
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
@@ -49,6 +74,7 @@ import {
     NoteMapEntry,
     SequencerState,
     setCursorSnap,
+    setSequencerPlaybackSpeed,
 } from "src/state/sequencer-state";
 import { filteredCopy } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
@@ -58,10 +84,12 @@ import { EL_B, EL_I, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imSt
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
 import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, } from "./app";
+import { isSavingAnyChart } from "./background-tasks";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view";
 import { cssVarsApp } from "./styling";
-import { isSavingAnyChart } from "./background-tasks";
-import { debugFlags } from "src/debug-flags";
+import { imGameplay } from "./gameplay";
+import { imInfiniteProgress } from "src/app-components/infinite-progress";
+import { imSliderInput } from "src/components/slider";
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
@@ -301,58 +329,61 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         ctx.handled = true;
     } imIfEnd(c);
 
-    imLayout(c, COL); imGap(c, 5, PX); imFlex(c); imRelative(c); {
+    imLayout(c, COL); imFlex(c); imRelative(c); {
         imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
+            imLayout(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
+
             if (imIf(c) && !loadSaveModal._open) {
-                imEl(c, EL_B); {
-                    imStr(c, "Currently editing ");
-                    imEl(c, EL_I); {
-                        imStr(c, sequencer._currentChart.name);
-                    } imElEnd(c, EL_I);
-                    imStr(c, "");
-                } imElEnd(c, EL_B);
+                if (imIf(c) && sequencer.isPlaying) {
+                    imLayout(c, ROW); imGap(c, 20, PX); {
+                        imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
+                            const speed = getPlaybackSpeed();
+                            imStr(c, "Speed: ");
+                            imStr(c, speed.toFixed(2));
+                            imStr(c, "x");
 
-                const numCopied = ui.copied.items.length;
-                if (imIf(c) && numCopied > 0) {
-                    imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                            imLayout(c, COL); imSize(c, 500, PX, 1.5, REM); {
+                                const newSpeed = imSliderInput(c, 0.0, 3, 0.0001, speed);
+                                if (imMemo(c, newSpeed)) {
+                                    setGlobalPlaybackSpeed(ctx, newSpeed);
+                                }
+                            } imLayoutEnd(c);
 
-                    imStr(c, numCopied + " items copied");
-                } imIfEnd(c);
+                            if (imIf(c) && speed !== 1) {
+                                if (imButtonIsClicked(c, "<")) {
+                                    setGlobalPlaybackSpeed(ctx, 1);
+                                }
+                            } imIfEnd(c);
+                        } imLayoutEnd(c);
+                    } imLayoutEnd(c);
+                } else {
+                    imIfElse(c);
 
-                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
-
-                imLayout(c, ROW); {
-                    if (isFirstishRender(c)) {
-                        elSetStyle(c, "gap", "20px");
-                    }
-
-                    imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
-
-                    // bpm input
-                    // TODO: clean this up.
-                    {
-                        let lastBpmChange = sequencer._lastBpmChange;
-                        const value = imBpmInput(c, getBpm(lastBpmChange));
-                        if (value !== null) {
-                            if (lastBpmChange) {
-                                sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange], sequencer.notesFilter);
-                                lastBpmChange.bpm = value;
-                            } else {
-                                lastBpmChange = newTimelineItemBpmChange(0, value);
+                    imLayout(c, ROW); imGap(c, 20, PX); {
+                        // bpm input
+                        // TODO: clean this up.
+                        {
+                            let lastBpmChange = sequencer._lastBpmChange;
+                            const value = imBpmInput(c, getBpm(lastBpmChange));
+                            if (value !== null) {
+                                if (lastBpmChange) {
+                                    sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange], sequencer.notesFilter);
+                                    lastBpmChange.bpm = value;
+                                } else {
+                                    lastBpmChange = newTimelineItemBpmChange(0, value);
+                                }
+                                sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange], sequencer.notesFilter);
                             }
-                            sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange], sequencer.notesFilter);
                         }
-                    }
 
-                    const newCursorDivisor = imCursorDivisor(c, Math.floor(FRACTIONAL_UNITS_PER_BEAT / sequencer.cursorSnap));
-                    if (newCursorDivisor !== null) {
-                        const newCursorSnap = Math.floor(FRACTIONAL_UNITS_PER_BEAT / newCursorDivisor);
-                        setCursorSnap(sequencer, newCursorSnap);
-                    }
+                        const newCursorDivisor = imCursorDivisor(c, Math.floor(FRACTIONAL_UNITS_PER_BEAT / sequencer.cursorSnap));
+                        if (newCursorDivisor !== null) {
+                            const newCursorSnap = Math.floor(FRACTIONAL_UNITS_PER_BEAT / newCursorDivisor);
+                            setCursorSnap(sequencer, newCursorSnap);
+                        }
 
-                    imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
-
-                } imLayoutEnd(c);
+                    } imLayoutEnd(c);
+                } imIfEnd(c);
 
                 imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
@@ -382,6 +413,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 // TODO: Load/save modal top bar. When needed.
 
             } imIfEnd(c);
+
+            imLayout(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
         } imLayoutEnd(c);
 
         imLine(c, LINE_HORIZONTAL, 1);
@@ -593,15 +626,26 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
             imLine(c, LINE_HORIZONTAL, 1);
 
-            imLayout(c, ROW); imJustify(c); {
-                if (isFirstishRender(c)) {
-                    elSetStyle(c, "fontSize", "18px");
-                }
+            imLayout(c, ROW); imJustify(c); imGap(c, 10, PX); {
+                imEl(c, EL_B); { 
+                    imStr(c, sequencer._currentChart.name); 
+                } imElEnd(c, EL_B);
 
                 const idxText = "note " + s.cursorIdx;
                 const timelinePosText = timelinePosToString(sequencer.cursor);
-                const root = imLayout(c, BLOCK); imFlex(c); {
+                imLayout(c, BLOCK); imFlex(c); {
                     let isSaving = isSavingAnyChart();
+
+                    // We never want our '|' sperator to:
+                    // - occur twice in a row
+                    // - occur after nothing
+                    // - occur before nothing
+                    //
+                    // As long as the first item is always present, subsequent items
+                    // can be conditionally rendered like
+                    // if (condition) { "|" and content }
+                    //
+                    // And this will always be the case.
 
                     if (imIf(c) && (ui.editView.chartSaveTimerSeconds > 0 || isSaving)) {
                         let message = "This chart is readonly, changes won't be saved";
@@ -617,11 +661,6 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         }
 
                         imStr(c, message);
-                    } else {
-                        imIfElse(c);
-
-                        elSetStyle(c, "opacity", "1", root);
-                        imStr(c, "Ready");
                     } imIfEnd(c);
 
                     const numToUndo = chart._undoBuffer.idx + 1;
@@ -633,6 +672,12 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     if (imIf(c) && numToRedo > 0) {
                         imStr(c, "|");
                         imStr(c, numToRedo + " redo");
+                    } imIfEnd(c);
+
+                    const numCopied = ui.copied.items.length;
+                    if (imIf(c) && numCopied > 0) {
+                        imStr(c, "|");
+                        imStr(c, numCopied + " items copied");
                     } imIfEnd(c);
                 } imLayoutEnd(c);
                 imStr(c, idxText + " | " + timelinePosText);
@@ -664,6 +709,11 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             if (keyPress.keyUpper === "T" && keyPress.shiftPressed) {
                 const time = getTimeForBeats(chart, sequencer.cursor);
                 setViewPlayCurrentChartTest(ctx, time);
+                handled = true;
+            }
+
+            if (keyPress.keyUpper === "A" && keyPress.shiftPressed) {
+                s.allNotesVisible = !s.allNotesVisible;
                 handled = true;
             }
         }
@@ -902,7 +952,7 @@ function imBpmInput(c: ImCache, value: number): number | null {
 
         imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-        imStr(c, "BPM: ");
+        imStr(c, "Last BPM: ");
         imStr(c, value.toFixed(1) + "");
 
         imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
