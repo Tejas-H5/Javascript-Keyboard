@@ -42,10 +42,6 @@ export function imPlayView(c: ImCache, ctx: GlobalContext) {
     // NOTE: strange code boundary here between the results screen and the gameplay screen, because I wrote this code a while ago.
     // but it seems to work ok for now.
 
-    if (!ctx.handled) {
-        ctx.handled = handlePlayViewKeyDown(ctx);
-    }
-
     imLayout(c, COL); imFlex(c); {
         if (imIf(c) && ctx.ui.playView.result) {
             imResultsScreen(ctx, c, ctx.ui.playView.result);
@@ -55,6 +51,11 @@ export function imPlayView(c: ImCache, ctx: GlobalContext) {
             imGameplay(c, ctx);
         } imEndIf(c);
     } imLayoutEnd(c);
+
+    if (!ctx.handled) {
+        ctx.handled = handlePlayViewKeyDown(ctx);
+    }
+
 }
 
 

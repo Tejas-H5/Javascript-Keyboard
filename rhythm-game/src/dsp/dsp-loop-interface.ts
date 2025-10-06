@@ -28,6 +28,7 @@ const dspInfo: DspInfo = {
     sampleRate: 1,
 };
 let scheduledVolume = 1;
+let scheduledSpeed = 1;
 
 function unreachable() {
     throw new Error("Unreachable code in dsp interface!");
@@ -45,6 +46,15 @@ export function getCurrentPlaySettings() {
 export function setPlaybackVolume(value: number) {
     scheduledVolume = value;
     audioLoopDispatch({ scheduleKeysVolume: value });
+}
+
+export function setPlaybackSpeed(value: number) {
+    scheduledSpeed = value;
+    audioLoopDispatch({ scheduleKeysSpeed: value });
+}
+
+export function getPlaybackSpeed(): number {
+    return scheduledSpeed;
 }
 
 export function setPlaybackTime(value: number) {

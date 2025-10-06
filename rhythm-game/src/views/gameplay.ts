@@ -8,6 +8,7 @@ import {
     InstrumentKey,
     KeyboardState
 } from "src/state/keyboard-state";
+import { pausePlayback, resumePlayback } from "src/state/playing-pausing";
 import {
     CommandItem,
     FRACTIONAL_UNITS_PER_BEAT,
@@ -29,7 +30,7 @@ import {
 import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGet, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfEnd, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
@@ -160,6 +161,8 @@ export type GameplayState = {
     scoreMissed: number;
     bestPossibleScore: number;
     chartName: string;
+
+    pauseMenu: boolean;
 };
 
 
@@ -240,21 +243,28 @@ export function newGameplayState(
                 targetCursorBeats: 0,
             },
         },
+
+        pauseMenu: false,
     };
 }
 
-function handleGameplayKeyDown(ctx: GlobalContext, gameplayState: GameplayState): boolean {
-    let result = false;
+function handleGameplayKeyDown(ctx: GlobalContext, s: GameplayState): boolean {
+    let handled = false;
 
-    const rewindStarted = gameplayState.practiceMode.rewindAnimation.started;
+    const rewindStarted = s.practiceMode.rewindAnimation.started;
 
     if (ctx.keyPressState)  {
         const { key, isRepeat } = ctx.keyPressState;
         const { keyboard } = ctx;
 
         if (key === "Escape") {
-            setViewChartSelect(ctx);
-            result = true;
+            s.pauseMenu = !s.pauseMenu;
+            if (s.pauseMenu) {
+                pausePlayback(ctx);
+            } else {
+                resumePlayback(ctx);
+            }
+            handled = true;
         } else {
             const instrumentKey = getKeyForKeyboardKey(keyboard, key);
             if (instrumentKey) {
@@ -263,21 +273,21 @@ function handleGameplayKeyDown(ctx: GlobalContext, gameplayState: GameplayState)
                     pressKey(instrumentKey.index, instrumentKey.noteId, isRepeat);
                 }
 
-                result = true;
+                handled = true;
             }
         }
     }
 
     // code to enable practice mode. 
-    if (!result && (ctx.keyPressState || ctx.keyReleaseState || ctx.blurredState)) {
+    if (!handled && (ctx.keyPressState || ctx.keyReleaseState || ctx.blurredState)) {
         if (ctx.keyPressState && !ctx.keyPressState.isRepeat) {
             if (ctx.keyPressState.key === "Backspace") {
-                if (gameplayState.practiceMode.enabled) {
+                if (s.practiceMode.enabled) {
                     // gamplayPracticeModeRewind(ctx, gameplayState, measureBeat);
 
-                    const practiceMode = gameplayState.practiceMode;
+                    const practiceMode = s.practiceMode;
                     const nextMeasureIdxPrev = practiceMode.nextMeasureIdx
-                    const measureToRewindTo = arrayAt(gameplayState.measures, nextMeasureIdxPrev - 2);
+                    const measureToRewindTo = arrayAt(s.measures, nextMeasureIdxPrev - 2);
                     const measureBeat = measureToRewindTo ? measureToRewindTo.start : 0;
                     practiceMode.nextMeasureIdx = nextMeasureIdxPrev;
 
@@ -286,20 +296,20 @@ function handleGameplayKeyDown(ctx: GlobalContext, gameplayState: GameplayState)
                     practiceMode.rewindAnimation.targetCursorBeats = measureBeat;
 
                 } else {
-                    gameplayState.practiceMode.buttonHeld = true;
-                    gameplayState.practiceMode.timerSeconds = 0;
+                    s.practiceMode.buttonHeld = true;
+                    s.practiceMode.timerSeconds = 0;
                 }
-                result = true;
+                handled = true;
             }
         } else {
             if (ctx.keyReleaseState?.key === "Backspace" || ctx.blurredState) {
-                gameplayState.practiceMode.buttonHeld = false;
-                result = true;
+                s.practiceMode.buttonHeld = false;
+                handled = true;
             }
         }
     }
 
-    return result;
+    return handled;
 }
 
 export function imGameplay(c: ImCache, ctx: GlobalContext) {
@@ -436,6 +446,14 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                     imStr(c, progressPercent); imStr(c, "%");
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
+        } imLayoutEnd(c);
+
+        imLine(c, LINE_HORIZONTAL, 1);
+
+        imLayout(c, ROW); {
+            imStr(c, " paused time="); imStr(c, ctx.sequencer.pausedPlaybackTime);
+            imStr(c, " speed="); imStr(c, ctx.sequencer.playbackSpeed);
+            imStr(c, " play time="); imStr(c, ctx.sequencer.startPlayingTime);
         } imLayoutEnd(c);
 
         imLine(c, LINE_HORIZONTAL, 1);
@@ -586,6 +604,12 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
             }
         } imLayoutEnd(c);
     } imLayoutEnd(c);
+
+    if (imIf(c) && gameplayState.pauseMenu) {
+        imLayout(c, ROW); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+            imStr(c, "Paused");
+        } imLayoutEnd(c);
+    } imIfEnd(c);
 }
 
 function imLetter(

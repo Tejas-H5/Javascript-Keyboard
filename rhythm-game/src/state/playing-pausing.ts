@@ -1,12 +1,23 @@
-import { isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, setPlaybackSpeed, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
-import { getBeatIdxAfter, getChartDurationInBeats, itemEnd, getItemEndTime, getItemStartTime, getLastMeasureBeats, getTimeForBeats, NoteItem, TIMELINE_ITEM_BPM, TIMELINE_ITEM_MEASURE, TIMELINE_ITEM_NOTE, FRACTIONAL_UNITS_PER_BEAT } from "src/state/sequencer-chart";
-import { getCurrentPlayingBeats, hasRangeSelection, } from "src/state/sequencer-state";
+import {
+    getBeatIdxAfter,
+    getChartDurationInBeats,
+    getItemEndTime,
+    getItemStartTime,
+    getLastMeasureBeats,
+    getTimeForBeats,
+    itemEnd,
+    NoteItem,
+    TIMELINE_ITEM_BPM,
+    TIMELINE_ITEM_MEASURE,
+    TIMELINE_ITEM_NOTE,
+} from "src/state/sequencer-chart";
+import { getCurrentPlayingBeats, hasRangeSelection, setSequencerPlaybackSpeed, } from "src/state/sequencer-state";
 import { unreachable } from "src/utils/assert";
 import { GlobalContext } from "src/views/app";
 
-
-export function stopPlaying({ sequencer }: GlobalContext, stopOnCursor = false) {
+export function stopPlayback({ sequencer }: GlobalContext, stopOnCursor = false) {
     clearTimeout(sequencer.playingTimeout);
     releaseAllKeys();
 
@@ -82,6 +93,25 @@ export type PlayOptions = {
     isUserDriven?: boolean;
 };
 
+export function pausePlayback(ctx: GlobalContext) {
+    setSequencerSpeed(ctx, 0);
+}
+
+export function resumePlayback(ctx: GlobalContext) {
+    setSequencerSpeed(ctx, 1);
+}
+
+// Not as straightforward as you  might think.
+// Due to latency reasons, we can't simply query the current time from the DSP loop every frame.
+// So the non-dsp code is using a linear equation to estimate the current dsp time based on the last known
+// dsp time. We sync with the DSP loop often enough that it will always be accurate.
+// We cannot change the speed without also resetting the linear equation
+function setSequencerSpeed(ctx: GlobalContext, newSpeed: number) {
+    const sequencer = ctx.sequencer;
+
+    setSequencerPlaybackSpeed(sequencer, newSpeed);
+    setPlaybackSpeed(newSpeed);
+}
 
 // TODO: handle the 'error' when we haven't clicked any buttons yet so the browser prevents audio from playing
 export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: number, options: PlayOptions = {}) {
@@ -92,7 +122,7 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
 
     let { speed = 1, isUserDriven = false } = options;
 
-    stopPlaying(ctx);
+    stopPlayback(ctx);
 
     const { sequencer, keyboard } = ctx;
 
@@ -126,11 +156,6 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
         unreachable(item);
     }
 
-    for (const scp of scheduledKeyPresses) {
-        scp.time /= speed;
-        scp.timeEnd /= speed;
-    }
-
     // TODO: sort prob not needed, since the timeline is sorted already
     scheduledKeyPresses.sort((a, b) => a.time - b.time);
     sequencer.scheduledKeyPresses = scheduledKeyPresses;
@@ -138,8 +163,8 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
     sequencer.scheduledKeyPressesPlaybackSpeed = speed;
 
     sequencer.startPlayingTime = performance.now();
+    sequencer.pausedPlaybackTime = 0;
     sequencer.isPlaying = true;
-    sequencer.isPaused = false;
     sequencer.startBeats = startBeats;
 
     updatePlaySettings(s => s.isUserDriven = isUserDriven);

@@ -6,7 +6,7 @@ import { ChartRepository, loadChartMetadataList, queryChart, SequencerChartMetad
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     startPlaying,
-    stopPlaying
+    stopPlayback
 } from "src/state/playing-pausing";
 import {
     SavedState
@@ -286,7 +286,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 editView.lastCursor = sequencer.cursor;
             } break;
             case APP_VIEW_PLAY_CHART: {
-                stopPlaying(ctx);
+                stopPlayback(ctx);
                 setPlaybackVolume(1);
             } break;
         }

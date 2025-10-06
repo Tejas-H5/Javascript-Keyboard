@@ -39,8 +39,8 @@ export const debugFlags: DebugFlags = {
     debuUndoBuffer:      OFF,
     testChartSelectView: OFF,
 
+    testGameplay:     ON,
     testGameplaySlow: OFF,
-    testGameplay:     OFF,
     testPracticeMode: OFF,
     testResultsView:  OFF,
 

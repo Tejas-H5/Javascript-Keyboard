@@ -4,7 +4,7 @@ import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
     playFromCursor,
     playFromLastMeasure,
-    stopPlaying
+    stopPlayback
 } from "src/state/playing-pausing";
 import {
     FRACTIONAL_UNITS_PER_BEAT,
@@ -24,7 +24,7 @@ import {
 import {
     clearRangeSelection,
     deleteRange,
-    getCurrentPlayingTime,
+    getCurrentPlayingTimeIntoChart,
     getSelectionStartEndIndexes,
     handleMovement,
     handleMovementAbsolute,
@@ -231,8 +231,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
 
     if (isPlayPausePressed) {
         if (sequencer.isPlaying) {
-            // pause at the cursor
-            stopPlaying(ctx, true);
+            stopPlayback(ctx, true);
             return true;
         }
 
@@ -319,7 +318,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
 
     if (key === "Escape") {
         if (sequencer.isPlaying) {
-            stopPlaying(ctx);
+            stopPlayback(ctx);
             return true;
         }
 
@@ -396,10 +395,10 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
         }
     }
 
-    const currentTime = getCurrentPlayingTime(sequencer);
+    const currentTime = getCurrentPlayingTimeIntoChart(sequencer);
     const duration = getPlaybackDuration(sequencer._currentChart);
     if (currentTime > duration + OVERPLAY_MS) {
-        stopPlaying(ctx);
+        stopPlayback(ctx);
     }
 
     imLayout(c, ROW); imFlex(c); {

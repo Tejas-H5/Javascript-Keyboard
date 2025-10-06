@@ -249,6 +249,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
 
     // The DSP we're running here is purely for visuals.
     // It is the exact same code that runs in the DSP loop, but in slow motion.
+    // If we run it at full speed, we'll just generate way too many samples, and it's hard to see what's going on.
     const playbackFps = 240;
     const numSamples = Math.floor((1 / playbackFps) * state.dsp.sampleRate);
 

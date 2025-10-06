@@ -63,6 +63,7 @@ export type DspLoopMessage = 1337 | {
     newPlaybackTime?: number;
 
     scheduleKeysVolume?:               number;
+    scheduleKeysSpeed?:                number;
     // This samples record is so massive that my editor lags way too hard when I edit that file. So I
     // put it in a different file, and just inject it on startup, since it's JSON serialzable
     setAllSamples?:                    Record<string, number[]>;
@@ -326,6 +327,7 @@ export function newDspState(): DspState {
             shouldSendUiUpdateSignals: false,
             scheduleKeys: undefined,
             scheduledKeysVolume: 1,
+            scheduledKeysSpeed: 1,
             scheduedKeysCurrentlyPlaying: [],
             scheduledPlaybackTime: 0,
             scheduledPlaybackCurrentIdx: 0,
@@ -345,6 +347,7 @@ export type DspState = {
         shouldSendUiUpdateSignals: boolean;
         scheduleKeys?: ScheduledKeyPress[];
         scheduledKeysVolume: number;
+        scheduledKeysSpeed: number;
         scheduedKeysCurrentlyPlaying: ScheduledKeyPress[];
         scheduledPlaybackTime: number;
         scheduledPlaybackCurrentIdx: number;
@@ -387,7 +390,7 @@ function processSample(s: DspState, idx: number) {
     ) {
 
         // keep track of where we're currently at with the playback
-        const dt = 1000 / sampleRate;
+        const dt = (1000 / sampleRate) * trackPlayback.scheduledKeysSpeed;
         const nextScheduledPlaybackTime = trackPlayback.scheduledPlaybackTime + dt;
 
         if (s.playSettings.isUserDriven) {
@@ -695,6 +698,10 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
 
     if (e.scheduleKeysVolume !== undefined) {
         s.trackPlayback.scheduledKeysVolume = e.scheduleKeysVolume;
+    }
+
+    if (e.scheduleKeysSpeed !== undefined) {
+        s.trackPlayback.scheduledKeysSpeed = e.scheduleKeysSpeed;
     }
 
     if (e.setAllSamples) {

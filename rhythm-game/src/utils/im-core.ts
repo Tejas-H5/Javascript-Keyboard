@@ -1,4 +1,4 @@
-// IM-CORE 1.044
+// IM-CORE 1.045
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
@@ -747,22 +747,38 @@ export type ImMemoResult
     | typeof MEMO_FIRST_RENDER_CONDITIONAL;
 
 /**
- * Returns non-zero when:
- *  - val was different from the last value, 
- *  - the component wasn't in the conditional rendering pathway before,
+ * Returns non-zero when either:
+ *  1. val was different from the last value, 
+ *  2. the component wasn't in the conditional rendering pathway before,
  *    but it is now
  *
- * There are a lot of times where things need to be recomputed
- * based on values, as well as when a component re-enters the view.
- * In fact, you probably want this most of the time.
+ * 1 makes sense, but 2 only arises is because we want code like this to work
+ * in any concievable context:
+ *
+ * ```ts
+ * function uiComponent(focused: boolean) {
+ *      if (imMemo(c, focused)) {
+ *          // recompute state
+ *      }
+ * }
+ * ```
+ *
+ * With 1. alone, it won't work if the component leaves the conditional rendering pathway, 
+ * and then re-enters it:
+ *
+ * ```ts
+ * imSwitch(c); switch(currentComponent) {
+ *      case "component 1": uiComponent(true); break;
+ *      case "component 2": somethingElse(true); break;
+ *  } imSwitchEnd(c);
+ * ```
+ *
+ * But with 2. as well, it should always work as expected.
  *
  * NOTE: NaN !== NaN. So your memo will fire every frame. 
- * I'm still diliberating on how to handle this.
+ * I'm still diliberating on should my code be 'correct' and always handle this for every imMemo, 
+ * even when it doesn't really need to, or if you sohuld just handle it as needed. 
  * For now, you can handle it.
- *
- * NOTE: All 'responding to state changing' in your app can be done via imMemo. 
- * However, in many cases it can be better to simply do the thing
- * whenever you yourself set this state.
  */
 export function imMemo(c: ImCache, val: unknown): ImMemoResult {
     /**

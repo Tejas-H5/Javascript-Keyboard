@@ -48,8 +48,9 @@ export type SequencerState = {
 
     isPlaying: boolean;
     isPaused: boolean;
+    playbackSpeed: number;
     startBeats: number;
-    pausedTime: number;
+    pausedPlaybackTime: number;
     startPlayingTime: number; // this is the time IRL we started playing, not the time along the timeline.seq
 
     playingTimeout: number;
@@ -253,7 +254,7 @@ export function isItemPlaying(state: SequencerState, item: TimelineItem): boolea
         return false;
     }
 
-    const currentTime = getCurrentPlayingTimeRelative(state);
+    const currentTime = getCurrentPlayingTimeIntoScheduledKeys(state);
     if (currentTime < 0) {
         return false;
     }
@@ -282,8 +283,9 @@ export function newSequencerState(): SequencerState {
 
         isPlaying: false,
         isPaused: false,
+        playbackSpeed: 1,
         startBeats: 0,
-        pausedTime: 0,
+        pausedPlaybackTime: 0,
         startPlayingTime: 0,
         currentHoveredTimelineItemIdx: -1,
 
@@ -311,32 +313,33 @@ export function syncPlayback(sequencer: SequencerState, dspTime: number, dspPaus
         return;
     }
 
+    const currentEstimatedScheduledTime = getCurrentPlayingTimeIntoScheduledKeysInternal(sequencer);
+
     sequencer.isPaused = dspPaused;
     if (dspPaused) {
-        sequencer.pausedTime = dspTime;
-        // the other way:
-        // if (!sequencer.isPaused) {
-        //     sequencer.pausedTime = Date.now() - sequencer.startPlayingTime;
-        // }
+        sequencer.pausedPlaybackTime = dspTime;
     } else if (sequencer.isPlaying) {
         // resync the current time with the DSP time. 
         // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
-        const currentEstimatedScheduledTime = getCurrentPlayingTimeRelative(sequencer);
         const difference = dspTime - currentEstimatedScheduledTime;
         sequencer.startPlayingTime -= difference;
     }
 }
 
-export function getCurrentPlayingTimeRelative(state: SequencerState): number {
-    if (!state.isPlaying) {
-        return -10;
-    }
+function getCurrentPlayingTimeIntoScheduledKeys(state: SequencerState): number {
+    if (!state.isPlaying) return -10;
+    return getCurrentPlayingTimeIntoScheduledKeysInternal(state);
+}
 
-    if (state.isPaused) {
-        return state.pausedTime;
-    }
+function getCurrentPlayingTimeIntoScheduledKeysInternal(sequencer: SequencerState): number {
+    const playbackSpeed = sequencer.isPaused ? 0 : sequencer.playbackSpeed;
+    return sequencer.pausedPlaybackTime + (performance.now() - sequencer.startPlayingTime) * playbackSpeed;
+}
 
-    return performance.now() - state.startPlayingTime;
+export function setSequencerPlaybackSpeed(sequencer: SequencerState, newSpeed: number) {
+    sequencer.pausedPlaybackTime = getCurrentPlayingTimeIntoScheduledKeysInternal(sequencer);
+    sequencer.startPlayingTime = performance.now();
+    sequencer.playbackSpeed = newSpeed;
 }
 
 export function handleMovement(
@@ -402,18 +405,17 @@ export function getSequencerPlaybackOrEditingCursor(sequencer: SequencerState) {
 }
 
 
-export function getCurrentPlayingTime(sequencer: SequencerState): number {
+export function getCurrentPlayingTimeIntoChart(sequencer: SequencerState): number {
     if (!sequencer.isPlaying) {
         return -10;
     }
 
-    const relativeTime = getCurrentPlayingTimeRelative(sequencer);
-    return sequencer.scheduledKeyPressesFirstItemStart + 
-        relativeTime * sequencer.scheduledKeyPressesPlaybackSpeed;
+    const relativeTime = getCurrentPlayingTimeIntoScheduledKeys(sequencer);
+    return sequencer.scheduledKeyPressesFirstItemStart + relativeTime;
 }
 
 export function getCurrentPlayingBeats(sequencer: SequencerState): number {
-    const currentTime = getCurrentPlayingTime(sequencer);
+    const currentTime = getCurrentPlayingTimeIntoChart(sequencer);
     const beats = getBeatsForTime(sequencer._currentChart, currentTime);
     return Math.round(beats);
 }
@@ -427,7 +429,7 @@ export function isItemBeingPlayed(sequencer: SequencerState, item: TimelineItem)
         return false;
     }
 
-    const playbackTime = getCurrentPlayingTime(sequencer);
+    const playbackTime = getCurrentPlayingTimeIntoChart(sequencer);
     return getItemStartTime(item) <= playbackTime && playbackTime <= getItemEndTime(item);
 }
 

@@ -4,7 +4,7 @@ import {
     releaseKey
 } from "src/dsp/dsp-loop-interface";
 import {
-    getCurrentPlayingTimeRelative,
+    getCurrentPlayingTimeIntoChart,
 } from "src/state/sequencer-state";
 import { GlobalContext } from "./app";
 import { timelineHasNoteAtPosition } from "src/state/sequencer-chart";
@@ -155,7 +155,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                         // could need multiple approach squares for this key.
                         const sequencer = ctx.sequencer;
                         if (imIf(c) && sequencer.isPlaying) {
-                            const currentTime = getCurrentPlayingTimeRelative(sequencer);
+                            const currentTime = getCurrentPlayingTimeIntoChart(sequencer);
 
                             const scheduledKeyPresses = ctx.sequencer.scheduledKeyPresses;
                             imFor(c); for (let i = 0; i < scheduledKeyPresses.length; i++) {
