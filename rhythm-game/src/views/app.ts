@@ -1,4 +1,4 @@
-import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, NA, PX } from "src/components/core/layout";
+import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, imZIndex, NA, PX } from "src/components/core/layout";
 import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { debugFlags, getTestSleepMs } from "src/debug-flags";
 import { releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
@@ -83,6 +83,7 @@ export type GlobalContext = {
     keyReleaseState: KeyPressState | null;
     blurredState: boolean;
     handled: boolean;
+    dontPreventDefault: boolean;
 };
 
 export function newGlobalContext(
@@ -106,6 +107,7 @@ export function newGlobalContext(
         keyReleaseState: null,
         blurredState: false,
         handled: false,
+        dontPreventDefault: false,
         deltaTime: 0,
     };
 
@@ -425,6 +427,7 @@ export function imApp(
     ctx.keyReleaseState = null;
     ctx.blurredState = false;
     ctx.handled = false;
+    ctx.dontPreventDefault = false;
 
     handleKeysLifecycle(ctx.allKeysState.keys, keyDown, keyUp, blur);
 
@@ -454,6 +457,7 @@ export function imApp(
                 (keyUpper === "R" && ctrlPressed)
             ) {
                 ctx.handled = true;
+                ctx.dontPreventDefault = true;
             }
         }
     }
@@ -495,7 +499,7 @@ export function imApp(
         } imSwitchEnd(c);
 
         // diagnostic info
-        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imBg(c, `rgba(255, 255, 255, 0.6)`); {
+        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imBg(c, `rgba(255, 255, 255, 0.6)`); imZIndex(c, 10000); {
             imFpsCounterSimple(c, fps);
             imExtraDiagnosticInfo(c);
 
@@ -518,7 +522,10 @@ export function imApp(
     } imLayoutEnd(c);
 
     if (ctx.handled && ctx.keyPressState) {
-        if (!isEditingTextSomewhereInDocument()) {
+        if (
+            !isEditingTextSomewhereInDocument() && 
+            !ctx.dontPreventDefault
+        ) {
             ctx.keyPressState.e.preventDefault();
         }
     }

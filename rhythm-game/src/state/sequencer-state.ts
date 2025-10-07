@@ -70,6 +70,7 @@ export type SequencerState = {
     _nonOverlappingItems: NoteItem[][];
     _visitedBuffer: boolean[];
     _lastBpmChange: TimelineItemBpmChange | undefined;
+    _time: number;
 
 };
 
@@ -329,6 +330,7 @@ export function newSequencerState(): SequencerState {
         notesToPreviewVersion: 0,
 
         _lastBpmChange: undefined,
+        _time: 0,
     };
 
     return sequencer

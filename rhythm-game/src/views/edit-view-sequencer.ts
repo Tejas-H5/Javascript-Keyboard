@@ -27,9 +27,10 @@ import {
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
+import { imSliderInput } from "src/components/slider";
 import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
 import { debugFlags } from "src/debug-flags";
-import { getCurrentOscillatorGainForOwner, getPlaybackSpeed, pressKey, releaseAllKeys, releaseKey, setPlaybackSpeed } from "src/dsp/dsp-loop-interface";
+import { getCurrentOscillatorGainForOwner, getPlaybackSpeed, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface";
 import {
     getKeyForKeyboardKey,
     getKeyForNote,
@@ -64,7 +65,6 @@ import {
     timelineItemToString
 } from "src/state/sequencer-chart";
 import {
-    getCurrentPlayingTimeIntoScheduledKeysInternal,
     getSelectionStartEndIndexes,
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
@@ -73,23 +73,19 @@ import {
     isItemRangeSelected,
     NoteMapEntry,
     SequencerState,
-    setCursorSnap,
-    setSequencerPlaybackSpeed,
+    setCursorSnap
 } from "src/state/sequencer-state";
 import { filteredCopy } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { copyToClipboard } from "src/utils/clipboard";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
-import { EL_B, EL_I, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
+import { EL_B, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
 import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, } from "./app";
 import { isSavingAnyChart } from "./background-tasks";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view";
 import { cssVarsApp } from "./styling";
-import { imGameplay } from "./gameplay";
-import { imInfiniteProgress } from "src/app-components/infinite-progress";
-import { imSliderInput } from "src/components/slider";
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
@@ -108,9 +104,6 @@ export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | un
     return unreachable(item);
 }
 
-function timelinePosToString(numerator: number): string {
-    return "beat=" + (numerator / FRACTIONAL_UNITS_PER_BEAT) + " (fractional beat=" + numerator + ")";
-}
 
 // The number of divisions to show before AND after the cursor.
 const NUM_EXTENT_DIVISIONS = 16;
@@ -199,6 +192,9 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
     const s = imState(c, newSequencerState);
 
     const currentCursor = getSequencerPlaybackOrEditingCursor(sequencer);
+
+    // Expensive ? 
+    sequencer._time = getTimeForBeats(chart, currentCursor);
 
     // Compute animation factors every frame without memoization
     {
@@ -355,6 +351,10 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                                 }
                             } imIfEnd(c);
                         } imLayoutEnd(c);
+
+                        imLayout(c, BLOCK); {
+                            imStr(c, (sequencer._time / 1000).toFixed(3)); imStr(c, "s");
+                        } imLayoutEnd(c);
                     } imLayoutEnd(c);
                 } else {
                     imIfElse(c);
@@ -404,7 +404,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     s.allNotesVisible = !s.allNotesVisible;
                 }
 
-                if (imButtonIsClicked(c, (loadSaveModal._open ? ">" : "<") + "Load/Save")) {
+                if (imButtonIsClicked(c, (loadSaveModal._open ? "->" : "<-") + "Load/Save")) {
                     setLoadSaveModalOpen(ctx);
                 }
             } else {
@@ -441,7 +441,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     const chart = sequencer._currentChart;
                     imFor(c); for (const item of chart._undoBuffer.items) {
                         imLayout(c, INLINE_BLOCK); imPadding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
-                            imStr(c, chart._undoBuffer.idx === i ? ">" : "");
+                            imStr(c, chart._undoBuffer.idx === i ? "->" : "");
                             imStr(c, "Entry " + (i++) + ": ");
                             imFor(c); for (const tlItem of item.items) {
                                 imStr(c, timelineItemToString(tlItem));
@@ -631,8 +631,6 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     imStr(c, sequencer._currentChart.name); 
                 } imElEnd(c, EL_B);
 
-                const idxText = "note " + s.cursorIdx;
-                const timelinePosText = timelinePosToString(sequencer.cursor);
                 imLayout(c, BLOCK); imFlex(c); {
                     let isSaving = isSavingAnyChart();
 
@@ -680,7 +678,13 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         imStr(c, numCopied + " items copied");
                     } imIfEnd(c);
                 } imLayoutEnd(c);
-                imStr(c, idxText + " | " + timelinePosText);
+
+                imStr(c, "note_idx=");
+                imStr(c, s.cursorIdx);
+                imStr(c, ", beats="); imStr(c, (sequencer.cursor / FRACTIONAL_UNITS_PER_BEAT).toFixed(3)); 
+                imStr(c, "(integer_beats="); imStr(c, sequencer.cursor); imStr(c, ")");
+                imStr(c, ", time="); imStr(c, (sequencer._time / 1000).toFixed(3)); imStr(c, "s");
+
                 imLayout(c, ROW); imFlex(c); imJustify(c, END); {
                     if (imIf(c) && sequencer.notesToPreview.length > 0) {
                         imStr(c, "TAB -> place, DEL or ~ -> delete");
@@ -913,7 +917,7 @@ function imCursorDivisor(c: ImCache, val: number): number | null {
     let result: number | null = null;
 
     imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
-        if (imButtonIsClicked(c, "<")) {
+        if (imButtonIsClicked(c, "<-")) {
             result =  getPrevDivisor(val);
         }
         if (imButtonIsClicked(c, "-")) {
@@ -930,7 +934,7 @@ function imCursorDivisor(c: ImCache, val: number): number | null {
         if (imButtonIsClicked(c, "+")) {
             result = clamp(val + 1, 1, 16);
         }
-        if (imButtonIsClicked(c, ">")) {
+        if (imButtonIsClicked(c, "->")) {
             result = getNextDivisor(val);
         }
     } imLayoutEnd(c);
@@ -943,7 +947,7 @@ function imBpmInput(c: ImCache, value: number): number | null {
     let result: number | null = null;
 
     imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
-        if (imButtonIsClicked(c, "<")) {
+        if (imButtonIsClicked(c, "<-")) {
             result = value - 10;
         }
         if (imButtonIsClicked(c, "-")) {
@@ -960,7 +964,7 @@ function imBpmInput(c: ImCache, value: number): number | null {
         if (imButtonIsClicked(c, "+")) {
             result = value + 1;
         }
-        if (imButtonIsClicked(c, ">")) {
+        if (imButtonIsClicked(c, "->")) {
             result = value + 10;
         }
     } imLayoutEnd(c);

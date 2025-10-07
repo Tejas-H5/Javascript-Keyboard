@@ -1,4 +1,4 @@
-import { ImCache, imGet, imMemo, imSet, inlineTypeId, isFirstishRender } from 'src/utils/im-core';
+import { ImCache, imGet, imMemo, imSet, inlineTypeId, isFirstishRender, USE_ANIMATION_FRAME } from 'src/utils/im-core';
 import { EL_DIV, elSetClass, elSetStyle, imEl, imElEnd } from 'src/utils/im-dom';
 import { cn } from "./stylesheets";
 
@@ -10,9 +10,9 @@ export type SizeUnitInstance = number & { __sizeUnit: void; };
 export const PX = 10001 as SizeUnitInstance;
 export const EM = 20001 as SizeUnitInstance;
 export const PERCENT = 30001 as SizeUnitInstance;
-export const REM = 50001 as SizeUnitInstance;
+export const REM = 40001 as SizeUnitInstance;
 export const CH = 50001 as SizeUnitInstance;
-export const NA = 40001 as SizeUnitInstance; // Not applicable. Nahh. 
+export const NA = 60001 as SizeUnitInstance; // Not applicable. Nahh. 
 
 export const NOT_SET = NA;
 
@@ -138,6 +138,14 @@ export function imBg(c: ImCache, colour: string) {
 export function imFg(c: ImCache, colour: string) {
     if (imMemo(c, colour)) {
         elSetStyle(c, "color", colour);
+    }
+}
+
+export function imFontSize(c: ImCache, size: number, units: SizeUnits) {
+    const sizeChanged = imMemo(c, size);
+    const unitsChanged = imMemo(c, units);
+    if (sizeChanged || unitsChanged) {
+        elSetStyle(c, "fontSize", getSize(size, units));
     }
 }
 
@@ -310,6 +318,7 @@ function imOffsets(
 
 export function imAbsolute(
     c: ImCache,
+    // Silly order. But it's the css standard convention
     top: number, topType: SizeUnits,
     right: number, rightType: SizeUnits, 
     bottom: number, bottomType: SizeUnits, 

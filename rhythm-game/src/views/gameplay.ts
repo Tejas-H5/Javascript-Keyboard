@@ -2,11 +2,14 @@ import { imButtonIsClicked } from "src/components/button";
 import {
     BLOCK,
     COL,
+    EM,
+    END,
     imAbsolute,
     imAlign,
     imBg,
     imFg,
     imFlex,
+    imFontSize,
     imGap,
     imJustify,
     imLayout,
@@ -14,7 +17,6 @@ import {
     imRelative,
     imSize,
     imZIndex,
-    INLINE,
     NA,
     PERCENT,
     PX,
@@ -23,7 +25,7 @@ import {
     STRETCH
 } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
+import { imLine, LINE_VERTICAL } from "src/components/im-line";
 import { debugFlags } from "src/debug-flags";
 import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setPlaybackTime } from "src/dsp/dsp-loop-interface";
 import {
@@ -53,8 +55,8 @@ import {
 import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfEnd, imSet, imState, isFirstishRender } from "src/utils/im-core";
-import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, imTrackSize, Stringifyable } from "src/utils/im-dom";
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app";
 import { cssVarsApp, getCurrentTheme } from "./styling";
@@ -186,7 +188,10 @@ export type GameplayState = {
     bestPossibleScore: number;
     chartName: string;
 
-    isPaused: boolean;
+    pauseMenu: {
+        isPaused: boolean;
+        idx: number;
+    }
 };
 
 
@@ -269,8 +274,20 @@ export function newGameplayState(
             },
         },
 
-        isPaused: false,
+        pauseMenu: {
+            isPaused: false,
+            idx: 0,
+        }
     };
+}
+
+function setPausedState(ctx: GlobalContext, s: GameplayState, state: boolean) {
+    s.pauseMenu.isPaused = state;
+    if (s.pauseMenu.isPaused) {
+        pausePlayback(ctx);
+    } else {
+        resumePlayback(ctx);
+    }
 }
 
 function handleGameplayKeyDown(ctx: GlobalContext, s: GameplayState): boolean {
@@ -283,12 +300,7 @@ function handleGameplayKeyDown(ctx: GlobalContext, s: GameplayState): boolean {
         const { keyboard } = ctx;
 
         if (key === "Escape") {
-            s.isPaused = !s.isPaused;
-            if (s.isPaused) {
-                pausePlayback(ctx);
-            } else {
-                resumePlayback(ctx);
-            }
+            setPausedState(ctx, s, !s.pauseMenu.isPaused);
             handled = true;
         } else {
             const instrumentKey = getKeyForKeyboardKey(keyboard, key);
@@ -344,7 +356,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     assert(!!gameplayState);
 
     const durationBeats = getChartDurationInBeats(chart);
-    const progressPercent = Math.round(max(100 * gameplayState.currentBeat / durationBeats, 0));
+
+    const progressPercent = max(100 * gameplayState.currentBeat / durationBeats, 0);
+
     if (gameplayState.currentBeat >= durationBeats) {
         if (gameplayState.practiceMode.enabled) {
             setViewChartSelect(ctx);
@@ -364,7 +378,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     gameplayState.end = gameplayState.currentBeat + GAMEPLAY_BEATS_LOADAHEAD;
     gameplayState.endAnimated = gameplayState.currentBeatAnimated + GAMEPLAY_BEATS_VIEWPORT;
 
-    gameplayState.dt = gameplayState.isPaused ? 0 : getDeltaTimeSeconds(c);
+    gameplayState.dt = gameplayState.pauseMenu.isPaused ? 0 : getDeltaTimeSeconds(c);
 
     if (gameplayState.penaltyEnabled) {
         gameplayState.penaltyTimer += gameplayState.dt;
@@ -389,244 +403,298 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
     gameplayState.midpoint = Math.floor(gameplayState.keysMap.size / 2);
 
-    if (!ctx.handled) {
-        ctx.handled = handleGameplayKeyDown(ctx, gameplayState);
-    }
-
     const practiceMode = gameplayState.practiceMode;
     updatePracticeMode(ctx, gameplayState, chart);
 
-    imLayout(c, COL); imFlex(c); imJustify(c); {
-        imLayout(c, ROW); imRelative(c); imZIndex(c, 10); {
-            if (isFirstishRender(c)) {
-                elSetClass(c, cn.mediumFont);
-                elSetClass(c, cn.noWrap);
+    imLayout(c, COL); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
+        const { size: rootContainerSize } = imTrackSize(c);
+
+        // We want to put the game inside a container that maintains it's aspect ratio, so that 
+        // I can play this on my 4:3 screen as well.
+        // It also means there are fewer edge-cases I need to account for r.e playfield sizes
+
+        const wantedAspectRatio = 16 / 9;
+        let currentAspectRatio = rootContainerSize.width / rootContainerSize.height;
+        let widthReduction = 0, heightReduction = 0;
+        if (currentAspectRatio > wantedAspectRatio) {
+            let wantedWidth = rootContainerSize.height * wantedAspectRatio;
+            let wantedWidthPercent = 100 * (wantedWidth / rootContainerSize.width);
+            widthReduction = 100 - wantedWidthPercent;
+        } else {
+            let wantedHeight = rootContainerSize.width / wantedAspectRatio;
+            let wantedHeightPercent = 100 * (wantedHeight / rootContainerSize.height);
+            heightReduction = 100 - wantedHeightPercent;
+        }
+
+        // Curtains
+        {
+            // Top and bottom 
+            {
+                imLayout(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
+                imAbsolute(c, 0, PX, 0, PX, (100 - heightReduction / 2), PERCENT, 0, PX); imLayoutEnd(c);
+
+                imLayout(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
+                imAbsolute(c, (100 - heightReduction / 2), PERCENT, 0, PX, 0, PX, 0, PX); imLayoutEnd(c);
             }
 
-            // using runway doesn' look as nice.
-            const runway = PENALTY_QUANTIZATION_START_SECONDS + PENALTY_QUANTIZATION_SECONDS;
-            const amountPenalized01 = (gameplayState.penaltyTimer + PENALTY_QUANTIZATION_START_SECONDS) / PENALTY_QUANTIZATION_START_SECONDS;
+            // Left and right
+            {
+                imLayout(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
+                imAbsolute(c, 0, PX, (100 - widthReduction / 2), PERCENT, 0, PX, 0, PX); imLayoutEnd(c);
 
-            const colours = imGetInline(c, imGameplay) ?? imSet(c, { 
-                barColor: newColor(0, 0, 0, 0),
-                textColor: newColor(0, 0, 0, 0),
-            });
+                imLayout(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
+                imAbsolute(c, 0, PX, 0, PX, 0, PX, (100 - widthReduction / 2), PERCENT); imLayoutEnd(c);
+            }
+        }
 
-            const theme = getCurrentTheme();
-            lerpColor(theme.calm, theme.danger, amountPenalized01, colours.barColor);
-            lerpColor(theme.bg, theme.fg, amountPenalized01, colours.textColor);
+        imLayout(c, ROW); imJustify(c); 
+        imAbsolute(c, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT); {
+            const { size: playfieldSize } = imTrackSize(c);
+            const dividerWidth = 2;
+            const playfieldWidth = playfieldSize.width - (ctx.keyboard.keys.length * dividerWidth);
+            const letterWidth = playfieldWidth / ctx.keyboard.flatKeys.length;
 
-            imLayout(c, BLOCK); imZIndex(c, -1); {
-                imAbsolute(c, 0, PX, amountPenalized01 * 50, PERCENT, 0, PX, amountPenalized01 * 50, PERCENT);
-                imBg(c, colours.barColor.toString());
-            } imLayoutEnd(c);
-
-            imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c); imFg(c, colours.textColor.toCssString()); {
-                imLayout(c, ROW); imFlex(c); imJustify(c); {
-                    imStr(c, chart.name);
-
-                    if (imIf(c) && debugFlags.testGameplaySlow) {
-                        imStr(c, "[TEST:Slow]");
-                    } imIfEnd(c);
-                } imLayoutEnd(c);
-
-                imLayout(c, ROW); imFlex(c); imJustify(c); imRelative(c); {
-                    let val;
-                    const anim = practiceMode.rewindAnimation;
-                    if (anim.started) {
-                        val = " rewinding" + ".".repeat(Math.ceil(3 * practiceMode.rewindAnimation.rewindAmount));
-                    } else if (gameplayState.practiceMode.enabled) {
-                        val = "practice mode - measure " + (practiceMode.nextMeasureIdx + 1);
-                    } else if (gameplayState.practiceMode.buttonHeld) {
-                        const remaining = PRACTICE_MODE_HOLD_TIME_SECONDS - gameplayState.practiceMode.timerSeconds;
-                        val = "hold for practice mode in " + remaining.toFixed(1) + "s..."
-                    } else {
-                        val = gameplayState.score;
+            imLayout(c, COL); imAbsolute(c, 0, PX, 0, PX, 0, NA, 0, PX); imZIndex(c, 10); imBg(c, `rgba(255, 255, 255, 0.4)`); {
+                imLayout(c, ROW); {
+                    if (isFirstishRender(c)) {
+                        elSetClass(c, cn.mediumFont);
+                        elSetClass(c, cn.noWrap);
                     }
 
-                    im3DLookingText(c, val);
-                } imLayoutEnd(c);
+                    // using runway doesn' look as nice.
+                    const runway = PENALTY_QUANTIZATION_START_SECONDS + PENALTY_QUANTIZATION_SECONDS;
+                    const amountPenalized01 = (gameplayState.penaltyTimer + PENALTY_QUANTIZATION_START_SECONDS) / PENALTY_QUANTIZATION_START_SECONDS;
 
-                imLayout(c, ROW); imFlex(c); imJustify(c); {
-                    if (imIf(c) && gameplayState.practiceMode.enabled) {
-                        let measuresCount = 0;
-                        for (const item of chart.timeline) {
-                            if (item.type === TIMELINE_ITEM_MEASURE) {
-                                measuresCount++;
+                    const colours = imGetInline(c, imGameplay) ?? imSet(c, {
+                        barColor: newColor(0, 0, 0, 0),
+                        textColor: newColor(0, 0, 0, 0),
+                    });
+
+                    const theme = getCurrentTheme();
+                    lerpColor(theme.calm, theme.danger, amountPenalized01, colours.barColor);
+                    colours.barColor.a = 0.5;
+                    // lerpColor(theme.bg, theme.fg, amountPenalized01, colours.textColor);
+                    lerpColor(theme.fg, theme.fg, amountPenalized01, colours.textColor);
+
+                    imLayout(c, BLOCK); imZIndex(c, -1); {
+                        // imAbsolute(c, 0, PX, amountPenalized01 * 50, PERCENT, 0, PX, amountPenalized01 * 50, PERCENT);
+                        imAbsolute(c, 0, PX, 0, PX, 0, NA, 0, PX);
+                        imSize(c, 0, NA, 2, EM);
+
+                        if (isFirstishRender(c)) {
+                            elSetStyle(c, "background", "rgba(0, 0, 0, 0");
+                        }
+                        if (imMemo(c, amountPenalized01)) {
+                            const c1 = colours.barColor;
+                            const c2 = `rgba(255, 255, 255, 0)`;
+                            elSetStyle(c, "background", `linear-gradient(180deg,${c1} 0%, ${c2} 100%)`);
+                        }
+
+                        // imBg(c, colours.barColor.toString());
+                    } imLayoutEnd(c);
+
+                    imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c); imFg(c, colours.textColor.toCssString()); {
+                        imLayout(c, COL); imAlign(c, START); imFlex(c); {
+                            imLayout(c, ROW); imFontSize(c, 1, EM); {
+                                im3DLookingText(c, chart.name);
+
+                                if (imIf(c) && debugFlags.testGameplaySpeed !== 1) {
+                                    im3DLookingText(c, "[TEST:" + debugFlags.testGameplaySpeed.toFixed(2) + "x]");
+                                } imIfEnd(c);
+                            } imLayoutEnd(c);
+                        } imLayoutEnd(c);
+
+                        imLayout(c, ROW); imRelative(c); imFlex(c); {
+                            let val;
+                            const anim = practiceMode.rewindAnimation;
+                            if (anim.started) {
+                                val = " rewinding" + ".".repeat(Math.ceil(3 * practiceMode.rewindAnimation.rewindAmount));
+                            } else if (gameplayState.practiceMode.enabled) {
+                                val = "practice mode - measure " + (practiceMode.nextMeasureIdx + 1);
+                            } else if (gameplayState.practiceMode.buttonHeld) {
+                                const remaining = PRACTICE_MODE_HOLD_TIME_SECONDS - gameplayState.practiceMode.timerSeconds;
+                                val = "hold for practice mode in " + remaining.toFixed(1) + "s..."
+                            } else {
+                                val = gameplayState.score;
+                            }
+
+                            im3DLookingText(c, val);
+                        } imLayoutEnd(c);
+
+                        imLayout(c, ROW); imFlex(c); imJustify(c, END); {
+                            if (imIf(c) && gameplayState.practiceMode.enabled) {
+                                let measuresCount = 0;
+                                for (const item of chart.timeline) {
+                                    if (item.type === TIMELINE_ITEM_MEASURE) {
+                                        measuresCount++;
+                                    }
+                                }
+
+                                const requiredScore = practiceMode.scoreThisMeasure + practiceMode.maxScoreThisMeasure;
+                                im3DLookingText(c, gameplayState.score + " / " + requiredScore);
+                            } imIfEnd(c);
+                        } imLayoutEnd(c);
+                    } imLayoutEnd(c);
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
+
+            imLayout(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
+                gameplayState.avoidPenalty = true;
+
+                imFor(c); for (let rowIdx = 0; rowIdx < keyboard.keys.length; rowIdx++) {
+                    const row = keyboard.keys[rowIdx];
+                    imFor(c); for (let keyRowIdx = 0; keyRowIdx < row.length; keyRowIdx++) {
+                        const instrumentKey = row[keyRowIdx];
+
+                        const thread = gameplayState.keysMap.get(instrumentKey)?._items;
+                        assert(!!thread);
+
+                        const sGameplay = gameplayState;
+
+                        const keyIdx = instrumentKey.index;
+                        const keyState = gameplayState.keyState[keyIdx];
+                        assert(!!keyState);
+
+                        const keySignal = isKeyPressed(instrumentKey.index);
+                        let keyGain = getCurrentOscillatorGainForOwner(instrumentKey.index, 0);
+
+                        if (!gameplayState.pauseMenu.isPaused) {
+                            // Handle input
+
+                            keyState.keyPressedThisFrame = false;
+                            keyState.keyReleasedThisFrame = false;
+                            if (keySignal && !keyState.keyHeld) {
+                                keyState.keyPressedThisFrame = true;
+                                keyState.keyHeld = true;
+                            } else if (!keySignal && keyState.keyHeld) {
+                                keyState.keyHeld = false;
+                                keyState.keyReleasedAtLeastOnce = true;
+                                keyState.keyReleasedThisFrame = true;
+                            }
+
+                            if (keyState.keyHeld) {
+                                // Enable the penalty mechanic, only after we press any key at least once.
+                                gameplayState.penaltyEnabled = true;
                             }
                         }
 
-                        imLayout(c, INLINE); {
-                            imStr(c, gameplayState.score);
-                        } imLayoutEnd(c);
 
-                        imStr(c, " / ");
-
-                        const requiredScore = practiceMode.scoreThisMeasure + practiceMode.maxScoreThisMeasure;
-                        imStr(c, requiredScore);
-
-                        imStr(c, " | ");
-                    } imIfEnd(c);
-
-                    imStr(c, progressPercent); imStr(c, "%");
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
-
-        imLine(c, LINE_HORIZONTAL, 1);
-
-        imLayout(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
-            gameplayState.avoidPenalty = true;
-
-            imFor(c); for (let rowIdx = 0; rowIdx < keyboard.keys.length; rowIdx++) {
-                const row = keyboard.keys[rowIdx];
-                imFor(c); for (let keyRowIdx = 0; keyRowIdx < row.length; keyRowIdx++) {
-                    const instrumentKey = row[keyRowIdx];
-
-                    const thread = gameplayState.keysMap.get(instrumentKey)?._items;
-                    assert(!!thread);
-
-                    const sGameplay = gameplayState;
-
-                    const keyIdx = instrumentKey.index;
-                    const keyState = gameplayState.keyState[keyIdx];
-                    assert(!!keyState);
-
-                    const keySignal = isKeyPressed(instrumentKey.index);
-                    let keyGain = getCurrentOscillatorGainForOwner(instrumentKey.index, 0);
-
-                    if (!gameplayState.isPaused) {
-                        // Handle input
-
-                        keyState.keyPressedThisFrame = false;
-                        keyState.keyReleasedThisFrame = false;
-                        if (keySignal && !keyState.keyHeld) {
-                            keyState.keyPressedThisFrame = true;
-                            keyState.keyHeld = true;
-                        } else if (!keySignal && keyState.keyHeld) {
-                            keyState.keyHeld = false;
-                            keyState.keyReleasedAtLeastOnce = true;
-                            keyState.keyReleasedThisFrame = true;
-                        }
-
-                        if (keyState.keyHeld) {
-                            // Enable the penalty mechanic, only after we press any key at least once.
-                            gameplayState.penaltyEnabled = true;
-                        }
-                    }
+                        // Vertical note
+                        {
+                            const s = imState(c, newVerticalNoteThreadState);
 
 
-                    // Vertical note
-                    {
-                        const s = imState(c, newVerticalNoteThreadState);
+                            const theme = getCurrentTheme();
 
+                            copyColor(theme.bg, s.currentBgColor);
 
-                        const theme = getCurrentTheme();
+                            if (imIf(c) && instrumentKey.isLeftmost) {
+                                imLayout(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
+                            } imEndIf(c);
 
-                        copyColor(theme.bg, s.currentBgColor);
+                            imLayout(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
+                                imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
+                                } imLayoutEnd(c);
 
-                        if (imIf(c) && instrumentKey.isLeftmost) {
-                            imLayout(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
-                        } imEndIf(c);
+                                imLayout(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
+                                    imFor(c); for (let i = 0; i < thread.length; i++) {
+                                        const item = thread[i];
+                                        const s = imState(c, newBarState);
+                                        const currentBeatInItem = isBeatWithinInclusve(item, gameplayState.currentBeatAnimated);
 
-                        imLayout(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
-                            imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
-                            } imLayoutEnd(c);
+                                        if (item.type !== TIMELINE_ITEM_NOTE) continue;
 
-                            imLayout(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
-                                imFor(c); for (let i = 0; i < thread.length; i++) {
-                                    const item = thread[i];
-                                    const s = imState(c, newBarState);
-                                    const currentBeatInItem = isBeatWithinInclusve(item, gameplayState.currentBeatAnimated);
+                                        updateCurrentItemScore(gameplayState, keyState, item);
 
-                                    if (item.type !== TIMELINE_ITEM_NOTE) continue;
+                                        let heightPercent = 100 * item.length / GAMEPLAY_BEATS_VIEWPORT;
+                                        let bottomPercent = 100 * inverseLerp(item.start, gameplayState.currentBeatAnimated, sGameplay.endAnimated);
+                                        if (bottomPercent <= 0) {
+                                            // the bar is below the thing. 
+                                            heightPercent += bottomPercent;
+                                            if (heightPercent < 0) heightPercent = 0;
+                                            bottomPercent = 0;
+                                        }
 
-                                    updateCurrentItemScore(gameplayState, keyState, item);
-
-                                    let heightPercent = 100 * item.length / GAMEPLAY_BEATS_VIEWPORT;
-                                    let bottomPercent = 100 * inverseLerp(item.start, gameplayState.currentBeatAnimated, sGameplay.endAnimated);
-                                    if (bottomPercent <= 0) {
-                                        // the bar is below the thing. 
-                                        heightPercent += bottomPercent;
-                                        if (heightPercent < 0) heightPercent = 0;
-                                        bottomPercent = 0;
-                                    }
-
-                                    const dt = gameplayState.dt;
-                                    if (currentBeatInItem && !keyState.keyHeld) {
-                                        // give user an indication that they should care about the fact that this bar has reached the bottom.
-                                        // hopefully they'll see the keyboard letter just below it, and try pressing it.
-                                        s.animation += dt;
-                                        if (s.animation > 1) {
+                                        const dt = gameplayState.dt;
+                                        if (currentBeatInItem && !keyState.keyHeld) {
+                                            // give user an indication that they should care about the fact that this bar has reached the bottom.
+                                            // hopefully they'll see the keyboard letter just below it, and try pressing it.
+                                            s.animation += dt;
+                                            if (s.animation > 1) {
+                                                s.animation = 0;
+                                            }
+                                        } else {
                                             s.animation = 0;
                                         }
-                                    } else {
-                                        s.animation = 0;
-                                    }
 
 
-                                    let color;
-                                    if (s.animation > 0.5) {
-                                        color = theme.unhit.toCssString();
-                                    } else {
-                                        color = cssVarsApp.fg;
-                                    }
-
-                                    imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, heightPercent, PERCENT); {
-                                        if (isFirstishRender(c)) {
-                                            elSetStyle(c, "color", "transparent");
+                                        let color;
+                                        if (s.animation > 0.5) {
+                                            color = theme.unhit.toCssString();
+                                        } else {
+                                            color = cssVarsApp.fg;
                                         }
 
-                                        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT); imRelative(c); imBg(c, cssVarsApp.fg); {
-                                            imLayout(c, BLOCK); imAbsolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imBg(c, color); {
+                                        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, heightPercent, PERCENT); {
+                                            if (isFirstishRender(c)) {
+                                                elSetStyle(c, "color", "transparent");
+                                            }
+
+                                            imLayout(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT); imRelative(c); imBg(c, cssVarsApp.fg); {
+                                                imLayout(c, BLOCK); imAbsolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imBg(c, color); {
+                                                } imLayoutEnd(c);
                                             } imLayoutEnd(c);
                                         } imLayoutEnd(c);
-                                    } imLayoutEnd(c);
-                                } imEndFor(c);
+                                    } imEndFor(c);
 
-                                imFor(c); for (const measure of gameplayState.measures) {
-                                    let bottomPercent = 100 * inverseLerp2(gameplayState.currentBeatAnimated, measure.start, gameplayState.endAnimated);
-                                    if (bottomPercent > 100) continue;
-                                    if (bottomPercent < -5)   continue;
+                                    imFor(c); for (const measure of gameplayState.measures) {
+                                        let bottomPercent = 100 * inverseLerp2(gameplayState.currentBeatAnimated, measure.start, gameplayState.endAnimated);
+                                        if (bottomPercent > 100) continue;
+                                        if (bottomPercent < -5) continue;
 
-                                    imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, 5, PX);
-                                    imBg(c, cssVars.mg); {
-                                    } imLayoutEnd(c);
-                                } imForEnd(c);
-                            } imLayoutEnd(c);
+                                        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, 2, PX);
+                                        imBg(c, cssVars.mg); {
+                                        } imLayoutEnd(c);
+                                    } imForEnd(c);
+                                } imLayoutEnd(c);
 
-                            imLayout(c, BLOCK); imSize(c, 0, NA, 2, PX); {
-                                if (isFirstishRender(c)) {
-                                    elSetStyle(c, "backgroundColor", cssVarsApp.fg);
+                                imLayout(c, BLOCK); imSize(c, 0, NA, 2, PX); {
+                                    if (isFirstishRender(c)) {
+                                        elSetStyle(c, "backgroundColor", cssVarsApp.fg);
+                                    }
+                                } imLayoutEnd(c);
+
+
+                                let letterColor;
+                                if (keyState.keyHeld && keyState.lastPressedItem) {
+                                    const itemBestPossibleScore = getBestPossibleScoreForNote(keyState.lastPressedItem);
+                                    const progress = (keyState.lastItemScore / itemBestPossibleScore);
+                                    if (progress < 0.4) letterColor = theme.unhit;
+                                    else if (progress < 0.95) letterColor = theme.mediumHit;
+                                    else letterColor = theme.fullyHit;
+                                } else {
+                                    letterColor = null;
                                 }
+
+                                imLetter(c, gameplayState, instrumentKey, thread, keyGain, letterColor, letterWidth);
                             } imLayoutEnd(c);
-
-
-                            let letterColor;
-                            if (keyState.keyHeld && keyState.lastPressedItem) {
-                                const itemBestPossibleScore = getBestPossibleScoreForNote(keyState.lastPressedItem);
-                                const progress = (keyState.lastItemScore / itemBestPossibleScore);
-                                if (progress < 0.4)       letterColor = theme.unhit;
-                                else if (progress < 0.95) letterColor = theme.mediumHit;
-                                else                      letterColor = theme.fullyHit;
-                            } else {
-                                letterColor = null;
-                            }
-
-                            imLetter(c, gameplayState, instrumentKey, thread, keyGain, letterColor);
-                        } imLayoutEnd(c);
-                    }
+                        }
+                    } imEndFor(c);
+                    imLine(c, LINE_VERTICAL, dividerWidth);
                 } imEndFor(c);
-                imLine(c, LINE_VERTICAL, 2);
-            } imEndFor(c);
 
-            if (gameplayState.avoidPenalty) {
-                gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
-            }
+                if (gameplayState.avoidPenalty) {
+                    gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
+                }
+            } imLayoutEnd(c);
+            imLayout(c, BLOCK); imSize(c, 0, NA, 10, PX); imRelative(c); {
+                imLayout(c, BLOCK); imAbsolute(c, 0, PX, (100 - progressPercent), PERCENT, 0, PX, 0, PX); imBg(c, cssVars.fg); {
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 
-    if (imIf(c) && gameplayState.isPaused) {
+    if (imIf(c) && gameplayState.pauseMenu.isPaused) {
         // Pause menu
 
         imLayout(c, COL); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0,0,0, 0.4`); imZIndex(c, 100); {
@@ -638,20 +706,45 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 im3DLookingText(c, "Paused");
             } imLayoutEnd(c);
 
-            if (imButtonIsClicked(c, "Resume")) {
-                gameplayState.isPaused = false;
-            }
 
-            if (imButtonIsClicked(c, "Quit")) {
-                if (ctx.ui.playView.isTesting) {
-                    setViewEditChart(ctx);
-                } else {
-                    setViewChartSelect(ctx);
+            let uiIdx = 0;
+            imLayout(c, ROW); {
+                const isSelected = uiIdx++ === gameplayState.pauseMenu.idx; 
+
+                const hasPress = imSelectionArrow(c, ctx, isSelected);
+
+                if (imButtonIsClicked(c, "Resume") || hasPress) {
+                    setPausedState(ctx, gameplayState, false);
                 }
-            }
+            } imLayoutEnd(c);
+
+            imLayout(c, ROW); {
+                const isSelected = uiIdx++ === gameplayState.pauseMenu.idx;
+
+                const hasPress = imSelectionArrow(c, ctx, isSelected);
+
+                if (imButtonIsClicked(c, "Quit") || hasPress) {
+                    if (ctx.ui.playView.isTesting) {
+                        setViewEditChart(ctx);
+                    } else {
+                        setViewChartSelect(ctx);
+                    }
+                }
+            } imLayoutEnd(c);
         } imLayoutEnd(c);
 
+        if (!ctx.handled) {
+            if (ctx.keyPressState) {
+                const listNavAxis = ctx.keyPressState.listNavAxis;
+                gameplayState.pauseMenu.idx = clamp(gameplayState.pauseMenu.idx + listNavAxis, 0, 1);
+                ctx.handled = true;
+            }
+        }
     } imIfEnd(c);
+
+    if (!ctx.handled) {
+        ctx.handled = handleGameplayKeyDown(ctx, gameplayState);
+    }
 }
 
 function imLetter(
@@ -661,6 +754,7 @@ function imLetter(
     thread: NoteItem[],
     signal: number,
     letterColor: CssColor | null,
+    width: number,
 ) {
     let s; s = imGetInline(c, imLetter) ?? imSet(c, {
         textColor: newColor(0, 0, 0, 1),
@@ -699,7 +793,7 @@ function imLetter(
 
     s.bgColor = letterColor ?? theme.bg;
 
-    imLayout(c, COL); imSize(c, 40, PX, 0, NA); imAlign(c); imJustify(c); imZIndex(c, 10); {
+    imLayout(c, COL); imSize(c, width, PX, 0, NA); imFontSize(c, Math.floor(width * 0.55), PX); imAlign(c); imJustify(c); imZIndex(c, 10); {
         imBg(c, s.bgColor.toString());
         imFg(c, s.textColor.toString());
 
@@ -723,7 +817,7 @@ function im3DLookingText(c: ImCache, value: Stringifyable) {
             imStr(c, value);
         } imLayoutEnd(c);
         imLayout(c, ROW); imFlex(c); imJustify(c); imZIndex(c, 2); {
-            imFg(c, cssVars.fg);
+            imFg(c, cssVars.fg2);
             imStr(c, value);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
@@ -934,3 +1028,23 @@ function updatePracticeMode(
     }
 }
 
+function imSelectionArrow(
+    c: ImCache,
+    ctx: GlobalContext,
+    focused: boolean
+): boolean {
+    let result = false;
+
+    if (imIf(c) && focused) {
+        // The Inter font we're using for this game has a ligature that converts -> into a legit arrow character. 
+        // Pretty crazy
+        imLayout(c, BLOCK); imStr(c, "->"); imLayoutEnd(c);
+
+        if (!ctx.handled && ctx.keyPressState?.key === "Enter") {
+            result = true;
+            ctx.handled = true;
+        }
+    } imIfEnd(c);
+    
+    return result;
+}

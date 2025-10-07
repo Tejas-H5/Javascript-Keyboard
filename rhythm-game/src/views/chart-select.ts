@@ -4,6 +4,7 @@ import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { InstrumentKey } from "src/state/keyboard-state";
 import { CHART_STATUS_READONLY, getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
+import { getCurrentChart } from "src/state/sequencer-state";
 import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "src/state/ui-state";
 import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
@@ -20,7 +21,6 @@ import {
     setViewStartScreen
 } from "./app";
 import { cssVarsApp } from "./styling";
-import { getCurrentChart } from "src/state/sequencer-state";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
     if (!ctx.keyPressState) return false;
@@ -294,31 +294,43 @@ function imChartStatistics(
                 // can literally derive table layout from flexbox. lmao. As much as I shit on web,
                 // they got several things right
 
-                imLayout(c, ROW); {
-                    if (isFirstishRender(c)) {
-                        elSetStyle(c, "fontSize", "13px");
+                const root = imLayout(c, ROW); imSize(c, 0, NA, 100, PERCENT); {
+                    const height = root.clientHeight;
+                    if (imMemo(c, height)) {
+                        const fontSize = (height - (ctx.keyboard.keys.length * 2)) / ctx.keyboard.flatKeys.length;
                         elSetStyle(c, "lineHeight", "1");
+                        elSetStyle(c, "fontSize", fontSize + "px");
                     }
 
                     imLayout(c, COL); {
-                        imFor(c); for (const key of ctx.keyboard.flatKeys) {
-                            imLayout(c, BLOCK); {
-                                imStr(c, key.noteText);
-                            } imLayoutEnd(c);
+                        imFor(c); for (const row of ctx.keyboard.keys) {
+                            for (const key of row) {
+                                imLayout(c, BLOCK); {
+                                    imStr(c, key.keyboardKey);
+                                    imStr(c, " -> ");
+                                    imStr(c, key.noteText);
+                                } imLayoutEnd(c);
+                            }
+
+                            imLine(c, LINE_HORIZONTAL, 2);
                         } imForEnd(c);
                     } imLayoutEnd(c);
                     imLayout(c, COL); imFlex(c); {
-                        imFor(c); for (const key of ctx.keyboard.flatKeys) {
-                            const count = s.keyFrequencies[key.index];
-                            const normalized = count / s.maxFrequency;
-                            imLayout(c, BLOCK); imBg(c, cssVarsApp.fg); {
-                                if (isFirstishRender(c)) {
-                                    elSetStyle(c, "color", cssVars.bg);
-                                }
+                        imFor(c); for (const row of ctx.keyboard.keys) {
+                            for (const key of row) {
+                                const count = s.keyFrequencies[key.index];
+                                const normalized = count / s.maxFrequency;
+                                imLayout(c, BLOCK); imBg(c, cssVarsApp.fg); {
+                                    if (isFirstishRender(c)) {
+                                        elSetStyle(c, "color", cssVars.bg);
+                                    }
 
-                                imSize(c, 100 * normalized, PERCENT, 100, PERCENT);
-                                imStr(c, count);
-                            } imLayoutEnd(c);
+                                    imSize(c, 100 * normalized, PERCENT, 0, NA);
+                                    imStr(c, count);
+                                } imLayoutEnd(c);
+                            }
+
+                            imLayout(c, BLOCK); imBg(c, cssVarsApp.fg); imSize(c, 0, NA, 2, PX); imLayoutEnd(c);
                         } imForEnd(c);
                     } imLayoutEnd(c);
                 } imLayoutEnd(c);
@@ -435,8 +447,7 @@ function imChartStatistics(
 
                             vis = imSet(c, { speed, maxSpeed });
                         }
-
-                        imVerticalHistogram(c, vis.speed, vis. maxSpeed);
+                        imVerticalHistogram(c, vis.speed, vis.maxSpeed);
                     } imLayoutEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
@@ -445,6 +456,9 @@ function imChartStatistics(
 }
 
 function imVerticalHistogram(c: ImCache, arr: number[], arrMax: number) {
+    // Avoid div by 0 issues
+    arrMax = Math.max(arrMax, 0.000001);
+
     imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
         imFor(c); for (const val of arr) {
             imLayout(c, COL); imFlex(c); {
