@@ -1,4 +1,3 @@
-import { Sample } from "src/assets/samples/all-samples";
 import { newColorFromHsv } from "src/utils/colour";
 import { getNoteText } from "src/utils/music-theory-utils";
 
@@ -144,46 +143,22 @@ export function newKeyboardState(): KeyboardState {
     };
 }
 
-export function sampleToNoteIdx(sample: Sample) {
-    let offset = 0;
-    switch (sample) {
-        case "kick":   offset = 0; break;
-        case "snare":  offset = 2; break;
-        case "hat1":   offset = 4; break;
-        case "hat2":   offset = 5; break;
-        case "crash1": offset = 6; break;
-        case "crash2": offset = 7; break;
-        case "rand1":  offset = 8; break;
-        case "rand2":  offset = 9; break;
-    }
-
-    return BASE_NOTE + offset;
+export function sampleToNoteIdx(sampleIdx: number) {
+    return BASE_NOTE + sampleIdx;
 }
 
 // Allows our 'note index' to be a number, while also allowing us to override various samples.
-export function noteIdToSample(noteIdx: number): Sample | null {
-    switch(noteIdx) {
-        case BASE_NOTE + 0: return "kick";
-        case BASE_NOTE + 1: return "kick";
-        case BASE_NOTE + 2: return "snare";
-        case BASE_NOTE + 3: return "snare";
-        case BASE_NOTE + 4: return "hat1";
-        case BASE_NOTE + 5: return "hat2";
-        case BASE_NOTE + 6: return "crash1";
-        case BASE_NOTE + 7: return "crash2";
-        case BASE_NOTE + 8: return "rand1";
-        case BASE_NOTE + 9: return "rand2";
-        case BASE_NOTE + 10: return "snare";
-        case BASE_NOTE + 11: return "snare";
-    }
-
-    return null;
+export function getSampleIdx(noteIdx: number): number {
+    const sampleLow = BASE_NOTE;
+    const sampleHi = BASE_NOTE + 11;
+    if (noteIdx > sampleHi) return -1;
+    return noteIdx - sampleLow;
 }
 
 export function getMusicNoteText(noteId: number) {
-    const sample = noteIdToSample(noteId);
-    if (sample !== null) {
-        return sample; 
+    const sample = getSampleIdx(noteId);
+    if (sample !== -1) {
+        return "sample " + sample; 
     }
     return getNoteText(noteId);
 }

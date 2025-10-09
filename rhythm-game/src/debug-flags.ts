@@ -29,6 +29,8 @@ export type DebugFlags = {
 
     testFixDatabase: Flag;
 
+    testTheLab: Flag;
+
     testAsync: Flag;
     testAsyncALittle: Flag;
 };
@@ -44,12 +46,14 @@ export const debugFlags: DebugFlags = {
     debuUndoBuffer:      OFF,
     testChartSelectView: OFF,
 
-    testGameplay:      ON,
+    testGameplay:      OFF,
     testGameplaySpeed: getSpeed(1),
     testPracticeMode:  OFF,
     testResultsView:   OFF,
 
     testFixDatabase: OFF,
+
+    testTheLab: ON,
 
     testAsync: OFF,
     testAsyncALittle: ON_EVERYWHERE,

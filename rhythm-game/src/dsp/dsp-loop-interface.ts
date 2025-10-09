@@ -1,6 +1,4 @@
-import { getAllSamples } from "src/assets/samples/all-samples";
-import { DspInfo, DspLoopMessage, DSPPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
-import { noteIdToSample } from "src/state/keyboard-state";
+import { DspInfo, DspLoopMessage, DSPPlaySettings, getDspLoopClassUrl, newDspPlaySettings } from "./dsp-loop";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
@@ -12,14 +10,8 @@ export type ScheduledKeyPress = {
 }
 
 const audioCtx = new AudioContext()
-const playSettings: DSPPlaySettings = {
-    attack: 0.05,
-    decay: 3,
-    attackVolume: 0.2,
-    sustainVolume: 0.05,
-    sustain: 0.5,
-    isUserDriven: false,
-};
+const playSettings = newDspPlaySettings();
+
 let dspPort: MessagePort | undefined;
 const dspInfo: DspInfo = { 
     currentlyPlaying: [],
@@ -34,7 +26,9 @@ function unreachable() {
     throw new Error("Unreachable code in dsp interface!");
 }
 
-export function updatePlaySettings(fn: (s: DSPPlaySettings) => void) {
+function noOp() {};
+
+export function updatePlaySettings(fn: (s: DSPPlaySettings) => void = noOp) {
     fn(playSettings);
     audioLoopDispatch({ playSettings });
 }
@@ -134,12 +128,7 @@ export function pressKey(keyId: number, noteId: number, isRepeat: boolean) {
     // than waiting for the oscilator messaging port round-trip
     setCurrentOscillatorGain(keyId, 1);
 
-    const sample = noteIdToSample(noteId);
-    if (sample) {
-        audioLoopDispatch({ playSample: [keyId, { sample: sample }] })
-    } else {
-        audioLoopDispatch({ setOscilatorSignal: [keyId, { noteId: noteId, signal: 1 }] })
-    }
+    audioLoopDispatch({ setOscilatorSignal: [keyId, { noteId: noteId, signal: 1 }] })
 }
 
 export function releaseKey(keyId: number, noteId: number) {
@@ -216,7 +205,6 @@ export async function initDspLoopInterface({
 
     // sync initial settings.
     updatePlaySettings(() => { });
-    audioLoopDispatch({ setAllSamples: getAllSamples() });
 
     dspPort.onmessage = ((e) => {
         const data = e.data as Partial<DspInfo>;

@@ -10,7 +10,7 @@ import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
 import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./views/app";
+import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app";
 import { TrackedPromise } from "./utils/promise-utils";
 
 const programState = new TrackedPromise(async () => {
@@ -47,7 +47,9 @@ const programState = new TrackedPromise(async () => {
         await cleanupChartRepo(repo);
     }
 
-    if (
+    if (debugFlags.testTheLab) {
+        setViewSoundLab(ctx);
+    } else if (
         debugFlags.testEditView ||
         debugFlags.testGameplay ||
         debugFlags.testChartSelectView ||

@@ -21,6 +21,8 @@ type RangeSliderState = {
     value: [
         start: number,
         end: number,
+        userDraggingStart: boolean,
+        userDraggingEnd: boolean,
     ];
 }
 
@@ -38,7 +40,8 @@ const VERY_SMALL_NUMBER = 0.0000001;
 export function imRangeSlider(
     c: ImCache,
     lowerBound: number, upperBound: number, 
-    start: number, end: number, step: number, minWidth?: number,
+    start: number, end: number, step: number, 
+    minWidth?: number, 
 ): RangeSliderState {
     let min = Math.min(lowerBound, upperBound);
     let max = Math.max(lowerBound, upperBound);
@@ -54,7 +57,7 @@ export function imRangeSlider(
             draggingStart: false,
             draggingEnd:   false,
 
-            value: [start, end],
+            value: [start, end, false, false],
         });
     }
 
@@ -91,8 +94,8 @@ export function imRangeSlider(
     // Respond to pos change _after_ user has handled and set new drag values
 
     const domain = max - min;
-    s.start.pos = domain < VERY_SMALL_NUMBER ? 0 : (start - min) / domain;
-    s.end.pos   = domain < VERY_SMALL_NUMBER ? 1 : (end - min) / domain;
+    s.start.pos = domain < VERY_SMALL_NUMBER ? 0 : clamp((start - min) / domain, 0, 1);
+    s.end.pos   = domain < VERY_SMALL_NUMBER ? 1 : clamp((end - min) / domain, 0, 1);
 
     const startPosChanged    = imMemo(c, s.start.pos);
     const endPosChanged      = imMemo(c, s.end.pos);
@@ -192,20 +195,23 @@ export function imRangeSlider(
     let a = min + s.start.pos * domain;
     let b = min + s.end.pos * domain;
 
-    let isDraggingBoth = s.start.dragging && s.end.dragging;
-
-    if (isDraggingBoth) {
-        minWidth = end - start;
+    let minWidthActual = 0;
+    if (s.start.dragging === s.end.dragging) {
+        minWidthActual = end - start;
     }
 
     if (minWidth !== undefined) {
-        if (b - a < minWidth) {
-            b = a + minWidth;
+        minWidthActual = Math.max(minWidth, minWidthActual);
+    }
+
+    if (minWidthActual !== undefined) {
+        if (b - a < minWidthActual) {
+            b = a + minWidthActual;
         }
 
         if (b > upperBound) {
             b = upperBound;
-            a = upperBound - minWidth;
+            a = upperBound - minWidthActual;
 
             if (a < lowerBound) {
                 a = lowerBound;
@@ -230,6 +236,8 @@ export function imRangeSlider(
 
     s.value[0] = a;
     s.value[1] = b;
+    s.value[2] = s.start.dragging;
+    s.value[3] = s.end.dragging;
 
     return s;
 }
