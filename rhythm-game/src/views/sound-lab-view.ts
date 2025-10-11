@@ -1,21 +1,22 @@
+import { imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
-import { BLOCK, COL, EM, imAlign, imFlex, imJustify, imLayout, imLayoutEnd, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
+import { BLOCK, COL, EM, imAlign, imFlex, imFlex1, imJustify, imLayout, imLayoutEnd, imScrollOverflow, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
-import { dspProcess, dspReceiveMessage, newDspState } from "src/dsp/dsp-loop";
+import { imSliderInput } from "src/components/slider";
+import { DEFAULT_PIANO_SYNTH_WAVE, dspProcess, dspReceiveMessage, newDspState, newPianoSynthWave, PianoSynthWave } from "src/dsp/dsp-loop";
 import { getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
-import { newArray } from "src/utils/array-utils";
+import { filterInPlace, newArray } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { fft, resizeNumberArrayPowerOf2 } from "src/utils/fft";
-import { getRenderCount, ImCache, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core";
-import { EL_B, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
-import { arrayMax, arrayMin, derivative, inverseLerp, lerp, max, min } from "src/utils/math-utils";
+import { getRenderCount, ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core";
+import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
+import { arrayMax, arrayMin, clamp, derivative, gridsnapRound, inverseLerp, lerp, max, min } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
 import { cssVarsApp, getCurrentTheme } from "./styling";
-import { imButtonIsClicked } from "src/components/button";
-import { imSliderInput } from "src/components/slider";
-import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
+import { imCompactDragSlider } from "src/app-components/drag-slider";
 
 
 function getExtentX(plot: PlotState): number {
@@ -254,10 +255,10 @@ function drawSamples(
 
 function newSoundLabState() {
     return {
-        dsp: newDspState(),
+        dsp: newDspState(44800),
         allSamples: [0],
         allSamplesStartIdx: 0,
-        allSamplesLength: 5000,
+        allSamplesWindowLength: 5000,
         allSamplesVisibleStart: 0,
         allSamplesVisibleEnd: 0,
         frequenciesStartIdx: 0,
@@ -270,11 +271,8 @@ function newSoundLabState() {
         frequenciesIm2: [0],
         frequencies: [0],
         frequencies2: [0],
+        autoPan: true,
         output: [[new Float32Array()]],
-
-        rightPanel: {
-            showParameters: true,
-        }
     };
 }
 
@@ -339,7 +337,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                 const outputSamples = new Float32Array(Math.max(MIN_ZOOM, numSamples));
                 state.output = [[outputSamples]];
 
-                state.dsp = newDspState();
+                state.dsp = newDspState(44800);
                 state.dsp.sampleRate = sampleRate;
                 dspReceiveMessage(state.dsp, {
                     playSettings: getCurrentPlaySettings(),
@@ -352,6 +350,8 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                 state.frequenciesIm = newArray(numFrequencies, () => 0);
                 state.allSamples.length = 0;
                 state.derivative.length = 0;
+
+                state.autoPan = true;
             }
         }
     }
@@ -396,12 +396,12 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
 
     const visibleStartChanged = imMemo(c, state.allSamplesVisibleStart);
     const visibleEndChanged = imMemo(c, state.allSamplesVisibleEnd);
-    const numFrequencies = Math.min(state.allSamplesLength, 1000);
+    const numFrequencies = Math.min(state.allSamplesWindowLength, 1000);
     const numFrequenciesToView = Math.floor(numFrequencies / 2);
     // compute frequencies of what we're looking at
     if (visibleStartChanged || visibleEndChanged) {
-        resizeNumberArrayPowerOf2(state.signalFftWindow, state.allSamplesLength);
-        for (let i = 0; i < state.allSamplesLength; i++) {
+        resizeNumberArrayPowerOf2(state.signalFftWindow, state.allSamplesWindowLength);
+        for (let i = 0; i < state.allSamplesWindowLength; i++) {
             const idx = i + state.allSamplesStartIdx;
             if (idx >= state.allSamples.length) break;
 
@@ -431,79 +431,79 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
         imLayout(c, COL); imFlex(c); {
             imLayout(c, ROW); imFlex(c); {
                 imLayout(c, COL); imFlex(c); {
-                    imLayout(c, BLOCK); {
-                        imStr(c, "Waveform t=");
-                        imStr(c, (state.allSamplesStartIdx / state.dsp.sampleRate).toPrecision(3));
-                        imStr(c, " sample ");
-                        imStr(c, state.allSamplesStartIdx);
-                        imStr(c, " -> ");
-                        imStr(c, state.allSamplesStartIdx + state.allSamplesLength);
+                    imLayout(c, COL); imFlex(c); {
+                        imLayout(c, BLOCK); {
+                            imStr(c, "Waveform t=");
+                            imStr(c, (state.allSamplesStartIdx / state.dsp.sampleRate).toPrecision(3));
+                            imStr(c, " sample ");
+                            imStr(c, state.allSamplesStartIdx);
+                            imStr(c, " -> ");
+                            imStr(c, state.allSamplesStartIdx + state.allSamplesWindowLength);
+                        } imLayoutEnd(c);
+
+                        const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
+                            const plotState = imState(c, newPlotState);
+
+                            const widthChanged = imMemo(c, width);
+                            const heightChanged = imMemo(c, height);
+                            const dpiChanged = imMemo(c, dpi);
+                            const resize = widthChanged || heightChanged || dpiChanged;
+                            if (resize) {
+                                plotState.width = width;
+                                plotState.height = height;
+                                plotState.dpi = dpi;
+                            }
+
+                            if (isNewFrame || resize) {
+                                ctx.clearRect(0, 0, width, height);
+
+                                // const samples = state.output[0][0];
+                                const samples = state.allSamples;
+
+                                const theme = getCurrentTheme();
+                                ctx.strokeStyle = theme.fg.toString();
+                                ctx.lineWidth = 2;
+                                drawSamples(samples, plotState, ctx, state.allSamplesStartIdx, state.allSamplesWindowLength);
+
+                                ctx.strokeStyle = "green";
+                                ctx.lineWidth = 2;
+                                drawSamples(state.derivative, plotState, ctx, state.allSamplesStartIdx, state.allSamplesWindowLength);
+                            }
+
+                        } imEndCanvasRenderingContext2D(c);
+
+                        if (state.autoPan) {
+                            state.allSamplesStartIdx = state.allSamples.length - 1 - state.allSamplesWindowLength
+                        }
+
+                        let [start, end, draggingStart, draggingEnd] = imRangeSlider(
+                            c,
+                            0, state.allSamples.length,
+                            state.allSamplesStartIdx, state.allSamplesStartIdx + state.allSamplesWindowLength, 1,
+                            500,
+                        ).value;
+
+                        state.allSamplesStartIdx = start;
+                        state.allSamplesVisibleStart = start;
+                        state.allSamplesVisibleEnd = end;
+                        if (draggingStart || draggingEnd) {
+                            state.allSamplesWindowLength = end - start;
+
+                            if (draggingEnd) {
+                                state.autoPan = false;
+                            }
+                        }
+
+
                     } imLayoutEnd(c);
+                    imLayout(c, COL); imFlex(c); {
+                        imLayout(c, BLOCK); {
+                            imStr(c, "Frequencies (hz) (?)");
+                            imStr(c, " -> ");
+                            imStr(c, state.frequenciesReal.length);
+                            imStr(c, "hz (?)");
+                        } imLayoutEnd(c);
 
-                    const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
-                        const plotState = imState(c, newPlotState);
-
-                        const widthChanged = imMemo(c, width);
-                        const heightChanged = imMemo(c, height);
-                        const dpiChanged = imMemo(c, dpi);
-                        const resize = widthChanged || heightChanged || dpiChanged;
-                        if (resize) {
-                            plotState.width = width;
-                            plotState.height = height;
-                            plotState.dpi = dpi;
-                        }
-
-                        if (isNewFrame || resize) {
-                            ctx.clearRect(0, 0, width, height);
-
-                            // const samples = state.output[0][0];
-                            const samples = state.allSamples;
-
-                            const theme = getCurrentTheme();
-                            ctx.strokeStyle = theme.fg.toString();
-                            ctx.lineWidth = 2;
-                            drawSamples(samples, plotState, ctx, state.allSamplesStartIdx, state.allSamplesLength);
-
-                            ctx.strokeStyle = "green";
-                            ctx.lineWidth = 2;
-                            drawSamples(state.derivative, plotState, ctx, state.allSamplesStartIdx, state.allSamplesLength);
-                        }
-
-                    } imEndCanvasRenderingContext2D(c);
-
-                    let [start, end, draggingStart, draggingEnd] = imRangeSlider(
-                        c,
-                        0, state.allSamples.length,
-                        state.allSamplesStartIdx, state.allSamplesStartIdx + state.allSamplesLength, 1, 
-                        500, 
-                    ).value;
-
-                    state.allSamplesStartIdx = start;
-                    state.allSamplesVisibleStart = start;
-                    state.allSamplesVisibleEnd = end;
-                    if (draggingStart || draggingEnd) {
-                        state.allSamplesLength = end - start;
-                    }
-
-                } imLayoutEnd(c);
-
-                imLayout(c, BLOCK); imSize(c, 2, PX, 100, PERCENT);  {
-                    if (isFirstishRender(c)) {
-                        elSetStyle(c, "backgroundColor", cssVarsApp.bg);
-                    }
-                } imLayoutEnd(c);
-
-                imLayout(c, COL); imFlex(c); {
-                    imLayout(c, ROW); {
-                        if (imButtonIsClicked(c, "Frequencies", !state.rightPanel.showParameters)) {
-                            state.rightPanel.showParameters = false;
-                        }
-                        if (imButtonIsClicked(c, "Parameters", state.rightPanel.showParameters)) {
-                            state.rightPanel.showParameters = true;
-                        }
-                    } imLayoutEnd(c);
-
-                    if (imIf(c) && !state.rightPanel.showParameters) {
                         const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
                             const plotState = imState(c, newPlotState);
                             const widthChanged = imMemo(c, width);
@@ -542,53 +542,143 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                         if (draggingStart || draggingEnd) {
                             state.frequenciesLength = end - start;
                         }
-                    } else {
-                        imIfElse(c);
+                    } imLayoutEnd(c);
+                } imLayoutEnd(c);
 
+                imLayout(c, BLOCK); imSize(c, 2, PX, 100, PERCENT);  {
+                    if (isFirstishRender(c)) {
+                        elSetStyle(c, "backgroundColor", cssVarsApp.bg);
+                    }
+                } imLayoutEnd(c);
+
+                imLayout(c, COL); imFlex(c); {
+                    imLayout(c, COL); imFlex(c); imScrollOverflow(c); {
                         const playSettings = getCurrentPlaySettings();
                         const params = playSettings.parameters;
 
-                        const attack = imParameterSlider(c, "attack: ", 0.01, 0.2, playSettings.attack);
-                        if (imMemo(c, attack)) {
-                            playSettings.attack = attack;
-                            updatePlaySettings();
-                        }
+                        let updateSettings = false;
+                        let toRemove: PianoSynthWave | undefined;
 
-                        const decay = imParameterSlider(c, "decay: ", 0.2, 10.0, playSettings.decay);
-                        if (imMemo(c, decay)) {
-                            playSettings.decay = decay;
-                            updatePlaySettings();
+                        const attack = imParameterSlider(
+                            c,
+                            "attack: ",
+                            0.01, 0.2, 0.01,
+                            playSettings.attack, 0.2,
+                        );
+
+                        const decay = imParameterSlider(
+                            c,
+                            "decay: ",
+                            0.2, 10.0, 0.01,
+                            playSettings.decay, 2
+                        );
+
+                        if (attack) {
+                            playSettings.attack = attack.val;
+                            updateSettings = true;
+                        }
+                        if (decay) {
+                            playSettings.decay = decay.val;
+                            updateSettings = true;
                         }
 
                         imLine(c, LINE_HORIZONTAL, 10);
 
-                        const sin = imParameterSlider(c, "sin wave: ", 0, 10, params.sin);
-                        if (imMemo(c, sin)) {
-                            params.sin = sin;
-                            updatePlaySettings();
+                        let i = 1;
+                        imFor(c); for (const wave of params.pianoSynthWaves) {
+                            imLayout(c, ROW); // {
+                                imStr(c, "Wave ");
+                                imStr(c, i++);
+
+                                imFlex1(c);
+
+                                let amplitude = imParameterSliderCompact(
+                                    c,
+                                    "amplitude: ",
+                                    0.01, 10, 0.1,
+                                    wave.amplitude, DEFAULT_PIANO_SYNTH_WAVE.amplitude,
+                                );
+
+                                imFlex1(c);
+
+                                const frequencyMultiplierPow2 = imParameterSliderCompact(
+                                    c,
+                                    "frequencyMultiplierPow2: ",
+                                    -10, 10, 0.125,
+                                    wave.frequencyMultiplierPow2, DEFAULT_PIANO_SYNTH_WAVE.frequencyMultiplierPow2,
+                                );
+
+                                imFlex1(c);
+
+                                const frequencyOffset = imParameterSliderCompact(
+                                    c,
+                                    "frequencyOffset: ",
+                                    -100, 100, 1,
+                                    wave.frequencyOffset, DEFAULT_PIANO_SYNTH_WAVE.frequencyOffset,
+                                );
+                            /* } */ imLayoutEnd(c);
+                            imLayout(c, ROW); // {
+
+                                imFlex1(c);
+
+                                const falloff = imParameterSliderCompact(
+                                    c,
+                                    "falloff: ",
+                                    0.01, 10, 0.1,
+                                    wave.falloff, DEFAULT_PIANO_SYNTH_WAVE.falloff
+                                );
+
+                                imFlex1(c);
+
+                                const falloffStart = imParameterSliderCompact(
+                                    c,
+                                    "falloffStart: ",
+                                    0.01, 10, 0.1,
+                                    wave.falloffStart, DEFAULT_PIANO_SYNTH_WAVE.falloffStart,
+                                );
+
+                                imFlex1(c);
+
+                                if (imButtonIsClicked(c, "Remove")) {
+                                    toRemove = wave;
+                                }
+
+                            /* } */ imLayoutEnd(c);
+
+                            if (
+                                frequencyOffset ||
+                                frequencyMultiplierPow2 ||
+                                falloff ||
+                                falloffStart ||
+                                amplitude
+                            ) {
+                                if (frequencyOffset) wave.frequencyOffset = frequencyOffset.val;
+                                if (frequencyMultiplierPow2) wave.frequencyMultiplierPow2 = frequencyMultiplierPow2.val;
+                                if (falloff) wave.falloff = falloff.val;
+                                if (falloffStart) wave.falloffStart = falloffStart.val;
+                                if (amplitude) wave.amplitude = amplitude.val;
+
+                                updateSettings = true;
+                            }
+                        } imForEnd(c);
+
+                        if (imButtonIsClicked(c, "Add")) {
+                            params.pianoSynthWaves.push(newPianoSynthWave());
+                            updateSettings = true;
                         }
 
-                        const square = imParameterSlider(c, "square wave: ", 0, 10, params.square);
-                        if (imMemo(c, square)) {
-                            params.square = square;
-                            updatePlaySettings();
+                        if (toRemove) {
+                            filterInPlace(params.pianoSynthWaves, w => w !== toRemove);
+                            updateSettings = true;
                         }
 
-                        const triangle = imParameterSlider(c, "triangle wave: ", 0, 10, params.triangle);
-                        if (imMemo(c, triangle)) {
-                            params.triangle = triangle;
+                        if (updateSettings) {
                             updatePlaySettings();
                         }
-
-                        const sawtooth = imParameterSlider(c, "sawtooth wave: ", 0, 10, params.sawtooth);
-                        if (imMemo(c, sawtooth)) {
-                            params.sawtooth = sawtooth;
-                            updatePlaySettings();
-                        }
-                    } imIfEnd(c);
+                    } imLayoutEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
-            imLayout(c, ROW); imFlex(c); imJustify(c); {
+            imLayout(c, ROW); imJustify(c); imSize(c, 0, NA, 30, PERCENT); {
                 imKeyboard(c, ctx);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
@@ -600,8 +690,12 @@ function imParameterSlider(
     name: string,
     min: number,
     max: number,
+    step: number,
     val: number,
-): number {
+    defaultValue: number,
+): { val: number } | null {
+    let initialVal = val;
+
     imLayout(c, ROW); imAlign(c); {
         imLayout(c, BLOCK); {
             imStr(c, name);
@@ -609,9 +703,53 @@ function imParameterSlider(
         } imLayoutEnd(c);
 
         imLayout(c, COL); imSize(c, 0, NA, 1, EM); imFlex(c); {
-            val = imSliderInput(c, min, max, 0.01, val);
+            val = imSliderInput(c, min, max, step, val);
         } imLayoutEnd(c);
+
+        if (imButtonIsClicked(c, "<")) {
+            val = defaultValue;
+        }
     } imLayoutEnd(c);
 
-    return val;
+    if (val !== initialVal) {
+        return { val };
+    }
+
+    return null;
+}
+
+function imParameterSliderCompact(
+    c: ImCache,
+    name: string,
+    min: number,
+    max: number,
+    step: number,
+    val: number,
+    defaultValue: number,
+): { val: number } | null {
+    let initialVal = val;
+
+    imLayout(c, BLOCK); imAlign(c); {
+        imLayout(c, BLOCK); {
+            imStr(c, name);
+            imStr(c, val.toFixed(2));
+        } imLayoutEnd(c);
+
+        val = imCompactDragSlider(c, 100, val, min, max);
+        val = gridsnapRound(val, step);
+        val = clamp(val, min, max);
+
+        const mouse = getGlobalEventSystem().mouse;
+        if (elHasMousePress(c) && mouse.rightMouseButton) {
+            // Reset to default value on rightclick
+            mouse.ev?.preventDefault();
+            val = defaultValue;
+        }
+    } imLayoutEnd(c);
+
+    if (val !== initialVal) {
+        return { val };
+    }
+
+    return null;
 }

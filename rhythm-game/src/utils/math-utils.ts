@@ -43,6 +43,10 @@ export function clamp(val: number, min: number, max: number) {
     return val;
 }
 
+export function gridsnapRound(val: number, gridsize: number): number {
+    return Math.round(val / gridsize) * gridsize;
+}
+
 export function sqrMag(x: number, y: number): number {
     return x * x + y * y;
 }

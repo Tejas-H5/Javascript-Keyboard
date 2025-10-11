@@ -3,6 +3,7 @@ import { elHasMousePress, elSetStyle, getGlobalEventSystem, imTrackSize } from "
 import { clamp } from "src/utils/math-utils";
 import { cssVarsApp } from "src/views/styling";
 import { BLOCK, imLayout, imLayoutEnd } from "./core/layout";
+import { startPlaying } from "src/state/playing-pausing";
 
 
 type RangeSliderHandle = {
@@ -63,8 +64,8 @@ export function imRangeSlider(
 
     const body = imLayout(c, BLOCK); 
     const bodySize = imTrackSize(c);
-        const startHandle = imLayout(c, BLOCK); imLayoutEnd(c);
         const sliderMiddle = imLayout(c, BLOCK); imLayoutEnd(c);
+        const startHandle = imLayout(c, BLOCK); imLayoutEnd(c);
         const endHandle = imLayout(c, BLOCK); imLayoutEnd(c);
     imLayoutEnd(c);
 
@@ -72,12 +73,14 @@ export function imRangeSlider(
         elSetStyle(c, "height", "30px", body);
         elSetStyle(c, "backgroundColor", cssVarsApp.mg, body);
         elSetStyle(c, "position", "relative", body);
+        elSetStyle(c, "borderRadius", "1000px", body);
 
         elSetStyle(c, "position", "absolute", startHandle);
         elSetStyle(c, "top", "0", startHandle);
         elSetStyle(c, "height", "100%", startHandle);
         elSetStyle(c, "aspectRatio", "1 / 1", startHandle);
         elSetStyle(c, "backgroundColor", cssVarsApp.fg, startHandle);
+        elSetStyle(c, "borderRadius", "1000px", startHandle);
 
         elSetStyle(c, "position", "absolute", sliderMiddle);
         elSetStyle(c, "top", "0", sliderMiddle);
@@ -89,6 +92,7 @@ export function imRangeSlider(
         elSetStyle(c, "height", "100%", endHandle);
         elSetStyle(c, "aspectRatio", "1 / 1", endHandle);
         elSetStyle(c, "backgroundColor", cssVarsApp.fg, endHandle);
+        elSetStyle(c, "borderRadius", "1000px", endHandle);
     }
 
     // Respond to pos change _after_ user has handled and set new drag values
@@ -112,8 +116,8 @@ export function imRangeSlider(
         const endPosPx   = sliderScreenLength * s.end.pos;
         elSetStyle(c, "left",  startPosPx + "px",                     startHandle);
         elSetStyle(c, "left",  (startRect.width + endPosPx) + "px",   endHandle);
-        elSetStyle(c, "left",  (startPosPx + startRect.width) + "px", sliderMiddle);
-        elSetStyle(c, "width", (endPosPx - startPosPx) + "px",        sliderMiddle);
+        elSetStyle(c, "left",  (startPosPx + startRect.width / 2) + "px", sliderMiddle);
+        elSetStyle(c, "width", (endPosPx - startPosPx + startRect.width / 2 + endRect.width / 2) + "px",        sliderMiddle);
     }
 
     const mouse = getGlobalEventSystem().mouse;

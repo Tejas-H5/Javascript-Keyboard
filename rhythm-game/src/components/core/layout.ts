@@ -173,6 +173,12 @@ export type DisplayType =
     typeof TABLE_ROW |
     typeof TABLE_CELL;
 
+export function imFlex1(c: ImCache) {
+    imLayout(c, BLOCK); {
+        if (isFirstishRender(c)) elSetStyle(c, "flex", "1");
+    } imLayoutEnd(c);
+}
+
 export function imLayout(c: ImCache, type: DisplayType) {
     const root = imEl(c, EL_DIV);
     if (imMemo(c, type)) {

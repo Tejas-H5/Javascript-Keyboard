@@ -421,7 +421,8 @@ export function imApp(
 ) {
     const { ui } = ctx;
 
-    const { keyDown, keyUp, blur } = getGlobalEventSystem().keyboard;
+    const { blur, keyboard } = getGlobalEventSystem();
+    const { keyDown, keyUp } = keyboard;
 
     ctx.keyPressState = null;
     ctx.keyReleaseState = null;

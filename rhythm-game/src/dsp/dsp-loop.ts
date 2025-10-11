@@ -12,6 +12,26 @@ import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed
 import { newFunctionUrl } from "src/utils/web-workers";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 
+export type PianoSynthWave = {
+    frequencyOffset: number;
+    frequencyMultiplierPow2: number;
+    falloff: number;
+    falloffStart: number;
+    amplitude: number;
+};
+
+export function newPianoSynthWave(): PianoSynthWave {
+    return {
+        frequencyOffset: 0,
+        frequencyMultiplierPow2: 0,
+        falloff: 0.01,
+        falloffStart: 1,
+        amplitude: 1,
+    };
+}
+
+export const DEFAULT_PIANO_SYNTH_WAVE = newPianoSynthWave();
+
 export type DSPPlaySettings = {
     attack: number;
     attackVolume: number;
@@ -20,10 +40,7 @@ export type DSPPlaySettings = {
     sustainVolume: number;
     isUserDriven: boolean;
     parameters: {
-        sin: number;
-        square: number;
-        triangle: number;
-        sawtooth: number;
+        pianoSynthWaves: PianoSynthWave[];
     };
 }
 
@@ -36,10 +53,7 @@ export function newDspPlaySettings(): DSPPlaySettings {
         sustain: 0.5,
         isUserDriven: false,
         parameters: {
-            sin: 1,
-            square: 0,
-            triangle: 0,
-            sawtooth: 0,
+            pianoSynthWaves: [newPianoSynthWave()],
         },
     };
 }
@@ -104,6 +118,16 @@ export type DspInfo = {
 }
 
 const OSC_GAIN_AWAKE_THRESHOLD = 0.001;
+
+function sampleSamples(samples: number[], sampleDuration: number, time: number) {
+    let idxFloating = ((time / sampleDuration) * samples.length) % (samples.length - 1);
+
+    const low = Math.floor(idxFloating);
+    const hi = low + 1;
+    assert(hi < samples.length);
+
+    return lerp(samples[low], samples[hi], idxFloating % 1);
+}
 
 export function updateOscillator(
     osc: PlayingOscillator,
@@ -180,23 +204,54 @@ export function updateOscillator(
             }
         }
 
-        let n = 1;
+        let x = 0; 
+        let m = 0;
 
-        for (let i = 1; i <= n; i++) {
-            let m = 1 / (i);
+        let val = 0;
+        let amp = 0;
 
-            const f2 = f * (i) ;
-            let x = 
-                sin(f2 * t) *      parameters.sin + 
-                square(f2 * t) *   parameters.square + 
-                triangle(f2 * t) * parameters.triangle +
-                sawtooth(f2 * t) * parameters.sawtooth;
+        for (let i = 0; i < parameters.pianoSynthWaves.length; i++) {
+            const item = parameters.pianoSynthWaves[i];
 
-            m += parameters.sin + parameters.square + parameters.triangle + parameters.sawtooth;
+            let f2 = f * Math.pow(2, item.frequencyMultiplierPow2) + item.frequencyOffset;
+            val = sin(f2 * tPressed) * item.amplitude * clamp(1.0 - (tPressed - item.falloffStart) * item.falloff, 0, 1);
+            amp = item.amplitude; 
 
-            sampleValue += x;
-            sampleTotal += m;
+            m += amp; x += val;
         }
+
+        // let maxRange = max(parameters.low, parameters.hi);
+        // for (let i = -parameters.low; i <= parameters.hi; i += parameters.increment) {
+        //     let f2 = f;
+        //     if (i < 0) {
+        //         f2 = -f / i;
+        //     } else if (i > 0) {
+        //         f2 = f * i;
+        //     }
+        //
+        //     val = sin(f2 * t); 
+        //     amp = maxRange - Math.abs(i);
+        //     m += amp; x += val * amp;
+        // }
+
+
+        // val = sin(f * (t + 0.001 * noise)); amp = 1;
+        // m += amp; x += val * amp;
+        //
+        // val = sin(f * t / 3); amp = 0.3;
+        // m += amp; x += val * amp;
+        //
+        // val = sin(f * t * 2); amp = 0.2;
+        // m += amp; x += val * amp;
+        //
+        // val = sin(f * t * 3); amp = 0.1;
+        // m += amp; x += val * amp;
+        //
+        // val = sin(f * t * 4); amp = 0.02;
+        // m += amp; x += val * amp;
+
+        sampleValue = x;
+        sampleTotal = m;
     }
 
     state.value = (sampleValue / sampleTotal) * state.gain;
@@ -357,7 +412,7 @@ function getSampleFileValue(oscs: PlayingSampleFile) {
 }
 
 
-export function newDspState(): DspState {
+export function newDspState(sampleRate: number): DspState {
     const s: DspState = {
         sampleRate: 1,
         playSettings: newDspPlaySettings(),
@@ -379,8 +434,11 @@ export function newDspState(): DspState {
     // We want this array to be deterministic
     const rng = newRandomNumberGenerator();
     setRngSeed(rng, 2);
-    for (let i = 0; i < 100000; i++) {
+    let n = 44800;
+    for (let i = 0; i <= n; i++) {
         s.randomSamples.push(-1 + 2 * getNextRng(rng));
+        // let t = i / n;
+        // s.randomSamples.push(sin(t));
     }
 
     return s;
@@ -497,11 +555,11 @@ function processSample(s: DspState, idx: number) {
                 // to be automated. 
 
                 const osc = getOrCreatePlayingOscillator(s, nextItem.keyId);
-                osc.inputs = {
-                    noteId: nextItem.noteId,
-                    signal: 1,
-                };
-                osc.state.pressedTime = osc.state.time;
+                if (osc.inputs.noteId !== nextItem.noteId || osc.inputs.signal !== 1) {
+                    osc.inputs.noteId = nextItem.noteId;
+                    osc.inputs.signal = 1;
+                    osc.state.pressedTime = osc.state.time;
+                }
                 osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
 
                 trackPlayback.shouldSendUiUpdateSignals = true;
@@ -654,8 +712,9 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
         const [id, inputs] = e.setOscilatorSignal;
         const osc = getOrCreatePlayingOscillator(s, id);
 
+        const prevSignal = osc.inputs.signal;
         osc.inputs = inputs;
-        if (inputs.signal > 0) {
+        if (prevSignal === 0 && inputs.signal > 0) {
             osc.state.pressedTime = osc.state.time;
         }
 
@@ -728,6 +787,7 @@ export function getDspLoopClassUrl(): string {
     // Every single dependency must be injected here manually, so that the worker url has access to everything it needs.
 
     lastUrl = newFunctionUrl([
+        newPianoSynthWave,
         max,
         min,
         updateOscillator,
@@ -764,6 +824,7 @@ export function getDspLoopClassUrl(): string {
         inverseLerp,
         clamp,
         getNoteLetter,
+        sampleSamples,
         getSampleIdx,
         { value: BASE_NOTE, name: "BASE_NOTE" },
         { value: NOTE_LETTERS, name: "NOTE_LETTERS" },
@@ -775,9 +836,7 @@ export function getDspLoopClassUrl(): string {
     ], function register() {
 
         class DSPLoop extends AudioWorkletProcessor {
-            s: DspState = newDspState();
-
-
+            s: DspState = newDspState(sampleRate);
 
             constructor() {
                 super();
