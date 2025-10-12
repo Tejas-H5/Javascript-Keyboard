@@ -10,7 +10,34 @@ import { clamp, derivative, inverseLerp, lerp, max, min, moveTowards } from "src
 import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
 import { newFunctionUrl } from "src/utils/web-workers";
+import {
+    computeSample,
+    DspSynthInstruction,
+    IDX_AMPLITUDE,
+    IDX_FREQUENCY,
+    IDX_SAMPLE,
+    IDX_TIME,
+    IDX_USER,
+    INSTR_ADD,
+    INSTR_DIVIDE,
+    INSTR_MULTIPLY,
+    INSTR_NUM_INSTRUCTIONS,
+    INSTR_SET,
+    INSTR_SIN,
+    INSTR_SQUARE,
+    INSTR_SUBTRACT,
+    newDspInstruction,
+    newSampleContext,
+    SampleContext
+} from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
+
+type DspSynthParameters = {
+    // Hopefully a pseudo assembly language will give us more flexibility
+    // and possibilities.
+    instructions: DspSynthInstruction[];
+}
+
 
 export type PianoSynthWave = {
     frequencyOffset: number;
@@ -18,7 +45,8 @@ export type PianoSynthWave = {
     falloff: number;
     falloffStart: number;
     amplitude: number;
-};
+    enabled: boolean;
+};;
 
 export function newPianoSynthWave(): PianoSynthWave {
     return {
@@ -27,6 +55,7 @@ export function newPianoSynthWave(): PianoSynthWave {
         falloff: 0.01,
         falloffStart: 1,
         amplitude: 1,
+        enabled: true,
     };
 }
 
@@ -39,9 +68,9 @@ export type DSPPlaySettings = {
     sustain: number;
     sustainVolume: number;
     isUserDriven: boolean;
-    parameters: {
-        pianoSynthWaves: PianoSynthWave[];
-    };
+
+    sampleContext: SampleContext;
+    parameters: DspSynthParameters;
 }
 
 export function newDspPlaySettings(): DSPPlaySettings {
@@ -52,8 +81,16 @@ export function newDspPlaySettings(): DSPPlaySettings {
         sustainVolume: 0.05,
         sustain: 0.5,
         isUserDriven: false,
+        sampleContext: newSampleContext(),
         parameters: {
-            pianoSynthWaves: [newPianoSynthWave()],
+            instructions: [
+                // sample = sin(f * t);
+                newDspInstruction(INSTR_SET,      IDX_FREQUENCY, true, IDX_USER),
+                newDspInstruction(INSTR_MULTIPLY, IDX_TIME,      true, IDX_USER),
+                newDspInstruction(INSTR_SIN,      IDX_USER,      true, IDX_SAMPLE),
+                // amp = 1;
+                newDspInstruction(INSTR_SET, 1, false, IDX_AMPLITUDE),
+            ],
         },
     };
 }
@@ -136,6 +173,7 @@ export function updateOscillator(
 ) {
     const sampleRate = s.sampleRate;
     const parameters = s.playSettings.parameters;
+    const sampleContext = s.playSettings.sampleContext;
     const { attack, attackVolume, decay, sustain, sustainVolume } = s.playSettings;
 
     const { inputs, state } = osc;
@@ -162,7 +200,6 @@ export function updateOscillator(
     const f = state._frequency;
     let idx1 = state.idx1;
     let sampleValue = 0;
-    let sampleTotal = 0.000001; // should never ever be 0. ever
     let targetGain = 0;
     let rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
 
@@ -173,7 +210,6 @@ export function updateOscillator(
         // Play a procedurally generated drum
 
         sampleValue += square(0.5 * f * t);
-        sampleTotal += 1;
 
         // Drum gain curve. whtaver.
         let attack = 0.01;
@@ -202,22 +238,6 @@ export function updateOscillator(
             } else {
                 targetGain = sustainVolume; rate = sustain;
             }
-        }
-
-        let x = 0; 
-        let m = 0;
-
-        let val = 0;
-        let amp = 0;
-
-        for (let i = 0; i < parameters.pianoSynthWaves.length; i++) {
-            const item = parameters.pianoSynthWaves[i];
-
-            let f2 = f * Math.pow(2, item.frequencyMultiplierPow2) + item.frequencyOffset;
-            val = sin(f2 * tPressed) * item.amplitude * clamp(1.0 - (tPressed - item.falloffStart) * item.falloff, 0, 1);
-            amp = item.amplitude; 
-
-            m += amp; x += val;
         }
 
         // let maxRange = max(parameters.low, parameters.hi);
@@ -250,11 +270,13 @@ export function updateOscillator(
         // val = sin(f * t * 4); amp = 0.02;
         // m += amp; x += val * amp;
 
-        sampleValue = x;
-        sampleTotal = m;
+        sampleValue += computeSample(sampleContext, parameters.instructions, f, t);
+
+        // sampleValue = x;
+        // sampleTotal = m;
     }
 
-    state.value = (sampleValue / sampleTotal) * state.gain;
+    state.value = sampleValue * state.gain;
     state.gain = moveTowards(state.gain, targetGain, (1 / rate) / sampleRate);
 }
 
@@ -788,6 +810,21 @@ export function getDspLoopClassUrl(): string {
 
     lastUrl = newFunctionUrl([
         newPianoSynthWave,
+        newDspInstruction,
+        { value: INSTR_SET, name: "INSTR_SET" },
+        { value: INSTR_SIN, name: "INSTR_SIN" },
+        { value: INSTR_SQUARE, name: "INSTR_SQUARE" },
+        { value: INSTR_ADD, name: "INSTR_ADD" },
+        { value: INSTR_SUBTRACT, name: "INSTR_SUBTRACT" },
+        { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
+        { value: INSTR_DIVIDE, name: "INSTR_DIVIDE" },
+        { value: INSTR_NUM_INSTRUCTIONS, name: "INSTR_NUM_INSTRUCTIONS" },
+        { value: IDX_SAMPLE, name: "IDX_SAMPLE" },
+        { value: IDX_AMPLITUDE, name: "IDX_AMPLITUDE" },
+        { value: IDX_FREQUENCY, name: "IDX_FREQUENCY" },
+        { value: IDX_TIME, name: "IDX_TIME" },
+        { value: IDX_USER, name: "IDX_USER" },
+        computeSample,
         max,
         min,
         updateOscillator,
@@ -814,6 +851,7 @@ export function getDspLoopClassUrl(): string {
         filterInPlace,
         newDspState,
         newDspPlaySettings,
+        newSampleContext,
         getMessageForMainThread,
         dspReceiveMessage,
         assert,

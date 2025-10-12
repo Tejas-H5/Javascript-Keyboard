@@ -16,6 +16,9 @@ const cnButton = (() => {
     padding: 5px 0px; 
     display: flex; align-items: center; justify-content: center;
 }`,
+    `.compact { 
+    padding-top: 0; padding-bottom: 0;
+}`,
         ` > .inner { 
     padding: 0.25rem; 
     min-width: 1.5rem;
@@ -45,15 +48,22 @@ export function imButtonNoRadius(c: ImCache, toggled = false) {
     if (imMemo(c, toggled))  elSetClass(c, "toggled", toggled);
 }
 
-export function imButtonIsClicked(
+
+export function imButtonBegin(
     c: ImCache, 
     text: string,
     toggled: boolean = false,
-    type: DisplayType = BLOCK
-): boolean {
+    type: DisplayType = BLOCK,
+    compact: boolean = false,
+) {
+
     let result = false;
 
     imLayout(c, type); imButton(c, toggled); {
+        if (imMemo(c, compact)) {
+            elSetClass(c, "compact", compact);
+        }
+
         imLayout(c, INLINE); {
             if (isFirstishRender(c)) {
                 elSetClass(c, "inner");
@@ -61,8 +71,28 @@ export function imButtonIsClicked(
 
             imStr(c, text);
             result = elHasMousePress(c);
+        } // imLayoutEnd(c);
+    } // imLayoutEnd(c);
+
+    return result;
+}
+
+export function imButtonEnd(c: ImCache) {
+    {
+        {
         } imLayoutEnd(c);
     } imLayoutEnd(c);
+}
+
+export function imButtonIsClicked(
+    c: ImCache, 
+    text: string,
+    toggled?: boolean,
+    type?: DisplayType,
+    compact?: boolean,
+): boolean {
+    const result = imButtonBegin(c, text, toggled, type, compact);
+    imButtonEnd(c);
 
     return result;
 }

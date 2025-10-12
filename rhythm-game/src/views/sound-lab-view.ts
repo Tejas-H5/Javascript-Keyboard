@@ -6,17 +6,19 @@ import { imRangeSlider } from "src/components/range-slider";
 import { imSliderInput } from "src/components/slider";
 import { DEFAULT_PIANO_SYNTH_WAVE, dspProcess, dspReceiveMessage, newDspState, newPianoSynthWave, PianoSynthWave } from "src/dsp/dsp-loop";
 import { getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { getKeyForKeyboardKey } from "src/state/keyboard-state";
+import { BASE_NOTE, getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { filterInPlace, newArray } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { fft, resizeNumberArrayPowerOf2 } from "src/utils/fft";
-import { getRenderCount, ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core";
-import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
+import { getRenderCount, ImCache, imElse, imEndIf, imFor, imForEnd, imGet, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr, imStrFmt } from "src/utils/im-dom";
 import { arrayMax, arrayMin, clamp, derivative, gridsnapRound, inverseLerp, lerp, max, min } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 import { imCompactDragSlider } from "src/app-components/drag-slider";
+import { computeSample, instrToString, newSampleContext, registerIdxToString } from "src/dsp/dsp-loop-instruction-set";
+import { getNoteFrequency } from "src/utils/music-theory-utils";
 
 
 function getExtentX(plot: PlotState): number {
@@ -191,7 +193,7 @@ function drawSamples(
     plotState.posX = startIdx + numSamples / 2;
     plotState.posY = (min + max) / 2;
     plotState.originalExtentX = numSamples / 2;
-    plotState.originalExtentY = -2 * (max - min);
+    plotState.originalExtentY = -3 * (max - min);
 
     const startX = Math.floor(getCanvasElementX(plotState, startIdx));
     const endX =   Math.floor(getCanvasElementX(plotState, startIdx + numSamples));
@@ -584,93 +586,147 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
 
                         imLine(c, LINE_HORIZONTAL, 10);
 
+                        imLayout(c, ROW); imJustify(c); imStr(c, "Wave program"); imLayoutEnd(c);
+
+                        // want to visualize the program somehow. 
+                        {
+                            const mockSampleRate = 44800;
+
+                            const s = imGet(c, imSoundLab) ?? imSet(c, {
+                                noteIdx: 0,
+                                ctx: newSampleContext(),
+                                samples: Array(mockSampleRate / 10).fill(0) as number[],
+                                viewingIdx: 0,
+                                viewingLen: 500,
+                                viewingInvalidated: false,
+                            });
+
+                            let recomputed = false;
+
+                            imLayout(c, ROW); {
+                                imLayout(c, BLOCK); imFlex(c); {
+                                    const freq = imParameterSlider(
+                                        c,
+                                        "Note",
+                                        BASE_NOTE, BASE_NOTE + ctx.keyboard.flatKeys.length, 1,
+                                        s.noteIdx,
+                                        BASE_NOTE + 12,
+                                    );
+
+                                    if (freq) {
+                                        s.noteIdx = freq.val;
+                                        recomputed = true;
+                                    }
+                                } imLayoutEnd(c);
+                            } imLayoutEnd(c);
+
+                            if (imMemo(c, s.noteIdx)) s.viewingInvalidated = true;
+
+                            let samplesRecomputed = false;
+                            if (s.viewingInvalidated) {
+                                s.viewingInvalidated = false;
+                                samplesRecomputed = true;
+
+                                for (let i = 0; i < s.samples.length; i++) {
+                                    let frequency = getNoteFrequency(s.noteIdx);
+                                    const time = i / mockSampleRate;
+
+                                    s.samples[i] = computeSample(
+                                        s.ctx,
+                                        params.instructions,
+                                        time,
+                                        frequency,
+                                    );
+                                }
+                            }
+
+                            imLayout(c, COL); imSize(c, 0, NA, 200, PX); {
+                                const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
+                                    const plotState = imState(c, newPlotState);
+                                    const widthChanged = imMemo(c, width);
+                                    const heightChanged = imMemo(c, height);
+                                    const dpiChanged = imMemo(c, dpi);
+
+                                    const resize = widthChanged || heightChanged || dpiChanged;
+                                    if (resize) {
+                                        plotState.width = width;
+                                        plotState.height = height;
+                                        plotState.dpi = dpi;
+                                    }
+
+                                    if (samplesRecomputed) {
+                                        ctx.clearRect(0, 0, width, height);
+
+                                        ctx.strokeStyle = "black";
+                                        ctx.lineWidth = 2;
+                                        drawSamples(
+                                            s.samples,
+                                            plotState,
+                                            ctx,
+                                            s.viewingIdx,
+                                            s.viewingLen
+                                        );
+                                    }
+                                } imEndCanvasRenderingContext2D(c);
+                            } imLayoutEnd(c);
+
+                            let [start, end, draggingStart, draggingEnd] = imRangeSlider(
+                                c,
+                                0, s.samples.length,
+                                s.viewingIdx, s.viewingIdx + s.viewingLen, 1,
+                                100,
+                            ).value;
+
+                            s.viewingIdx = start;
+                            s.viewingLen = end - start;
+                            if (draggingStart || draggingEnd) {
+                                s.viewingInvalidated = true;
+                            }
+                        }
+
                         let i = 1;
-                        imFor(c); for (const wave of params.pianoSynthWaves) {
-                            imLayout(c, ROW); // {
-                                imStr(c, "Wave ");
-                                imStr(c, i++);
-
-                                imFlex1(c);
-
-                                let amplitude = imParameterSliderCompact(
-                                    c,
-                                    "amplitude: ",
-                                    0.01, 10, 0.1,
-                                    wave.amplitude, DEFAULT_PIANO_SYNTH_WAVE.amplitude,
-                                );
-
-                                imFlex1(c);
-
-                                const frequencyMultiplierPow2 = imParameterSliderCompact(
-                                    c,
-                                    "frequencyMultiplierPow2: ",
-                                    -10, 10, 0.125,
-                                    wave.frequencyMultiplierPow2, DEFAULT_PIANO_SYNTH_WAVE.frequencyMultiplierPow2,
-                                );
-
-                                imFlex1(c);
-
-                                const frequencyOffset = imParameterSliderCompact(
-                                    c,
-                                    "frequencyOffset: ",
-                                    -100, 100, 1,
-                                    wave.frequencyOffset, DEFAULT_PIANO_SYNTH_WAVE.frequencyOffset,
-                                );
-                            /* } */ imLayoutEnd(c);
-                            imLayout(c, ROW); // {
-
-                                imFlex1(c);
-
-                                const falloff = imParameterSliderCompact(
-                                    c,
-                                    "falloff: ",
-                                    0.01, 10, 0.1,
-                                    wave.falloff, DEFAULT_PIANO_SYNTH_WAVE.falloff
-                                );
-
-                                imFlex1(c);
-
-                                const falloffStart = imParameterSliderCompact(
-                                    c,
-                                    "falloffStart: ",
-                                    0.01, 10, 0.1,
-                                    wave.falloffStart, DEFAULT_PIANO_SYNTH_WAVE.falloffStart,
-                                );
-
-                                imFlex1(c);
-
-                                if (imButtonIsClicked(c, "Remove")) {
-                                    toRemove = wave;
+                        imFor(c); for (const instr of params.instructions) {
+                            imLayout(c, ROW); imAlign(c); {
+                                if (isFirstishRender(c)) {
+                                    elSetStyle(c, "lineHeight", "1");
                                 }
 
-                            /* } */ imLayoutEnd(c);
+                                imLayout(c, ROW); imAlign(c); imJustify(c); {
+                                    if (isFirstishRender(c)) {
+                                        elSetStyle(c, "minWidth", "150px");
+                                    }
 
-                            if (
-                                frequencyOffset ||
-                                frequencyMultiplierPow2 ||
-                                falloff ||
-                                falloffStart ||
-                                amplitude
-                            ) {
-                                if (frequencyOffset) wave.frequencyOffset = frequencyOffset.val;
-                                if (frequencyMultiplierPow2) wave.frequencyMultiplierPow2 = frequencyMultiplierPow2.val;
-                                if (falloff) wave.falloff = falloff.val;
-                                if (falloffStart) wave.falloffStart = falloffStart.val;
-                                if (amplitude) wave.amplitude = amplitude.val;
+                                    imStrFmt(c, instr.type, instrToString);
+                                } imLayoutEnd(c);
 
-                                updateSettings = true;
-                            }
+                                imLayout(c, ROW); imAlign(c); imFlex(c); {
+                                    if (imButtonIsClicked(c, instr.reg ? "reg" : "val", instr.reg, BLOCK, true)) {
+                                        instr.reg = !instr.reg;
+                                        updateSettings = true;
+                                    }
+
+                                    imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                        if (imIf(c) && instr.reg) {
+                                            imElse(c);
+                                            // Reinterpret this thing as an index.
+                                            imStr(c, "register: ");
+                                            imStrFmt(c, instr.val, registerIdxToString);
+                                        } else {
+                                            imStr(c, instr.val);
+                                        } imEndIf(c);
+                                    } imLayoutEnd(c);
+                                } imLayoutEnd(c);
+
+                                imLayout(c, ROW); imAlign(c); imJustify(c); imSize(c, 50, PX, 0, NA); {
+                                    imStr(c, " -> ");
+                                } imLayoutEnd(c);
+
+                                imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                    imStr(c, "register: ");
+                                    imStrFmt(c, instr.dst, registerIdxToString);
+                                } imLayoutEnd(c);
+                            } imLayoutEnd(c);
                         } imForEnd(c);
-
-                        if (imButtonIsClicked(c, "Add")) {
-                            params.pianoSynthWaves.push(newPianoSynthWave());
-                            updateSettings = true;
-                        }
-
-                        if (toRemove) {
-                            filterInPlace(params.pianoSynthWaves, w => w !== toRemove);
-                            updateSettings = true;
-                        }
 
                         if (updateSettings) {
                             updatePlaySettings();
@@ -699,7 +755,8 @@ function imParameterSlider(
     imLayout(c, ROW); imAlign(c); {
         imLayout(c, BLOCK); {
             imStr(c, name);
-            imStr(c, val.toFixed(2));
+            imStr(c, ": ");
+            imStr(c, val.toFixed(3));
         } imLayoutEnd(c);
 
         imLayout(c, COL); imSize(c, 0, NA, 1, EM); imFlex(c); {
@@ -732,7 +789,7 @@ function imParameterSliderCompact(
     imLayout(c, BLOCK); imAlign(c); {
         imLayout(c, BLOCK); {
             imStr(c, name);
-            imStr(c, val.toFixed(2));
+            imStr(c, val.toFixed(3));
         } imLayoutEnd(c);
 
         val = imCompactDragSlider(c, 100, val, min, max);
