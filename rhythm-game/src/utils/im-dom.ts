@@ -644,10 +644,14 @@ export function imTrackSize(c: ImCache) {
                     // NOTE: resize-observer cannot track the top, right, left, bottom of a rect. Sad.
                     self.size.width = entry.contentRect.width;
                     self.size.height = entry.contentRect.height;
+                    self.resized = true;
                     break;
                 }
 
-                c[CACHE_RERENDER_FN]();
+                if (self.resized) {
+                    c[CACHE_RERENDER_FN]();
+                    self.resized = false;
+                }
             })
         };
 

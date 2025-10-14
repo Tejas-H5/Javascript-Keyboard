@@ -1,7 +1,7 @@
 import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, imZIndex, NA, PX } from "src/components/core/layout";
 import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { debugFlags, getTestSleepMs } from "src/debug-flags";
-import { releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { getDspInfo, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { ChartRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/chart-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
@@ -503,6 +503,22 @@ export function imApp(
         imLayout(c, BLOCK); imAbsolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imBg(c, `rgba(255, 255, 255, 0.6)`); imZIndex(c, 10000); {
             imFpsCounterSimple(c, fps);
             imExtraDiagnosticInfo(c);
+
+            // What's playing?
+
+            imLayout(c, BLOCK); {
+                const info = getDspInfo();
+                imFor(c); for (const [keyId, signal] of info.currentlyPlaying) {
+                    const key = ctx.keyboard.flatKeys[keyId];
+                    imLayout(c, BLOCK); {
+                        imStr(c, "[");
+                        imStr(c, key.text);
+                        imStr(c, ",");
+                        imStr(c, signal.toFixed(1));
+                        imStr(c, "]");
+                    } imLayoutEnd(c);
+                } imForEnd(c);
+            } imLayoutEnd(c);
 
             // Info about background tasks
             imLayout(c, BLOCK); {

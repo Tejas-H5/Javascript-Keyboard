@@ -624,10 +624,53 @@ export function __imBlockDerivedEnd(c: ImCache, internalType: number) {
 }
 
 /**
- * I could write a massive doc here explaning how {@link imIf], {@link imIfElse} and {@link imIfEnd} work.
- * but it may be more effective to just arrange the methods one after the other:
+ * Usage:
+ * ```ts
+ *
+ * // Annotating the control flow is needed - otherwise it won't work
+ *
+ * if (imIf(c) && <condition>) {
+ *      // <condition> will by adequately type-narrowed by typescript
+ * } else if (imElseIf(c) && <condition2>){
+ *      // <condition>'s negative will not by adequately type-narrowed here though, sadly.
+ *      // I might raise an issue on their github soon.
+ * } else {
+ *      imElse(c);
+ *      // <condition>'s negative will not by adequately type-narrowed here though, sadly, same as above.
+ * } imIfEnd(c);
+ *
+ * ```
+ *
+ * It effectively converts a variable number of im-entries into a single if-entry,
+ * that has a fixed number of entries within it, so it still abides by 
+ * the immediate mode restrictions.
+ * This thing works by detecting if 0 things were rendered, and 
+ * then detatching the things we rendered last time if that was the case. 
+ * Even though code like below will work, you should never write it:
+ * ```ts
+ * imIf(c); if (<condition>) {
+ * } else {
+ *      imElse(c);
+ * }imIfEnd(c);
+ * ```
+ * Because it suggests that you can extend it like the following, which would
+ * no longer be correct:
+ * ```ts
+ * imIf(c); if (<condition>) {
+ * } else if (<condition2>) {
+ *      // NOO this will throw or corrupt data :((
+ *      imElseIf(c);
+ * } else {
+ *      imElse(c);
+ * } imIfEnd(c);
+ * ```
+ *
+ * The framework assumes that every conditional annotation will get called in order,
+ * till one of the conditions passes, after which the next annotation is `imIfEnd`. 
+ * But now, it is no longer guaranteed that imElseIf will always be called if <condition> was false.
+ * This means the framework has no way of telling the difference between the else-if block
+ * and the else block (else blocks and else-if blocks are handled the same internally).
  */
-
 export function imIf(c: ImCache): true {
     __imBlockArrayBegin(c);
     __imBlockConditionalBegin(c);

@@ -9,7 +9,7 @@ import {
 import { GlobalContext } from "./app";
 import { timelineHasNoteAtPosition } from "src/state/sequencer-chart";
 import { cssVarsApp } from "./styling";
-import { APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART } from "src/state/ui-state";
+import { APP_VIEW_EDIT_CHART } from "src/state/ui-state";
 import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, inlineTypeId, isFirstishRender } from "src/utils/im-core";
 import { BLOCK, COL, imAbsolute, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, NA, PX, ROW } from "src/components/core/layout";
 import { elGet, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
@@ -73,9 +73,9 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
 
                     const sequencer = ctx.sequencer;
 
-                    const isEditOrPlay = ctx.ui.currentView === APP_VIEW_EDIT_CHART ||
-                        ctx.ui.currentView === APP_VIEW_PLAY_CHART;
-                    const hasNote = isEditOrPlay && timelineHasNoteAtPosition(
+                    const isEditView = ctx.ui.currentView === APP_VIEW_EDIT_CHART;
+
+                    const hasNote = isEditView && timelineHasNoteAtPosition(
                         sequencer._currentChart,
                         sequencer.cursor, 
                         key.noteId,

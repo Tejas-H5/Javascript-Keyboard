@@ -13,16 +13,19 @@ import { newFunctionUrl } from "src/utils/web-workers";
 import {
     computeSample,
     DspSynthInstruction,
-    IDX_AMPLITUDE,
     IDX_FREQUENCY,
-    IDX_SAMPLE,
+    IDX_MAX,
+    IDX_OUTPUT,
     IDX_TIME,
     IDX_USER,
     INSTR_ADD,
     INSTR_DIVIDE,
+    INSTR_ELIF,
+    INSTR_END,
+    INSTR_IF,
     INSTR_MULTIPLY,
+    INSTR_MULTIPLY_DT,
     INSTR_NUM_INSTRUCTIONS,
-    INSTR_SET,
     INSTR_SIN,
     INSTR_SQUARE,
     INSTR_SUBTRACT,
@@ -68,12 +71,49 @@ export type DSPPlaySettings = {
     sustain: number;
     sustainVolume: number;
     isUserDriven: boolean;
-
-    sampleContext: SampleContext;
     parameters: DspSynthParameters;
 }
 
 export function newDspPlaySettings(): DSPPlaySettings {
+    const REG = true;
+    const VAL = false;
+
+    const attack = IDX_USER;
+    const attackRate = IDX_USER + 1;
+    const sustain = IDX_USER + 2;
+    const attackToSustainRate = IDX_USER + 3;
+    const releaseRate = IDX_USER + 4;
+    const usrBase = IDX_USER + 5;
+
+    const instructions: DspSynthInstruction[] = [
+        // sample = sin(f * t);
+        newDspInstruction(INSTR_SIN, IDX_FREQUENCY, REG, IDX_TIME, REG, usrBase),
+
+        /**
+         *  if d0 < attack:
+         *      attackRate *dt signal -> r0
+         *      d0 + r0 -> d0
+         *      1 -> d1
+         *      d0 -> r1
+         *  else if d1 > sustain:
+         *      attackToSustainRate * signal -> r0
+         *      movetowards d1 sustain r0 -> d1
+         *      sustain -> d2
+         *      d1 -> r1
+         *  else if d2 > 0:
+         *      1 - signal -> r0
+         *      releaseRate * r0 -> r0
+         *      movetowards d2 0 r0 -> d2
+         *      d2 -> r1
+         *  end
+         *  
+         *  sin f * t -> r2
+         *  r2 * r1 -> r0
+         */
+
+        newDspInstruction(INSTR_IF, usrBase, REG, 0, VAL, IDX_OUTPUT),
+    ];
+
     return {
         attack: 0.05,
         decay: 3,
@@ -81,17 +121,7 @@ export function newDspPlaySettings(): DSPPlaySettings {
         sustainVolume: 0.05,
         sustain: 0.5,
         isUserDriven: false,
-        sampleContext: newSampleContext(),
-        parameters: {
-            instructions: [
-                // sample = sin(f * t);
-                newDspInstruction(INSTR_SET,      IDX_FREQUENCY, true, IDX_USER),
-                newDspInstruction(INSTR_MULTIPLY, IDX_TIME,      true, IDX_USER),
-                newDspInstruction(INSTR_SIN,      IDX_USER,      true, IDX_SAMPLE),
-                // amp = 1;
-                newDspInstruction(INSTR_SET, 1, false, IDX_AMPLITUDE),
-            ],
-        },
+        parameters: { instructions: instructions },
     };
 }
 
@@ -99,10 +129,11 @@ export type PlayingOscillator = {
     state: {
         _lastNoteIndex: number;
         _frequency: number;
+        _sampleContext: SampleContext;
+
         prevSignal: number;
         time: number;
         pressedTime: number;
-        gain: number;
         volume: number;
         manuallyPressed: boolean;
         value: number;
@@ -154,7 +185,7 @@ export type DspInfo = {
     sampleRate: number;
 }
 
-const OSC_GAIN_AWAKE_THRESHOLD = 0.001;
+const OSC_GAIN_AWAKE_THRESHOLD = 0.00001;
 
 function sampleSamples(samples: number[], sampleDuration: number, time: number) {
     let idxFloating = ((time / sampleDuration) * samples.length) % (samples.length - 1);
@@ -173,7 +204,6 @@ export function updateOscillator(
 ) {
     const sampleRate = s.sampleRate;
     const parameters = s.playSettings.parameters;
-    const sampleContext = s.playSettings.sampleContext;
     const { attack, attackVolume, decay, sustain, sustainVolume } = s.playSettings;
 
     const { inputs, state } = osc;
@@ -183,8 +213,9 @@ export function updateOscillator(
         state._frequency = getNoteFrequency(inputs.noteId);
     }
 
-    if (inputs.signal || state.gain > OSC_GAIN_AWAKE_THRESHOLD) {
-        state.time += 1 / sampleRate;
+    const dt = 1 / sampleRate;
+    if (inputs.signal || state.value > OSC_GAIN_AWAKE_THRESHOLD) {
+        state.time += dt;
     }
 
     if (rng === null) {
@@ -200,6 +231,10 @@ export function updateOscillator(
     const f = state._frequency;
     let idx1 = state.idx1;
     let sampleValue = 0;
+
+    // TODO: fix how we're using the gain here
+    // the gain is indicative of how much the key is 'pressed down', not the actual attack/decay envelope.
+
     let targetGain = 0;
     let rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
 
@@ -238,6 +273,9 @@ export function updateOscillator(
             } else {
                 targetGain = sustainVolume; rate = sustain;
             }
+        } else {
+            targetGain = 0.0;
+            rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
         }
 
         // let maxRange = max(parameters.low, parameters.hi);
@@ -270,14 +308,13 @@ export function updateOscillator(
         // val = sin(f * t * 4); amp = 0.02;
         // m += amp; x += val * amp;
 
-        sampleValue += computeSample(sampleContext, parameters.instructions, f, t);
+        sampleValue += computeSample(state._sampleContext, parameters.instructions, f, t, dt);
 
         // sampleValue = x;
         // sampleTotal = m;
     }
 
-    state.value = sampleValue * state.gain;
-    state.gain = moveTowards(state.gain, targetGain, (1 / rate) / sampleRate);
+    state.value = sampleValue;
 }
 
 
@@ -362,7 +399,7 @@ function getMessageForMainThread(s: DspState, signals = true) {
         for (const [key, osc] of s.playingOscillators) {
             currentPlaybackSignals.push([
                 key,
-                max(osc.inputs.signal, osc.state.gain),
+                max(osc.inputs.signal, osc.state.value),
                 osc.state.manuallyPressed ? 0 : 1
             ]);
         }
@@ -637,10 +674,10 @@ export function newPlayingOscilator(): PlayingOscillator {
         state: {
             _lastNoteIndex: -1,
             _frequency: 0,
+            _sampleContext: newSampleContext(),
             prevSignal: 0,
             time: 0,
             pressedTime: 0,
-            gain: 0,
             volume: 0,
             manuallyPressed: false,
             value: 0,
@@ -659,6 +696,7 @@ function getOrCreatePlayingOscillator(s: DspState, id: number): PlayingOscillato
         return osc;
     }
 
+    // TODO: consider pooling?
     const newOsc = newPlayingOscilator();
     s.playingOscillators.push([id, newOsc]);
     newOsc.state.time = 0;
@@ -705,7 +743,7 @@ export function dspProcess(s: DspState, outputs: Float32Array[][]) {
     {
         filterInPlace(s.playingOscillators, (osc) => {
             return osc[1].inputs.signal > OSC_GAIN_AWAKE_THRESHOLD ||
-                osc[1].state.gain > OSC_GAIN_AWAKE_THRESHOLD;
+                osc[1].state.value > OSC_GAIN_AWAKE_THRESHOLD;
         });
     }
 
@@ -811,19 +849,22 @@ export function getDspLoopClassUrl(): string {
     lastUrl = newFunctionUrl([
         newPianoSynthWave,
         newDspInstruction,
-        { value: INSTR_SET, name: "INSTR_SET" },
         { value: INSTR_SIN, name: "INSTR_SIN" },
         { value: INSTR_SQUARE, name: "INSTR_SQUARE" },
         { value: INSTR_ADD, name: "INSTR_ADD" },
         { value: INSTR_SUBTRACT, name: "INSTR_SUBTRACT" },
         { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
+        { value: INSTR_MULTIPLY_DT, name: "INSTR_MULTIPLY_DT" },
         { value: INSTR_DIVIDE, name: "INSTR_DIVIDE" },
+        { value: INSTR_IF, name: "INSTR_IF" },
+        { value: INSTR_ELIF, name: "INSTR_ELIF" },
+        { value: INSTR_END, name: "INSTR_END" },
         { value: INSTR_NUM_INSTRUCTIONS, name: "INSTR_NUM_INSTRUCTIONS" },
-        { value: IDX_SAMPLE, name: "IDX_SAMPLE" },
-        { value: IDX_AMPLITUDE, name: "IDX_AMPLITUDE" },
+        { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
         { value: IDX_FREQUENCY, name: "IDX_FREQUENCY" },
         { value: IDX_TIME, name: "IDX_TIME" },
         { value: IDX_USER, name: "IDX_USER" },
+        { value: IDX_MAX, name: "IDX_MAX" },
         computeSample,
         max,
         min,
@@ -897,7 +938,7 @@ export function getDspLoopClassUrl(): string {
                 // so that the UI will update accordingly. It's not so important for when we release things though.
                 if (s.trackPlayback.shouldSendUiUpdateSignals) {
                     s.trackPlayback.shouldSendUiUpdateSignals = false;
-                    this.sendCurrentPlayingMessageBack(s.trackPlayback.shouldSendUiUpdateSignals,);
+                    this.sendCurrentPlayingMessageBack(s.trackPlayback.shouldSendUiUpdateSignals);
                 }
 
                 return result;

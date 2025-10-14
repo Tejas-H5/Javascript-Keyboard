@@ -1,24 +1,25 @@
+import { imCompactDragSlider } from "src/app-components/drag-slider";
 import { imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
-import { BLOCK, COL, EM, imAlign, imFlex, imFlex1, imJustify, imLayout, imLayoutEnd, imScrollOverflow, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
+import { BLOCK, COL, EM, imAlign, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
+import { imRadialMenuBegin, imRadialMenuEnd, imRadialMenuItemBegin, imRadialMenuItemEnd, newRadialMenuState } from "src/components/radial-menu";
 import { imRangeSlider } from "src/components/range-slider";
 import { imSliderInput } from "src/components/slider";
-import { DEFAULT_PIANO_SYNTH_WAVE, dspProcess, dspReceiveMessage, newDspState, newPianoSynthWave, PianoSynthWave } from "src/dsp/dsp-loop";
+import { dspProcess, dspReceiveMessage, newDspState, PianoSynthWave } from "src/dsp/dsp-loop";
+import { computeSample, instrToString, newSampleContext, registerIdxToString } from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { BASE_NOTE, getKeyForKeyboardKey } from "src/state/keyboard-state";
-import { filterInPlace, newArray } from "src/utils/array-utils";
+import { newArray } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { fft, resizeNumberArrayPowerOf2 } from "src/utils/fft";
-import { getRenderCount, ImCache, imElse, imEndIf, imFor, imForEnd, imGet, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { getRenderCount, ImCache, imElse, imEndIf, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr, imStrFmt } from "src/utils/im-dom";
 import { arrayMax, arrayMin, clamp, derivative, gridsnapRound, inverseLerp, lerp, max, min } from "src/utils/math-utils";
+import { getNoteFrequency } from "src/utils/music-theory-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
 import { cssVarsApp, getCurrentTheme } from "./styling";
-import { imCompactDragSlider } from "src/app-components/drag-slider";
-import { computeSample, instrToString, newSampleContext, registerIdxToString } from "src/dsp/dsp-loop-instruction-set";
-import { getNoteFrequency } from "src/utils/music-theory-utils";
 
 
 function getExtentX(plot: PlotState): number {
@@ -636,6 +637,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                                         params.instructions,
                                         time,
                                         frequency,
+                                        1 / sampleRate
                                     );
                                 }
                             }
@@ -684,41 +686,80 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                             }
                         }
 
-                        let i = 1;
+                        const radialMenu = imState(c, newRadialMenuState);
+
+                        let i = 0;
                         imFor(c); for (const instr of params.instructions) {
                             imLayout(c, ROW); imAlign(c); {
                                 if (isFirstishRender(c)) {
                                     elSetStyle(c, "lineHeight", "1");
                                 }
 
-                                imLayout(c, ROW); imAlign(c); imJustify(c); {
-                                    if (isFirstishRender(c)) {
-                                        elSetStyle(c, "minWidth", "150px");
-                                    }
-
+                                imLayout(c, ROW); imAlign(c); {
                                     imStrFmt(c, instr.type, instrToString);
+                                    imStr(c, "(");
+
+                                    // if (imIf(c) && i === 0)  {
+                                    //     imRadialMenuBegin(c, radialMenu); {
+                                    //         imRadialMenuItemBegin(c, radialMenu, BLOCK); {
+                                    //             imStr(c, "Item 1");
+                                    //         } imRadialMenuItemEnd(c, radialMenu);
+                                    //
+                                    //         imRadialMenuItemBegin(c, radialMenu, BLOCK); {
+                                    //             imStr(c, "Item 2");
+                                    //         } imRadialMenuItemEnd(c, radialMenu);
+                                    //     } imRadialMenuEnd(c, radialMenu);
+                                    // } imIfEnd(c);
+
                                 } imLayoutEnd(c);
 
-                                imLayout(c, ROW); imAlign(c); imFlex(c); {
-                                    if (imButtonIsClicked(c, instr.reg ? "reg" : "val", instr.reg, BLOCK, true)) {
-                                        instr.reg = !instr.reg;
-                                        updateSettings = true;
-                                    }
+                                // register value 1
+                                {
+                                    imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
+                                    imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
+                                        if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", instr.reg1, BLOCK, true)) {
+                                            instr.reg1 = !instr.reg1;
+                                            updateSettings = true;
+                                        }
 
-                                    imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
-                                        if (imIf(c) && instr.reg) {
-                                            imElse(c);
-                                            // Reinterpret this thing as an index.
-                                            imStr(c, "register: ");
-                                            imStrFmt(c, instr.val, registerIdxToString);
-                                        } else {
-                                            imStr(c, instr.val);
-                                        } imEndIf(c);
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                            if (imIf(c) && instr.reg1) {
+                                                // Reinterpret this thing as an index.
+                                                imStr(c, "reg ");
+                                                imStrFmt(c, instr.val1, registerIdxToString);
+                                            } else {
+                                                imElse(c);
+                                                imStr(c, instr.val1);
+                                            } imEndIf(c);
+                                        } imLayoutEnd(c);
                                     } imLayoutEnd(c);
-                                } imLayoutEnd(c);
+                                }
 
-                                imLayout(c, ROW); imAlign(c); imJustify(c); imSize(c, 50, PX, 0, NA); {
-                                    imStr(c, " -> ");
+
+                                // register value 2
+                                {
+                                    imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
+                                    imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
+                                        if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", instr.reg2, BLOCK, true)) {
+                                            instr.reg2 = !instr.reg2;
+                                            updateSettings = true;
+                                        }
+
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                            if (imIf(c) && instr.reg2) {
+                                                // Reinterpret this thing as an index.
+                                                imStr(c, "reg ");
+                                                imStrFmt(c, instr.val2, registerIdxToString);
+                                            } else {
+                                                imElse(c);
+                                                imStr(c, instr.val2);
+                                            } imEndIf(c);
+                                        } imLayoutEnd(c);
+                                    } imLayoutEnd(c);
+                                }
+
+                                imLayout(c, ROW); imAlign(c); {
+                                    imStr(c, ") -> ");
                                 } imLayoutEnd(c);
 
                                 imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
@@ -726,6 +767,8 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                                     imStrFmt(c, instr.dst, registerIdxToString);
                                 } imLayoutEnd(c);
                             } imLayoutEnd(c);
+
+                            i++;
                         } imForEnd(c);
 
                         if (updateSettings) {
