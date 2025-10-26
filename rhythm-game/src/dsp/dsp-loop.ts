@@ -12,7 +12,7 @@ import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed
 import { newFunctionUrl } from "src/utils/web-workers";
 import {
     computeSample,
-    DspSynthInstruction,
+    DspSynthInstructionItem,
     IDX_FREQUENCY,
     IDX_MAX,
     IDX_OUTPUT,
@@ -20,9 +20,7 @@ import {
     IDX_USER,
     INSTR_ADD,
     INSTR_DIVIDE,
-    INSTR_ELIF,
-    INSTR_END,
-    INSTR_IF,
+    INSTR_JUMP_IF_NZ,
     INSTR_MULTIPLY,
     INSTR_MULTIPLY_DT,
     INSTR_NUM_INSTRUCTIONS,
@@ -38,7 +36,7 @@ import { ScheduledKeyPress } from "./dsp-loop-interface";
 type DspSynthParameters = {
     // Hopefully a pseudo assembly language will give us more flexibility
     // and possibilities.
-    instructions: DspSynthInstruction[];
+    instructions: DspSynthInstructionItem[];
 }
 
 
@@ -65,13 +63,16 @@ export function newPianoSynthWave(): PianoSynthWave {
 export const DEFAULT_PIANO_SYNTH_WAVE = newPianoSynthWave();
 
 export type DSPPlaySettings = {
+    isUserDriven: boolean;
+    parameters: DspSynthParameters;
+
+    // NOTE: these might become deprecated after we have a fully programmable DSP
     attack: number;
     attackVolume: number;
     decay: number;
     sustain: number;
     sustainVolume: number;
-    isUserDriven: boolean;
-    parameters: DspSynthParameters;
+
 }
 
 export function newDspPlaySettings(): DSPPlaySettings {
@@ -85,33 +86,18 @@ export function newDspPlaySettings(): DSPPlaySettings {
     const releaseRate = IDX_USER + 4;
     const usrBase = IDX_USER + 5;
 
-    const instructions: DspSynthInstruction[] = [
+    const instructions: DspSynthInstructionItem[] = [
         // sample = sin(f * t);
         newDspInstruction(INSTR_SIN, IDX_FREQUENCY, REG, IDX_TIME, REG, usrBase),
 
         /**
-         *  if d0 < attack:
-         *      attackRate *dt signal -> r0
-         *      d0 + r0 -> d0
-         *      1 -> d1
-         *      d0 -> r1
-         *  else if d1 > sustain:
-         *      attackToSustainRate * signal -> r0
-         *      movetowards d1 sustain r0 -> d1
-         *      sustain -> d2
-         *      d1 -> r1
-         *  else if d2 > 0:
-         *      1 - signal -> r0
-         *      releaseRate * r0 -> r0
-         *      movetowards d2 0 r0 -> d2
-         *      d2 -> r1
-         *  end
-         *  
-         *  sin f * t -> r2
-         *  r2 * r1 -> r0
+
+// asdr envelope
+
+
+
          */
 
-        newDspInstruction(INSTR_IF, usrBase, REG, 0, VAL, IDX_OUTPUT),
     ];
 
     return {
@@ -534,6 +520,7 @@ function getPlayingOscillator(s: DspState, id: number): PlayingOscillator | unde
 function processSample(s: DspState, idx: number) {
     let sample = 0;
     let count = 0;
+    const sampleRate = s.sampleRate;
 
     const trackPlayback = s.trackPlayback;
     const currentlyPlaying = trackPlayback.scheduedKeysCurrentlyPlaying;
@@ -856,9 +843,7 @@ export function getDspLoopClassUrl(): string {
         { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
         { value: INSTR_MULTIPLY_DT, name: "INSTR_MULTIPLY_DT" },
         { value: INSTR_DIVIDE, name: "INSTR_DIVIDE" },
-        { value: INSTR_IF, name: "INSTR_IF" },
-        { value: INSTR_ELIF, name: "INSTR_ELIF" },
-        { value: INSTR_END, name: "INSTR_END" },
+        { value: INSTR_JUMP_IF_NZ, name: "INSTR_JUMP_IF" },
         { value: INSTR_NUM_INSTRUCTIONS, name: "INSTR_NUM_INSTRUCTIONS" },
         { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
         { value: IDX_FREQUENCY, name: "IDX_FREQUENCY" },
@@ -914,12 +899,18 @@ export function getDspLoopClassUrl(): string {
     ], [
     ], function register() {
 
+        // @ts-expect-error sampleRate is in audio-worklet global sclop
+        let _sampleRate = sampleRate;
+
+        // @ts-expect-error - AudioWorkletProcessor
         class DSPLoop extends AudioWorkletProcessor {
-            s: DspState = newDspState(sampleRate);
+            s: DspState = newDspState(_sampleRate);
 
             constructor() {
                 super();
-                this.s.sampleRate = sampleRate;
+                this.s.sampleRate = _sampleRate;
+
+                // @ts-expect-error this.port is valid on AudioWorkletProcessor
                 this.port.onmessage = (e) => {
                     this.onMessage(e.data);
                 };
@@ -947,6 +938,7 @@ export function getDspLoopClassUrl(): string {
             // This is expensive, so don't call too often
             sendCurrentPlayingMessageBack(signals = true) {
                 const payload = getMessageForMainThread(this.s, signals);
+                // @ts-expect-error this.port is valid on AudioWorkletProcessor
                 this.port.postMessage(payload);
             }
 
@@ -960,6 +952,7 @@ export function getDspLoopClassUrl(): string {
             }
         }
 
+        // @ts-expect-error registerProcessor is in audio-worklet global sclop
         registerProcessor("dsp-loop", DSPLoop);
     }, {
         includeEsBuildPolyfills: true

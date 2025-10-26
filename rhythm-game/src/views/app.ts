@@ -76,7 +76,6 @@ export type GlobalContext = {
 
     repo: ChartRepository;
 
-
     // TODO: input state
     allKeysState: AllKeysState;
     keyPressState: KeyPressState | null;
