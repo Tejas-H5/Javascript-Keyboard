@@ -810,13 +810,10 @@ function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabStat
                             let frequency = getNoteFrequency(s.noteIdx);
                             const time = i / mockSampleRate;
 
-                            s.samples[i] = computeSample(
-                                s.ctx,
-                                params.instructions,
-                                time,
-                                frequency,
-                                1 / sampleRate
-                            );
+                            s.ctx.time = time;
+                            s.ctx.frequency = frequency;
+                            s.ctx.dt = 1 / sampleRate;
+                            s.samples[i] = computeSample(s.ctx, params.instructions);
                         }
                     }
 

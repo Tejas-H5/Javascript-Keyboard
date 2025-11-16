@@ -16,7 +16,7 @@ export function newUnitTestsState(): UnitTestsState {
 }
 
 const testSuites: TestSuite<any>[] = [
-    dspLoopInstructionSetTests,
+    ...dspLoopInstructionSetTests,
 ];
 
 export function imUnitTestsModal(c: ImCache, ctx: GlobalContext, s: UnitTestsState) {

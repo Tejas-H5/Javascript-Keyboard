@@ -1,4 +1,3 @@
-import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 
 export const INSTR_SIN              = 1;
@@ -108,14 +107,16 @@ function square(t: number) {
 
 // The final instructions are just integers. This is just for the UI and the build step
 export type DspSynthInstructionItem = {
-    instruction: InstructionPart;
-
-    if?: {
-        else: boolean;
-        inner: DspSynthInstructionItem[]; // if-statements can contain other statements within them.
+    // only one of these codegen related parts should be present at a time.
+    instruction?: InstructionPart;
+    ifelse?: {
+        blocks: {
+            ifCheckInstruction: InstructionPart;
+            inner: DspSynthInstructionItem[]; 
+        }[];
     };
 
-    comment?: string; // ?
+    comment?: string;
 };
 
 type InstructionPart = {
@@ -124,7 +125,7 @@ type InstructionPart = {
     val2: number; reg2: boolean; // Val2, and is it a register or nah?
 
     // Where do we write the result to? NOTE: some instructions, like the JUMP_ instructions, don't write anything
-    dst: number;                 
+    dst: number;
 }
 
 export type SampleContext = {
@@ -229,7 +230,12 @@ export function computeSample(
             case INSTR_GTE: { result = val1 >= val2 ? 1 : 0;    } break; 
             case INSTR_EQ:  { result = val1 === val2 ? 1 : 0;   } break; 
             case INSTR_NEQ: { result = val1 !== val2 ? 1 : 0;   } break; 
-            default: throw new Error("Unknown instruction type");
+            default: {
+                if (isIfInstruction(type)) {
+                    throw new Error("If-instructions are not valid compilation output");
+                }
+                throw new Error("Unknown instruction type");
+            }
         };
 
         s.registers[dst] = result;
@@ -238,53 +244,90 @@ export function computeSample(
     return s.registers[IDX_OUTPUT];
 }
 
-export function compileInstructions(instructions: DspSynthInstructionItem[], dst: number[]) {
+export function compileInstructions(instructions: DspSynthInstructionItem[], dst: number[] = []): number[] {
     dst.length = 0;
 
     compileToInstructionsInternal(instructions, dst);
+
+    return dst;
+}
+
+export function isIfInstruction(type: InstructionType) {
+    return type === INSTR_LT ||
+        type === INSTR_LTE ||
+        type === INSTR_GT ||
+        type === INSTR_GTE ||
+        type === INSTR_EQ ||
+        type === INSTR_NEQ;
 }
 
 function compileToInstructionsInternal(instructions: DspSynthInstructionItem[], dst: number[]) {
     for (let i = 0; i < instructions.length; i++) {
         const instr = instructions[i];
-        const lastInstr = arrayAt(instructions, i - 1);
 
-        if (instr.if) {
-            assert(
-                instr.instruction.type === INSTR_LT ||
-                instr.instruction.type === INSTR_LTE ||
-                instr.instruction.type === INSTR_GT ||
-                instr.instruction.type === INSTR_GTE ||
-                instr.instruction.type === INSTR_EQ ||
-                instr.instruction.type === INSTR_NEQ
-            );
-
+        if (instr.instruction) {
             pushInstruction(instr.instruction, dst);
+        } else if (instr.ifelse) {
+            const jumpToBlockEndInstructionIndexes: number[] = [];
 
-            const jumpIfInstrIdx = dst.length;
+            const blocks = instr.ifelse.blocks;
+            for (let i = 0; i < blocks.length; i++) {
+                const block = blocks[i];
 
-            pushInstruction({
-                type: INSTR_JUMP_IF_Z,
-                val1: instr.instruction.dst,
-                reg1: true,
-                // We don't know where to jump yet. We'll popluate this soon [tagSoon]
-                val2: -1, 
-                reg2: false,
-                dst: instr.instruction.dst,
-            }, dst);
+                assert(isIfInstruction(block.ifCheckInstruction.type));
+                pushInstruction(block.ifCheckInstruction, dst);
+                const jumpIfInstrIdx = dst.length;
+                pushInstruction({
+                    type: INSTR_JUMP_IF_Z,
+                    // read result of ifCheckInstruction
+                    val1: block.ifCheckInstruction.dst,
+                    reg1: true,
+                    // after codegen, needs to point to the if-check of the next if-block.
+                    // We jump there if the previous comparison was false
+                    val2: -1,
+                    reg2: false,
+                    dst: -1,
+                }, dst);
 
-            compileToInstructionsInternal(instr.if.inner, dst);
+                compileToInstructionsInternal(block.inner, dst);
 
-            // [tagSoon]: that would be here
-            assert(dst[jumpIfInstrIdx + 4] === -1);
-            dst[jumpIfInstrIdx + 4] = dst.length;
-        } else {
-            pushInstruction(instr.instruction, dst);
+                // after codegen, another jump-instruction to point to one after 
+                // the very end of the entire if-else chain. This is only needed if 
+                // this isn't the last block
+                if (i < blocks.length - 1) {
+                    const jumpToBlockEndInstrIdx = dst.length;
+                    pushInstruction({
+                        type: INSTR_JUMP_IF_Z,
+                        // value to check
+                        val1: block.ifCheckInstruction.dst,
+                        reg1: true,
+                        val2: -1,
+                        reg2: false,
+                        dst: -1,
+                    }, dst);
+                    jumpToBlockEndInstructionIndexes.push(jumpToBlockEndInstrIdx);
+                }
+
+                assert(dst[jumpIfInstrIdx + OFFSET_VAL2] === -1);
+                dst[jumpIfInstrIdx + OFFSET_VAL2] = dst.length;
+            }
+
+            for (const idx of jumpToBlockEndInstructionIndexes) {
+                assert(dst[idx + OFFSET_VAL2] === -1);
+                dst[idx + OFFSET_VAL2] = dst.length;
+            }
         }
     }
 }
 
-function pushInstruction(instr: InstructionPart, dst: number[]) {
+const OFFSET_TYPE = 0;
+const OFFSET_DST = 1;
+const OFFSET_VAL1 = 2;
+const OFFSET_REG1 = 3;
+const OFFSET_VAL2 = 4;
+const OFFSET_REG2 = 5;
+
+export function pushInstruction(instr: InstructionPart, dst: number[]) {
     dst.push(instr.type);           // 0
     dst.push(instr.dst);            // 1
     dst.push(instr.val1);           // 2

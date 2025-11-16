@@ -275,7 +275,10 @@ export function updateOscillator(
         // val = sin(f * t * 4); amp = 0.02;
         // m += amp; x += val * amp;
 
-        sampleValue += computeSample(state._sampleContext, parameters.instructions, f, t, dt);
+        state._sampleContext.frequency = f;
+        state._sampleContext.time = t;
+        state._sampleContext.dt = dt;
+        sampleValue += computeSample(state._sampleContext, parameters.instructions);
 
         // sampleValue = x;
         // sampleTotal = m;

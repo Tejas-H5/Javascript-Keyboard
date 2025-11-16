@@ -59,6 +59,7 @@ import {
     TEST_STATUS_RUNNING,
     TestSuite,
 } from "src/utils/testing";
+import { imGameplay } from "src/views/gameplay";
 
 function imCode(c: ImCache) {
     if (isFirstishRender(c)) {
@@ -211,27 +212,34 @@ export function imTestHarness(
                                             } imLayoutEnd(c);
                                         } imIfEnd(c);
                                     } imLayoutEnd(c);
-                                    imLayout(c, BLOCK); imPadding(c, 0, NA, 0, NA, 0, NA, 10, PX); {
+                                    imLayout(c, COL); imPadding(c, 0, NA, 0, NA, 0, NA, 10, PX); imGap(c, 5, PX); {
                                         if (imIf(c) && test.results.length > 0) {
                                             imFor(c); for (const req of test.results) {
-                                                imLayout(c, BLOCK); {
-                                                    imStr(c, req.title);
-                                                } imLayoutEnd(c);
-                                                imFor(c); for (const ex of req.expectations) {
-                                                    imLayout(c, ROW); {
-                                                        imLayout(c, BLOCK); imCode(c); imPre(c); {
-                                                            imBg(c, ex.ok ? "#0F0" : "#F00");
-                                                            imFg(c, ex.ok ? "#000" : "#FFF");
-                                                            imStr(c, ex.ok ? "pass" : "fail");
-                                                        } imLayoutEnd(c);
-
-                                                        imLayout(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
-
-                                                        imLayout(c, BLOCK); imPre(c); {
-                                                            imStr(c, ex.message);
-                                                        } imLayoutEnd(c);
+                                                imLayout(c, ROW); {
+                                                    imLayout(c, BLOCK); {
+                                                        imStr(c, req.title);
                                                     } imLayoutEnd(c);
-                                                } imForEnd(c);
+
+                                                    imLayout(c, BLOCK); imSize(c, 20, PX, 0, NA); imLayoutEnd(c);
+
+                                                    imLayout(c, BLOCK); {
+                                                        imFor(c); for (const ex of req.expectations) {
+                                                            imLayout(c, ROW); {
+                                                                imLayout(c, BLOCK); imCode(c); imPre(c); {
+                                                                    imBg(c, ex.ok ? "#0F0" : "#F00");
+                                                                    imFg(c, ex.ok ? "#000" : "#FFF");
+                                                                    imStr(c, ex.ok ? "pass" : "fail");
+                                                                } imLayoutEnd(c);
+
+                                                                imLayout(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
+
+                                                                imLayout(c, BLOCK); imPre(c); {
+                                                                    imStr(c, ex.message);
+                                                                } imLayoutEnd(c);
+                                                            } imLayoutEnd(c);
+                                                        } imForEnd(c);
+                                                    } imLayoutEnd(c);
+                                                } imLayoutEnd(c);
                                             } imForEnd(c);
                                         } else {
                                             imIfElse(c);

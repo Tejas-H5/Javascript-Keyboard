@@ -118,8 +118,12 @@ export function runTest<T>(test: Test<T>, debug = false) {
     }
 }
 
-export function expectEqual<T>(test: Test<any>, requirement: string, a: T, b: T) {
-    const result = deepEquals(a, b);
+export function expectEqual<T>(test: Test<any>, requirement: string, a: T, b: T, opts?: DeepEqualsOptions) {
+    // expectEqual(blah, value, === expected) is what we're thinking when we are writing this method.
+    // but deepEqual's argument order were decided in terms of the output message, `expected a, but got b`.
+    // That is the opposite. Let's just flip them here
+    const result = deepEquals(b, a, opts);
+
     if (result.mismatches.length === 0) {
         addResult(test, requirement, `All deep-equality checks passed`, true);
     } else {
@@ -171,6 +175,7 @@ type DeepEqualsMismatch = {
 
 type DeepEqualsOptions = {
     failFast?: boolean;
+    floatingPointTolerance?: number;
 };
 
 export function deepEquals<T>(
@@ -190,7 +195,7 @@ function pushDeepEqualsMismatch(
     expected: unknown,
     got: unknown,
 ) {
-    const path = result.currentPath.join(" -> ");
+    const path = result.currentPath.join("");
     result.mismatches.push({ path, expected, got });
 }
 
@@ -202,7 +207,21 @@ function deepEqualsInternal<T>(
     opts: DeepEqualsOptions,
     pathKey: string,
 ): boolean {
+    let primitiveMatched = false;
     if (a === b) {
+        primitiveMatched = true;
+    } else if (typeof a === "number" && typeof b === "number") {
+        if (isNaN(a) && isNaN(b)) {
+            primitiveMatched = true;
+        } else {
+            const tolerance = opts.floatingPointTolerance ?? 0;
+            if (Math.abs(a - b) < tolerance) {
+                primitiveMatched = true;
+            }
+        }
+    }
+
+    if (primitiveMatched) {
         result.numMatches++;
         return true;
     }
@@ -252,7 +271,7 @@ function deepEqualsInternal<T>(
             for (const [k, aVal] of a) {
                 if (b.has(k)) {
                     const bVal = b.get(k);
-                    if (!deepEqualsInternal(result, aVal, bVal, opts, k)) {
+                    if (!deepEqualsInternal(result, aVal, bVal, opts, ".get(" + k + ")")) {
                         matched = false;
                         if (opts.failFast) break;
                     }
@@ -267,7 +286,7 @@ function deepEqualsInternal<T>(
                 if (opts.failFast) break;
             }
 
-            if (!deepEqualsInternal(result, a[k], b[k], opts, k)) {
+            if (!deepEqualsInternal(result, a[k], b[k], opts, "." + k)) {
                 matched = false;
                 if (opts.failFast) break;
             }
