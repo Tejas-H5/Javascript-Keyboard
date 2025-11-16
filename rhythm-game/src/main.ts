@@ -47,7 +47,7 @@ const programState = new TrackedPromise(async () => {
         await cleanupChartRepo(repo);
     }
 
-    if (debugFlags.testTheLab) {
+    if (debugFlags.testSoundLab) {
         setViewSoundLab(ctx);
     } else if (
         debugFlags.testEditView ||

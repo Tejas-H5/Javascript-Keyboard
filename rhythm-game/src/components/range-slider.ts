@@ -4,6 +4,7 @@ import { clamp } from "src/utils/math-utils";
 import { cssVarsApp } from "src/views/styling";
 import { BLOCK, imLayout, imLayoutEnd } from "./core/layout";
 import { startPlaying } from "src/state/playing-pausing";
+import { handleMovementAbsolute } from "src/state/sequencer-state";
 
 
 type RangeSliderHandle = {
@@ -70,8 +71,12 @@ export function imRangeSlider(
     imLayoutEnd(c);
 
     if (isFirstishRender(c)) {
-        elSetStyle(c, "height", "30px", body);
-        elSetStyle(c, "backgroundColor", cssVarsApp.mg, body);
+        const handleBodyColor = cssVarsApp.mg;
+        const handeColor = cssVarsApp.fg;
+        const bgColor = cssVarsApp.bg2;
+
+        elSetStyle(c, "height", "1em", body);
+        elSetStyle(c, "backgroundColor", bgColor, body);
         elSetStyle(c, "position", "relative", body);
         elSetStyle(c, "borderRadius", "1000px", body);
 
@@ -79,20 +84,23 @@ export function imRangeSlider(
         elSetStyle(c, "top", "0", startHandle);
         elSetStyle(c, "height", "100%", startHandle);
         elSetStyle(c, "aspectRatio", "1 / 1", startHandle);
-        elSetStyle(c, "backgroundColor", cssVarsApp.fg, startHandle);
+        elSetStyle(c, "backgroundColor", handeColor, startHandle);
         elSetStyle(c, "borderRadius", "1000px", startHandle);
+        elSetStyle(c, "cursor", "ew-resize", startHandle);
 
         elSetStyle(c, "position", "absolute", sliderMiddle);
         elSetStyle(c, "top", "0", sliderMiddle);
         elSetStyle(c, "height", "100%", sliderMiddle);
-        elSetStyle(c, "backgroundColor", cssVarsApp.bg, sliderMiddle);
+        elSetStyle(c, "backgroundColor", handleBodyColor, sliderMiddle);
+        elSetStyle(c, "cursor", "ew-resize", sliderMiddle);
 
         elSetStyle(c, "position", "absolute", endHandle);
         elSetStyle(c, "top", "0", endHandle);
         elSetStyle(c, "height", "100%", endHandle);
         elSetStyle(c, "aspectRatio", "1 / 1", endHandle);
-        elSetStyle(c, "backgroundColor", cssVarsApp.fg, endHandle);
+        elSetStyle(c, "backgroundColor", handeColor, endHandle);
         elSetStyle(c, "borderRadius", "1000px", endHandle);
+        elSetStyle(c, "cursor", "ew-resize", endHandle);
     }
 
     // Respond to pos change _after_ user has handled and set new drag values

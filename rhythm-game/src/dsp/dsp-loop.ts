@@ -11,12 +11,13 @@ import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
 import { newFunctionUrl } from "src/utils/web-workers";
 import {
+    compileInstructions,
     computeSample,
     DspSynthInstructionItem,
-    IDX_FREQUENCY,
+    IDX_WANTED_FREQUENCY,
     IDX_MAX,
     IDX_OUTPUT,
-    IDX_TIME,
+    IDX_PRESSED_TIME,
     IDX_USER,
     INSTR_ADD,
     INSTR_DIVIDE,
@@ -29,38 +30,14 @@ import {
     INSTR_SUBTRACT,
     newDspInstruction,
     newSampleContext,
-    SampleContext
+    SampleContext,
+    IDX_RELEASED_TIME
 } from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 
 type DspSynthParameters = {
-    // Hopefully a pseudo assembly language will give us more flexibility
-    // and possibilities.
-    instructions: DspSynthInstructionItem[];
+    instructions: number[];
 }
-
-
-export type PianoSynthWave = {
-    frequencyOffset: number;
-    frequencyMultiplierPow2: number;
-    falloff: number;
-    falloffStart: number;
-    amplitude: number;
-    enabled: boolean;
-};;
-
-export function newPianoSynthWave(): PianoSynthWave {
-    return {
-        frequencyOffset: 0,
-        frequencyMultiplierPow2: 0,
-        falloff: 0.01,
-        falloffStart: 1,
-        amplitude: 1,
-        enabled: true,
-    };
-}
-
-export const DEFAULT_PIANO_SYNTH_WAVE = newPianoSynthWave();
 
 export type DSPPlaySettings = {
     isUserDriven: boolean;
@@ -88,7 +65,7 @@ export function newDspPlaySettings(): DSPPlaySettings {
 
     const instructions: DspSynthInstructionItem[] = [
         // sample = sin(f * t);
-        newDspInstruction(INSTR_SIN, IDX_FREQUENCY, REG, IDX_TIME, REG, usrBase),
+        newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, REG, IDX_PRESSED_TIME, REG, usrBase),
 
         /**
 
@@ -100,15 +77,19 @@ export function newDspPlaySettings(): DSPPlaySettings {
 
     ];
 
-    return {
+    const settings: DSPPlaySettings = {
         attack: 0.05,
         decay: 3,
         attackVolume: 0.2,
         sustainVolume: 0.05,
         sustain: 0.5,
         isUserDriven: false,
-        parameters: { instructions: instructions },
-    };
+        parameters: { instructions: [] },
+    }
+
+    compileInstructions(instructions, settings.parameters.instructions);
+
+    return settings;
 }
 
 export type PlayingOscillator = {
@@ -834,7 +815,6 @@ export function getDspLoopClassUrl(): string {
     // Every single dependency must be injected here manually, so that the worker url has access to everything it needs.
 
     lastUrl = newFunctionUrl([
-        newPianoSynthWave,
         newDspInstruction,
         { value: INSTR_SIN, name: "INSTR_SIN" },
         { value: INSTR_SQUARE, name: "INSTR_SQUARE" },
@@ -846,8 +826,9 @@ export function getDspLoopClassUrl(): string {
         { value: INSTR_JUMP_IF_NZ, name: "INSTR_JUMP_IF" },
         { value: INSTR_NUM_INSTRUCTIONS, name: "INSTR_NUM_INSTRUCTIONS" },
         { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
-        { value: IDX_FREQUENCY, name: "IDX_FREQUENCY" },
-        { value: IDX_TIME, name: "IDX_TIME" },
+        { value: IDX_WANTED_FREQUENCY, name: "IDX_WANTED_FREQUENCY" },
+        { value: IDX_PRESSED_TIME, name: "IDX_PRESSED_TIME" },
+        { value: IDX_RELEASED_TIME, name: "IDX_RELEASED_TIME" },
         { value: IDX_USER, name: "IDX_USER" },
         { value: IDX_MAX, name: "IDX_MAX" },
         computeSample,

@@ -29,7 +29,8 @@ export type DebugFlags = {
 
     testFixDatabase: Flag;
 
-    testTheLab: Flag;
+    testSoundLab: Flag;
+    testSoundLabWaveEditor: Flag;
 
     testAsync: Flag;
     testAsyncALittle: Flag;
@@ -53,7 +54,8 @@ export const debugFlags: DebugFlags = {
 
     testFixDatabase: OFF,
 
-    testTheLab: ON,
+    testSoundLab: ON,
+    testSoundLabWaveEditor: ON,
 
     testAsync: OFF,
     testAsyncALittle: ON_EVERYWHERE,

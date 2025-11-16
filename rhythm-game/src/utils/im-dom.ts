@@ -14,7 +14,7 @@ import {
     imGet,
     imMemo,
     imSet,
-    inlineTypeId
+    inlineTypeId,
 } from "./im-core";
 
 export type ValidElement = HTMLElement | SVGElement;

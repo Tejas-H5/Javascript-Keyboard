@@ -1,3 +1,4 @@
+import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 
 export const INSTR_SIN              = 1;
@@ -58,13 +59,25 @@ export function instrToString(instr: InstructionType): string {
     return result;
 }
 
-export const IDX_OUTPUT     = 0;
-export const IDX_FREQUENCY  = 1;
-export const IDX_TIME       = 2;
-export const IDX_SIGNAL     = 3;
-export const IDX_JMP_RESULT = 4;
-export const IDX_USER       = 4;
-export const IDX_MAX        = 32;
+export type ParameterInfo = { name: string; };
+
+export const DEFAULT_PARAMETERS = Object.freeze<ParameterInfo[]>([
+    { name: "Sample output" },
+    { name: "Wanted Frequency" },
+    { name: "Pressed Time" },
+    { name: "Released Time" },
+    { name: "Signal" },
+    { name: "Jumped?" },
+]);
+
+export const IDX_OUTPUT        = 0;
+export const IDX_WANTED_FREQUENCY = 1;
+export const IDX_PRESSED_TIME  = 2;
+export const IDX_RELEASED_TIME = 3;
+export const IDX_SIGNAL        = 4;
+export const IDX_JMP_RESULT    = 5;
+export const IDX_USER          = 6;
+export const IDX_MAX           = 32;
 
 function sin(t: number) {
     return Math.sin(t * Math.PI * 2);
@@ -98,6 +111,7 @@ export type DspSynthInstructionItem = {
     instruction: InstructionPart;
 
     if?: {
+        else: boolean;
         inner: DspSynthInstructionItem[]; // if-statements can contain other statements within them.
     };
 
@@ -115,11 +129,17 @@ type InstructionPart = {
 
 export type SampleContext = {
     registers: number[];
+    frequency: number;
+    time: number;
+    dt: number;
 };
 
 export function newSampleContext(): SampleContext {
     return {
         registers: new Array(IDX_MAX, 0),
+        frequency: 0,
+        time: 0, 
+        dt: 0,
     };
 }
 
@@ -146,8 +166,8 @@ export function newDspInstruction(
 export function registerIdxToString(idx: number): string {
     switch (idx) {
         case IDX_OUTPUT:    return "output";
-        case IDX_FREQUENCY: return "frequency";
-        case IDX_TIME:      return "time";
+        case IDX_WANTED_FREQUENCY: return "frequency";
+        case IDX_PRESSED_TIME:      return "time";
     };
 
     if (idx < IDX_MAX) return "user " + (idx - IDX_USER);
@@ -158,14 +178,13 @@ export function registerIdxToString(idx: number): string {
 export function computeSample(
     s: SampleContext,
     instructions: number[],
-    frequency: number,
-    time: number,
-    dt: number,
 ) {
-    s.registers[IDX_OUTPUT]    = 0;
-    s.registers[IDX_TIME]      = 0;
-    s.registers[IDX_FREQUENCY] = frequency;
-    s.registers[IDX_TIME]      = time;
+    s.registers[IDX_OUTPUT]           = 0;
+
+    // NOTE: Set these when pressed.
+    s.registers[IDX_PRESSED_TIME]     = 0;
+    s.registers[IDX_WANTED_FREQUENCY] = s.frequency;
+    s.registers[IDX_PRESSED_TIME]     = s.time;
 
     let i = 0; 
     while (i < instructions.length) {
@@ -183,13 +202,13 @@ export function computeSample(
         let result = 0;
 
         switch (type) {
-            case INSTR_SIN: { result = sin(val1 * val2);        } break;
-            case INSTR_SQUARE: { result = square(val1 * val2);  } break;
-            case INSTR_ADD: { result = val1 + val2;             } break;
-            case INSTR_SUBTRACT: { result = val1 - val2;        } break;
-            case INSTR_MULTIPLY: { result = val1 * val2;        } break;
-            case INSTR_MULTIPLY_DT: { result = val1 * val2 * dt } break;
-            case INSTR_DIVIDE: { result = val1 / val2;          } break;
+            case INSTR_SIN: { result = sin(val1 * val2);          } break;
+            case INSTR_SQUARE: { result = square(val1 * val2);    } break;
+            case INSTR_ADD: { result = val1 + val2;               } break;
+            case INSTR_SUBTRACT: { result = val1 - val2;          } break;
+            case INSTR_MULTIPLY: { result = val1 * val2;          } break;
+            case INSTR_MULTIPLY_DT: { result = val1 * val2 * s.dt } break;
+            case INSTR_DIVIDE: { result = val1 / val2;            } break;
             case INSTR_JUMP_IF_NZ: {
                 result = val1;
                 if (val1 !== 0) {
@@ -228,6 +247,7 @@ export function compileInstructions(instructions: DspSynthInstructionItem[], dst
 function compileToInstructionsInternal(instructions: DspSynthInstructionItem[], dst: number[]) {
     for (let i = 0; i < instructions.length; i++) {
         const instr = instructions[i];
+        const lastInstr = arrayAt(instructions, i - 1);
 
         if (instr.if) {
             assert(
@@ -261,7 +281,6 @@ function compileToInstructionsInternal(instructions: DspSynthInstructionItem[], 
         } else {
             pushInstruction(instr.instruction, dst);
         }
-
     }
 }
 

@@ -12,6 +12,7 @@ import { elSetStyle, imStr } from "src/utils/im-dom";
 import { GlobalContext, setCurrentChartMeta, setLoadSaveModalClosed } from "./app";
 import { cssVarsApp } from "./styling";
 import { TrackedPromise } from "src/utils/promise-utils";
+import { imModalBegin, imModalEnd } from "src/app-components/modal";
 
 function getButtonText(o: OperationType): string {
     switch(o) {
@@ -27,7 +28,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     let copy = false;
     let escape = false;
 
-    imLayout(c, ROW); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+    imModalBegin(c); {
         if (isFirstishRender(c)) {
             elSetStyle(c, "zIndex", "100");
         }
@@ -76,7 +77,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
                 imInfiniteProgress(c);
             } imIfEnd(c);
         } imLayoutEnd(c);
-    } imLayoutEnd(c);
+    } imModalEnd(c);
 
     if (!ctx.handled && ctx.keyPressState) {
         if (ctx.keyPressState.key === "Enter") {

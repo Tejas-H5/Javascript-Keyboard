@@ -1,24 +1,70 @@
 import { imCompactDragSlider } from "src/app-components/drag-slider";
+import { imModalBegin, imModalEnd } from "src/app-components/modal";
 import { imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
-import { BLOCK, COL, EM, imAlign, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
+import {
+    BLOCK,
+    COL,
+    EM,
+    imAlign,
+    imBg,
+    imFg,
+    imFlex,
+    imFlex1,
+    imGap,
+    imJustify,
+    imLayout,
+    imLayoutEnd,
+    imPadding,
+    imSize,
+    NA,
+    PERCENT,
+    PX,
+    ROW
+} from "src/components/core/layout";
+import { cssVars } from "src/components/core/stylesheets";
+import { imLine, LINE_HORIZONTAL_PADDING, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
+import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { imSliderInput } from "src/components/slider";
-import { dspProcess, dspReceiveMessage, DspState, newDspState, PianoSynthWave } from "src/dsp/dsp-loop";
-import { computeSample, instrToString, newSampleContext, registerIdxToString } from "src/dsp/dsp-loop-instruction-set";
+import { debugFlags } from "src/debug-flags";
+import { dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
+import {
+    compileInstructions,
+    computeSample,
+    DEFAULT_PARAMETERS,
+    DspSynthInstructionItem,
+    IDX_MAX,
+    instrToString,
+    newSampleContext,
+    registerIdxToString
+} from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { BASE_NOTE, getKeyForKeyboardKey } from "src/state/keyboard-state";
+import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { newArray } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { fft, resizeNumberArrayPowerOf2 } from "src/utils/fft";
-import { getRenderCount, ImCache, imElse, imEndIf, imFor, imForEnd, imGet, imIf, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
-import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr, imStrFmt } from "src/utils/im-dom";
+import {
+    getRenderCount,
+    ImCache,
+    imElse,
+    imEndIf,
+    imFor,
+    imForEnd,
+    imGet,
+    imIf,
+    imIfEnd,
+    imMemo,
+    imSet,
+    imState,
+    isFirstishRender
+} from "src/utils/im-core";
+import { EL_B, elHasMousePress, elSetStyle, getGlobalEventSystem, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
 import { arrayMax, arrayMin, clamp, derivative, gridsnapRound, inverseLerp, lerp, max, min } from "src/utils/math-utils";
 import { getNoteFrequency } from "src/utils/music-theory-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
-import { getCurrentTheme } from "./styling";
+import { cssVarsApp, getCurrentTheme } from "./styling";
 
 
 function getExtentX(plot: PlotState): number {
@@ -276,6 +322,11 @@ type SoundLabState = {
     // This is just the format that the audo worker script needs to output.
     // [output(? not sure)][channel][sample] I think
     output: [[Float32Array]]; 
+
+    isEditingInstructions: boolean;
+    instructionBuilder: {
+        instructions: DspSynthInstructionItem[]
+    };
 }
 
 function newSoundLabState(): SoundLabState {
@@ -298,6 +349,11 @@ function newSoundLabState(): SoundLabState {
         frequencies2: [0],
         autoPan: true,
         output: [[new Float32Array()]],
+
+        isEditingInstructions: !!debugFlags.testSoundLabWaveEditor,
+        instructionBuilder: {
+            instructions: []
+        }
     };
 }
 
@@ -315,33 +371,6 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     const numSamples = Math.floor((1 / playbackFps) * state.dsp.sampleRate);
 
     const isPlaying = state.dsp.playingOscillators.length > 0;
-
-    if (ctx.keyPressState) {
-        const { key } = ctx.keyPressState;
-
-        let handled = false;
-
-        if (key === "Escape") {
-            setViewChartSelect(ctx);
-            handled = true;
-        } 
-
-        if (!handled) {
-            const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, key);
-            if (instrumentKey) {
-                if (!ctx.keyPressState.isRepeat) {
-                    pressKey(instrumentKey.index, instrumentKey.noteId, ctx.keyPressState.isRepeat);
-                    soundPlayed = true;
-                }
-                handled = true;
-            }
-        }
-
-        if (handled) {
-            ctx.keyPressState.e.preventDefault();
-            ctx.keyPressState = null;
-        }
-    }
 
     const info = getDspInfo();
     const sampleRate = info.sampleRate;
@@ -432,7 +461,41 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                 imKeyboard(c, ctx);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
+
+        if (imIf(c) && state.isEditingInstructions) {
+            imWaveProgramEditor(c, ctx, state);
+        } imIfEnd(c);
+
     } imLayoutEnd(c);
+
+    if (!ctx.handled) {
+        if (ctx.keyPressState) {
+            const { key } = ctx.keyPressState;
+
+            let handled = false;
+
+            if (key === "Escape") {
+                setViewChartSelect(ctx);
+                handled = true;
+            }
+
+            if (!handled) {
+                const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, key);
+                if (instrumentKey) {
+                    if (!ctx.keyPressState.isRepeat) {
+                        pressKey(instrumentKey.index, instrumentKey.noteId, ctx.keyPressState.isRepeat);
+                        soundPlayed = true;
+                    }
+                    handled = true;
+                }
+            }
+
+            if (handled) {
+                ctx.keyPressState.e.preventDefault();
+                ctx.keyPressState = null;
+            }
+        }
+    }
 }
 
 function imOscilloscope(c: ImCache, state: SoundLabState) {
@@ -584,210 +647,269 @@ function imOscilloscope(c: ImCache, state: SoundLabState) {
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 }
-function imWaveProgramPreview(c: ImCache, ctx: GlobalContext, state: SoundLabState) {
+
+
+
+function imWaveProgramPreview(
+    c: ImCache,
+    ctx: GlobalContext,
+    state: SoundLabState
+) {
     imLayout(c, COL); imFlex(c); {
-        imLayout(c, ROW); imJustify(c); imStr(c, "Wave program"); imLayoutEnd(c);
+        imLayout(c, ROW); {
+            imStr(c, "Wave program"); 
 
-        imLine(c, LINE_HORIZONTAL);
+            imFlex1(c);
 
-        const playSettings = getCurrentPlaySettings();
-        imFor(c); for (const instr of playSettings.parameters.instructions) {
-            imLayout(c, ROW); imGap(c, 6, PX); {
-                imStrFmt(c, instr.type, instrToString);
+            if (imButtonIsClicked(c, "Edit")) {
+                state.isEditingInstructions = true;
+            }
+        } imLayoutEnd(c);
 
-                imStr(c, "(");
-            } imLayoutEnd(c);
-        } imForEnd(c);
+        imLine(c, LINE_HORIZONTAL_PADDING);
+
+        const sc = imState(c, newScrollContainer);
+        imScrollContainerBegin(c, sc); {
+            imFor(c); for (const instr of state.instructionBuilder.instructions) {
+                imLayout(c, ROW); imGap(c, 6, PX); {
+                    imStrFmt(c, instr.instruction.type, instrToString);
+
+                    imStr(c, " TODO: Implement this");
+                } imLayoutEnd(c);
+            } imForEnd(c);
+        } imScrollContainerEnd(c);
+
+    } imLayoutEnd(c);
+}
+
+
+function imHeading(c: ImCache, text: string) {
+    imLayout(c, ROW); imJustify(c); {
+        imEl(c, EL_B); imStr(c, text); imElEnd(c, EL_B);
     } imLayoutEnd(c);
 }
 
 function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabState) {
+    const editor = state.instructionBuilder;
     const sampleRate = state.dsp.sampleRate;
+    const playSettings = getCurrentPlaySettings();
 
-    imLayout(c, COL); imFlex(c); {
-        imLayout(c, COL); imFlex(c); imScrollOverflow(c); {
-            const playSettings = getCurrentPlaySettings();
-            const params = playSettings.parameters;
+    let updateSettings = false;
 
-            let updateSettings = false;
-            let toRemove: PianoSynthWave | undefined;
+    imModalBegin(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+        imLayout(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
+            const sc = imState(c, newScrollContainer);
 
-            imLine(c, LINE_HORIZONTAL, 10);
+            imLayout(c, COL); imFlex(c); {
+                imHeading(c, "Instructions");
 
-            imLayout(c, ROW); imJustify(c); imStr(c, "Wave program"); imLayoutEnd(c);
+                imScrollContainerBegin(c, sc); {
+                    let i = 0;
+                    imFor(c); for (const instruction of editor.instructions) {
+                        const instr = instruction.instruction;
 
-            // want to visualize the program somehow. 
-            {
-                const mockSampleRate = 44800;
+                        imLayout(c, ROW); imAlign(c); {
+                            if (isFirstishRender(c)) {
+                                elSetStyle(c, "lineHeight", "1");
+                            }
 
-                const s = imGet(c, imSoundLab) ?? imSet(c, {
-                    noteIdx: 0,
-                    ctx: newSampleContext(),
-                    samples: Array(mockSampleRate / 10).fill(0) as number[],
-                    viewingIdx: 0,
-                    viewingLen: 500,
-                    viewingInvalidated: false,
-                });
+                            imLayout(c, ROW); imAlign(c); {
+                                imStrFmt(c, instr.type, instrToString);
+                                imStr(c, "(");
+                            } imLayoutEnd(c);
 
-                let recomputed = false;
+                            // register value 1
+                            {
+                                imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
+                                imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
+                                    if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", instr.reg1, BLOCK, true)) {
+                                        instr.reg1 = !instr.reg1;
+                                        updateSettings = true;
+                                    }
 
-                imLayout(c, ROW); {
-                    imLayout(c, BLOCK); imFlex(c); {
-                        const freq = imParameterSlider(
-                            c,
-                            "Note",
-                            BASE_NOTE, BASE_NOTE + ctx.keyboard.flatKeys.length, 1,
-                            s.noteIdx,
-                            BASE_NOTE + 12,
-                        );
+                                    imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                        if (imIf(c) && instr.reg1) {
+                                            // Reinterpret this thing as an index.
+                                            imStr(c, "reg ");
+                                            imStrFmt(c, instr.val1, registerIdxToString);
+                                        } else {
+                                            imElse(c);
+                                            imStr(c, instr.val1);
+                                        } imEndIf(c);
+                                    } imLayoutEnd(c);
+                                } imLayoutEnd(c);
+                            }
 
-                        if (freq) {
-                            s.noteIdx = freq.val;
-                            recomputed = true;
-                        }
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
 
-                if (imMemo(c, s.noteIdx)) s.viewingInvalidated = true;
+                            // register value 2
+                            {
+                                imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
+                                imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
+                                    if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", instr.reg2, BLOCK, true)) {
+                                        instr.reg2 = !instr.reg2;
+                                        updateSettings = true;
+                                    }
 
-                let samplesRecomputed = false;
-                if (s.viewingInvalidated) {
-                    s.viewingInvalidated = false;
-                    samplesRecomputed = true;
+                                    imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                        if (imIf(c) && instr.reg2) {
+                                            // Reinterpret this thing as an index.
+                                            imStr(c, "reg ");
+                                            imStrFmt(c, instr.val2, registerIdxToString);
+                                        } else {
+                                            imElse(c);
+                                            imStr(c, instr.val2);
+                                        } imEndIf(c);
+                                    } imLayoutEnd(c);
+                                } imLayoutEnd(c);
+                            }
 
-                    for (let i = 0; i < s.samples.length; i++) {
-                        let frequency = getNoteFrequency(s.noteIdx);
-                        const time = i / mockSampleRate;
+                            imLayout(c, ROW); imAlign(c); {
+                                imStr(c, ") -> ");
+                            } imLayoutEnd(c);
 
-                        s.samples[i] = computeSample(
-                            s.ctx,
-                            params.instructions,
-                            time,
-                            frequency,
-                            1 / sampleRate
-                        );
-                    }
-                }
+                            imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                imStr(c, "register: ");
+                                imStrFmt(c, instr.dst, registerIdxToString);
+                            } imLayoutEnd(c);
+                        } imLayoutEnd(c);
 
-                imLayout(c, COL); imSize(c, 0, NA, 200, PX); {
-                    const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
-                        const plotState = imState(c, newPlotState);
-                        const widthChanged = imMemo(c, width);
-                        const heightChanged = imMemo(c, height);
-                        const dpiChanged = imMemo(c, dpi);
+                        i++;
+                    } imForEnd(c);
+                } imScrollContainerEnd(c);
+            } imLayoutEnd(c);
 
-                        const resize = widthChanged || heightChanged || dpiChanged;
-                        if (resize) {
-                            plotState.width = width;
-                            plotState.height = height;
-                            plotState.dpi = dpi;
-                        }
+            imLine(c, LINE_VERTICAL_PADDING);
+            imLine(c, LINE_VERTICAL);
+            imLine(c, LINE_VERTICAL_PADDING);
 
-                        if (samplesRecomputed) {
-                            ctx.clearRect(0, 0, width, height);
+            imLayout(c, COL); imFlex(c); {
+                // want to visualize the program somehow. 
+                {
+                    const mockSampleRate = 44800;
 
-                            ctx.strokeStyle = "black";
-                            ctx.lineWidth = 2;
-                            drawSamples(
-                                s.samples,
-                                plotState,
-                                ctx,
-                                s.viewingIdx,
-                                s.viewingLen
+                    const s = imGet(c, imSoundLab) ?? imSet(c, {
+                        noteIdx: 0,
+                        ctx: newSampleContext(),
+                        samples: Array(mockSampleRate / 10).fill(0) as number[],
+                        viewingIdx: 0,
+                        viewingLen: 500,
+                        viewingInvalidated: false,
+                    });
+
+                    if (imMemo(c, s.noteIdx)) s.viewingInvalidated = true;
+
+                    imHeading(c, "Wave program");
+
+                    const params = playSettings.parameters;
+                    let samplesRecomputed = false;
+                    if (s.viewingInvalidated) {
+                        s.viewingInvalidated = false;
+                        samplesRecomputed = true;
+
+                        for (let i = 0; i < s.samples.length; i++) {
+                            let frequency = getNoteFrequency(s.noteIdx);
+                            const time = i / mockSampleRate;
+
+                            s.samples[i] = computeSample(
+                                s.ctx,
+                                params.instructions,
+                                time,
+                                frequency,
+                                1 / sampleRate
                             );
                         }
-                    } imEndCanvasRenderingContext2D(c);
-                } imLayoutEnd(c);
+                    }
 
-                let [start, end, draggingStart, draggingEnd] = imRangeSlider(
-                    c,
-                    0, s.samples.length,
-                    s.viewingIdx, s.viewingIdx + s.viewingLen, 1,
-                    100,
-                ).value;
+                    imLayout(c, COL); imSize(c, 0, NA, 200, PX); {
+                        const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
+                            const plotState = imState(c, newPlotState);
+                            const widthChanged = imMemo(c, width);
+                            const heightChanged = imMemo(c, height);
+                            const dpiChanged = imMemo(c, dpi);
 
-                s.viewingIdx = start;
-                s.viewingLen = end - start;
-                if (draggingStart || draggingEnd) {
-                    s.viewingInvalidated = true;
+                            const resize = widthChanged || heightChanged || dpiChanged;
+                            if (resize) {
+                                plotState.width = width;
+                                plotState.height = height;
+                                plotState.dpi = dpi;
+                            }
+
+                            if (samplesRecomputed) {
+                                ctx.clearRect(0, 0, width, height);
+
+                                ctx.strokeStyle = "black";
+                                ctx.lineWidth = 2;
+                                drawSamples(
+                                    s.samples,
+                                    plotState,
+                                    ctx,
+                                    s.viewingIdx,
+                                    s.viewingLen
+                                );
+                            }
+                        } imEndCanvasRenderingContext2D(c);
+                    } imLayoutEnd(c);
+
+                    let [start, end, draggingStart, draggingEnd] = imRangeSlider(
+                        c,
+                        0, s.samples.length,
+                        s.viewingIdx, s.viewingIdx + s.viewingLen, 1,
+                        100,
+                    ).value;
+
+                    s.viewingIdx = start;
+                    s.viewingLen = end - start;
+                    if (draggingStart || draggingEnd) {
+                        s.viewingInvalidated = true;
+                    }
                 }
-            }
 
-            let i = 0;
-            imFor(c); for (const instr of params.instructions) {
-                imLayout(c, ROW); imAlign(c); {
-                    if (isFirstishRender(c)) {
-                        elSetStyle(c, "lineHeight", "1");
-                    }
+                imHeading(c, "Parameters");
 
-                    imLayout(c, ROW); imAlign(c); {
-                        imStrFmt(c, instr.type, instrToString);
-                        imStr(c, "(");
-                    } imLayoutEnd(c);
-
-                    // register value 1
-                    {
-                        imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                        imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
-                            if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", instr.reg1, BLOCK, true)) {
-                                instr.reg1 = !instr.reg1;
-                                updateSettings = true;
-                            }
-
-                            imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
-                                if (imIf(c) && instr.reg1) {
-                                    // Reinterpret this thing as an index.
-                                    imStr(c, "reg ");
-                                    imStrFmt(c, instr.val1, registerIdxToString);
-                                } else {
-                                    imElse(c);
-                                    imStr(c, instr.val1);
-                                } imEndIf(c);
+                const sc = imState(c, newScrollContainer);
+                imScrollContainerBegin(c, sc); {
+                    const defaultParams = DEFAULT_PARAMETERS;
+                    imFor(c); for (let i = 0; i < defaultParams.length; i++) {
+                        const paramInfo = defaultParams[i];
+                        imLayout(c, ROW); imFg(c, cssVarsApp.mg); {
+                            imLayout(c, ROW); imSize(c, 40, PX, 0, NA); imJustify(c); {
+                                imStr(c, i);
                             } imLayoutEnd(c);
+                            imStr(c, " -> ");
+                            imStr(c, "[Default parameter] ");
+                            imStr(c, paramInfo.name);
                         } imLayoutEnd(c);
-                    }
+                    } imForEnd(c);
 
-
-                    // register value 2
-                    {
-                        imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                        imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
-                            if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", instr.reg2, BLOCK, true)) {
-                                instr.reg2 = !instr.reg2;
-                                updateSettings = true;
-                            }
-
-                            imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
-                                if (imIf(c) && instr.reg2) {
-                                    // Reinterpret this thing as an index.
-                                    imStr(c, "reg ");
-                                    imStrFmt(c, instr.val2, registerIdxToString);
-                                } else {
-                                    imElse(c);
-                                    imStr(c, instr.val2);
-                                } imEndIf(c);
+                    imFor(c); for (let i = defaultParams.length; i < IDX_MAX; i++) {
+                        imLayout(c, ROW); {
+                            imLayout(c, ROW); imSize(c, 40, PX, 0, NA); imJustify(c); {
+                                imStr(c, i);
                             } imLayoutEnd(c);
+                            imStr(c, " -> ");
+                            // TODO: users should be able to name and configure these parameters. 
+                            imStr(c, "[Unbound]");
                         } imLayoutEnd(c);
-                    }
+                    } imForEnd(c);
 
-                    imLayout(c, ROW); imAlign(c); {
-                        imStr(c, ") -> ");
-                    } imLayoutEnd(c);
-
-                    imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
-                        imStr(c, "register: ");
-                        imStrFmt(c, instr.dst, registerIdxToString);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
-
-                i++;
-            } imForEnd(c);
-
-            if (updateSettings) {
-                updatePlaySettings();
-            }
+                } imScrollContainerEnd(c);
+            } imLayoutEnd(c);
         } imLayoutEnd(c);
-    } imLayoutEnd(c);
+    } imModalEnd(c);
+
+    if (updateSettings) {
+        compileInstructions(state.instructionBuilder.instructions, playSettings.parameters.instructions);
+        updatePlaySettings();
+    }
+
+    if (!ctx.handled) {
+        if (ctx.keyPressState) {
+            if (ctx.keyPressState.key === "Escape") {
+                state.isEditingInstructions = false;
+                ctx.handled = true;
+            }
+        }
+    }
 }
 
 function imParameterSlider(

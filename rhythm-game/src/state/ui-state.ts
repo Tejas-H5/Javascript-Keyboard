@@ -3,6 +3,7 @@ import { GameplayState } from "src/views/gameplay";
 import { SequencerChartMetadata } from "./chart-repository";
 import { newDefaultTrackedPrimise, TrackedPromise } from "src/utils/promise-utils";
 import { GlobalContext } from "src/views/app";
+import { UnitTestsState } from "./unit-tests";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -69,7 +70,6 @@ export type UIState = {
     currentView: AppView;
     chartSelect: ChartSelectState;
     loadSave: LoadSaveState;
-    updateModal: UpdateModalState | null;
     copied: {
         items: TimelineItem[];
         positionStart: number;
@@ -78,7 +78,11 @@ export type UIState = {
     playView: {
         result: GameplayState | null;
         isTesting: boolean;
-    }
+    },
+
+    // TODO: only one modal open at a time.
+    updateModal: UpdateModalState | null;
+    unitTestModal: UnitTestsState | null;
 };
 
 export function newUiState(): UIState {
@@ -108,6 +112,7 @@ export function newUiState(): UIState {
         },
 
         updateModal: null,
+        unitTestModal: null,
 
         copied: {
             positionStart: 0,

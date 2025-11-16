@@ -1,4 +1,4 @@
-// IM-CORE 1.045
+// IM-CORE 1.047
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
@@ -162,7 +162,6 @@ export function imCacheBegin(
             c[CACHE_ANIMATE_FN] = noOp;
             c[CACHE_ANIMATION_ID] = null;
         } else if ((flags & USE_ANIMATION_FRAME) !== 0) {
-
             c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 0;
             c[CACHE_ANIMATE_FN] = (t: number) => {
                 if (c[CACHE_IS_RENDERING] === true) {
@@ -588,9 +587,14 @@ export function __imBlockDerivedBegin(c: ImCache, internalType: number): ImCache
 // Not quite the first render - 
 // if the function errors out before the entries finish one render, 
 // this method will rerender. Use this when you want to do something maybe once or twice or several times but hopefully just once,
-// as it doesn't require an additional entry.
-// NOTE: maybe this method is used so infrequently that we get a space saving by removing the dedicated ENTRIES_COMPLETED_ONE_RENDER
-// slot from every single entry list! along with a reduction in confusion, and actual idempotency.
+// as it doesn't require an additional im-state entry. 
+// For example, if you have an API like this:
+// ```ts
+// imDiv(c); imRow(c); imCode(c); imJustifyCenter(c); imBg(c, cssVars.bg); {
+// } imDivEnd(c);
+// ```
+// Each of those methods that 'augment' the call to `imDiv` may have their own initialization logic.
+// TODO: remove this thing. the performance increase is negligble, and is gone as soon as we replace imIsFirstRender with imMemo.
 export function isFirstishRender(c: ImCache): boolean {
     const entries = c[CACHE_CURRENT_ENTRIES];
     return entries[ENTRIES_COMPLETED_ONE_RENDER] === false;

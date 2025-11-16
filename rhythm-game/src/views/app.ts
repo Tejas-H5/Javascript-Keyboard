@@ -26,7 +26,7 @@ import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VI
 import { filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
-import { ImCache, imFor, imForEnd, imIf, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
+import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
 import { imChartSelect } from "src/views/chart-select";
@@ -38,6 +38,7 @@ import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay"
 import { imSoundLab } from "./sound-lab-view";
 import { imUpdateModal } from "./update-modal";
 import { getLoadingPromises, newDefaultTrackedPrimise } from "src/utils/promise-utils";
+import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests";
 
 type AllKeysState = {
     keys: KeyState[];
@@ -482,8 +483,9 @@ export function imApp(
     }
 
     imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-
-        if (imIf(c) && ui.updateModal) {
+        if (imIf(c) && ui.unitTestModal) {
+            imUnitTestsModal(c, ctx, ui.unitTestModal);
+        } else if (imIfElse(c) && ui.updateModal) {
             imUpdateModal(c, ctx, ui.updateModal);
         } imIfEnd(c);
 
@@ -536,6 +538,13 @@ export function imApp(
         } imLayoutEnd(c);
 
     } imLayoutEnd(c);
+
+    if (!ctx.handled) {
+        if (ctx.keyPressState?.key === "F1") {
+            ui.unitTestModal = newUnitTestsState();
+            ctx.handled = true;
+        }
+    }
 
     if (ctx.handled && ctx.keyPressState) {
         if (
