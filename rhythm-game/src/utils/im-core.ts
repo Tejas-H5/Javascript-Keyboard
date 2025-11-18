@@ -1,4 +1,4 @@
-// IM-CORE 1.047
+// IM-CORE 1.048
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
@@ -956,7 +956,7 @@ export function getRenderCount(c: ImCache) {
  * And for things you pass around *a lot* like c: ImCache, you will incur a significant performance
  * hit by using this approach (as of 08/2025) (on top of the perf hit of using this framework).
  *
- * Here is a decision tree you can use to decide whether to use this pattern or not:
+ * Here is a decision matrix you can use to decide whether to use this pattern or not:
  *
  *                                      | I need this state everywhere,    | I infrequently need this value, but the requirement can arise 
  *                                      | and I make sure to pass it as    | naturally somewhere deep node of the component, and I have
@@ -997,3 +997,4 @@ export function globalStateStackPop<T>(gss: T[], item: T): T {
 
     return currentItem;
 }
+// Finally, 1000 lines of code! lets go.

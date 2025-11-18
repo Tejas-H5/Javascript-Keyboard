@@ -2,13 +2,19 @@ import { expectEqual, newTest, Test, testSuite } from "src/utils/testing";
 import {
     compileInstructions,
     computeSample,
-    DspSynthInstructionItem,
     IDX_OUTPUT,
     IDX_PRESSED_TIME,
+    IDX_USER,
     IDX_WANTED_FREQUENCY,
+    INSTR_ADD,
+    INSTR_JUMP_IF_Z,
+    INSTR_LT,
+    INSTR_MULTIPLY_DT,
     INSTR_SIN,
+    InstructionPart,
     newDspInstruction,
     newSampleContext,
+    OFFSET_INSTRUCTION_SIZE,
     pushInstruction,
     SampleContext
 } from "./dsp-loop-instruction-set";
@@ -42,22 +48,34 @@ function expectInstructionsEqual(
     test: Test<any>,
     requirement: string,
     compiled: number[],
-    expected: DspSynthInstructionItem[]
+    expected: InstructionPart[]
 ) {
     const expectedCompiled: number[] = [];
     for (const inst of expected) {
-        pushInstruction(inst.instruction, expectedCompiled);
+        pushInstruction(inst, expectedCompiled);
     }
 
     return expectEqual(test, requirement, compiled, expectedCompiled);
 }
 
+function expectTimeSeriesEqual(
+    test: Test<any>,
+    requirement: string,
+    a: [number, number][],
+    b: [number, number][],
+) {
+    expectEqual(test, requirement, a, b, { 
+        floatingPointTolerance: 0.0000001 
+    });
+}
+
 export const dspLoopInstructionSetTests = [
     testSuite("Programmable DSP Compilation", newTestContext, [
         newTest("Simple program", (test, ctx) => {
-            const compiled = compileInstructions([
-                newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, true, IDX_PRESSED_TIME, true, IDX_OUTPUT),
-            ]);
+            const instructions = [
+                { instruction: newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, true, IDX_PRESSED_TIME, true, IDX_OUTPUT) },
+            ];
+            const compiled = compileInstructions(instructions);
 
             expectInstructionsEqual(test, "Compiled correctly", compiled, [
                 newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, true, IDX_PRESSED_TIME, true, IDX_OUTPUT),
@@ -74,75 +92,57 @@ export const dspLoopInstructionSetTests = [
                 computeNextAndAdvanceTime(ctx.sampleContext, compiled),
             ];
 
-            {
-                expectEqual(
-                    test,
-                    "Outputs a sine wave",
-                    results,
-                    [
-                        [0, 0],
-                        [0.25, 1],
-                        [0.5, 0],
-                        [0.75, -1]
-                    ],
-                    {
-                        floatingPointTolerance: 0.0000001
-                    }
-                );
-            }
-        }),
-        newTest("AttackSustainDecay envelope", (test, ctx) => {
-        }),
-    ]),
-    testSuite("Programmable DSP Execution", newTestContext, [
-        newTest("blank", (test, ctx) => {
-            const result = computeSample(ctx.sampleContext, []);
-            expectEqual(test, "Blank computation works", result, 0);
-        }),
-        newTest("Simple program compiles and runs", (test, ctx) => {
-            const compiled = compileInstructions([
-                newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, true, IDX_PRESSED_TIME, true, IDX_OUTPUT),
-            ]);
-
-            {
-                const expectedCompiled: number[] = [];
-                pushInstruction(
-                    newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, true, IDX_PRESSED_TIME, true, IDX_OUTPUT).instruction,
-                    expectedCompiled
-                );
-
-                expectEqual(test, "Compiled correctly", compiled, expectedCompiled);
-            }
-
-            ctx.sampleContext.frequency = 1;
-            ctx.sampleContext.time = 0;
-            ctx.sampleContext.dt = 0.25;
-
-            const results = [
-                computeNextAndAdvanceTime(ctx.sampleContext, compiled),
-                computeNextAndAdvanceTime(ctx.sampleContext, compiled),
-                computeNextAndAdvanceTime(ctx.sampleContext, compiled),
-                computeNextAndAdvanceTime(ctx.sampleContext, compiled),
+            const expected: [number, number][] = [
+                [0, 0],
+                [0.25, 1],
+                [0.5, 0],
+                [0.75, -1]
             ];
 
-            {
-                expectEqual(
-                    test,
-                    "Outputs a sine wave",
-                    results,
-                    [
-                        [0, 0],
-                        [0.25, 1],
-                        [0.5, 0],
-                        [0.75, -1]
-                    ],
-                    {
-                        floatingPointTolerance: 0.0000001
-                    }
-                );
-            }
+            expectTimeSeriesEqual(test, "Outputs a sine wave", results, expected);
         }),
-        newTest("AttackSustainDecay envelope", (test, ctx) => {
+        newTest("If generation", (test, ctx) => {
+            const TEMP_IDX = IDX_USER + 0;
+            const instructions = [
+                { instruction: newDspInstruction(INSTR_MULTIPLY_DT, 100, false, 1, false, TEMP_IDX) },
+                { instruction: newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT) },
+                { 
+                    instruction: newDspInstruction(INSTR_LT, IDX_OUTPUT, true, 100, false, TEMP_IDX),
+                    ifelseInnerBlock: {
+                        isElseBlock: false,
+                        inner: [
+                            { instruction: newDspInstruction(INSTR_MULTIPLY_DT, 100, false, 1, false, TEMP_IDX) },
+                            { instruction: newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT) },
+                        ],
+                    },
+                }, 
+                { 
+                    ifelseInnerBlock: {
+                        isElseBlock: true,
+                        inner: [
+                            { instruction: newDspInstruction(INSTR_MULTIPLY_DT, -100, false, 1, false, TEMP_IDX) },
+                            { instruction: newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT) },
+                        ],
+                    },
+                },
+            ];
+            const compiled = compileInstructions(instructions);
+
+            // Should've intermediate representation'd :(
+            // ahh its a trivial language with limited scope so I wont bother fixing for now
+            expectInstructionsEqual(test, "Compiled correctly", compiled, [
+                newDspInstruction(INSTR_MULTIPLY_DT, 100, false, 1, false, TEMP_IDX),                       // 0
+                newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT),                 // 1
+                newDspInstruction(INSTR_LT, IDX_OUTPUT, true, 100, false, TEMP_IDX),                        // 2
+                newDspInstruction(INSTR_JUMP_IF_Z, TEMP_IDX, true, 7 * OFFSET_INSTRUCTION_SIZE, false, -1), // 3
+                    newDspInstruction(INSTR_MULTIPLY_DT, 100, false, 1, false, TEMP_IDX),                   // 4
+                    newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT),             // 5
+                    newDspInstruction(INSTR_JUMP_IF_Z, 0, false, 9 * OFFSET_INSTRUCTION_SIZE, false, -1),   // 6
+                // else block has no jmps.
+                    newDspInstruction(INSTR_MULTIPLY_DT, -100, false, 1, false, TEMP_IDX),                  // 7
+                    newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT),             // 9
+                // Final if-statement doesn't actually need to be closed off !!
+            ]);
         }),
-    ])
+    ]),
 ]

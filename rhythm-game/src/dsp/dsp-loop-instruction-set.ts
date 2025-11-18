@@ -1,3 +1,4 @@
+import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 
 export const INSTR_SIN              = 1;
@@ -34,7 +35,9 @@ export type InstructionType
     | typeof INSTR_JUMP_IF_NZ
     | typeof INSTR_JUMP_IF_Z;
 
-export function instrToString(instr: InstructionType): string {
+export function instrToString(instr: InstructionType | undefined): string {
+    if (!instr) return "No-op";
+
     let result;
 
     switch (instr) {
@@ -109,17 +112,15 @@ function square(t: number) {
 export type DspSynthInstructionItem = {
     // only one of these codegen related parts should be present at a time.
     instruction?: InstructionPart;
-    ifelse?: {
-        blocks: {
-            ifCheckInstruction: InstructionPart;
-            inner: DspSynthInstructionItem[]; 
-        }[];
+    ifelseInnerBlock?: {
+        isElseBlock: boolean;
+        inner: DspSynthInstructionItem[]; 
     };
 
     comment?: string;
 };
 
-type InstructionPart = {
+export type InstructionPart = {
     type: InstructionType;       // What type of instruction is this?
     val1: number; reg1: boolean; // Val1, and is it a register or nah?
     val2: number; reg2: boolean; // Val2, and is it a register or nah?
@@ -151,16 +152,14 @@ export function newDspInstruction(
     val2: number,
     reg2: boolean,
     dst: number
-): DspSynthInstructionItem {
+): InstructionPart {
     return {
-        instruction: {
-            type: t,
-            dst: dst,
-            val1: val1,
-            reg1: reg1,
-            val2: val2,
-            reg2: reg2,
-        }
+        type: t,
+        dst: dst,
+        val1: val1,
+        reg1: reg1,
+        val2: val2,
+        reg2: reg2,
     };
 }
 
@@ -261,26 +260,78 @@ export function isIfInstruction(type: InstructionType) {
         type === INSTR_NEQ;
 }
 
-function compileToInstructionsInternal(instructions: DspSynthInstructionItem[], dst: number[]) {
-    for (let i = 0; i < instructions.length; i++) {
-        const instr = instructions[i];
+/**
+ * If-statements are the main thing making this super complicated.
+ * I'm handling their codegen as follows:
+ *
+ *  if <- A
+ *      generate (call this recursively)
+ *      jump to end of if-else block <- Z
+ *  --------------- A jumps here if condition not met
+ *  else if B
+ *      generate (call this recursively)
+ *      jump to end of if-else block <- Z
+ *  --------------- B jumps here if condition not met
+ *  else
+ *      generate (call this recursively)
+ *      jump to end of if-else block <- Z
+ *  end
+ *  --------------- Z jumps here if condition not met
+ *
+ */
+export function compileToInstructionsInternal(instructions: DspSynthInstructionItem[], dst: number[]) {
+    let currentIfBlock: DspSynthInstructionItem | undefined;
+    const jumpToBlockEndInstructionIndexes: number[] = [];
+    for (let i = 0; i <= instructions.length; i++) {
+        const instr = arrayAt(instructions, i);
+
+        if (
+            !instr ||
+            !instr.ifelseInnerBlock || 
+            !instr.ifelseInnerBlock.isElseBlock
+        ) {
+            // This is not an else block or an else-if block. 
+            // We should close off any pending if-else block, make it point to the next instruction
+            if (currentIfBlock) {
+                for (const idx of jumpToBlockEndInstructionIndexes) {
+                    assert(dst[idx + OFFSET_VAL2] === -1);
+                    dst[idx + OFFSET_VAL2] = dst.length;
+                }
+                jumpToBlockEndInstructionIndexes.length = 0;
+                currentIfBlock = undefined;
+            }
+        }
+
+        if (!instr) {
+            // We ran this loop 1 extra time just so we can close off any remaining if-statements
+            break;
+        }
 
         if (instr.instruction) {
             pushInstruction(instr.instruction, dst);
-        } else if (instr.ifelse) {
-            const jumpToBlockEndInstructionIndexes: number[] = [];
+        } else {
+            // Need to at least have an else block if no instructions
+            assert(!!instr.ifelseInnerBlock);
+        }
 
-            const blocks = instr.ifelse.blocks;
-            for (let i = 0; i < blocks.length; i++) {
-                const block = blocks[i];
+        if (instr.ifelseInnerBlock) {
+            if (!currentIfBlock) {
+                // First if-block can't be an else block
+                assert(!instr.ifelseInnerBlock.isElseBlock);
+                currentIfBlock = instr;
+                jumpToBlockEndInstructionIndexes.length = 0;
+            } else {
+                // subsequent ifs must be an else block. otherwise currentIfBlock should have been closed off by now.
+                assert(instr.ifelseInnerBlock.isElseBlock);
+            }
 
-                assert(isIfInstruction(block.ifCheckInstruction.type));
-                pushInstruction(block.ifCheckInstruction, dst);
-                const jumpIfInstrIdx = dst.length;
+            let jumpIfInstrIdx = -1;
+            if (instr.instruction) {
+                jumpIfInstrIdx = dst.length;
                 pushInstruction({
                     type: INSTR_JUMP_IF_Z,
-                    // read result of ifCheckInstruction
-                    val1: block.ifCheckInstruction.dst,
+                    // read result of last instruction
+                    val1: instr.instruction.dst,
                     reg1: true,
                     // after codegen, needs to point to the if-check of the next if-block.
                     // We jump there if the previous comparison was false
@@ -288,44 +339,54 @@ function compileToInstructionsInternal(instructions: DspSynthInstructionItem[], 
                     reg2: false,
                     dst: -1,
                 }, dst);
+            } else {
+                // This was just an `else` block. No jump required.
+            }
 
-                compileToInstructionsInternal(block.inner, dst);
+            compileToInstructionsInternal(instr.ifelseInnerBlock.inner, dst);
 
-                // after codegen, another jump-instruction to point to one after 
-                // the very end of the entire if-else chain. This is only needed if 
-                // this isn't the last block
-                if (i < blocks.length - 1) {
-                    const jumpToBlockEndInstrIdx = dst.length;
+            // If it exists, we'll need to bypass the next else-block, straight to the end of the final block.
+            // Before we hit the next if-statement.
+            {
+                const nextInstruction = arrayAt(instructions, i + 1);
+                if (
+                    nextInstruction &&
+                    nextInstruction.ifelseInnerBlock &&
+                    nextInstruction.ifelseInnerBlock.isElseBlock
+                ) {
+                    const idx = dst.length;
                     pushInstruction({
                         type: INSTR_JUMP_IF_Z,
-                        // value to check
-                        val1: block.ifCheckInstruction.dst,
-                        reg1: true,
+                        // always jump. TODO: consider dedicated jump instuction???
+                        val1: 0,
+                        reg1: false,
+                        // We can only populate this when we're closing off the final if-else block.
+                        // There will be multiple of these instructions, and they'll all point
+                        // back to the same place.
                         val2: -1,
                         reg2: false,
                         dst: -1,
                     }, dst);
-                    jumpToBlockEndInstructionIndexes.push(jumpToBlockEndInstrIdx);
+                    jumpToBlockEndInstructionIndexes.push(idx);
                 }
-
-                assert(dst[jumpIfInstrIdx + OFFSET_VAL2] === -1);
-                dst[jumpIfInstrIdx + OFFSET_VAL2] = dst.length;
             }
 
-            for (const idx of jumpToBlockEndInstructionIndexes) {
-                assert(dst[idx + OFFSET_VAL2] === -1);
-                dst[idx + OFFSET_VAL2] = dst.length;
+            if (jumpIfInstrIdx !== -1) {
+                // If the check for if or if-else fails, we need to jump here
+                assert(dst[jumpIfInstrIdx + OFFSET_VAL2] === -1);
+                dst[jumpIfInstrIdx + OFFSET_VAL2] = dst.length;
             }
         }
     }
 }
 
-const OFFSET_TYPE = 0;
-const OFFSET_DST = 1;
-const OFFSET_VAL1 = 2;
-const OFFSET_REG1 = 3;
-const OFFSET_VAL2 = 4;
-const OFFSET_REG2 = 5;
+export const OFFSET_TYPE = 0;
+export const OFFSET_DST = 1;
+export const OFFSET_VAL1 = 2;
+export const OFFSET_REG1 = 3;
+export const OFFSET_VAL2 = 4;
+export const OFFSET_REG2 = 5;
+export const OFFSET_INSTRUCTION_SIZE = 6;
 
 export function pushInstruction(instr: InstructionPart, dst: number[]) {
     dst.push(instr.type);           // 0
@@ -335,3 +396,4 @@ export function pushInstruction(instr: InstructionPart, dst: number[]) {
     dst.push(instr.val2);           // 4
     dst.push(instr.reg2 ? 1 : 0);   // 5
 }
+

@@ -118,7 +118,13 @@ export function runTest<T>(test: Test<T>, debug = false) {
     }
 }
 
-export function expectEqual<T>(test: Test<any>, requirement: string, a: T, b: T, opts?: DeepEqualsOptions) {
+export function expectEqual<T>(
+    test: Test<any>,
+    requirement: string,
+    a: T,
+    b: T,
+    opts?: DeepEqualsOptions
+) {
     // expectEqual(blah, value, === expected) is what we're thinking when we are writing this method.
     // but deepEqual's argument order were decided in terms of the output message, `expected a, but got b`.
     // That is the opposite. Let's just flip them here

@@ -53,6 +53,7 @@ import {
     imForEnd,
     imGet,
     imIf,
+    imIfElse,
     imIfEnd,
     imMemo,
     imSet,
@@ -672,7 +673,7 @@ function imWaveProgramPreview(
         imScrollContainerBegin(c, sc); {
             imFor(c); for (const instr of state.instructionBuilder.instructions) {
                 imLayout(c, ROW); imGap(c, 6, PX); {
-                    imStrFmt(c, instr.instruction.type, instrToString);
+                    imStrFmt(c, instr.instruction?.type, instrToString);
 
                     imStr(c, " TODO: Implement this");
                 } imLayoutEnd(c);
@@ -706,72 +707,78 @@ function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabStat
                 imScrollContainerBegin(c, sc); {
                     let i = 0;
                     imFor(c); for (const instruction of editor.instructions) {
-                        const instr = instruction.instruction;
-
-                        imLayout(c, ROW); imAlign(c); {
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c, "lineHeight", "1");
-                            }
+                        if (imIf(c) && instruction.instruction) {
+                            const instr = instruction.instruction;
 
                             imLayout(c, ROW); imAlign(c); {
-                                imStrFmt(c, instr.type, instrToString);
-                                imStr(c, "(");
-                            } imLayoutEnd(c);
+                                if (isFirstishRender(c)) {
+                                    elSetStyle(c, "lineHeight", "1");
+                                }
 
-                            // register value 1
-                            {
-                                imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                                imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
-                                    if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", instr.reg1, BLOCK, true)) {
-                                        instr.reg1 = !instr.reg1;
-                                        updateSettings = true;
-                                    }
-
-                                    imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
-                                        if (imIf(c) && instr.reg1) {
-                                            // Reinterpret this thing as an index.
-                                            imStr(c, "reg ");
-                                            imStrFmt(c, instr.val1, registerIdxToString);
-                                        } else {
-                                            imElse(c);
-                                            imStr(c, instr.val1);
-                                        } imEndIf(c);
-                                    } imLayoutEnd(c);
+                                imLayout(c, ROW); imAlign(c); {
+                                    imStrFmt(c, instr.type, instrToString);
+                                    imStr(c, "(");
                                 } imLayoutEnd(c);
-                            }
 
+                                // register value 1
+                                {
+                                    imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
+                                    imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
+                                        if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", instr.reg1, BLOCK, true)) {
+                                            instr.reg1 = !instr.reg1;
+                                            updateSettings = true;
+                                        }
 
-                            // register value 2
-                            {
-                                imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                                imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
-                                    if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", instr.reg2, BLOCK, true)) {
-                                        instr.reg2 = !instr.reg2;
-                                        updateSettings = true;
-                                    }
-
-                                    imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
-                                        if (imIf(c) && instr.reg2) {
-                                            // Reinterpret this thing as an index.
-                                            imStr(c, "reg ");
-                                            imStrFmt(c, instr.val2, registerIdxToString);
-                                        } else {
-                                            imElse(c);
-                                            imStr(c, instr.val2);
-                                        } imEndIf(c);
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                            if (imIf(c) && instr.reg1) {
+                                                // Reinterpret this thing as an index.
+                                                imStr(c, "reg ");
+                                                imStrFmt(c, instr.val1, registerIdxToString);
+                                            } else {
+                                                imElse(c);
+                                                imStr(c, instr.val1);
+                                            } imEndIf(c);
+                                        } imLayoutEnd(c);
                                     } imLayoutEnd(c);
+                                }
+
+
+                                // register value 2
+                                {
+                                    imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
+                                    imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
+                                        if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", instr.reg2, BLOCK, true)) {
+                                            instr.reg2 = !instr.reg2;
+                                            updateSettings = true;
+                                        }
+
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                            if (imIf(c) && instr.reg2) {
+                                                // Reinterpret this thing as an index.
+                                                imStr(c, "reg ");
+                                                imStrFmt(c, instr.val2, registerIdxToString);
+                                            } else {
+                                                imElse(c);
+                                                imStr(c, instr.val2);
+                                            } imEndIf(c);
+                                        } imLayoutEnd(c);
+                                    } imLayoutEnd(c);
+                                }
+
+                                imLayout(c, ROW); imAlign(c); {
+                                    imStr(c, ") -> ");
                                 } imLayoutEnd(c);
-                            }
 
-                            imLayout(c, ROW); imAlign(c); {
-                                imStr(c, ") -> ");
+                                imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                    imStr(c, "register: ");
+                                    imStrFmt(c, instr.dst, registerIdxToString);
+                                } imLayoutEnd(c);
                             } imLayoutEnd(c);
+                        } else {
+                            imIfElse(c);
 
-                            imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
-                                imStr(c, "register: ");
-                                imStrFmt(c, instr.dst, registerIdxToString);
-                            } imLayoutEnd(c);
-                        } imLayoutEnd(c);
+                            imStr(c, "No UI for if-statements currently");
+                        } imIfEnd(c);
 
                         i++;
                     } imForEnd(c);

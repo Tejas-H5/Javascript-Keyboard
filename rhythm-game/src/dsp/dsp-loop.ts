@@ -4,7 +4,7 @@
 // It seems like it's OK to import types though.
 
 import { BASE_NOTE, getSampleIdx } from "src/state/keyboard-state";
-import { filterInPlace } from "src/utils/array-utils";
+import { arrayAt, filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { clamp, derivative, inverseLerp, lerp, max, min, moveTowards } from "src/utils/math-utils";
 import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
@@ -31,7 +31,18 @@ import {
     newDspInstruction,
     newSampleContext,
     SampleContext,
-    IDX_RELEASED_TIME
+    IDX_RELEASED_TIME,
+    INSTR_LT,
+    INSTR_LTE,
+    INSTR_GT,
+    INSTR_GTE,
+    INSTR_EQ,
+    INSTR_NEQ,
+    INSTR_JUMP_IF_Z,
+    IDX_SIGNAL,
+    IDX_JMP_RESULT,
+    compileToInstructionsInternal,
+    pushInstruction
 } from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 
@@ -53,28 +64,8 @@ export type DSPPlaySettings = {
 }
 
 export function newDspPlaySettings(): DSPPlaySettings {
-    const REG = true;
-    const VAL = false;
-
-    const attack = IDX_USER;
-    const attackRate = IDX_USER + 1;
-    const sustain = IDX_USER + 2;
-    const attackToSustainRate = IDX_USER + 3;
-    const releaseRate = IDX_USER + 4;
-    const usrBase = IDX_USER + 5;
-
     const instructions: DspSynthInstructionItem[] = [
-        // sample = sin(f * t);
-        newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, REG, IDX_PRESSED_TIME, REG, usrBase),
-
-        /**
-
-// asdr envelope
-
-
-
-         */
-
+        { instruction: newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, true, IDX_PRESSED_TIME, true, IDX_OUTPUT) },
     ];
 
     const settings: DSPPlaySettings = {
@@ -816,6 +807,7 @@ export function getDspLoopClassUrl(): string {
     }
 
     // Every single dependency must be injected here manually, so that the worker url has access to everything it needs.
+    // (I want the entire web-app to be a single HTML file that can be easily saved, at any cost)
 
     lastUrl = newFunctionUrl([
         newDspInstruction,
@@ -826,15 +818,29 @@ export function getDspLoopClassUrl(): string {
         { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
         { value: INSTR_MULTIPLY_DT, name: "INSTR_MULTIPLY_DT" },
         { value: INSTR_DIVIDE, name: "INSTR_DIVIDE" },
-        { value: INSTR_JUMP_IF_NZ, name: "INSTR_JUMP_IF" },
+        { value: INSTR_LT, name: "INSTR_LT" },
+        { value: INSTR_LTE, name: "INSTR_LTE" },
+        { value: INSTR_GT, name: "INSTR_GT" },
+        { value: INSTR_GTE, name: "INSTR_GTE" },
+        { value: INSTR_EQ, name: "INSTR_EQ" },
+        { value: INSTR_NEQ, name: "INSTR_NEQ" },
+        { value: INSTR_JUMP_IF_NZ, name: "INSTR_JUMP_IF_NZ" },
+        { value: INSTR_JUMP_IF_Z, name: "INSTR_JUMP_IF_Z" },
         { value: INSTR_NUM_INSTRUCTIONS, name: "INSTR_NUM_INSTRUCTIONS" },
         { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
+        // NOTE: not sure if indices are really needed tbh.
         { value: IDX_WANTED_FREQUENCY, name: "IDX_WANTED_FREQUENCY" },
         { value: IDX_PRESSED_TIME, name: "IDX_PRESSED_TIME" },
         { value: IDX_RELEASED_TIME, name: "IDX_RELEASED_TIME" },
+        { value: IDX_SIGNAL, name: "IDX_SIGNAL" },
+        { value: IDX_JMP_RESULT, name: "IDX_JMP_RESULT" },
         { value: IDX_USER, name: "IDX_USER" },
         { value: IDX_MAX, name: "IDX_MAX" },
+        compileInstructions,
+        compileToInstructionsInternal,
+        pushInstruction,
         computeSample,
+        arrayAt,
         max,
         min,
         updateOscillator,
