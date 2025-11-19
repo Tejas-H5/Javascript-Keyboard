@@ -3,10 +3,11 @@ import {
     compileInstructions,
     computeSample,
     IDX_OUTPUT,
-    IDX_PRESSED_TIME,
+    IDX_SIGNAL,
     IDX_USER,
     IDX_WANTED_FREQUENCY,
     INSTR_ADD,
+    INSTR_ADD_DT,
     INSTR_JUMP_IF_Z,
     INSTR_LT,
     INSTR_MULTIPLY_DT,
@@ -16,7 +17,8 @@ import {
     newSampleContext,
     OFFSET_INSTRUCTION_SIZE,
     pushInstruction,
-    SampleContext
+    SampleContext,
+    updateSampleContext
 } from "./dsp-loop-instruction-set";
 
 // I recon that it is important to develop a testing philosophy, since it is really easy to just
@@ -37,13 +39,6 @@ function newTestContext() {
     };
 }
 
-function computeNextAndAdvanceTime(sampleContext: SampleContext, instructions: number[]): [number, number] {
-    const result = computeSample(sampleContext, instructions);
-    const t = sampleContext.time;
-    sampleContext.time += sampleContext.dt;
-    return [t, result];
-}
-
 function expectInstructionsEqual(
     test: Test<any>,
     requirement: string,
@@ -61,8 +56,8 @@ function expectInstructionsEqual(
 function expectTimeSeriesEqual(
     test: Test<any>,
     requirement: string,
-    a: [number, number][],
-    b: [number, number][],
+    a: number[],
+    b: number[],
 ) {
     expectEqual(test, requirement, a, b, { 
         floatingPointTolerance: 0.0000001 
@@ -72,32 +67,30 @@ function expectTimeSeriesEqual(
 export const dspLoopInstructionSetTests = [
     testSuite("Programmable DSP Compilation", newTestContext, [
         newTest("Simple program", (test, ctx) => {
+            const temp = IDX_USER + 1;
+            const angle = IDX_USER;
             const instructions = [
-                { instruction: newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, true, IDX_PRESSED_TIME, true, IDX_OUTPUT) },
+                { instruction: newDspInstruction(INSTR_MULTIPLY_DT, IDX_WANTED_FREQUENCY, true, IDX_SIGNAL, true, temp) },
+                { instruction: newDspInstruction(INSTR_ADD_DT, angle, true, temp, true, angle) },
+                { instruction: newDspInstruction(INSTR_SIN, angle, true, 1, false, IDX_OUTPUT) },
             ];
             const compiled = compileInstructions(instructions);
 
             expectInstructionsEqual(test, "Compiled correctly", compiled, [
-                newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, true, IDX_PRESSED_TIME, true, IDX_OUTPUT),
+                newDspInstruction(INSTR_MULTIPLY_DT, IDX_WANTED_FREQUENCY, true, IDX_SIGNAL, true, temp),
+                newDspInstruction(INSTR_ADD_DT, angle, true, temp, true, angle),
+                newDspInstruction(INSTR_SIN, angle, true, 1, false, IDX_OUTPUT),
             ]);
 
-            ctx.sampleContext.frequency = 1;
-            ctx.sampleContext.time = 0;
-            ctx.sampleContext.dt = 0.25;
-
+            updateSampleContext(ctx.sampleContext, 100, 1, 0.25);
             const results = [
-                computeNextAndAdvanceTime(ctx.sampleContext, compiled),
-                computeNextAndAdvanceTime(ctx.sampleContext, compiled),
-                computeNextAndAdvanceTime(ctx.sampleContext, compiled),
-                computeNextAndAdvanceTime(ctx.sampleContext, compiled),
+                computeSample(ctx.sampleContext, compiled),
+                computeSample(ctx.sampleContext, compiled),
+                computeSample(ctx.sampleContext, compiled),
+                computeSample(ctx.sampleContext, compiled),
             ];
 
-            const expected: [number, number][] = [
-                [0, 0],
-                [0.25, 1],
-                [0.5, 0],
-                [0.75, -1]
-            ];
+            const expected = [0, 1, 0, -1];
 
             expectTimeSeriesEqual(test, "Outputs a sine wave", results, expected);
         }),

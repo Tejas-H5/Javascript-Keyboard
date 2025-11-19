@@ -21,14 +21,16 @@ import {
     TIMELINE_ITEM_MEASURE,
     undoEdit
 } from "src/state/sequencer-chart";
-import { getCurrentChart, SequencerState, setSequencerChart } from "src/state/sequencer-state";
+import { SequencerState, setSequencerChart } from "src/state/sequencer-state";
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state";
+import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
+import { getLoadingPromises, newDefaultTrackedPrimise } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
@@ -37,8 +39,6 @@ import { runSaveCurrentChartTask } from "./background-tasks";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
 import { imSoundLab } from "./sound-lab-view";
 import { imUpdateModal } from "./update-modal";
-import { getLoadingPromises, newDefaultTrackedPrimise } from "src/utils/promise-utils";
-import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests";
 
 type AllKeysState = {
     keys: KeyState[];

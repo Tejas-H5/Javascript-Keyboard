@@ -17,13 +17,11 @@ import {
     IDX_WANTED_FREQUENCY,
     IDX_MAX,
     IDX_OUTPUT,
-    IDX_PRESSED_TIME,
     IDX_USER,
     INSTR_ADD,
     INSTR_DIVIDE,
     INSTR_JUMP_IF_NZ,
     INSTR_MULTIPLY,
-    INSTR_MULTIPLY_DT,
     INSTR_NUM_INSTRUCTIONS,
     INSTR_SIN,
     INSTR_SQUARE,
@@ -31,7 +29,6 @@ import {
     newDspInstruction,
     newSampleContext,
     SampleContext,
-    IDX_RELEASED_TIME,
     INSTR_LT,
     INSTR_LTE,
     INSTR_GT,
@@ -42,7 +39,11 @@ import {
     IDX_SIGNAL,
     IDX_JMP_RESULT,
     compileToInstructionsInternal,
-    pushInstruction
+    pushInstruction,
+    updateSampleContext,
+    IDX_DT,
+    INSTR_MULTIPLY_DT,
+    INSTR_ADD_DT
 } from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 
@@ -64,8 +65,12 @@ export type DSPPlaySettings = {
 }
 
 export function newDspPlaySettings(): DSPPlaySettings {
+    const angle = IDX_USER + 1;
+    const temp = IDX_USER;
     const instructions: DspSynthInstructionItem[] = [
-        { instruction: newDspInstruction(INSTR_SIN, IDX_WANTED_FREQUENCY, true, IDX_PRESSED_TIME, true, IDX_OUTPUT) },
+        { instruction: newDspInstruction(INSTR_MULTIPLY_DT, IDX_WANTED_FREQUENCY, true, IDX_SIGNAL, true, temp) },
+        { instruction: newDspInstruction(INSTR_ADD, angle, true, temp, true, angle) },
+        { instruction: newDspInstruction(INSTR_SIN, angle, true, IDX_SIGNAL, true, IDX_OUTPUT) },
     ];
 
     const settings: DSPPlaySettings = {
@@ -92,6 +97,7 @@ export type PlayingOscillator = {
         prevSignal: number;
         time: number;
         pressedTime: number;
+        releasedTime: number;
         volume: number;
         manuallyPressed: boolean;
         value: number;
@@ -266,9 +272,7 @@ export function updateOscillator(
         // val = sin(f * t * 4); amp = 0.02;
         // m += amp; x += val * amp;
 
-        state._sampleContext.frequency = f;
-        state._sampleContext.time = t;
-        state._sampleContext.dt = dt;
+        updateSampleContext(state._sampleContext, f, osc.inputs.signal, 1 / sampleRate);
         sampleValue += computeSample(state._sampleContext, parameters.instructions);
 
         // sampleValue = x;
@@ -639,6 +643,7 @@ export function newPlayingOscilator(): PlayingOscillator {
             _sampleContext: newSampleContext(),
             prevSignal: 0,
             time: 0,
+            releasedTime: 0,
             pressedTime: 0,
             volume: 0,
             manuallyPressed: false,
@@ -814,6 +819,7 @@ export function getDspLoopClassUrl(): string {
         { value: INSTR_SIN, name: "INSTR_SIN" },
         { value: INSTR_SQUARE, name: "INSTR_SQUARE" },
         { value: INSTR_ADD, name: "INSTR_ADD" },
+        { value: INSTR_ADD_DT, name: "INSTR_ADD_DT" },
         { value: INSTR_SUBTRACT, name: "INSTR_SUBTRACT" },
         { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
         { value: INSTR_MULTIPLY_DT, name: "INSTR_MULTIPLY_DT" },
@@ -830,9 +836,8 @@ export function getDspLoopClassUrl(): string {
         { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
         // NOTE: not sure if indices are really needed tbh.
         { value: IDX_WANTED_FREQUENCY, name: "IDX_WANTED_FREQUENCY" },
-        { value: IDX_PRESSED_TIME, name: "IDX_PRESSED_TIME" },
-        { value: IDX_RELEASED_TIME, name: "IDX_RELEASED_TIME" },
         { value: IDX_SIGNAL, name: "IDX_SIGNAL" },
+        { value: IDX_DT, name: "IDX_DT" },
         { value: IDX_JMP_RESULT, name: "IDX_JMP_RESULT" },
         { value: IDX_USER, name: "IDX_USER" },
         { value: IDX_MAX, name: "IDX_MAX" },
@@ -868,6 +873,7 @@ export function getDspLoopClassUrl(): string {
         newDspState,
         newDspPlaySettings,
         newSampleContext,
+        updateSampleContext,
         getMessageForMainThread,
         dspReceiveMessage,
         assert,

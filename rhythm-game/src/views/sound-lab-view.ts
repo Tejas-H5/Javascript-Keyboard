@@ -32,12 +32,13 @@ import { dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/ds
 import {
     compileInstructions,
     computeSample,
-    DEFAULT_PARAMETERS,
     DspSynthInstructionItem,
     IDX_MAX,
+    INDEX_DESCRIPTORS,
     instrToString,
     newSampleContext,
-    registerIdxToString
+    registerIdxToString,
+    updateSampleContext
 } from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
@@ -817,9 +818,7 @@ function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabStat
                             let frequency = getNoteFrequency(s.noteIdx);
                             const time = i / mockSampleRate;
 
-                            s.ctx.time = time;
-                            s.ctx.frequency = frequency;
-                            s.ctx.dt = 1 / sampleRate;
+                            updateSampleContext(s.ctx, frequency, 1, 1 / mockSampleRate);
                             s.samples[i] = computeSample(s.ctx, params.instructions);
                         }
                     }
@@ -872,7 +871,7 @@ function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabStat
 
                 const sc = imState(c, newScrollContainer);
                 imScrollContainerBegin(c, sc); {
-                    const defaultParams = DEFAULT_PARAMETERS;
+                    const defaultParams = INDEX_DESCRIPTORS.reserved;
                     imFor(c); for (let i = 0; i < defaultParams.length; i++) {
                         const paramInfo = defaultParams[i];
                         imLayout(c, ROW); imFg(c, cssVarsApp.mg); {

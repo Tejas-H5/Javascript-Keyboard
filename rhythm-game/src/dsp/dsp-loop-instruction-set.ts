@@ -4,24 +4,26 @@ import { assert } from "src/utils/assert";
 export const INSTR_SIN              = 1;
 export const INSTR_SQUARE           = 2;
 export const INSTR_ADD              = 3;
-export const INSTR_SUBTRACT         = 4;
-export const INSTR_MULTIPLY         = 5;
-export const INSTR_MULTIPLY_DT      = 6;
-export const INSTR_DIVIDE           = 7;
-export const INSTR_LT               = 8;
-export const INSTR_LTE              = 9;
-export const INSTR_GT               = 10;
-export const INSTR_GTE              = 11;
-export const INSTR_EQ               = 12;
-export const INSTR_NEQ              = 13;
-export const INSTR_JUMP_IF_NZ       = 14;
-export const INSTR_JUMP_IF_Z        = 15;
-export const INSTR_NUM_INSTRUCTIONS = 16;
+export const INSTR_ADD_DT           = 4;
+export const INSTR_SUBTRACT         = 5;
+export const INSTR_MULTIPLY         = 6;
+export const INSTR_MULTIPLY_DT      = 7;
+export const INSTR_DIVIDE           = 8;
+export const INSTR_LT               = 9;
+export const INSTR_LTE              = 10;
+export const INSTR_GT               = 11;
+export const INSTR_GTE              = 12;
+export const INSTR_EQ               = 13;
+export const INSTR_NEQ              = 14;
+export const INSTR_JUMP_IF_NZ       = 15;
+export const INSTR_JUMP_IF_Z        = 16;
+export const INSTR_NUM_INSTRUCTIONS = 17;
 
 export type InstructionType
     = typeof INSTR_SIN
     | typeof INSTR_SQUARE
     | typeof INSTR_ADD
+    | typeof INSTR_ADD_DT
     | typeof INSTR_SUBTRACT
     | typeof INSTR_MULTIPLY
     | typeof INSTR_MULTIPLY_DT
@@ -44,9 +46,10 @@ export function instrToString(instr: InstructionType | undefined): string {
         case INSTR_SIN:         result = "Sin";     break;
         case INSTR_SQUARE:      result = "Square";  break;
         case INSTR_ADD:         result = "+";       break;
+        case INSTR_ADD_DT:      result = "+ *dt";   break;
         case INSTR_SUBTRACT:    result = "-";       break;
         case INSTR_MULTIPLY:    result = "*";       break;
-        case INSTR_MULTIPLY_DT: result = "*dt";     break;
+        case INSTR_MULTIPLY_DT: result = "* *dt";   break;
         case INSTR_DIVIDE:      result = "/";       break;
         case INSTR_LT:          result = "<";       break;
         case INSTR_LTE:         result = "<=";      break;
@@ -63,23 +66,24 @@ export function instrToString(instr: InstructionType | undefined): string {
 
 export type ParameterInfo = { name: string; };
 
-export const DEFAULT_PARAMETERS = Object.freeze<ParameterInfo[]>([
-    { name: "Sample output" },
-    { name: "Wanted Frequency" },
-    { name: "Pressed Time" },
-    { name: "Released Time" },
-    { name: "Signal" },
-    { name: "Jumped?" },
-]);
-
-export const IDX_OUTPUT        = 0;
+export const IDX_OUTPUT           = 0;
 export const IDX_WANTED_FREQUENCY = 1;
-export const IDX_PRESSED_TIME  = 2;
-export const IDX_RELEASED_TIME = 3;
-export const IDX_SIGNAL        = 4;
-export const IDX_JMP_RESULT    = 5;
-export const IDX_USER          = 6;
-export const IDX_MAX           = 32;
+export const IDX_SIGNAL           = 2;
+export const IDX_DT               = 3;
+export const IDX_JMP_RESULT       = 4;
+export const IDX_USER             = 5;
+export const IDX_MAX              = 32;
+export const INDEX_DESCRIPTORS: {
+    reserved: { name: string }[];
+} = {
+    reserved: [
+        { name: "Output" },
+        { name: "Target frequency" },
+        { name: "Input signal" },
+        { name: "Delta-time (1/hZ)" },
+        { name: "If-check result" },
+    ],
+};
 
 function sin(t: number) {
     return Math.sin(t * Math.PI * 2);
@@ -131,17 +135,31 @@ export type InstructionPart = {
 
 export type SampleContext = {
     registers: number[];
-    frequency: number;
-    time: number;
+    wantedFrequency: number;
+    signal: number;
     dt: number;
+    isPressed: boolean;
 };
+
+export function updateSampleContext(
+    ctx: SampleContext,
+    wantedFrequency: number,
+    signal: number,
+    dt: number,
+) {
+    ctx.wantedFrequency = wantedFrequency;
+    ctx.signal = signal;
+    ctx.dt = dt;
+}
+
 
 export function newSampleContext(): SampleContext {
     return {
-        registers: new Array(IDX_MAX, 0),
-        frequency: 0,
-        time: 0, 
+        registers: new Array(IDX_MAX).fill(0),
+        wantedFrequency: 0,
+        signal: 0,
         dt: 0,
+        isPressed: false,
     };
 }
 
@@ -167,7 +185,6 @@ export function registerIdxToString(idx: number): string {
     switch (idx) {
         case IDX_OUTPUT:    return "output";
         case IDX_WANTED_FREQUENCY: return "frequency";
-        case IDX_PRESSED_TIME:      return "time";
     };
 
     if (idx < IDX_MAX) return "user " + (idx - IDX_USER);
@@ -175,16 +192,16 @@ export function registerIdxToString(idx: number): string {
 }
 
 // Just made a programming language from scratch. again. lets go.
-export function computeSample(
-    s: SampleContext,
-    instructions: number[],
-) {
-    s.registers[IDX_OUTPUT]           = 0;
+export function computeSample(s: SampleContext, instructions: number[]) {
+    s.registers[IDX_WANTED_FREQUENCY] = s.wantedFrequency;
+    s.registers[IDX_SIGNAL]           = s.signal;
 
-    // NOTE: Set these when pressed.
-    s.registers[IDX_PRESSED_TIME]     = 0;
-    s.registers[IDX_WANTED_FREQUENCY] = s.frequency;
-    s.registers[IDX_PRESSED_TIME]     = s.time;
+    if (s.signal > 0 && s.isPressed === false) {
+        s.isPressed = true;
+        s.registers.fill(0);
+    } else if (s.signal < 0.000001 && s.isPressed === true) {
+        s.isPressed = false;
+    }
 
     let i = 0; 
     while (i < instructions.length) {
@@ -202,13 +219,14 @@ export function computeSample(
         let result = 0;
 
         switch (type) {
-            case INSTR_SIN: { result = sin(val1 * val2);          } break;
-            case INSTR_SQUARE: { result = square(val1 * val2);    } break;
-            case INSTR_ADD: { result = val1 + val2;               } break;
-            case INSTR_SUBTRACT: { result = val1 - val2;          } break;
-            case INSTR_MULTIPLY: { result = val1 * val2;          } break;
-            case INSTR_MULTIPLY_DT: { result = val1 * val2 * s.dt } break;
-            case INSTR_DIVIDE: { result = val1 / val2;            } break;
+            case INSTR_SIN: { result = sin(val1) * val2;           } break;
+            case INSTR_SQUARE: { result = square(val1) * val2;     } break;
+            case INSTR_ADD: { result = val1 + val2;                } break;
+            case INSTR_ADD_DT: { result = val1 + val2 * s.dt;      } break;
+            case INSTR_SUBTRACT: { result = val1 - val2;           } break;
+            case INSTR_MULTIPLY: { result = val1 * val2;           } break;
+            case INSTR_MULTIPLY_DT: { result = val1 * val2 * s.dt; } break;
+            case INSTR_DIVIDE: { result = val1 / val2;             } break;
             case INSTR_JUMP_IF_NZ: {
                 result = val1;
                 if (val1 !== 0) {
