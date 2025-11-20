@@ -10,6 +10,7 @@ import {
     imAlign,
     imBg,
     imFg,
+    imFixed,
     imFlex,
     imFlex1,
     imGap,
@@ -162,7 +163,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                         if (imIf(c) && instruction.instruction) {
                             const instr = instruction.instruction;
 
-                            imLayout(c, ROW); imAlign(c); {
+                            imLayout(c, ROW); imAlign(c); imGap(c, 10, PX); {
                                 if (isFirstishRender(c)) {
                                     elSetStyle(c, "lineHeight", "1");
                                     elSetStyle(c, "userSelect", "none");
@@ -201,6 +202,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                         const newChoice = arrayAt(instructionChoices, editorContextMenuChoice);
                                         assert(!!newChoice);
                                         instr.type = newChoice;
+                                        updateSettings = true;
                                     }
 
                                     imStrFmt(c, instr.type, instrToString);
@@ -209,7 +211,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                 // register value 1
                                 {
                                     imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                                    imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); imSize(c, 25, PERCENT, 0, NA); {
+                                    imSize(c, 25, PERCENT, 0, NA); {
                                         if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", instr.reg1, BLOCK, true)) {
                                             instr.reg1 = !instr.reg1;
                                             updateSettings = true;
@@ -232,7 +234,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                 // register value 2
                                 {
                                     imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                                    imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); imSize(c, 25, PERCENT, 0, NA); {
+                                    imSize(c, 25, PERCENT, 0, NA); {
                                         if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", instr.reg2, BLOCK, true)) {
                                             instr.reg2 = !instr.reg2;
                                             updateSettings = true;
@@ -250,6 +252,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                         } imLayoutEnd(c);
                                     } imLayoutEnd(c);
                                 }
+
                                 imLayout(c, ROW); imFlex(c); imJustify(c); {
                                     imStr(c, " -> ");
                                 } imLayoutEnd(c);
@@ -289,6 +292,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                     });
 
                     if (imMemo(c, s.noteIdx)) s.viewingInvalidated = true;
+                    if (imMemo(c, editor.instructionsVersion)) s.viewingInvalidated = true;
 
                     imHeading(c, "Wave program");
 
@@ -393,8 +397,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
     } imModalEnd(c);
 
     if (updateSettings) {
-        compileInstructions(state.instructionBuilder.instructions, playSettings.parameters.instructions);
-        updatePlaySettings();
+        state.instructionBuilder.instructionsVersion++;
     }
 
     if (!ctx.handled) {
@@ -537,34 +540,41 @@ function imContextMenu(c: ImCache, s: ContextMenuState): number {
     let resultChoice = -1;
 
     if (imIf(c) && s.currentChoice !== -1 && s.choices.length > 0) {
-        imLayout(c, COL); imAbsolute(c, s.position.y, PX, 0, NA, 0, NA, s.position.x, PX); {
-            if (isFirstishRender(c)) {
-                elSetStyle(c, "fontFamily", "monospace");
-                elSetStyle(c, "fontSize", "20px");
+        imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+            imLayout(c, COL); imAbsolute(c, s.position.y, PX, 0, NA, 0, NA, s.position.x, PX); {
+                if (isFirstishRender(c)) {
+                    elSetStyle(c, "fontFamily", "monospace");
+                    elSetStyle(c, "fontSize", "20px");
 
-                elSetStyle(c, "userSelect", "none");
-                elSetStyle(c, "backgroundColor", cssVars.bg);
-                elSetStyle(c, "boxShadow", "4px 4px 5px 0px rgba(0,0,0,0.37)");
-                elSetStyle(c, "border", "1px solid rgba(0,0,0,0.37)");
-                elSetStyle(c, "padding", "3px");
+                    elSetStyle(c, "userSelect", "none");
+                    elSetStyle(c, "backgroundColor", cssVars.bg);
+                    elSetStyle(c, "boxShadow", "4px 4px 5px 0px rgba(0,0,0,0.37)");
+                    elSetStyle(c, "border", "1px solid rgba(0,0,0,0.37)");
+                    elSetStyle(c, "padding", "3px");
+                }
+
+                imFor(c); for (let i = 0; i < s.choices.length; i++) {
+                    const choice = s.choices[i];
+
+                    imLayout(c, ROW); imJustify(c); {
+                        if (isFirstishRender(c)) {
+                            elSetClass(c, "hoverable");
+                            elSetStyle(c, "borderBottom", "1px solid rgba(0,0,0,0.37)");
+                        }
+
+                        imStr(c, choice);
+
+                        if (elHasMousePress(c)) {
+                            resultChoice = i;
+                        }
+                    } imLayoutEnd(c);
+                } imForEnd(c);
+            } imLayoutEnd(c);
+
+            if (elHasMousePress(c)) {
+                s.reciever = null;
+                s.currentChoice = -1;
             }
-
-            imFor(c); for (let i = 0; i < s.choices.length; i++) {
-                const choice = s.choices[i];
-
-                imLayout(c, ROW); {
-                    if (isFirstishRender(c)) {
-                        elSetClass(c, "hoverable");
-                        elSetStyle(c, "borderBottom", "1px solid rgba(0,0,0,0.37)");
-                    }
-
-                    imStr(c, choice);
-
-                    if (elHasMousePress(c)) {
-                        resultChoice = i;
-                    }
-                } imLayoutEnd(c);
-            } imForEnd(c);
         } imLayoutEnd(c);
     } imIfEnd(c);
 
