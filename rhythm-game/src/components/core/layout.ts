@@ -322,6 +322,7 @@ function imOffsets(
 }
 
 
+// 'Trouble' acronymn. Top Right Bottom Left. This is what we have resorted to
 export function imAbsolute(
     c: ImCache,
     // Silly order. But it's the css standard convention

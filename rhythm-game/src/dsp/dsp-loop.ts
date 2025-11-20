@@ -65,14 +65,6 @@ export type DSPPlaySettings = {
 }
 
 export function newDspPlaySettings(): DSPPlaySettings {
-    const angle = IDX_USER + 1;
-    const temp = IDX_USER;
-    const instructions: DspSynthInstructionItem[] = [
-        { instruction: newDspInstruction(INSTR_MULTIPLY_DT, IDX_WANTED_FREQUENCY, true, IDX_SIGNAL, true, temp) },
-        { instruction: newDspInstruction(INSTR_ADD, angle, true, temp, true, angle) },
-        { instruction: newDspInstruction(INSTR_SIN, angle, true, IDX_SIGNAL, true, IDX_OUTPUT) },
-    ];
-
     const settings: DSPPlaySettings = {
         attack: 0.05,
         decay: 3,
@@ -83,9 +75,26 @@ export function newDspPlaySettings(): DSPPlaySettings {
         parameters: { instructions: [] },
     }
 
-    compileInstructions(instructions, settings.parameters.instructions);
+    compileDefaultInstructions(settings.parameters.instructions);
 
     return settings;
+}
+
+export function getDefaultInstructions() {
+    const angle = IDX_USER + 1;
+    const temp = IDX_USER;
+    const instructions: DspSynthInstructionItem[] = [
+        { instruction: newDspInstruction(INSTR_MULTIPLY_DT, IDX_WANTED_FREQUENCY, true, IDX_SIGNAL, true, temp) },
+        { instruction: newDspInstruction(INSTR_ADD, angle, true, temp, true, angle) },
+        { instruction: newDspInstruction(INSTR_SIN, angle, true, IDX_SIGNAL, true, IDX_OUTPUT) },
+    ];
+    return instructions;
+}
+
+export function compileDefaultInstructions(dst: number[]) {
+    dst.length = 0;
+    const instructions = getDefaultInstructions();
+    compileInstructions(instructions, dst);
 }
 
 export type PlayingOscillator = {
@@ -842,6 +851,8 @@ export function getDspLoopClassUrl(): string {
         { value: IDX_USER, name: "IDX_USER" },
         { value: IDX_MAX, name: "IDX_MAX" },
         compileInstructions,
+        compileDefaultInstructions,
+        getDefaultInstructions,
         compileToInstructionsInternal,
         pushInstruction,
         computeSample,

@@ -78,10 +78,10 @@ export const INDEX_DESCRIPTORS: {
 } = {
     reserved: [
         { name: "Output" },
-        { name: "Target frequency" },
-        { name: "Input signal" },
-        { name: "Delta-time (1/hZ)" },
-        { name: "If-check result" },
+        { name: "Frequency" },
+        { name: "Signal" },
+        { name: "DeltaTime" },
+        { name: "JumpResult" },
     ],
 };
 
@@ -182,13 +182,10 @@ export function newDspInstruction(
 }
 
 export function registerIdxToString(idx: number): string {
-    switch (idx) {
-        case IDX_OUTPUT:    return "output";
-        case IDX_WANTED_FREQUENCY: return "frequency";
-    };
-
+    if (idx < 0) return "???";
+    if (idx < IDX_USER) return INDEX_DESCRIPTORS.reserved[idx].name;
     if (idx < IDX_MAX) return "user " + (idx - IDX_USER);
-    return "invalid register index";
+    return "????";
 }
 
 // Just made a programming language from scratch. again. lets go.
