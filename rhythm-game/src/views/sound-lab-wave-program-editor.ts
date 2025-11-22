@@ -16,8 +16,10 @@ import {
     imJustify,
     imLayout,
     imLayoutEnd,
+    imNoWrap,
     imPadding,
     imSize,
+    INLINE_BLOCK,
     NA,
     PERCENT,
     PX,
@@ -151,8 +153,16 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
         const dfs = (instructions: DspSynthInstructionItem[]) => {
             for (const instr of instructions) {
                 if (instr.instruction) {
-                    if (instr.instruction.reg1) editor.registersInUseRead.add(instr.instruction.val1);
-                    if (instr.instruction.reg2) editor.registersInUseRead.add(instr.instruction.val2);
+                    if (instr.instruction.reg1) {
+                        instr.instruction.val1 = Math.round(instr.instruction.val1);
+                        editor.registersInUseRead.add(instr.instruction.val1);
+                    }
+
+                    if (instr.instruction.reg2) {
+                        instr.instruction.val2 = Math.round(instr.instruction.val2);
+                        editor.registersInUseRead.add(instr.instruction.val2);
+                    }
+
                     editor.registersInUseWrite.add(instr.instruction.dst);
                 }
 
@@ -204,6 +214,30 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                     imStr(c, i);
                                 } imLayoutEnd(c);
 
+                                // register value 1
+                                {
+                                    imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
+                                    imSize(c, 25, PERCENT, 0, NA); {
+                                        imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c); imFlex(c); imGap(c, 10, PX); {
+                                            if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", instr.reg1, BLOCK, true)) {
+                                                instr.reg1 = !instr.reg1;
+                                                updateSettings = true;
+                                            }
+                                            if (imIf(c) && instr.reg1) {
+                                                // Reinterpret this thing as an index.
+                                                const newRegister = imRegisterContextMenu(c, editor, instr.val1, instr, CONTEXT_MENU_FIELD__VAL1);
+                                                if (newRegister !== null) {
+                                                    instr.val1 = newRegister;
+                                                    updateSettings = true;
+                                                }
+                                            } else {
+                                                imElse(c);
+                                                imStr(c, instr.val1);
+                                            } imEndIf(c);
+                                        } imLayoutEnd(c);
+                                    } imLayoutEnd(c);
+                                }
+
                                 // Instruction type dropdown
                                 imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
                                     if (isFirstishRender(c)) {
@@ -227,49 +261,23 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                         }
                                     } imIfEnd(c);
 
-                                    imStrFmt(c, instr.type, instrToString);
-                                } imLayoutEnd(c);
-
-                                // register value 1
-                                {
-                                    imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                                    imSize(c, 25, PERCENT, 0, NA); {
-                                        if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", instr.reg1, BLOCK, true)) {
-                                            instr.reg1 = !instr.reg1;
-                                            updateSettings = true;
-                                        }
-
-                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imGap(c, 10, PX); {
-                                            if (imIf(c) && instr.reg1) {
-                                                // Reinterpret this thing as an index.
-                                                imStr(c, "reg: ");
-                                                const newRegister = imRegisterContextMenu(c, editor, instr.val1, instr, CONTEXT_MENU_FIELD__VAL1);
-                                                if (newRegister !== null) {
-                                                    instr.val1 = newRegister;
-                                                    updateSettings = true;
-                                                }
-                                            } else {
-                                                imElse(c);
-                                                imStr(c, instr.val1);
-                                            } imEndIf(c);
-                                        } imLayoutEnd(c);
+                                    imLayout(c, INLINE_BLOCK); imNoWrap(c); {
+                                        imStrFmt(c, instr.type, instrToString);
                                     } imLayoutEnd(c);
-                                }
-
+                                } imLayoutEnd(c);
 
                                 // register value 2
                                 {
                                     imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
                                     imSize(c, 25, PERCENT, 0, NA); {
-                                        if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", instr.reg2, BLOCK, true)) {
-                                            instr.reg2 = !instr.reg2;
-                                            updateSettings = true;
-                                        }
+                                        imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c); imFlex(c); imGap(c, 10, PX); {
+                                            if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", instr.reg2, BLOCK, true)) {
+                                                instr.reg2 = !instr.reg2;
+                                                updateSettings = true;
+                                            }
 
-                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imGap(c, 10, PX); {
                                             if (imIf(c) && instr.reg2) {
                                                 // Reinterpret this thing as an index.
-                                                imStr(c, "reg:");
                                                 const newRegister = imRegisterContextMenu(c, editor, instr.val2, instr, CONTEXT_MENU_FIELD__VAL2);
                                                 if (newRegister !== null) {
                                                     instr.val2 = newRegister;
@@ -288,8 +296,6 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                 } imLayoutEnd(c);
 
                                 imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c, START); imSize(c, 25, PERCENT, 0, NA); imGap(c, 10, PX); {
-                                    imStr(c, "reg:");
-
                                     const newRegister = imRegisterContextMenu(c, editor, instr.dst, instr, CONTEXT_MENU_FIELD__DST);
                                     if (newRegister !== null) {
                                         instr.dst = newRegister;

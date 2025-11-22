@@ -84,9 +84,9 @@ export function getDefaultInstructions() {
     const angle = IDX_USER + 1;
     const temp = IDX_USER;
     const instructions: DspSynthInstructionItem[] = [
-        { instruction: newDspInstruction(INSTR_MULTIPLY_DT, IDX_WANTED_FREQUENCY, true, IDX_SIGNAL, true, temp) },
-        { instruction: newDspInstruction(INSTR_ADD, angle, true, temp, true, angle) },
-        { instruction: newDspInstruction(INSTR_SIN, angle, true, IDX_SIGNAL, true, IDX_OUTPUT) },
+        { instruction: newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp) },
+        { instruction: newDspInstruction(angle, true, INSTR_ADD, temp, true, angle) },
+        { instruction: newDspInstruction(IDX_SIGNAL, true, INSTR_SIN, angle, true, IDX_OUTPUT) },
     ];
     return instructions;
 }

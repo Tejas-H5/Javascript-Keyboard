@@ -43,13 +43,13 @@ export function instrToString(instr: InstructionType | undefined): string {
     let result;
 
     switch (instr) {
-        case INSTR_SIN:         result = "Sin";     break;
-        case INSTR_SQUARE:      result = "Square";  break;
+        case INSTR_SIN:         result = "* sin";     break;
+        case INSTR_SQUARE:      result = "* square";  break;
         case INSTR_ADD:         result = "+";       break;
-        case INSTR_ADD_DT:      result = "+ *dt";   break;
+        case INSTR_ADD_DT:      result = "+ dt*";   break;
         case INSTR_SUBTRACT:    result = "-";       break;
         case INSTR_MULTIPLY:    result = "*";       break;
-        case INSTR_MULTIPLY_DT: result = "* *dt";   break;
+        case INSTR_MULTIPLY_DT: result = "* dt *";   break;
         case INSTR_DIVIDE:      result = "/";       break;
         case INSTR_LT:          result = "<";       break;
         case INSTR_LTE:         result = "<=";      break;
@@ -163,9 +163,9 @@ export function newSampleContext(): SampleContext {
 }
 
 export function newDspInstruction(
-    t: InstructionType,
     val1: number,
     reg1: boolean,
+    t: InstructionType,
     val2: number,
     reg2: boolean,
     dst: number
@@ -215,14 +215,14 @@ export function computeSample(s: SampleContext, instructions: number[]) {
         let result = 0;
 
         switch (type) {
-            case INSTR_SIN: { result = sin(val1) * val2;           } break;
-            case INSTR_SQUARE: { result = square(val1) * val2;     } break;
-            case INSTR_ADD: { result = val1 + val2;                } break;
-            case INSTR_ADD_DT: { result = val1 + val2 * s.dt;      } break;
-            case INSTR_SUBTRACT: { result = val1 - val2;           } break;
-            case INSTR_MULTIPLY: { result = val1 * val2;           } break;
-            case INSTR_MULTIPLY_DT: { result = val1 * val2 * s.dt; } break;
-            case INSTR_DIVIDE: { result = val1 / val2;             } break;
+            case INSTR_SIN:         { result = val1 * sin(val2);     } break;
+            case INSTR_SQUARE:      { result = val1 * square(val1);  } break;
+            case INSTR_ADD:         { result = val1 + val2;          } break;
+            case INSTR_ADD_DT:      { result = val1 + (s.dt * val2); } break;
+            case INSTR_SUBTRACT:    { result = val1 - val2;          } break;
+            case INSTR_MULTIPLY:    { result = val1 * val2;          } break;
+            case INSTR_MULTIPLY_DT: { result = val1 * s.dt * val2;   } break;
+            case INSTR_DIVIDE:      { result = val1 / val2;          } break;
             case INSTR_JUMP_IF_NZ: {
                 result = val1;
                 if (val1 !== 0) {

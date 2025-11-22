@@ -17,7 +17,6 @@ import {
     newSampleContext,
     OFFSET_INSTRUCTION_SIZE,
     pushInstruction,
-    SampleContext,
     updateSampleContext
 } from "./dsp-loop-instruction-set";
 
@@ -70,16 +69,16 @@ export const dspLoopInstructionSetTests = [
             const temp = IDX_USER + 1;
             const angle = IDX_USER;
             const instructions = [
-                { instruction: newDspInstruction(INSTR_MULTIPLY_DT, IDX_WANTED_FREQUENCY, true, IDX_SIGNAL, true, temp) },
-                { instruction: newDspInstruction(INSTR_ADD_DT, angle, true, temp, true, angle) },
-                { instruction: newDspInstruction(INSTR_SIN, angle, true, 1, false, IDX_OUTPUT) },
+                { instruction: newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp) },
+                { instruction: newDspInstruction(angle, true, INSTR_ADD_DT, temp, true, angle) },
+                { instruction: newDspInstruction(1, false, INSTR_SIN, angle, true, IDX_OUTPUT) },
             ];
             const compiled = compileInstructions(instructions);
 
             expectInstructionsEqual(test, "Compiled correctly", compiled, [
-                newDspInstruction(INSTR_MULTIPLY_DT, IDX_WANTED_FREQUENCY, true, IDX_SIGNAL, true, temp),
-                newDspInstruction(INSTR_ADD_DT, angle, true, temp, true, angle),
-                newDspInstruction(INSTR_SIN, angle, true, 1, false, IDX_OUTPUT),
+                newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp),
+                newDspInstruction(angle, true, INSTR_ADD_DT, temp, true, angle),
+                newDspInstruction(1, false, INSTR_SIN, angle, true, IDX_OUTPUT),
             ]);
 
             updateSampleContext(ctx.sampleContext, 100, 1, 0.25);
@@ -97,15 +96,15 @@ export const dspLoopInstructionSetTests = [
         newTest("If generation", (test, ctx) => {
             const TEMP_IDX = IDX_USER + 0;
             const instructions = [
-                { instruction: newDspInstruction(INSTR_MULTIPLY_DT, 100, false, 1, false, TEMP_IDX) },
-                { instruction: newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT) },
+                { instruction: newDspInstruction(100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX) },
+                { instruction: newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT) },
                 { 
-                    instruction: newDspInstruction(INSTR_LT, IDX_OUTPUT, true, 100, false, TEMP_IDX),
+                    instruction: newDspInstruction(IDX_OUTPUT, true, INSTR_LT, 100, false, TEMP_IDX),
                     ifelseInnerBlock: {
                         isElseBlock: false,
                         inner: [
-                            { instruction: newDspInstruction(INSTR_MULTIPLY_DT, 100, false, 1, false, TEMP_IDX) },
-                            { instruction: newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT) },
+                            { instruction: newDspInstruction(100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX) },
+                            { instruction: newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT) },
                         ],
                     },
                 }, 
@@ -113,8 +112,8 @@ export const dspLoopInstructionSetTests = [
                     ifelseInnerBlock: {
                         isElseBlock: true,
                         inner: [
-                            { instruction: newDspInstruction(INSTR_MULTIPLY_DT, -100, false, 1, false, TEMP_IDX) },
-                            { instruction: newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT) },
+                            { instruction: newDspInstruction(-100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX) },
+                            { instruction: newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT) },
                         ],
                     },
                 },
@@ -124,16 +123,16 @@ export const dspLoopInstructionSetTests = [
             // Should've intermediate representation'd :(
             // ahh its a trivial language with limited scope so I wont bother fixing for now
             expectInstructionsEqual(test, "Compiled correctly", compiled, [
-                newDspInstruction(INSTR_MULTIPLY_DT, 100, false, 1, false, TEMP_IDX),                       // 0
-                newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT),                 // 1
-                newDspInstruction(INSTR_LT, IDX_OUTPUT, true, 100, false, TEMP_IDX),                        // 2
-                newDspInstruction(INSTR_JUMP_IF_Z, TEMP_IDX, true, 7 * OFFSET_INSTRUCTION_SIZE, false, -1), // 3
-                    newDspInstruction(INSTR_MULTIPLY_DT, 100, false, 1, false, TEMP_IDX),                   // 4
-                    newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT),             // 5
-                    newDspInstruction(INSTR_JUMP_IF_Z, 0, false, 9 * OFFSET_INSTRUCTION_SIZE, false, -1),   // 6
+                newDspInstruction(100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX),                       // 0
+                newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT),                 // 1
+                newDspInstruction(IDX_OUTPUT, true, INSTR_LT, 100, false, TEMP_IDX),                        // 2
+                newDspInstruction(TEMP_IDX, true, INSTR_JUMP_IF_Z, 7 * OFFSET_INSTRUCTION_SIZE, false, -1), // 3
+                    newDspInstruction(100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX),                   // 4
+                    newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT),             // 5
+                    newDspInstruction(0, false, INSTR_JUMP_IF_Z, 9 * OFFSET_INSTRUCTION_SIZE, false, -1),   // 6
                 // else block has no jmps.
-                    newDspInstruction(INSTR_MULTIPLY_DT, -100, false, 1, false, TEMP_IDX),                  // 7
-                    newDspInstruction(INSTR_ADD, TEMP_IDX, true, IDX_OUTPUT, true, IDX_OUTPUT),             // 9
+                    newDspInstruction(-100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX),                  // 7
+                    newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT),             // 9
                 // Final if-statement doesn't actually need to be closed off !!
             ]);
         }),
