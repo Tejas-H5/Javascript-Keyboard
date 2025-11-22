@@ -13,6 +13,8 @@ import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGloba
 import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app";
 import { TrackedPromise } from "./utils/promise-utils";
 
+"use strict"
+
 const programState = new TrackedPromise(async () => {
     // Our code only works after we've established a connection with our
     // IndexedDB instance, and the audio context has loaded.

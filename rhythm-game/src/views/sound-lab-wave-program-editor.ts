@@ -9,7 +9,6 @@ import {
     imAbsolute,
     imAlign,
     imBg,
-    imFg,
     imFixed,
     imFlex,
     imFlex1,
@@ -23,7 +22,8 @@ import {
     PERCENT,
     PX,
     ROW,
-    START
+    START,
+    STRETCH
 } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL_PADDING, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
@@ -32,32 +32,34 @@ import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from
 import { imSliderInput } from "src/components/slider";
 import { getDefaultInstructions } from "src/dsp/dsp-loop";
 import {
-    compileInstructions,
     computeSample,
     DspSynthInstructionItem,
-    IDX_MAX,
-    INDEX_DESCRIPTORS,
-    INSTR_SIN,
-    INSTR_SQUARE,
+    IDX_COUNT,
     INSTR_ADD,
     INSTR_ADD_DT,
-    INSTR_SUBTRACT,
-    INSTR_MULTIPLY,
-    INSTR_MULTIPLY_DT,
     INSTR_DIVIDE,
-    INSTR_LT,
-    INSTR_LTE,
+    INSTR_EQ,
     INSTR_GT,
     INSTR_GTE,
-    INSTR_EQ,
+    INSTR_LT,
+    INSTR_LTE,
+    INSTR_MULTIPLY,
+    INSTR_MULTIPLY_DT,
     INSTR_NEQ,
+    INSTR_SIN,
+    INSTR_SQUARE,
+    INSTR_SUBTRACT,
     instrToString,
+    InstructionPart,
+    InstructionType,
     newSampleContext,
+    REGISTER_INFO,
     registerIdxToString,
-    updateSampleContext,
-    InstructionType
+    updateSampleContext
 } from "src/dsp/dsp-loop-instruction-set";
-import { getCurrentPlaySettings, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { getCurrentPlaySettings } from "src/dsp/dsp-loop-interface";
+import { arrayAt } from "src/utils/array-utils";
+import { assert } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
 import {
     ImCache,
@@ -78,12 +80,8 @@ import { EL_B, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, im
 import { clamp, gridsnapRound } from "src/utils/math-utils";
 import { getNoteFrequency } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
-import { cssVarsApp } from "./styling";
+import { drawSamples, newPlotState } from "./plotting";
 import { SoundLabState } from "./sound-lab-view";
-import { newPlotState, drawSamples } from "./plotting";
-import { imExtraDiagnosticInfo } from "src/components/fps-counter";
-import { arrayAt } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
 
 const cssb = newCssBuilder();
 const cnWaveProgramEditor = cssb.cn("waveProgramEditor", [
@@ -108,26 +106,33 @@ const instructionChoices: InstructionType[] = [
     INSTR_EQ,
     INSTR_NEQ,
 ];
-
 const instructionChoicesNames = instructionChoices.map(instrToString);
+
+const newRegisterChoicesNames = Array(REGISTER_INFO.totalCount)
+    .fill(null)
+    .map((_, i) => registerIdxToString(i));
 
 export type WaveProgramEditorState = {
     instructions: DspSynthInstructionItem[]
     instructionsVersion: number;
+    registersInUseWrite: Set<number>;
+    registersInUseRead: Set<number>;
 
     contextMenu: ContextMenuState;
 };
+
+const CONTEXT_MENU_FIELD__TYPE = 1;
+const CONTEXT_MENU_FIELD__VAL1 = 2;
+const CONTEXT_MENU_FIELD__VAL2 = 3;
+const CONTEXT_MENU_FIELD__DST = 4;
 
 export function newWaveProgramEditorState(): WaveProgramEditorState {
     return {
         instructions: getDefaultInstructions(),
         instructionsVersion: 0,
-        contextMenu: {
-            choices: [],
-            currentChoice: -1,
-            position: { x: 0, y: 0 },
-            reciever: null,
-        }
+        registersInUseWrite: new Set(),
+        registersInUseRead: new Set(),
+        contextMenu: newContextMenuState(),
     };
 }
 
@@ -137,11 +142,30 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
     const playSettings = getCurrentPlaySettings();
 
     let updateSettings = false;
+    const instructionsChanged = imMemo(c, editor.instructionsVersion);
+
+    if (instructionsChanged) {
+        editor.registersInUseRead.clear();
+        editor.registersInUseWrite.clear();
+
+        const dfs = (instructions: DspSynthInstructionItem[]) => {
+            for (const instr of instructions) {
+                if (instr.instruction) {
+                    if (instr.instruction.reg1) editor.registersInUseRead.add(instr.instruction.val1);
+                    if (instr.instruction.reg2) editor.registersInUseRead.add(instr.instruction.val2);
+                    editor.registersInUseWrite.add(instr.instruction.dst);
+                }
+
+                if (instr.ifelseInnerBlock) {
+                    dfs(instr.ifelseInnerBlock.inner);
+                }
+            }
+        }
+        dfs(editor.instructions);
+    }
 
     imModalBegin(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
         imLayout(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
-
-            const editorContextMenuChoice = imContextMenu(c, editor.contextMenu);
 
             if (isFirstishRender(c)) {
                 elSetClass(c, cnWaveProgramEditor);
@@ -156,6 +180,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                     if (isFirstishRender(c)) {
                         elSetStyle(c, "fontFamily", "monospace");
                         elSetStyle(c, "fontSize", "20px");
+                        elSetStyle(c, "padding", "3px");
                     }
 
                     let i = 0;
@@ -163,7 +188,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                         if (imIf(c) && instruction.instruction) {
                             const instr = instruction.instruction;
 
-                            imLayout(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                            imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 10, PX); {
                                 if (isFirstishRender(c)) {
                                     elSetStyle(c, "lineHeight", "1");
                                     elSetStyle(c, "userSelect", "none");
@@ -186,24 +211,21 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                     }
 
                                     if (elHasMousePress(c)) {
-                                        const mouse = getGlobalEventSystem().mouse;
-                                        editor.contextMenu.position.x = mouse.X;
-                                        editor.contextMenu.position.y = mouse.Y;
-                                        editor.contextMenu.choices = instructionChoicesNames;
-                                        editor.contextMenu.currentChoice = instructionChoices.indexOf(instr.type);
-                                        editor.contextMenu.reciever = instr;
+                                        const currentChoice = instructionChoices.indexOf(instr.type);
+                                        openContextMenuAtMouse(editor.contextMenu, instructionChoicesNames, currentChoice, instr, CONTEXT_MENU_FIELD__TYPE);
                                     }
 
-                                    if (
-                                        editor.contextMenu.reciever === instr && 
-                                        editorContextMenuChoice !== -1
-                                    ) {
-                                        editor.contextMenu.currentChoice = -1;
-                                        const newChoice = arrayAt(instructionChoices, editorContextMenuChoice);
-                                        assert(!!newChoice);
-                                        instr.type = newChoice;
-                                        updateSettings = true;
-                                    }
+                                    if (imIf(c) && contextMenuIsOpen(editor.contextMenu, instr, CONTEXT_MENU_FIELD__TYPE)) {
+                                        const newChoiceIdx = imContextMenu(c, editor.contextMenu);
+                                        if (newChoiceIdx !== null) {
+                                            if (newChoiceIdx !== -1) {
+                                                const newChoice = arrayAt(instructionChoices, newChoiceIdx); assert(newChoice !== undefined);
+                                                instr.type = newChoice;
+                                                updateSettings = true;
+                                            }
+                                            closeContextMenu(editor.contextMenu);
+                                        }
+                                    } imIfEnd(c);
 
                                     imStrFmt(c, instr.type, instrToString);
                                 } imLayoutEnd(c);
@@ -217,11 +239,15 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                             updateSettings = true;
                                         }
 
-                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imGap(c, 10, PX); {
                                             if (imIf(c) && instr.reg1) {
                                                 // Reinterpret this thing as an index.
-                                                imStr(c, "reg ");
-                                                imStrFmt(c, instr.val1, registerIdxToString);
+                                                imStr(c, "reg: ");
+                                                const newRegister = imRegisterContextMenu(c, editor, instr.val1, instr, CONTEXT_MENU_FIELD__VAL1);
+                                                if (newRegister !== null) {
+                                                    instr.val1 = newRegister;
+                                                    updateSettings = true;
+                                                }
                                             } else {
                                                 imElse(c);
                                                 imStr(c, instr.val1);
@@ -240,11 +266,15 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                             updateSettings = true;
                                         }
 
-                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imGap(c, 10, PX); {
                                             if (imIf(c) && instr.reg2) {
                                                 // Reinterpret this thing as an index.
-                                                imStr(c, "reg ");
-                                                imStrFmt(c, instr.val2, registerIdxToString);
+                                                imStr(c, "reg:");
+                                                const newRegister = imRegisterContextMenu(c, editor, instr.val2, instr, CONTEXT_MENU_FIELD__VAL2);
+                                                if (newRegister !== null) {
+                                                    instr.val2 = newRegister;
+                                                    updateSettings = true;
+                                                }
                                             } else {
                                                 imElse(c);
                                                 imStr(c, instr.val2);
@@ -253,13 +283,18 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                     } imLayoutEnd(c);
                                 }
 
-                                imLayout(c, ROW); imFlex(c); imJustify(c); {
+                                imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
                                     imStr(c, " -> ");
                                 } imLayoutEnd(c);
 
-                                imLayout(c, ROW); imAlign(c); imJustify(c, START); imSize(c, 25, PERCENT, 0, NA); {
-                                    imStr(c, "register: ");
-                                    imStrFmt(c, instr.dst, registerIdxToString);
+                                imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c, START); imSize(c, 25, PERCENT, 0, NA); imGap(c, 10, PX); {
+                                    imStr(c, "reg:");
+
+                                    const newRegister = imRegisterContextMenu(c, editor, instr.dst, instr, CONTEXT_MENU_FIELD__DST);
+                                    if (newRegister !== null) {
+                                        instr.dst = newRegister;
+                                        updateSettings = true;
+                                    }
                                 } imLayoutEnd(c);
                             } imLayoutEnd(c);
                         } else {
@@ -285,14 +320,18 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                     const s = imGet(c, imWaveProgramEditor) ?? imSet(c, {
                         noteIdx: 0,
                         ctx: newSampleContext(),
+
                         samples: Array(mockSampleRate * 3).fill(0) as number[],
                         viewingIdx: 0,
-                        viewingLen: 500,
-                        viewingInvalidated: false,
+                        viewingLen: 58071,
+                        viewingInvalidated: true,
+
+                        samplePressedIdx: 14430,
+                        sampleReleasedIdx: 28090,
                     });
 
                     if (imMemo(c, s.noteIdx)) s.viewingInvalidated = true;
-                    if (imMemo(c, editor.instructionsVersion)) s.viewingInvalidated = true;
+                    if (instructionsChanged) s.viewingInvalidated = true;
 
                     imHeading(c, "Wave program");
 
@@ -307,7 +346,12 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                             let frequency = getNoteFrequency(s.noteIdx);
                             const time = i / mockSampleRate;
 
-                            updateSampleContext(s.ctx, frequency, 1, 1 / mockSampleRate);
+                            let signal = 0;
+                            if(s.samplePressedIdx < i && i < s.sampleReleasedIdx) {
+                                signal = 1;
+                            }
+
+                            updateSampleContext(s.ctx, frequency, signal, 1 / mockSampleRate);
                             s.samples[i] = computeSample(s.ctx, params.instructions);
                         }
                     }
@@ -324,6 +368,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                 plotState.width = width;
                                 plotState.height = height;
                                 plotState.dpi = dpi;
+                                s.viewingInvalidated = true;
                             }
 
                             if (samplesRecomputed) {
@@ -342,18 +387,43 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                         } imEndCanvasRenderingContext2D(c);
                     } imLayoutEnd(c);
 
-                    let [start, end, draggingStart, draggingEnd] = imRangeSlider(
-                        c,
-                        0, s.samples.length,
-                        s.viewingIdx, s.viewingIdx + s.viewingLen, 1,
-                        100,
-                    ).value;
+                    imLayout(c, ROW); imAlign(c); {
+                        imLayout(c, BLOCK); imSize(c, 150, PX, 0, NA); {
+                            imStr(c, "Samples: ");
+                        } imLayoutEnd(c);
+                        imLayout(c, COL); imFlex(c); {
+                            const [start, end, draggingStart, draggingEnd] = imRangeSlider(
+                                c,
+                                0, s.samples.length,
+                                s.viewingIdx, s.viewingIdx + s.viewingLen, 1,
+                                100,
+                            ).value;
 
-                    s.viewingIdx = start;
-                    s.viewingLen = end - start;
-                    if (draggingStart || draggingEnd) {
-                        s.viewingInvalidated = true;
-                    }
+                            s.viewingIdx = start;
+                            s.viewingLen = end - start;
+                            if (draggingStart || draggingEnd) {
+                                s.viewingInvalidated = true;
+                            }
+                        } imLayoutEnd(c);
+                    } imLayoutEnd(c);
+                    imLayout(c, ROW); imAlign(c); {
+                        imLayout(c, BLOCK); imSize(c, 150, PX, 0, NA); {
+                            imStr(c, "Signal: ");
+                        } imLayoutEnd(c);
+                        imLayout(c, COL); imFlex(c); {
+                            const [start, end, draggingStart, draggingEnd] = imRangeSlider(
+                                c,
+                                0, s.samples.length,
+                                s.samplePressedIdx, s.sampleReleasedIdx, 1,
+                                100,
+                            ).value;
+                            s.samplePressedIdx = start;
+                            s.sampleReleasedIdx = end;
+                            if (draggingStart || draggingEnd) {
+                                s.viewingInvalidated = true;
+                            }
+                        } imLayoutEnd(c);
+                    } imLayoutEnd(c);
                 }
 
                 imHeading(c, "Parameters");
@@ -365,32 +435,38 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                         elSetStyle(c, "fontSize", "20px");
                     }
 
-                    imLayout(c, ROW); {
-                        const defaultParams = INDEX_DESCRIPTORS.reserved;
-                        imLayout(c, COL); imFlex(c); {
-                            imFor(c); for (let i = 0; i < defaultParams.length; i++) {
-                                const paramInfo = defaultParams[i];
-                                imLayout(c, ROW); imFg(c, cssVarsApp.mg); {
-                                    imLayout(c, ROW); imSize(c, 40, PX, 0, NA); imJustify(c); {
-                                        imStr(c, i);
-                                    } imLayoutEnd(c);
-                                    imStr(c, " -> ");
-                                    imStr(c, "[Default parameter] ");
-                                    imStr(c, paramInfo.name);
-                                } imLayoutEnd(c);
-                            } imForEnd(c);
+                    let numUnused = 0;
 
-                            imFor(c); for (let i = defaultParams.length; i < Math.floor(IDX_MAX / 2); i++) {
-                                imBindableParameter(c, i);
+                    imLayout(c, ROW); {
+                        imLayout(c, COL); imFlex(c); {
+                            imFor(c); for (let i = 0; i < Math.floor(IDX_COUNT / 2); i++) {
+                                const isRead = editor.registersInUseRead.has(i);
+                                const isWrite = editor.registersInUseWrite.has(i);
+                                if (!isRead && !isWrite) {
+                                    numUnused++;
+                                    continue;
+                                }
+
+                                imBindableParameter(c, editor, i, isRead, isWrite);
                             } imForEnd(c);
                         } imLayoutEnd(c);
                         imLayout(c, COL); imFlex(c); {
-                            imFor(c); for (let i = Math.floor(IDX_MAX / 2); i < IDX_MAX; i++) {
-                                imBindableParameter(c, i);
+                            imFor(c); for (let i = Math.floor(IDX_COUNT / 2); i < IDX_COUNT; i++) {
+                                const isRead = editor.registersInUseRead.has(i);
+                                const isWrite = editor.registersInUseWrite.has(i);
+                                if (!isRead && !isWrite) {
+                                    numUnused++;
+                                    continue;
+                                }
+                            
+                                imBindableParameter(c, editor, i, isRead, isWrite);
                             } imForEnd(c);
                         } imLayoutEnd(c);
                     } imLayoutEnd(c);
-
+                    imLayout(c, BLOCK); {
+                        imStr(c, numUnused);
+                        imStr(c, " unused");
+                    } imLayoutEnd(c);
                 } imScrollContainerEnd(c);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
@@ -487,13 +563,30 @@ function imParameterSliderCompact(
     return null;
 }
 
-function imBindableParameter(c: ImCache, varIdx: number) {
+function imBindableParameter(
+    c: ImCache,
+    editor: WaveProgramEditorState,
+    varIdx: number,
+    isRead: boolean,
+    isWrite: boolean
+) {
     imLayout(c, ROW); {
         imLayout(c, ROW); imSize(c, 40, PX, 0, NA); imJustify(c); {
             imStr(c, varIdx);
         } imLayoutEnd(c);
         imStr(c, " -> ");
-        imStr(c, "user " + varIdx);
+
+        imStrFmt(c, varIdx, registerIdxToString);
+
+        let used = false;
+        if (imIf(c) && isRead) {
+            used = true;
+            imStr(c, "[r]");
+        } imIfEnd(c);
+        if (imIf(c) && isWrite) {
+            used = true;
+            imStr(c, "[w]");
+        } imIfEnd(c);
     } imLayoutEnd(c);
 }
 
@@ -530,18 +623,32 @@ export function imWaveProgramPreview(
 }
 
 type ContextMenuState = {
-    position: { x: number; y: number };
-    choices: string[];
-    currentChoice: number; // if -1, then closed
-    reciever: unknown | null;
+    choiceNames: string[]; 
+
+    x: number, y: number;
+
+    currentChoiceIdx: number;
+    item: unknown | null;
+    field: unknown | null;
 };
 
-function imContextMenu(c: ImCache, s: ContextMenuState): number {
-    let resultChoice = -1;
 
-    if (imIf(c) && s.currentChoice !== -1 && s.choices.length > 0) {
+function newContextMenuState(): ContextMenuState {
+    return {
+        choiceNames: [],
+        x: 0, y: 0,
+        currentChoiceIdx: -1,
+        item: null,
+        field: null,
+    };
+}
+
+function imContextMenu(c: ImCache, s: ContextMenuState): number | null {
+    let result = null;
+
+    if (imIf(c) && s.currentChoiceIdx !== -1 && s.choiceNames.length > 0) {
         imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-            imLayout(c, COL); imAbsolute(c, s.position.y, PX, 0, NA, 0, NA, s.position.x, PX); {
+            imLayout(c, COL); imAbsolute(c, s.y, PX, 0, NA, 0, NA, s.x, PX); {
                 if (isFirstishRender(c)) {
                     elSetStyle(c, "fontFamily", "monospace");
                     elSetStyle(c, "fontSize", "20px");
@@ -553,8 +660,8 @@ function imContextMenu(c: ImCache, s: ContextMenuState): number {
                     elSetStyle(c, "padding", "3px");
                 }
 
-                imFor(c); for (let i = 0; i < s.choices.length; i++) {
-                    const choice = s.choices[i];
+                imFor(c); for (let i = 0; i < s.choiceNames.length; i++) {
+                    const choice = s.choiceNames[i];
 
                     imLayout(c, ROW); imJustify(c); {
                         if (isFirstishRender(c)) {
@@ -565,18 +672,100 @@ function imContextMenu(c: ImCache, s: ContextMenuState): number {
                         imStr(c, choice);
 
                         if (elHasMousePress(c)) {
-                            resultChoice = i;
+                            result = i;
                         }
                     } imLayoutEnd(c);
                 } imForEnd(c);
             } imLayoutEnd(c);
 
-            if (elHasMousePress(c)) {
-                s.reciever = null;
-                s.currentChoice = -1;
+            if (elHasMousePress(c) && result === null) {
+                result = -1;
             }
         } imLayoutEnd(c);
     } imIfEnd(c);
 
-    return resultChoice;
+    return result;
 }
+
+function imRegisterContextMenu(
+    c: ImCache,
+    editor: WaveProgramEditorState,
+    currentRegister: number,
+    instr: InstructionPart,
+    field: number,
+): number | null {
+    let newRegister: number | null = null;
+    
+    imLayout(c, ROW); imAlign(c); {
+        if (isFirstishRender(c)) {
+            elSetClass(c, "hoverable");
+        }
+
+        if (elHasMousePress(c)) {
+            openContextMenuAtMouse(editor.contextMenu, newRegisterChoicesNames, currentRegister, instr, field);
+        }
+
+        if (imIf(c) && contextMenuIsOpen(editor.contextMenu, instr, field)) {
+            const newChoiceIdx = imContextMenu(c, editor.contextMenu);
+            if (newChoiceIdx !== null) {
+                if (newChoiceIdx !== -1) {
+                    newRegister = newChoiceIdx;
+                }
+                closeContextMenu(editor.contextMenu);
+            }
+        } imIfEnd(c);
+        imStrFmt(c, currentRegister, registerIdxToString);
+    } imLayoutEnd(c);
+
+    return newRegister;
+}
+
+
+export function openContextMenu(
+    s: ContextMenuState,
+    choiceNames: string[], 
+    x: number, y: number,
+    currentChoiceIdx: number,
+    item: unknown,
+    field: unknown,
+) {
+    s.choiceNames = choiceNames;
+    s.x = x;
+    s.y = y;
+    s.currentChoiceIdx = currentChoiceIdx;
+    s.item = item;
+    s.field = field;
+}
+
+export function openContextMenuAtMouse(
+    s: ContextMenuState,
+    choiceNames: string[], 
+    currentChoiceIdx: number,
+    item: unknown,
+    field: unknown,
+) {
+    const mouse = getGlobalEventSystem().mouse;
+    openContextMenu(
+        s,
+        choiceNames,
+        mouse.X + 20,
+        mouse.Y,
+        currentChoiceIdx,
+        item,
+        field,
+    );
+}
+
+export function closeContextMenu(s: ContextMenuState) {
+    s.currentChoiceIdx = -1;
+    s.item = null;
+    s.field = null;
+}
+
+export function contextMenuIsOpen(s: ContextMenuState, item: unknown, field: unknown) {
+    return s.currentChoiceIdx !== -1 &&
+           s.item === item &&
+           s.field === field;
+}
+
+

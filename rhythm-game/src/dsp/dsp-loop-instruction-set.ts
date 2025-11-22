@@ -72,10 +72,8 @@ export const IDX_SIGNAL           = 2;
 export const IDX_DT               = 3;
 export const IDX_JMP_RESULT       = 4;
 export const IDX_USER             = 5;
-export const IDX_MAX              = 32;
-export const INDEX_DESCRIPTORS: {
-    reserved: { name: string }[];
-} = {
+export const IDX_COUNT            = 32;
+export const REGISTER_INFO  = {
     reserved: [
         { name: "Output" },
         { name: "Frequency" },
@@ -83,6 +81,7 @@ export const INDEX_DESCRIPTORS: {
         { name: "DeltaTime" },
         { name: "JumpResult" },
     ],
+    totalCount: IDX_COUNT,
 };
 
 function sin(t: number) {
@@ -155,7 +154,7 @@ export function updateSampleContext(
 
 export function newSampleContext(): SampleContext {
     return {
-        registers: new Array(IDX_MAX).fill(0),
+        registers: new Array(IDX_COUNT).fill(0),
         wantedFrequency: 0,
         signal: 0,
         dt: 0,
@@ -183,8 +182,8 @@ export function newDspInstruction(
 
 export function registerIdxToString(idx: number): string {
     if (idx < 0) return "???";
-    if (idx < IDX_USER) return INDEX_DESCRIPTORS.reserved[idx].name;
-    if (idx < IDX_MAX) return "user " + (idx - IDX_USER);
+    if (idx < IDX_USER) return REGISTER_INFO.reserved[idx].name;
+    if (idx < IDX_COUNT) return "user " + (idx - IDX_USER);
     return "????";
 }
 

@@ -3,8 +3,6 @@ import { elHasMousePress, elSetStyle, getGlobalEventSystem, imTrackSize } from "
 import { clamp } from "src/utils/math-utils";
 import { cssVarsApp } from "src/views/styling";
 import { BLOCK, imLayout, imLayoutEnd } from "./core/layout";
-import { startPlaying } from "src/state/playing-pausing";
-import { handleMovementAbsolute } from "src/state/sequencer-state";
 
 
 type RangeSliderHandle = {

@@ -14,7 +14,7 @@ import {
 import { imLine, LINE_VERTICAL } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { debugFlags } from "src/debug-flags";
-import { compileDefaultInstructions, dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
+import { dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
 import { getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { newArray } from "src/utils/array-utils";
