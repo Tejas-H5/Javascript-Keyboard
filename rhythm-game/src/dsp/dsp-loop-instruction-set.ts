@@ -123,10 +123,15 @@ export type DspSynthInstructionItem = {
     comment?: string;
 };
 
+export type InstructionPartArgument = {
+    reg: boolean; // is the value a register or a literal value?
+    val: number; // the value
+};
+
 export type InstructionPart = {
     type: InstructionType;       // What type of instruction is this?
-    val1: number; reg1: boolean; // Val1, and is it a register or nah?
-    val2: number; reg2: boolean; // Val2, and is it a register or nah?
+    arg1: InstructionPartArgument;
+    arg2: InstructionPartArgument;
 
     // Where do we write the result to? NOTE: some instructions, like the JUMP_ instructions, don't write anything
     dst: number;
@@ -173,10 +178,8 @@ export function newDspInstruction(
     return {
         type: t,
         dst: dst,
-        val1: val1,
-        reg1: reg1,
-        val2: val2,
-        reg2: reg2,
+        arg1: { val: val1, reg: reg1 },
+        arg2: { val: val2, reg: reg2 },
     };
 }
 
@@ -345,12 +348,10 @@ export function compileToInstructionsInternal(instructions: DspSynthInstructionI
                 pushInstruction({
                     type: INSTR_JUMP_IF_Z,
                     // read result of last instruction
-                    val1: instr.instruction.dst,
-                    reg1: true,
+                    arg1: { reg: true, val: instr.instruction.dst},
                     // after codegen, needs to point to the if-check of the next if-block.
                     // We jump there if the previous comparison was false
-                    val2: -1,
-                    reg2: false,
+                    arg2: { reg: false, val: -1 },
                     dst: -1,
                 }, dst);
             } else {
@@ -372,13 +373,11 @@ export function compileToInstructionsInternal(instructions: DspSynthInstructionI
                     pushInstruction({
                         type: INSTR_JUMP_IF_Z,
                         // always jump. TODO: consider dedicated jump instuction???
-                        val1: 0,
-                        reg1: false,
+                        arg1: { reg: false, val: 0 },
                         // We can only populate this when we're closing off the final if-else block.
                         // There will be multiple of these instructions, and they'll all point
                         // back to the same place.
-                        val2: -1,
-                        reg2: false,
+                        arg2: { reg: false, val: -1 },
                         dst: -1,
                     }, dst);
                     jumpToBlockEndInstructionIndexes.push(idx);
@@ -405,9 +404,9 @@ export const OFFSET_INSTRUCTION_SIZE = 6;
 export function pushInstruction(instr: InstructionPart, dst: number[]) {
     dst.push(instr.type);           // 0
     dst.push(instr.dst);            // 1
-    dst.push(instr.val1);           // 2
-    dst.push(instr.reg1 ? 1 : 0);   // 3
-    dst.push(instr.val2);           // 4
-    dst.push(instr.reg2 ? 1 : 0);   // 5
+    dst.push(instr.arg1.val);           // 2
+    dst.push(instr.arg1.reg ? 1 : 0);   // 3
+    dst.push(instr.arg2.val);           // 4
+    dst.push(instr.arg2.reg ? 1 : 0);   // 5
 }
 

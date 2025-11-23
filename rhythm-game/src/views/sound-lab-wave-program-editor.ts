@@ -1,3 +1,4 @@
+import { closeContextMenu, contextMenuIsOpen, ContextMenuState, imContextMenuBegin, imContextMenuEnd, imContextMenuItemBegin, imContextMenuItemEnd, newContextMenuState, openContextMenuAtMouse } from "src/app-components/context-menu";
 import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideInteractionFeedback, imCompactLinearDragSlideInteraction } from "src/app-components/drag-slider-interaction";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
 import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
@@ -5,11 +6,8 @@ import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "
 import {
     BLOCK,
     COL,
-    EM,
-    imAbsolute,
     imAlign,
     imBg,
-    imFixed,
     imFlex,
     imFlex1,
     imGap,
@@ -31,13 +29,13 @@ import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL_PADDING, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
-import { imSliderInput } from "src/components/slider";
 import { copyInstruction, getDefaultInstructions } from "src/dsp/dsp-loop";
 import {
     computeSample,
     DspSynthInstructionItem,
     IDX_COUNT,
     IDX_OUTPUT,
+    IDX_USER,
     INSTR_ADD,
     INSTR_ADD_DT,
     INSTR_DIVIDE,
@@ -54,6 +52,7 @@ import {
     INSTR_SUBTRACT,
     instrToString,
     InstructionPart,
+    InstructionPartArgument,
     InstructionType,
     newDspInstruction,
     newSampleContext,
@@ -62,8 +61,7 @@ import {
     updateSampleContext
 } from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings } from "src/dsp/dsp-loop-interface";
-import { arrayAt, arraySwap, filterInPlace } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
+import { arraySwap, filterInPlace } from "src/utils/array-utils";
 import { newCssBuilder } from "src/utils/cssb";
 import {
     ImCache,
@@ -80,12 +78,13 @@ import {
     imState,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
+import { EL_B, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
 import { clamp, gridsnapRound } from "src/utils/math-utils";
 import { getNoteFrequency } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
 import { SoundLabState } from "./sound-lab-view";
+import { cssVarsApp } from "./styling";
 
 const cssb = newCssBuilder();
 const cnWaveProgramEditor = cssb.cn("waveProgramEditor", [
@@ -110,17 +109,15 @@ const instructionChoices: InstructionType[] = [
     INSTR_EQ,
     INSTR_NEQ,
 ];
-const instructionChoicesNames = instructionChoices.map(instrToString);
-
-const newRegisterChoicesNames = Array(REGISTER_INFO.totalCount)
-    .fill(null)
-    .map((_, i) => registerIdxToString(i));
 
 export type WaveProgramEditorState = {
     instructions: DspSynthInstructionItem[]
     instructionsVersion: number;
     registersInUseWrite: Set<number>;
     registersInUseRead: Set<number>;
+
+    highlightedRegister: number;
+    highlightedRegisterNext: number;
 
     contextMenu: ContextMenuState;
 };
@@ -136,24 +133,22 @@ export function newWaveProgramEditorState(): WaveProgramEditorState {
         instructionsVersion: 0,
         registersInUseWrite: new Set(),
         registersInUseRead: new Set(),
+        highlightedRegister: -1,
+        highlightedRegisterNext: -1,
         contextMenu: newContextMenuState(),
     };
 }
 
-
-function fixRegisterValueIndexes(instr: InstructionPart) {
-    if (instr.reg1) {
-        instr.val1 = Math.round(instr.val1);
-    }
-
-    if (instr.reg2) {
-        instr.val2 = Math.round(instr.val2);
-    }
+function fixInstructionPartInstructionPartArgument(arg: InstructionPartArgument) {
+    if (arg.reg) arg.val = Math.round(arg.val);
 }
 
 export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabState) {
     const editor = state.instructionBuilder;
     const playSettings = getCurrentPlaySettings();
+
+    editor.highlightedRegister = editor.highlightedRegisterNext;
+    editor.highlightedRegisterNext = -1;
 
     let updateSettings = false;
     const instructionsChanged = imMemo(c, editor.instructionsVersion);
@@ -165,8 +160,8 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
         const dfs = (instructions: DspSynthInstructionItem[]) => {
             for (const instr of instructions) {
                 if (instr.instruction) {
-                    if (instr.instruction.reg1) editor.registersInUseRead.add(instr.instruction.val1);
-                    if (instr.instruction.reg2) editor.registersInUseRead.add(instr.instruction.val2);
+                    if (instr.instruction.arg1.reg) editor.registersInUseRead.add(instr.instruction.arg1.val);
+                    if (instr.instruction.arg2.reg) editor.registersInUseRead.add(instr.instruction.arg2.val);
                     editor.registersInUseWrite.add(instr.instruction.dst);
                 }
 
@@ -202,7 +197,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                         if (imIf(c) && instruction.instruction) {
                             const instr = instruction.instruction;
 
-                            imLayout(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                            imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 10, PX); {
                                 if (isFirstishRender(c)) {
                                     elSetStyle(c, "lineHeight", "1");
                                     elSetStyle(c, "userSelect", "none");
@@ -219,57 +214,37 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                 } imLayoutEnd(c);
 
                                 // register value 1
-                                {
-                                    imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                                    imSize(c, 20, PERCENT, 0, NA); {
-                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imGap(c, 10, PX); {
-                                            if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", true, BLOCK)) {
-                                                instr.reg1 = !instr.reg1;
-                                                fixRegisterValueIndexes(instr);
-                                                updateSettings = true;
-                                            }
-
-                                            if (imIf(c) && instr.reg1) {
-                                                // Reinterpret this thing as an index.
-                                                const newRegister = imRegisterContextMenu(c, editor, instr.val1, instr, CONTEXT_MENU_FIELD__VAL1);
-                                                if (newRegister !== null) {
-                                                    instr.val1 = newRegister;
-                                                    updateSettings = true;
-                                                }
-                                            } else {
-                                                imElse(c);
-
-                                                let dragEvent = imParameterSliderCompact(c, "", -1_000_000, 1_000_000, 0.0001, instr.val1, 0, DRAG_TYPE_CIRCULAR);
-                                                if (dragEvent) {
-                                                    instr.val1 = dragEvent.val;
-                                                    updateSettings = true;
-                                                }
-                                            } imEndIf(c);
-                                        } imLayoutEnd(c);
-                                    } imLayoutEnd(c);
+                                const editedValue1 = imRegisterArgumentEditor(c, editor, instr, instr.arg1);
+                                if (editedValue1) {
+                                    updateSettings = true;
                                 }
 
                                 // Instruction type dropdown
                                 imLayout(c, ROW); imAlign(c); imJustify(c); imSize(c, 10, PERCENT, 0, NA); {
-                                    if (isFirstishRender(c)) {
-                                        elSetClass(c, "hoverable");
-                                    }
+                                    if (isFirstishRender(c)) elSetClass(c, "hoverable");
 
                                     if (elHasMousePress(c)) {
-                                        const currentChoice = instructionChoices.indexOf(instr.type);
-                                        openContextMenuAtMouse(editor.contextMenu, instructionChoicesNames, currentChoice, instr, CONTEXT_MENU_FIELD__TYPE);
+                                        openContextMenuAtMouse(editor.contextMenu, instr, CONTEXT_MENU_FIELD__TYPE);
                                     }
 
-                                    if (imIf(c) && contextMenuIsOpen(editor.contextMenu, instr, CONTEXT_MENU_FIELD__TYPE)) {
-                                        const newChoiceIdx = imContextMenu(c, editor.contextMenu);
-                                        if (newChoiceIdx !== null) {
-                                            if (newChoiceIdx !== -1) {
-                                                const newChoice = arrayAt(instructionChoices, newChoiceIdx); assert(newChoice !== undefined);
-                                                instr.type = newChoice;
-                                                updateSettings = true;
-                                            }
-                                            closeContextMenu(editor.contextMenu);
-                                        }
+                                    if (
+                                        imIf(c) && 
+                                        editor.contextMenu.item === instr && 
+                                        editor.contextMenu.field === CONTEXT_MENU_FIELD__TYPE
+                                    ) {
+                                        imContextMenuBegin(c, editor.contextMenu); {
+                                            imFor(c); for (const instrType of instructionChoices) {
+                                                imContextMenuItemBegin(c); {
+                                                    if (isFirstishRender(c)) elSetClass(c, "hoverable");
+                                                    imStrFmt(c, instrType, instrToString);
+
+                                                    if (elHasMousePress(c)) {
+                                                        instr.type = instrType;
+                                                        updateSettings = true;
+                                                    }
+                                                } imLayoutEnd(c);
+                                            } imForEnd(c);
+                                        } imContextMenuEnd(c, editor.contextMenu);
                                     } imIfEnd(c);
 
                                     imLayout(c, INLINE_BLOCK); imNoWrap(c); {
@@ -278,35 +253,11 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                 } imLayoutEnd(c);
 
                                 // register value 2
-                                {
-                                    imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                                    imSize(c, 20, PERCENT, 0, NA); {
-                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imGap(c, 10, PX); {
-                                            if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", true, BLOCK)) {
-                                                instr.reg2 = !instr.reg2;
-                                                fixRegisterValueIndexes(instr);
-                                                updateSettings = true;
-                                            }
-
-                                            if (imIf(c) && instr.reg2) {
-                                                // Reinterpret this thing as an index.
-                                                const newRegister = imRegisterContextMenu(c, editor, instr.val2, instr, CONTEXT_MENU_FIELD__VAL2);
-                                                if (newRegister !== null) {
-                                                    instr.val2 = newRegister;
-                                                    updateSettings = true;
-                                                }
-                                            } else {
-                                                imElse(c);
-
-                                                let dragEvent = imParameterSliderCompact(c, "", -1_000_000, 1_000_000, 0.0001, instr.val2, 0, DRAG_TYPE_CIRCULAR);
-                                                if (dragEvent) {
-                                                    instr.val2 = dragEvent.val;
-                                                    updateSettings = true;
-                                                }
-                                            } imEndIf(c);
-                                        } imLayoutEnd(c);
-                                    } imLayoutEnd(c);
+                                const editedValue2 = imRegisterArgumentEditor(c, editor, instr, instr.arg2);
+                                if (editedValue2) {
+                                    updateSettings = true;
                                 }
+
 
                                 imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); imNoWrap(c); {
                                     imStr(c, " -> ");
@@ -557,14 +508,11 @@ function imHeading(c: ImCache, text: string) {
 }
 
 
-
-
 const DRAG_TYPE_LINEAR = 1;
 const DRAG_TYPE_CIRCULAR = 2;
 
-function imParameterSliderCompact(
+function imParameterSliderInteraction(
     c: ImCache,
-    name: string,
     min: number,
     max: number,
     step: number,
@@ -576,37 +524,28 @@ function imParameterSliderCompact(
 
     const { mouse } = getGlobalEventSystem();
 
-    imLayout(c, BLOCK); imAlign(c); {
-        imLayout(c, BLOCK); {
-            if (imIf(c) && name) {
-                imStr(c, name);
-            } imIfEnd(c);
-            imStr(c, val.toFixed(3));
-        } imLayoutEnd(c);
+    if (mouse.ev?.shiftKey) {
+        step = 0.1
+    }
 
-        if (mouse.ev?.shiftKey) {
-            step = 0.1
-        }
+    if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
+        const state = imCompactCircularDragSlideInteraction(c, val, min, max, 100, 1.4);
+        imCompactCircularDragSlideInteractionFeedback(c, state);
 
-        if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
-            const state = imCompactCircularDragSlideInteraction(c, val, min, max, 100, 1.4);
-            imCompactCircularDragSlideInteractionFeedback(c, state);
+        val = state.value;
+    } else {
+        imElse(c);
+        val = imCompactLinearDragSlideInteraction(c, 100, val, min, max);
+    } imEndIf(c);
 
-            val = state.value;
-        } else {
-            imElse(c);
-            val = imCompactLinearDragSlideInteraction(c, 100, val, min, max);
-        } imEndIf(c);
-        
-        val = gridsnapRound(val, step);
-        val = clamp(val, min, max);
+    val = gridsnapRound(val, step);
+    val = clamp(val, min, max);
 
-        if (elHasMousePress(c) && mouse.rightMouseButton) {
-            // Reset to default value on rightclick
-            mouse.ev?.preventDefault();
-            val = defaultValue;
-        }
-    } imLayoutEnd(c);
+    if (elHasMousePress(c) && mouse.rightMouseButton) {
+        // Reset to default value on rightclick
+        mouse.ev?.preventDefault();
+        val = defaultValue;
+    }
 
     if (val !== initialVal) {
         return { val };
@@ -616,12 +555,16 @@ function imParameterSliderCompact(
 }
 function imBindableParameter(
     c: ImCache,
-    _editor: WaveProgramEditorState,
+    editor: WaveProgramEditorState,
     varIdx: number,
     isRead: boolean,
     isWrite: boolean
 ) {
-    imLayout(c, ROW); {
+    imLayout(c, ROW); imRegisterHighlightBg(c, editor, varIdx); {
+        if (elHasMouseOver(c)) {
+            editor.highlightedRegisterNext = varIdx;
+        }
+
         imLayout(c, ROW); imSize(c, 40, PX, 0, NA); imJustify(c); {
             imStr(c, varIdx);
         } imLayoutEnd(c);
@@ -673,97 +616,69 @@ export function imWaveProgramPreview(
     } imLayoutEnd(c);
 }
 
-type ContextMenuState = {
-    choiceNames: string[]; 
-
-    x: number, y: number;
-
-    currentChoiceIdx: number;
-    item: unknown | null;
-    field: unknown | null;
-};
-
-
-function newContextMenuState(): ContextMenuState {
-    return {
-        choiceNames: [],
-        x: 0, y: 0,
-        currentChoiceIdx: -1,
-        item: null,
-        field: null,
-    };
-}
-
-function imContextMenu(c: ImCache, s: ContextMenuState): number | null {
-    let result = null;
-
-    if (imIf(c) && s.currentChoiceIdx !== -1 && s.choiceNames.length > 0) {
-        imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-            imLayout(c, COL); imAbsolute(c, s.y, PX, 0, NA, 0, NA, s.x, PX); {
-                if (isFirstishRender(c)) {
-                    elSetStyle(c, "fontFamily", "monospace");
-                    elSetStyle(c, "fontSize", "20px");
-
-                    elSetStyle(c, "userSelect", "none");
-                    elSetStyle(c, "backgroundColor", cssVars.bg);
-                    elSetStyle(c, "boxShadow", "4px 4px 5px 0px rgba(0,0,0,0.37)");
-                    elSetStyle(c, "border", "1px solid rgba(0,0,0,0.37)");
-                    elSetStyle(c, "padding", "3px");
-                }
-
-                imFor(c); for (let i = 0; i < s.choiceNames.length; i++) {
-                    const choice = s.choiceNames[i];
-
-                    imLayout(c, ROW); imJustify(c); {
-                        if (isFirstishRender(c)) {
-                            elSetClass(c, "hoverable");
-                            elSetStyle(c, "borderBottom", "1px solid rgba(0,0,0,0.37)");
-                        }
-
-                        imStr(c, choice);
-
-                        if (elHasMousePress(c)) {
-                            result = i;
-                        }
-                    } imLayoutEnd(c);
-                } imForEnd(c);
-            } imLayoutEnd(c);
-
-            if (elHasMousePress(c) && result === null) {
-                result = -1;
-            }
-        } imLayoutEnd(c);
-    } imIfEnd(c);
-
-    return result;
-}
 
 function imRegisterContextMenu(
     c: ImCache,
     editor: WaveProgramEditorState,
     currentRegister: number,
     instr: InstructionPart,
-    field: number,
+    field: unknown,
 ): number | null {
     let newRegister: number | null = null;
     
-    imLayout(c, ROW); imAlign(c); {
+    imLayout(c, ROW); imAlign(c); imRegisterHighlightBg(c, editor, currentRegister); {
+        if (elHasMouseOver(c)) {
+            editor.highlightedRegisterNext = currentRegister;
+        }
+
         if (isFirstishRender(c)) {
             elSetClass(c, "hoverable");
         }
 
         if (elHasMousePress(c)) {
-            openContextMenuAtMouse(editor.contextMenu, newRegisterChoicesNames, currentRegister, instr, field);
+            openContextMenuAtMouse(editor.contextMenu, instr, field);
         }
 
         if (imIf(c) && contextMenuIsOpen(editor.contextMenu, instr, field)) {
-            const newChoiceIdx = imContextMenu(c, editor.contextMenu);
-            if (newChoiceIdx !== null) {
-                if (newChoiceIdx !== -1) {
-                    newRegister = newChoiceIdx;
+            imContextMenuBegin(c, editor.contextMenu); {
+                let allowNewRegister = true;
+                let regIdx = 0;
+                imFor(c); for (
+                    ;
+                    regIdx < REGISTER_INFO.totalCount;
+                    regIdx++
+                ) {
+                    if (regIdx >= IDX_USER) {
+                        // Don't show all 32 user registers. just show one new one at a time.
+                        const inUse = editor.registersInUseRead.has(regIdx) || editor.registersInUseWrite.has(regIdx);
+                        if (!inUse) {
+                            if (!allowNewRegister) break;
+                            allowNewRegister = false;
+                        }
+                    }
+
+                    imContextMenuItemBegin(c); imRegisterHighlightBg(c, editor, regIdx); {
+                        if (isFirstishRender(c)) elSetClass(c, "hoverable");
+
+                        imStrFmt(c, regIdx, registerIdxToString);
+                        if (imIf(c) && !allowNewRegister) {
+                            imStr(c, " [new]");
+                        } imIfEnd(c);
+
+                        if (elHasMousePress(c)) {
+                            newRegister = regIdx;
+                            closeContextMenu(editor.contextMenu);
+                        }
+                    } imContextMenuItemEnd(c);
+                } imForEnd(c);
+
+                if (!allowNewRegister) {
+                    imLayout(c, BLOCK); { 
+                        imStr(c, REGISTER_INFO.totalCount - regIdx);
+                        imStr(c, " registers remaining");
+                    } imLayoutEnd(c);
                 }
-                closeContextMenu(editor.contextMenu);
-            }
+            } imContextMenuEnd(c, editor.contextMenu);
         } imIfEnd(c);
         imStrFmt(c, currentRegister, registerIdxToString);
     } imLayoutEnd(c);
@@ -771,52 +686,59 @@ function imRegisterContextMenu(
     return newRegister;
 }
 
+function imRegisterArgumentEditor(
+    c: ImCache,
+    editor: WaveProgramEditorState,
+    instr: InstructionPart,
+    arg: InstructionPartArgument,
+): boolean {
+    let edited = false;
 
-export function openContextMenu(
-    s: ContextMenuState,
-    choiceNames: string[], 
-    x: number, y: number,
-    currentChoiceIdx: number,
-    item: unknown,
-    field: unknown,
-) {
-    s.choiceNames = choiceNames;
-    s.x = x;
-    s.y = y;
-    s.currentChoiceIdx = currentChoiceIdx;
-    s.item = item;
-    s.field = field;
+    imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 10, PX);
+    imSize(c, 20, PERCENT, 0, NA); {
+        imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c); imFlex(c); imGap(c, 10, PX); {
+            if (imButtonIsClicked(c, arg.reg ? "reg:" : "val:", arg.reg, BLOCK)) {
+                arg.reg = !arg.reg;
+                fixInstructionPartInstructionPartArgument(arg);
+                edited = true;
+            }
+
+            if (imIf(c) && arg.reg) {
+                // Reinterpret this thing as an index.
+                const newRegister = imRegisterContextMenu(c, editor, arg.val, instr, arg);
+                if (newRegister !== null) {
+                    arg.val = newRegister;
+                    edited = true;
+                }
+            } else {
+                imElse(c);
+
+                imLayout(c, ROW); imAlign(c); {
+                    imStr(c, arg.val.toFixed(3));
+
+                    let dragEvent = imParameterSliderInteraction(
+                        c,
+                        -1_000_000, 1_000_000, 0.0001, arg.val, 0,
+                        DRAG_TYPE_CIRCULAR
+                    );
+
+                    if (dragEvent) {
+                        arg.val = dragEvent.val;
+                        edited = true;
+                    }
+                } imLayoutEnd(c);
+            } imEndIf(c);
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
+
+    return edited;
 }
 
-export function openContextMenuAtMouse(
-    s: ContextMenuState,
-    choiceNames: string[], 
-    currentChoiceIdx: number,
-    item: unknown,
-    field: unknown,
-) {
-    const mouse = getGlobalEventSystem().mouse;
-    openContextMenu(
-        s,
-        choiceNames,
-        mouse.X + 20,
-        mouse.Y,
-        currentChoiceIdx,
-        item,
-        field,
-    );
+function imRegisterHighlightBg(c: ImCache, editor: WaveProgramEditorState, regIdx: number) {
+    const isHighlighted = regIdx === editor.highlightedRegister;
+    imBg(c, isHighlighted ? cssVarsApp.codeHighlight : "");
+
+    if (elHasMouseOver(c)) {
+        editor.highlightedRegisterNext = regIdx;
+    }
 }
-
-export function closeContextMenu(s: ContextMenuState) {
-    s.currentChoiceIdx = -1;
-    s.item = null;
-    s.field = null;
-}
-
-export function contextMenuIsOpen(s: ContextMenuState, item: unknown, field: unknown) {
-    return s.currentChoiceIdx !== -1 &&
-           s.item === item &&
-           s.field === field;
-}
-
-
