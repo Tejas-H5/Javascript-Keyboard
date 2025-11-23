@@ -1,12 +1,13 @@
-// IM-CORE 1.048
+// IM-CORE 1.049
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
 import { assert } from "src/utils/assert";
 
 // Conventions
-//  - All methods that call `imGet` at some point in their entire execution or plan on doing it should be prefixed with 'im'.
-//    Conversely, methods that don't do so and will never do so, should NOT be prefixed with 'im'.
+//  - An 'immediate mode' method or 'im' method is any method that eventually reads from or writes to the `ImCache`.
+//    These methods should ideally be prefixed with 'im'.
+//    Conversely, methods that don't do so and will never do so, should NOT be prefixed with 'im', unless they will do so in the future.
 //    This allows developers (and in the future, static analysis tools) to know that this method can't be rendered conditionally, or
 //    out of order, similar to how React hooks work. This is really the only convention I would recommend you actually follow.
 //
@@ -16,6 +17,7 @@ import { assert } from "src/utils/assert";
 //    After wasting a lot of time thinking about a convention that 100% covers all bases, and makes it 
 //    obvious which methods push/pop and also saves as much typing as possible, I wasn't able to find a good solution, 
 //    so this is the compromise. 
+//    Some day, I plan on making aneslint rule that will make use of this convention to flag missing closing statements.
 
 export type ImCacheEntries = any[];
 
@@ -700,6 +702,7 @@ export const imEndFor = imForEnd;
 export const imCatch = imTryCatch;
 
 /**
+ * Example usage:
  * ```ts
  * imSwitch(c, key) switch (key) {
  *      case a: { ... } break;
@@ -707,8 +710,19 @@ export const imCatch = imTryCatch;
  *      case c: { ... } break;
  * } imSwitchEnd(c);
  * ```
- * NOTE: doesn't work as you would expect when you use fallthrough, so don't use fallthrough with imSwitch.
- * Use if-else + imIf/imIfElse/imIfEnd instead.
+ * NOTE: Don't use fallthrough, use if-else + imIf/imIfElse/imIfEnd instead. 
+ * Fallthrough doesn't work as you would expect - for example:
+ * ```ts
+ *  imSwitch(c,key); switch(key) {
+ *          case "A": { imComponent1(c); } // fallthrough (nooo)
+ *          case "B": { imComponent2(c); }
+ *  } imSwitchEnd(c);
+ * ```
+ * When the key is `b`, an instance of imComponent2 is rendered. However,
+ * when the key is `a`, two completely separate instances of `imComponent1` and `imComponent2` are rendered.
+ *      You would expect the `imComponent2` from both switch cases to be the same instance, but they are duplicates 
+ *      with none of the same state.
+ * 
  */
 export function imSwitch(c: ImCache, key: ValidKey) {
     __imBlockDerivedBegin(c, INTERNAL_TYPE_SWITCH_BLOCK);
@@ -979,7 +993,6 @@ export function globalStateStackPush<T>(gss: T[], item: T) {
 
     gss.push(item);
 }
-
 export function globalStateStackGet<T>(gss: T[]): T {
     // No context item was pushed
     assert(gss.length > 0);
@@ -997,4 +1010,3 @@ export function globalStateStackPop<T>(gss: T[], item: T): T {
 
     return currentItem;
 }
-// Finally, 1000 lines of code! lets go.

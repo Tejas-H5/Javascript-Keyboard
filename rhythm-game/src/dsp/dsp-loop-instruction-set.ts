@@ -106,7 +106,7 @@ function triangle(t: number) {
 }
 
 function square(t: number) {
-    t = t % 2;
+    t = Math.abs(t) % 2;
     return t > 1 ? 1 : -1;
 }
 
@@ -216,7 +216,7 @@ export function computeSample(s: SampleContext, instructions: number[]) {
 
         switch (type) {
             case INSTR_SIN:         { result = val1 * sin(val2);     } break;
-            case INSTR_SQUARE:      { result = val1 * square(val1);  } break;
+            case INSTR_SQUARE:      { result = val1 * square(val2);  } break;
             case INSTR_ADD:         { result = val1 + val2;          } break;
             case INSTR_ADD_DT:      { result = val1 + (s.dt * val2); } break;
             case INSTR_SUBTRACT:    { result = val1 - val2;          } break;

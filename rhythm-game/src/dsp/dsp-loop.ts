@@ -91,6 +91,10 @@ export function getDefaultInstructions() {
     return instructions;
 }
 
+export function copyInstruction(instr: DspSynthInstructionItem): DspSynthInstructionItem {
+    return JSON.parse(JSON.stringify(instr));
+}
+
 export function compileDefaultInstructions(dst: number[]) {
     dst.length = 0;
     const instructions = getDefaultInstructions();

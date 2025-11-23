@@ -623,7 +623,7 @@ export function imGlobalEventSystemBegin(c: ImCache): ImGlobalEventSystem {
     return state;
 }
 
-export function imGlobalEventSystemEnd(c: ImCache, eventSystem: ImGlobalEventSystem) {
+export function imGlobalEventSystemEnd(_c: ImCache, eventSystem: ImGlobalEventSystem) {
     resetKeyboardState(eventSystem.keyboard);
     resetMouseState(eventSystem.mouse, false);
     eventSystem.blur = false;

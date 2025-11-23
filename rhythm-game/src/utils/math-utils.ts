@@ -113,3 +113,17 @@ export function derivative(src: number[] | Float32Array, dst: number[] | Float32
     }
     dst[0] = dst[1];
 }
+
+// Use this to compute the actual angle delta. 
+// If the angles are more than 2 rotations apart, this won't work.
+export function deltaAngle(to: number, from: number) {
+    const tau = 2 * Math.PI;
+    let delta = to - from;
+    const absDelta = Math.abs(delta);
+    if (Math.abs(delta + tau) < absDelta) {
+        delta = delta + tau;
+    } else if (Math.abs(delta - tau) < absDelta) {
+        delta = delta - tau;
+    }
+    return delta;
+}

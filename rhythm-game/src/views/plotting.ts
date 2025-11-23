@@ -226,8 +226,8 @@ export function drawSamples(
                 let y0Plot = Math.floor(getCanvasElementY(plotState, minSample));
                 let y1Plot = Math.ceil(getCanvasElementY(plotState, maxSample));
 
-                ctx.moveTo(x1Plot, y0Plot);
-                ctx.lineTo(x1Plot, y1Plot);
+                ctx.moveTo(x1Plot, y0Plot - 0.5);
+                ctx.lineTo(x1Plot, y1Plot + 0.5);
             }
             ctx.stroke();
         } ctx.closePath();

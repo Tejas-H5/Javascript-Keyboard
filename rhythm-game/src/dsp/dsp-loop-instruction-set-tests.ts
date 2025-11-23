@@ -135,6 +135,8 @@ export const dspLoopInstructionSetTests = [
                     newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT),             // 9
                 // Final if-statement doesn't actually need to be closed off !!
             ]);
+
+            expectEqual(test, "idk", "TODO: compute the samples and test result", "");
         }),
     ]),
 ]

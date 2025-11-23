@@ -2,8 +2,9 @@ import { assert } from "./assert";
 
 export type TestSuite<T> = {
     name: string;
-    ctxFn: () => T;
     tests: Test<T>[];
+    // T allows us to compose multiple tests of the same type one after the other, in varying orders, etc.
+    ctxFn: () => T;
 };
 
 export type Test<T> = {

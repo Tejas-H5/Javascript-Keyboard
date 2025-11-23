@@ -1,6 +1,6 @@
-import { imCompactDragSlider } from "src/app-components/drag-slider";
+import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideInteractionFeedback, imCompactLinearDragSlideInteraction } from "src/app-components/drag-slider-interaction";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
-import { imButtonIsClicked } from "src/components/button";
+import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
 import {
     BLOCK,
@@ -32,11 +32,12 @@ import { imLine, LINE_HORIZONTAL_PADDING, LINE_VERTICAL, LINE_VERTICAL_PADDING }
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { imSliderInput } from "src/components/slider";
-import { getDefaultInstructions } from "src/dsp/dsp-loop";
+import { copyInstruction, getDefaultInstructions } from "src/dsp/dsp-loop";
 import {
     computeSample,
     DspSynthInstructionItem,
     IDX_COUNT,
+    IDX_OUTPUT,
     INSTR_ADD,
     INSTR_ADD_DT,
     INSTR_DIVIDE,
@@ -54,13 +55,14 @@ import {
     instrToString,
     InstructionPart,
     InstructionType,
+    newDspInstruction,
     newSampleContext,
     REGISTER_INFO,
     registerIdxToString,
     updateSampleContext
 } from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings } from "src/dsp/dsp-loop-interface";
-import { arrayAt } from "src/utils/array-utils";
+import { arrayAt, arraySwap, filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
 import {
@@ -138,9 +140,19 @@ export function newWaveProgramEditorState(): WaveProgramEditorState {
     };
 }
 
+
+function fixRegisterValueIndexes(instr: InstructionPart) {
+    if (instr.reg1) {
+        instr.val1 = Math.round(instr.val1);
+    }
+
+    if (instr.reg2) {
+        instr.val2 = Math.round(instr.val2);
+    }
+}
+
 export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabState) {
     const editor = state.instructionBuilder;
-    const sampleRate = state.dsp.sampleRate;
     const playSettings = getCurrentPlaySettings();
 
     let updateSettings = false;
@@ -153,16 +165,8 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
         const dfs = (instructions: DspSynthInstructionItem[]) => {
             for (const instr of instructions) {
                 if (instr.instruction) {
-                    if (instr.instruction.reg1) {
-                        instr.instruction.val1 = Math.round(instr.instruction.val1);
-                        editor.registersInUseRead.add(instr.instruction.val1);
-                    }
-
-                    if (instr.instruction.reg2) {
-                        instr.instruction.val2 = Math.round(instr.instruction.val2);
-                        editor.registersInUseRead.add(instr.instruction.val2);
-                    }
-
+                    if (instr.instruction.reg1) editor.registersInUseRead.add(instr.instruction.val1);
+                    if (instr.instruction.reg2) editor.registersInUseRead.add(instr.instruction.val2);
                     editor.registersInUseWrite.add(instr.instruction.dst);
                 }
 
@@ -198,7 +202,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                         if (imIf(c) && instruction.instruction) {
                             const instr = instruction.instruction;
 
-                            imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 10, PX); {
+                            imLayout(c, ROW); imAlign(c); imGap(c, 10, PX); {
                                 if (isFirstishRender(c)) {
                                     elSetStyle(c, "lineHeight", "1");
                                     elSetStyle(c, "userSelect", "none");
@@ -217,12 +221,14 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                 // register value 1
                                 {
                                     imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                                    imSize(c, 25, PERCENT, 0, NA); {
-                                        imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c); imFlex(c); imGap(c, 10, PX); {
-                                            if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", instr.reg1, BLOCK, true)) {
+                                    imSize(c, 20, PERCENT, 0, NA); {
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imGap(c, 10, PX); {
+                                            if (imButtonIsClicked(c, instr.reg1 ? "reg:" : "val:", true, BLOCK)) {
                                                 instr.reg1 = !instr.reg1;
+                                                fixRegisterValueIndexes(instr);
                                                 updateSettings = true;
                                             }
+
                                             if (imIf(c) && instr.reg1) {
                                                 // Reinterpret this thing as an index.
                                                 const newRegister = imRegisterContextMenu(c, editor, instr.val1, instr, CONTEXT_MENU_FIELD__VAL1);
@@ -232,14 +238,19 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                                 }
                                             } else {
                                                 imElse(c);
-                                                imStr(c, instr.val1);
+
+                                                let dragEvent = imParameterSliderCompact(c, "", -1_000_000, 1_000_000, 0.0001, instr.val1, 0, DRAG_TYPE_CIRCULAR);
+                                                if (dragEvent) {
+                                                    instr.val1 = dragEvent.val;
+                                                    updateSettings = true;
+                                                }
                                             } imEndIf(c);
                                         } imLayoutEnd(c);
                                     } imLayoutEnd(c);
                                 }
 
                                 // Instruction type dropdown
-                                imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                imLayout(c, ROW); imAlign(c); imJustify(c); imSize(c, 10, PERCENT, 0, NA); {
                                     if (isFirstishRender(c)) {
                                         elSetClass(c, "hoverable");
                                     }
@@ -269,10 +280,11 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                 // register value 2
                                 {
                                     imLayout(c, ROW); imAlign(c); imGap(c, 10, PX);
-                                    imSize(c, 25, PERCENT, 0, NA); {
-                                        imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c); imFlex(c); imGap(c, 10, PX); {
-                                            if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", instr.reg2, BLOCK, true)) {
+                                    imSize(c, 20, PERCENT, 0, NA); {
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imGap(c, 10, PX); {
+                                            if (imButtonIsClicked(c, instr.reg2 ? "reg:" : "val:", true, BLOCK)) {
                                                 instr.reg2 = !instr.reg2;
+                                                fixRegisterValueIndexes(instr);
                                                 updateSettings = true;
                                             }
 
@@ -285,23 +297,53 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                                 }
                                             } else {
                                                 imElse(c);
-                                                imStr(c, instr.val2);
+
+                                                let dragEvent = imParameterSliderCompact(c, "", -1_000_000, 1_000_000, 0.0001, instr.val2, 0, DRAG_TYPE_CIRCULAR);
+                                                if (dragEvent) {
+                                                    instr.val2 = dragEvent.val;
+                                                    updateSettings = true;
+                                                }
                                             } imEndIf(c);
                                         } imLayoutEnd(c);
                                     } imLayoutEnd(c);
                                 }
 
-                                imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
+                                imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); imNoWrap(c); {
                                     imStr(c, " -> ");
                                 } imLayoutEnd(c);
 
-                                imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c, START); imSize(c, 25, PERCENT, 0, NA); imGap(c, 10, PX); {
+                                imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c, START); imSize(c, 15, PERCENT, 0, NA); imGap(c, 10, PX); {
                                     const newRegister = imRegisterContextMenu(c, editor, instr.dst, instr, CONTEXT_MENU_FIELD__DST);
                                     if (newRegister !== null) {
                                         instr.dst = newRegister;
                                         updateSettings = true;
                                     }
                                 } imLayoutEnd(c);
+
+                                imFlex1(c);
+
+                                const canMoveUp = i > 0;
+                                const moveUpClicked = imButtonBegin(c, "^"); {
+                                    if (moveUpClicked && canMoveUp) {
+                                        arraySwap(editor.instructions, i, i - 1)
+                                        updateSettings = true;
+                                    } 
+                                    elSetStyle(c, "opacity", canMoveUp ? "1" : "0");
+                                } imButtonEnd(c);
+
+                                const canMoveDown = i < editor.instructions.length - 1;
+                                const moveDownClicked = imButtonBegin(c, "v"); {
+                                    if (moveDownClicked && canMoveDown) {
+                                        arraySwap(editor.instructions, i, i + 1)
+                                        updateSettings = true;
+                                    } 
+                                    elSetStyle(c, "opacity", canMoveDown ? "1" : "0");
+                                } imButtonEnd(c);
+
+                                if (imButtonIsClicked(c, "x")) {
+                                    filterInPlace(editor.instructions, i => i !== instruction);
+                                    updateSettings = true;
+                                }
                             } imLayoutEnd(c);
                         } else {
                             imIfElse(c);
@@ -311,6 +353,19 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
 
                         i++;
                     } imForEnd(c);
+
+                    if (imButtonIsClicked(c, "Add line")) {
+                        if (editor.instructions.length > 0) {
+                            const lastInstruction = editor.instructions[editor.instructions.length - 1];
+                            const copy = copyInstruction(lastInstruction);
+                            editor.instructions.push(copy);
+                            updateSettings = true;
+                        } else {
+                            const benignInstr = { instruction: newDspInstruction(0, false, INSTR_ADD, 0, false, IDX_OUTPUT) };
+                            editor.instructions.push(benignInstr);
+                            updateSettings = true;
+                        }
+                    }
                 } imScrollContainerEnd(c);
             } imLayoutEnd(c);
 
@@ -341,6 +396,11 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
 
                     imHeading(c, "Wave program");
 
+                    imLayout(c, BLOCK); {
+                        imStr(c, "Computational cost: ");
+                        imStr(c, playSettings.parameters.instructions.length);
+                    } imLayoutEnd(c);
+
                     const params = playSettings.parameters;
                     let samplesRecomputed = false;
                     if (s.viewingInvalidated) {
@@ -350,8 +410,6 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                         s.ctx.isPressed = false;
                         for (let i = 0; i < s.samples.length; i++) {
                             let frequency = getNoteFrequency(s.noteIdx);
-                            const time = i / mockSampleRate;
-
                             let signal = 0;
                             if(s.samplePressedIdx < i && i < s.sampleReleasedIdx) {
                                 signal = 1;
@@ -464,7 +522,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                                     numUnused++;
                                     continue;
                                 }
-                            
+
                                 imBindableParameter(c, editor, i, isRead, isWrite);
                             } imForEnd(c);
                         } imLayoutEnd(c);
@@ -499,39 +557,10 @@ function imHeading(c: ImCache, text: string) {
 }
 
 
-function imParameterSlider(
-    c: ImCache,
-    name: string,
-    min: number,
-    max: number,
-    step: number,
-    val: number,
-    defaultValue: number,
-): { val: number } | null {
-    let initialVal = val;
 
-    imLayout(c, ROW); imAlign(c); {
-        imLayout(c, BLOCK); {
-            imStr(c, name);
-            imStr(c, ": ");
-            imStr(c, val.toFixed(3));
-        } imLayoutEnd(c);
 
-        imLayout(c, COL); imSize(c, 0, NA, 1, EM); imFlex(c); {
-            val = imSliderInput(c, min, max, step, val);
-        } imLayoutEnd(c);
-
-        if (imButtonIsClicked(c, "<")) {
-            val = defaultValue;
-        }
-    } imLayoutEnd(c);
-
-    if (val !== initialVal) {
-        return { val };
-    }
-
-    return null;
-}
+const DRAG_TYPE_LINEAR = 1;
+const DRAG_TYPE_CIRCULAR = 2;
 
 function imParameterSliderCompact(
     c: ImCache,
@@ -541,20 +570,37 @@ function imParameterSliderCompact(
     step: number,
     val: number,
     defaultValue: number,
+    dragType = DRAG_TYPE_LINEAR,
 ): { val: number } | null {
     let initialVal = val;
 
+    const { mouse } = getGlobalEventSystem();
+
     imLayout(c, BLOCK); imAlign(c); {
         imLayout(c, BLOCK); {
-            imStr(c, name);
+            if (imIf(c) && name) {
+                imStr(c, name);
+            } imIfEnd(c);
             imStr(c, val.toFixed(3));
         } imLayoutEnd(c);
 
-        val = imCompactDragSlider(c, 100, val, min, max);
+        if (mouse.ev?.shiftKey) {
+            step = 0.1
+        }
+
+        if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
+            const state = imCompactCircularDragSlideInteraction(c, val, min, max, 100, 1.4);
+            imCompactCircularDragSlideInteractionFeedback(c, state);
+
+            val = state.value;
+        } else {
+            imElse(c);
+            val = imCompactLinearDragSlideInteraction(c, 100, val, min, max);
+        } imEndIf(c);
+        
         val = gridsnapRound(val, step);
         val = clamp(val, min, max);
 
-        const mouse = getGlobalEventSystem().mouse;
         if (elHasMousePress(c) && mouse.rightMouseButton) {
             // Reset to default value on rightclick
             mouse.ev?.preventDefault();
@@ -568,10 +614,9 @@ function imParameterSliderCompact(
 
     return null;
 }
-
 function imBindableParameter(
     c: ImCache,
-    editor: WaveProgramEditorState,
+    _editor: WaveProgramEditorState,
     varIdx: number,
     isRead: boolean,
     isWrite: boolean
@@ -598,7 +643,7 @@ function imBindableParameter(
 
 export function imWaveProgramPreview(
     c: ImCache,
-    ctx: GlobalContext,
+    _ctx: GlobalContext,
     state: SoundLabState
 ) {
     imLayout(c, COL); imFlex(c); {

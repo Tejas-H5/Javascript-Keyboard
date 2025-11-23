@@ -10,11 +10,13 @@ const cnButton = (() => {
     const transiton = `0.05s linear`;
     return cssb.cn(`button`, [
         ` { 
+    padding: 5px 0px; 
+    display: flex; align-items: center; justify-content: center;
+}`,
+        ` .inner { 
     cursor: pointer;
     user-select: none;
     color: ${cssVars.fg};
-    padding: 5px 0px; 
-    display: flex; align-items: center; justify-content: center;
 }`,
     `.compact { 
     padding-top: 0; padding-bottom: 0;
@@ -26,10 +28,10 @@ const cnButton = (() => {
     background-color: ${cssVars.bg2}; transition: background-color ${transiton}, color ${transiton}; 
 }`,
         `.toggled > .inner        { background-color: ${cssVars.fg};  color: ${cssVars.bg}; }`,
-        `:hover > .inner          { background-color: ${cssVars.bg2}; color: ${cssVars.fg}; }`,
-        `.toggled:hover > .inner  { background-color: ${cssVars.fg2}; color: ${cssVars.bg}; }`,
-        `:active > .inner         { background-color: ${cssVars.mg};  color: ${cssVars.fg}; }`,
-        `.toggled:active > .inner { background-color: ${cssVars.mg};  color: ${cssVars.fg}; }`,
+        ` > .inner:hover          { background-color: ${cssVars.bg2}; color: ${cssVars.fg}; }`,
+        `.toggled > .inner:hover  { background-color: ${cssVars.fg2}; color: ${cssVars.bg}; }`,
+        ` > .inner:active         { background-color: ${cssVars.mg};  color: ${cssVars.fg}; }`,
+        `.toggled > .inner:active  { background-color: ${cssVars.mg};  color: ${cssVars.fg}; }`,
     ]);
 })();
 

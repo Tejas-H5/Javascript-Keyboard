@@ -1,4 +1,4 @@
-import { ImCache, imGet, imMemo, imSet, inlineTypeId, isFirstishRender, USE_ANIMATION_FRAME } from 'src/utils/im-core';
+import { ImCache, imGet, imMemo, imSet, inlineTypeId, isFirstishRender } from 'src/utils/im-core';
 import { EL_DIV, elSetClass, elSetStyle, imEl, imElEnd } from 'src/utils/im-dom';
 import { cn } from "./stylesheets";
 
