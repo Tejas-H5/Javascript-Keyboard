@@ -90,10 +90,8 @@ export function imButtonIsClicked(
     c: ImCache, 
     text: string,
     toggled?: boolean,
-    type?: DisplayType,
-    compact?: boolean,
 ): boolean {
-    const result = imButtonBegin(c, text, toggled, type, compact);
+    const result = imButtonBegin(c, text, toggled);
     imButtonEnd(c);
 
     return result;

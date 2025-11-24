@@ -1,4 +1,4 @@
-import { arrayMax, arrayMin, inverseLerp, lerp, max, min } from "src/utils/math-utils";
+import { inverseLerp, lerp, max, min } from "src/utils/math-utils";
 
 // TODO: consider moving to components.ts
 
@@ -168,8 +168,8 @@ export function drawSamples(
     if (startIdx < 0) startIdx = 0;
     numSamples = endIdx - startIdx + 1;
 
-    const max = arrayMax(samples);
-    const min = arrayMin(samples);
+    const max = 1;
+    const min = -1;
     plotState.posX = startIdx + numSamples / 2;
     plotState.posY = (min + max) / 2;
     plotState.originalExtentX = numSamples / 2;

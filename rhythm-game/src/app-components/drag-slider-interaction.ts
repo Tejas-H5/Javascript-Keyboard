@@ -114,6 +114,7 @@ function newCompactCircularDragSlideInteractionState(): CompactCircularDragSlide
     };
 }
 
+// Actually a better idea than I thought. Haven't seen it other people do it yet for some reason.
 export function imCompactCircularDragSlideInteraction(
     c: ImCache,
     value: number,

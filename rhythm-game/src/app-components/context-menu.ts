@@ -1,7 +1,7 @@
 import { COL, imAbsolute, imFixed, imJustify, imLayout, imLayoutEnd, NA, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { ImCache, imIf, imIfEnd, isFirstishRender } from "src/utils/im-core";
-import { elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
+import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
 
 export type ContextMenuState = {
     position: { x: number; y: number; };

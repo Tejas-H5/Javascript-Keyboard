@@ -35,7 +35,7 @@ import { imKeyboard } from "./keyboard";
 import { imWaveProgramEditor, imWaveProgramPreview, newWaveProgramEditorState, WaveProgramEditorState } from "./sound-lab-wave-program-editor";
 import { getCurrentTheme } from "./styling";
 import { drawSamples, newPlotState } from "./plotting";
-import { compileInstructions } from "src/dsp/dsp-loop-instruction-set";
+import { compileInstructions, fixInstructions } from "src/dsp/dsp-loop-instruction-set";
 
 export type SoundLabState = {
     dsp: DspState;
@@ -95,6 +95,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     const state = imState(c, newSoundLabState);
     if (imMemo(c, state.instructionBuilder.instructionsVersion)) {
         const settings = getCurrentPlaySettings();
+        fixInstructions(state.instructionBuilder.instructions);
         compileInstructions(state.instructionBuilder.instructions, settings.parameters.instructions);
         updatePlaySettings();
     }

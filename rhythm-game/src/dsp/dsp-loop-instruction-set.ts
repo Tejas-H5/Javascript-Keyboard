@@ -393,6 +393,44 @@ export function compileToInstructionsInternal(instructions: DspSynthInstructionI
     }
 }
 
+export function fixInstructionPartInstructionPartArgument(arg: InstructionPartArgument) {
+    if (arg.reg) arg.val = Math.round(arg.val);
+}
+
+/** 
+ * Mutates instructions as less as needed to get it into a runnable state  
+ **/
+export function fixInstructions(instructions: DspSynthInstructionItem[]) {
+    let prevInstr: DspSynthInstructionItem | undefined;
+    for (const instr of instructions) {
+        if (instr.instruction) {
+            fixInstructionPartInstructionPartArgument(instr.instruction.arg1);
+            fixInstructionPartInstructionPartArgument(instr.instruction.arg2);
+            instr.instruction.dst = Math.floor(instr.instruction.dst);
+        }
+
+        if (instr.ifelseInnerBlock) {
+            // Can't have else blocks without a preceding if-block.
+            if (instr.ifelseInnerBlock.isElseBlock) {
+                if (!prevInstr?.ifelseInnerBlock) {
+                    instr.ifelseInnerBlock.isElseBlock = false;
+                }
+            }
+
+            fixInstructions(instr.ifelseInnerBlock.inner);
+        }
+
+        // do this _after_ fixing if/else blocks
+        if (!instr.instruction && !instr.ifelseInnerBlock) {
+            // All statements need at least an instruction or be an else block.
+            const benignInstr = newDspInstruction(0, false, INSTR_ADD, 0, false, IDX_OUTPUT);
+            instr.instruction = benignInstr;
+        }
+
+        prevInstr = instr;
+    }
+}
+
 export const OFFSET_TYPE = 0;
 export const OFFSET_DST = 1;
 export const OFFSET_VAL1 = 2;

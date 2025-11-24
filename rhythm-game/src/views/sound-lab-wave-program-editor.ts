@@ -33,6 +33,7 @@ import { copyInstruction, getDefaultInstructions } from "src/dsp/dsp-loop";
 import {
     computeSample,
     DspSynthInstructionItem,
+    fixInstructionPartInstructionPartArgument,
     IDX_COUNT,
     IDX_OUTPUT,
     IDX_USER,
@@ -61,7 +62,7 @@ import {
     updateSampleContext
 } from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings } from "src/dsp/dsp-loop-interface";
-import { arraySwap, filterInPlace } from "src/utils/array-utils";
+import { arrayAt, arraySwap, filterInPlace } from "src/utils/array-utils";
 import { newCssBuilder } from "src/utils/cssb";
 import {
     ImCache,
@@ -139,9 +140,6 @@ export function newWaveProgramEditorState(): WaveProgramEditorState {
     };
 }
 
-function fixInstructionPartInstructionPartArgument(arg: InstructionPartArgument) {
-    if (arg.reg) arg.val = Math.round(arg.val);
-}
 
 export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabState) {
     const editor = state.instructionBuilder;
@@ -192,130 +190,9 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                         elSetStyle(c, "padding", "3px");
                     }
 
-                    let i = 0;
-                    imFor(c); for (const instruction of editor.instructions) {
-                        if (imIf(c) && instruction.instruction) {
-                            const instr = instruction.instruction;
-
-                            imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 10, PX); {
-                                if (isFirstishRender(c)) {
-                                    elSetStyle(c, "lineHeight", "1");
-                                    elSetStyle(c, "userSelect", "none");
-                                }
-
-                                imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
-                                    if (isFirstishRender(c)) {
-                                        elSetStyle(c, "cursor", "ns-resize");
-                                    }
-
-                                    // TODO: Drag handle
-
-                                    imStr(c, i);
-                                } imLayoutEnd(c);
-
-                                // register value 1
-                                const editedValue1 = imRegisterArgumentEditor(c, editor, instr, instr.arg1);
-                                if (editedValue1) {
-                                    updateSettings = true;
-                                }
-
-                                // Instruction type dropdown
-                                imLayout(c, ROW); imAlign(c); imJustify(c); imSize(c, 10, PERCENT, 0, NA); {
-                                    if (isFirstishRender(c)) elSetClass(c, "hoverable");
-
-                                    if (elHasMousePress(c)) {
-                                        openContextMenuAtMouse(editor.contextMenu, instr, CONTEXT_MENU_FIELD__TYPE);
-                                    }
-
-                                    if (
-                                        imIf(c) && 
-                                        editor.contextMenu.item === instr && 
-                                        editor.contextMenu.field === CONTEXT_MENU_FIELD__TYPE
-                                    ) {
-                                        imContextMenuBegin(c, editor.contextMenu); {
-                                            imFor(c); for (const instrType of instructionChoices) {
-                                                imContextMenuItemBegin(c); {
-                                                    if (isFirstishRender(c)) elSetClass(c, "hoverable");
-                                                    imStrFmt(c, instrType, instrToString);
-
-                                                    if (elHasMousePress(c)) {
-                                                        instr.type = instrType;
-                                                        updateSettings = true;
-                                                    }
-                                                } imLayoutEnd(c);
-                                            } imForEnd(c);
-                                        } imContextMenuEnd(c, editor.contextMenu);
-                                    } imIfEnd(c);
-
-                                    imLayout(c, INLINE_BLOCK); imNoWrap(c); {
-                                        imStrFmt(c, instr.type, instrToString);
-                                    } imLayoutEnd(c);
-                                } imLayoutEnd(c);
-
-                                // register value 2
-                                const editedValue2 = imRegisterArgumentEditor(c, editor, instr, instr.arg2);
-                                if (editedValue2) {
-                                    updateSettings = true;
-                                }
-
-
-                                imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); imNoWrap(c); {
-                                    imStr(c, " -> ");
-                                } imLayoutEnd(c);
-
-                                imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c, START); imSize(c, 15, PERCENT, 0, NA); imGap(c, 10, PX); {
-                                    const newRegister = imRegisterContextMenu(c, editor, instr.dst, instr, CONTEXT_MENU_FIELD__DST);
-                                    if (newRegister !== null) {
-                                        instr.dst = newRegister;
-                                        updateSettings = true;
-                                    }
-                                } imLayoutEnd(c);
-
-                                imFlex1(c);
-
-                                const canMoveUp = i > 0;
-                                const moveUpClicked = imButtonBegin(c, "^"); {
-                                    if (moveUpClicked && canMoveUp) {
-                                        arraySwap(editor.instructions, i, i - 1)
-                                        updateSettings = true;
-                                    } 
-                                    elSetStyle(c, "opacity", canMoveUp ? "1" : "0");
-                                } imButtonEnd(c);
-
-                                const canMoveDown = i < editor.instructions.length - 1;
-                                const moveDownClicked = imButtonBegin(c, "v"); {
-                                    if (moveDownClicked && canMoveDown) {
-                                        arraySwap(editor.instructions, i, i + 1)
-                                        updateSettings = true;
-                                    } 
-                                    elSetStyle(c, "opacity", canMoveDown ? "1" : "0");
-                                } imButtonEnd(c);
-
-                                if (imButtonIsClicked(c, "x")) {
-                                    filterInPlace(editor.instructions, i => i !== instruction);
-                                    updateSettings = true;
-                                }
-                            } imLayoutEnd(c);
-                        } else {
-                            imIfElse(c);
-
-                            imStr(c, "No UI for if-statements currently");
-                        } imIfEnd(c);
-
-                        i++;
-                    } imForEnd(c);
-
-                    if (imButtonIsClicked(c, "Add line")) {
-                        if (editor.instructions.length > 0) {
-                            const lastInstruction = editor.instructions[editor.instructions.length - 1];
-                            const copy = copyInstruction(lastInstruction);
-                            editor.instructions.push(copy);
-                            updateSettings = true;
-                        } else {
-                            const benignInstr = { instruction: newDspInstruction(0, false, INSTR_ADD, 0, false, IDX_OUTPUT) };
-                            editor.instructions.push(benignInstr);
-                            updateSettings = true;
-                        }
+                    const edited = imInstructionArrayEditor(c, editor, editor.instructions);
+                    if (edited) {
+                        updateSettings = true;
                     }
                 } imScrollContainerEnd(c);
             } imLayoutEnd(c);
@@ -529,7 +406,7 @@ function imParameterSliderInteraction(
     }
 
     if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
-        const state = imCompactCircularDragSlideInteraction(c, val, min, max, 100, 1.4);
+        const state = imCompactCircularDragSlideInteraction(c, val, min, max, 100, 1);
         imCompactCircularDragSlideInteractionFeedback(c, state);
 
         val = state.value;
@@ -582,6 +459,195 @@ function imBindableParameter(
             imStr(c, "[w]");
         } imIfEnd(c);
     } imLayoutEnd(c);
+}
+
+export function imInstructionArrayEditor(
+    c: ImCache,
+    editor: WaveProgramEditorState,
+    instructions: DspSynthInstructionItem[],
+): boolean {
+    let edited = false;
+
+    imFor(c); for (let i = 0; i < instructions.length; i++) {
+        const prevInstruction = arrayAt(instructions, i - 1);
+        const instruction = instructions[i];
+
+        if (imIf(c) && (instruction.instruction || instruction.ifelseInnerBlock)) {
+            const instr = instruction.instruction;
+
+            imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 10, PX); {
+                if (isFirstishRender(c)) {
+                    elSetStyle(c, "lineHeight", "1");
+                    elSetStyle(c, "userSelect", "none");
+                }
+
+                // If-statement toggle
+                {
+                    let text = "if";
+                    if (instruction.ifelseInnerBlock?.isElseBlock) {
+                        if (!instruction.instruction) {
+                            text = "else";
+                        } else {
+                            text = "else if";
+                        }
+                    }
+
+                    const ifButtonClicked = imButtonBegin(c, text, !!instruction.ifelseInnerBlock); imNoWrap(c); {
+                        if (ifButtonClicked) {
+                            if (instruction.ifelseInnerBlock) {
+                                let becameElseBock = false;
+
+                                const canTransitionToElse = prevInstruction && prevInstruction.ifelseInnerBlock;
+                                if (canTransitionToElse) {
+                                    if (!instruction.ifelseInnerBlock.isElseBlock) {
+                                        becameElseBock = true;
+                                        instruction.ifelseInnerBlock.isElseBlock = true;
+                                    } else if (instruction.instruction) {
+                                        becameElseBock = true;
+                                        instruction.instruction = undefined;
+                                    }
+                                }
+
+                                if (!becameElseBock) {
+                                    instruction.ifelseInnerBlock = undefined;
+                                }
+                            } else {
+                                instruction.ifelseInnerBlock = {
+                                    isElseBlock: false,
+                                    inner: [],
+                                };
+                            }
+                            edited = true;
+                        }
+                    } imButtonEnd(c);
+                }
+
+                if (imIf(c) && instr) {
+                    // register value 1
+                    const editedValue1 = imRegisterArgumentEditor(c, editor, instr, instr.arg1);
+                    if (editedValue1) {
+                        edited = true;
+                    }
+
+                    // Instruction type dropdown
+                    imLayout(c, ROW); imAlign(c); imJustify(c); imSize(c, 10, PERCENT, 0, NA); {
+                        if (isFirstishRender(c)) elSetClass(c, "hoverable");
+
+                        if (elHasMousePress(c)) {
+                            openContextMenuAtMouse(editor.contextMenu, instr, CONTEXT_MENU_FIELD__TYPE);
+                        }
+
+                        if (
+                            imIf(c) &&
+                            editor.contextMenu.item === instr &&
+                            editor.contextMenu.field === CONTEXT_MENU_FIELD__TYPE
+                        ) {
+                            imContextMenuBegin(c, editor.contextMenu); {
+                                imFor(c); for (const instrType of instructionChoices) {
+                                    imContextMenuItemBegin(c); {
+                                        if (isFirstishRender(c)) elSetClass(c, "hoverable");
+                                        imStrFmt(c, instrType, instrToString);
+
+                                        if (elHasMousePress(c)) {
+                                            instr.type = instrType;
+                                            edited = true;
+                                        }
+                                    } imLayoutEnd(c);
+                                } imForEnd(c);
+                            } imContextMenuEnd(c, editor.contextMenu);
+                        } imIfEnd(c);
+
+                        imLayout(c, INLINE_BLOCK); imNoWrap(c); {
+                            imStrFmt(c, instr.type, instrToString);
+                        } imLayoutEnd(c);
+                    } imLayoutEnd(c);
+
+                    // register value 2
+                    const editedValue2 = imRegisterArgumentEditor(c, editor, instr, instr.arg2);
+                    if (editedValue2) {
+                        edited = true;
+                    }
+
+                    if (imIf(c) && instruction.ifelseInnerBlock) {
+                        imLayout(c, ROW); imAlign(c); imNoWrap(c); {
+                            imStr(c, ":");
+                        } imLayoutEnd(c);
+                    } else {
+                        imIfElse(c);
+
+                        imLayout(c, ROW); imSize(c, 20, PX, 0, NA); imAlign(c); imJustify(c); imNoWrap(c); {
+                            imStr(c, "->");
+                        } imLayoutEnd(c);
+
+                        imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c, START); imSize(c, 15, PERCENT, 0, NA); imGap(c, 10, PX); {
+                            const newRegister = imRegisterContextMenu(c, editor, instr.dst, instr, CONTEXT_MENU_FIELD__DST);
+                            if (newRegister !== null) {
+                                instr.dst = newRegister;
+                                edited = true;
+                            }
+                        } imLayoutEnd(c);
+                    } imIfEnd(c);
+
+                    imFlex1(c);
+
+                    if (imButtonIsClicked(c, "+")) {
+                        const copy = copyInstruction(instruction);
+                        instructions.splice(i, 0, copy);
+                        edited = true;
+                    }
+
+                    const canMoveUp = i > 0;
+                    const moveUpClicked = imButtonBegin(c, "^"); {
+                        if (moveUpClicked && canMoveUp) {
+                            arraySwap(instructions, i, i - 1)
+                            edited = true;
+                        }
+                        elSetStyle(c, "opacity", canMoveUp ? "1" : "0");
+                    } imButtonEnd(c);
+
+                    const canMoveDown = i < instructions.length - 1;
+                    const moveDownClicked = imButtonBegin(c, "v"); {
+                        if (moveDownClicked && canMoveDown) {
+                            arraySwap(instructions, i, i + 1)
+                            edited = true;
+                        }
+                        elSetStyle(c, "opacity", canMoveDown ? "1" : "0");
+                    } imButtonEnd(c);
+
+                    if (imButtonIsClicked(c, "x")) {
+                        filterInPlace(instructions, i => i !== instruction);
+                        edited = true;
+                    }
+                } imIfEnd(c);
+            } imLayoutEnd(c);
+        } imIfEnd(c);
+
+        if (imIf(c) && instruction.ifelseInnerBlock) {
+            imLayout(c, BLOCK); imPadding(c, 0, NA, 0, NA, 0, NA, 30, PX); {
+                const ifEdited = imInstructionArrayEditor(c, editor, instruction.ifelseInnerBlock.inner);
+                if (ifEdited) {
+                    edited = true;
+                }
+            } imLayoutEnd(c);
+        } imIfEnd(c);
+    } imForEnd(c);
+
+    imLayout(c, ROW); {
+        if (imButtonIsClicked(c, "Add line")) {
+            if (instructions.length > 0) {
+                const lastInstruction = instructions[instructions.length - 1];
+                const copy = copyInstruction(lastInstruction);
+                instructions.push(copy);
+                edited = true;
+            } else {
+                const benignInstr = { instruction: newDspInstruction(0, false, INSTR_ADD, 0, false, IDX_OUTPUT) };
+                instructions.push(benignInstr);
+                edited = true;
+            }
+        }
+    } imLayoutEnd(c);
+
+    return edited;
 }
 
 export function imWaveProgramPreview(
@@ -694,10 +760,13 @@ function imRegisterArgumentEditor(
 ): boolean {
     let edited = false;
 
+    // TODO: TABLE LAYOUT!! IT KEEPS REAPPEARING EVERYWHERE!!
+    // we need to make an API for it.
+
     imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 10, PX);
-    imSize(c, 20, PERCENT, 0, NA); {
-        imLayout(c, ROW); imAlign(c, STRETCH); imJustify(c); imFlex(c); imGap(c, 10, PX); {
-            if (imButtonIsClicked(c, arg.reg ? "reg:" : "val:", arg.reg, BLOCK)) {
+    imSize(c, 19, PERCENT, 0, NA); {
+        imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); imGap(c, 10, PX); {
+            if (imButtonIsClicked(c, arg.reg ? "reg:" : "val:", arg.reg)) {
                 arg.reg = !arg.reg;
                 fixInstructionPartInstructionPartArgument(arg);
                 edited = true;
