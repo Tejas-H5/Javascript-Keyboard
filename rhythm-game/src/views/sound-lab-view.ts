@@ -188,6 +188,10 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     }
 
     imLayout(c, COL); imFlex(c); {
+        if (imIf(c) && state.isEditingInstructions) {
+            imWaveProgramEditor(c, ctx, state);
+        } imIfEnd(c);
+
         imLayout(c, COL); imFlex(c); {
             imLayout(c, ROW); imFlex(c); {
                 imOscilloscope(c, state);
@@ -200,11 +204,6 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                 imKeyboard(c, ctx);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
-
-        if (imIf(c) && state.isEditingInstructions) {
-            imWaveProgramEditor(c, ctx, state);
-        } imIfEnd(c);
-
     } imLayoutEnd(c);
 
     if (!ctx.handled) {
