@@ -64,6 +64,11 @@ export function instrToString(instr: InstructionType | undefined): string {
     return result;
 }
 
+// NOTE: should be JSON serializable
+export type WaveProgram = {
+    instructions: DspSynthInstructionItem[]
+};
+
 export type ParameterInfo = { name: string; };
 
 export const IDX_OUTPUT           = 0;

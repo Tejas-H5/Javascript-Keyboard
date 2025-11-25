@@ -95,8 +95,9 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     const state = imState(c, newSoundLabState);
     if (imMemo(c, state.instructionBuilder.instructionsVersion)) {
         const settings = getCurrentPlaySettings();
-        fixInstructions(state.instructionBuilder.instructions);
-        compileInstructions(state.instructionBuilder.instructions, settings.parameters.instructions);
+        const waveProgram = state.instructionBuilder.waveProgram;
+        fixInstructions(waveProgram.instructions);
+        compileInstructions(waveProgram.instructions, settings.parameters.instructions);
         updatePlaySettings();
     }
 
