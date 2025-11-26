@@ -13,7 +13,7 @@ import { newFunctionUrl } from "src/utils/web-workers";
 import {
     compileInstructions,
     computeSample,
-    DspSynthInstructionItem,
+    WaveProgramInstructionItem,
     IDX_WANTED_FREQUENCY,
     IDX_COUNT,
     IDX_OUTPUT,
@@ -83,7 +83,7 @@ export function newDspPlaySettings(): DSPPlaySettings {
 export function getDefaultInstructions() {
     const angle = IDX_USER + 1;
     const temp = IDX_USER;
-    const instructions: DspSynthInstructionItem[] = [
+    const instructions: WaveProgramInstructionItem[] = [
         { instruction: newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp) },
         { instruction: newDspInstruction(angle, true, INSTR_ADD, temp, true, angle) },
         { instruction: newDspInstruction(IDX_SIGNAL, true, INSTR_SIN, angle, true, IDX_OUTPUT) },
@@ -91,7 +91,7 @@ export function getDefaultInstructions() {
     return instructions;
 }
 
-export function copyInstruction(instr: DspSynthInstructionItem): DspSynthInstructionItem {
+export function copyInstruction(instr: WaveProgramInstructionItem): WaveProgramInstructionItem {
     return JSON.parse(JSON.stringify(instr));
 }
 

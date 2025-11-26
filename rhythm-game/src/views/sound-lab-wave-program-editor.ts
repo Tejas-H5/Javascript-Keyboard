@@ -3,12 +3,14 @@ import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideIntera
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
 import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
+import { imCheckboxBegin, imCheckboxCheckBegin, imCheckboxCheckEnd, imCheckboxEnd } from "src/components/checkbox";
 import {
     BLOCK,
     COL,
     imAbsolute,
     imAlign,
     imBg,
+    imFg,
     imFlex,
     imFlex1,
     imGap,
@@ -16,6 +18,7 @@ import {
     imLayout,
     imLayoutEnd,
     imNoWrap,
+    imOpacity,
     imPadding,
     imRelative,
     imScrollOverflow,
@@ -29,6 +32,7 @@ import {
     STRETCH
 } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
+import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
 import { imLine, LINE_HORIZONTAL_PADDING, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
@@ -36,7 +40,6 @@ import { copyInstruction, getDefaultInstructions } from "src/dsp/dsp-loop";
 import {
     compileInstructions,
     computeSample,
-    DspSynthInstructionItem,
     fixInstructionPartInstructionPartArgument,
     fixInstructions,
     IDX_COUNT,
@@ -65,10 +68,12 @@ import {
     REGISTER_INFO,
     registerIdxToString,
     updateSampleContext,
-    WaveProgram
+    WaveProgram,
+    WaveProgramInstructionItem
 } from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings } from "src/dsp/dsp-loop-interface";
 import { arrayAt, arraySwap, filterInPlace } from "src/utils/array-utils";
+import { assert } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
 import {
     ImCache,
@@ -85,7 +90,7 @@ import {
     imState,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imEl, imElEnd, imOn, imStr, imStrFmt } from "src/utils/im-dom";
+import { EL_B, elHasMouseClick, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imEl, imElEnd, imOn, imStr, imStrFmt } from "src/utils/im-dom";
 import { clamp, gridsnapRound } from "src/utils/math-utils";
 import { getNoteFrequency } from "src/utils/music-theory-utils";
 import { bytesToMegabytes, utf16ByteLength } from "src/utils/utf8";
@@ -93,8 +98,6 @@ import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
 import { SoundLabState } from "./sound-lab-view";
 import { cssVarsApp } from "./styling";
-import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
-import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
 
 const cssb = newCssBuilder();
 const cnWaveProgramEditor = cssb.cn("waveProgramEditor", [
@@ -132,10 +135,20 @@ export type WaveProgramEditorState = {
 
     highlightedRegister: number;
     highlightedRegisterNext: number;
+    currentViewingRegisterInOscilloscope: number;
 
     contextMenu: ContextMenuState;
 
     modal: number;
+
+    selectedRange: {
+        isSelecting: boolean;
+        hasSelection: boolean;
+        wasStartCheckboxSelectedAlready: boolean;
+        instructions: WaveProgramInstructionItem[] | null;
+        start:  number;
+        end:    number;
+    };
 };
 
 const MODAL_NONE = 0;
@@ -157,9 +170,18 @@ export function newWaveProgramEditorState(): WaveProgramEditorState {
         registersInUseRead: new Set(),
         highlightedRegister: -1,
         highlightedRegisterNext: -1,
+        currentViewingRegisterInOscilloscope: 0,
         contextMenu: newContextMenuState(),
         undoBuffer: newUndoBuffer(),
         modal: MODAL_NONE,
+        selectedRange: {
+            isSelecting: false,
+            hasSelection: false,
+            wasStartCheckboxSelectedAlready: false,
+            instructions: null,
+            start: 0,
+            end: 0
+        },
     };
 }
 
@@ -195,7 +217,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
         editor.registersInUseRead.clear();
         editor.registersInUseWrite.clear();
 
-        const dfs = (instructions: DspSynthInstructionItem[]) => {
+        const dfs = (instructions: WaveProgramInstructionItem[]) => {
             for (const instr of instructions) {
                 if (instr.instruction) {
                     if (instr.instruction.arg1.reg) editor.registersInUseRead.add(instr.instruction.arg1.val);
@@ -350,7 +372,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                         elSetStyle(c, "padding", "3px");
                     }
 
-                    const edited = imInstructionArrayEditor(c, editor, editor.waveProgram.instructions);
+                    const edited = imInstructionArrayEditor(c, editor, editor.waveProgram.instructions, null, 0);
                     if (edited) {
                         updateSettings = true;
                     }
@@ -388,9 +410,10 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                     });
 
                     if (imMemo(c, s.noteIdx)) s.viewingInvalidated = true;
+                    if (imMemo(c, editor.currentViewingRegisterInOscilloscope)) s.viewingInvalidated = true;
                     if (instructionsChanged) s.viewingInvalidated = true;
 
-                    imHeading(c, "Wave program");
+                    imHeading(c, "Oscilloscope");
 
                     imLayout(c, BLOCK); {
                         imStr(c, "Computational cost: ");
@@ -405,6 +428,8 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
 
                         s.ctx.isPressed = false;
                         for (let i = 0; i < s.samples.length; i++) {
+                            assert(editor.currentViewingRegisterInOscilloscope < s.ctx.registers.length);
+
                             let frequency = getNoteFrequency(s.noteIdx);
                             let signal = 0;
                             if (s.samplePressedIdx < i && i < s.sampleReleasedIdx) {
@@ -412,7 +437,8 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                             }
 
                             updateSampleContext(s.ctx, frequency, signal, 1 / mockSampleRate);
-                            s.samples[i] = computeSample(s.ctx, params.instructions);
+                            computeSample(s.ctx, params.instructions);
+                            s.samples[i] = s.ctx.registers[editor.currentViewingRegisterInOscilloscope];
                         }
                     }
 
@@ -637,9 +663,27 @@ function imBindableParameter(
     isRead: boolean,
     isWrite: boolean
 ) {
-    imLayout(c, ROW); imRegisterHighlightBg(c, editor, varIdx); {
+    const previewing = editor.currentViewingRegisterInOscilloscope === varIdx;
+    imLayout(c, ROW); {
+        if (imIf(c) && previewing) {
+            imBg(c, cssVars.fg); 
+            imFg(c, cssVars.bg);
+        } else {
+            imIfElse(c);
+            imRegisterHighlightBg(c, editor, varIdx);
+            imFg(c, cssVars.fg);
+        } imIfEnd(c);
+
+        if (isFirstishRender(c)) {
+            elSetStyle(c, "cursor", "pointer");
+        }
+
         if (elHasMouseOver(c)) {
             editor.highlightedRegisterNext = varIdx;
+        }
+
+        if (elHasMousePress(c)) {
+            editor.currentViewingRegisterInOscilloscope = varIdx;
         }
 
         imLayout(c, ROW); imSize(c, 40, PX, 0, NA); imJustify(c); {
@@ -664,9 +708,20 @@ function imBindableParameter(
 export function imInstructionArrayEditor(
     c: ImCache,
     editor: WaveProgramEditorState,
-    instructions: DspSynthInstructionItem[],
+    instructions: WaveProgramInstructionItem[],
+    parent: WaveProgramInstructionItem[] | null,
+    idxInParent: number,
 ): boolean {
     let edited = false;
+
+    const selectedRange = editor.selectedRange;
+
+    const mouse = getGlobalEventSystem().mouse;
+    if (parent === null) {
+        if (!mouse.leftMouseButton) {
+            editor.selectedRange.isSelecting = false;
+        }
+    }
 
     imFor(c); for (let i = 0; i < instructions.length; i++) {
         const prevInstruction = arrayAt(instructions, i - 1);
@@ -680,6 +735,81 @@ export function imInstructionArrayEditor(
                     elSetStyle(c, "lineHeight", "1");
                     elSetStyle(c, "userSelect", "none");
                 }
+
+                const canMoveUp = i > 0;
+                const moveUpClicked = imButtonBegin(c, "^"); {
+                    if (moveUpClicked && canMoveUp) {
+                        arraySwap(instructions, i, i - 1)
+                        edited = true;
+                    }
+                    elSetStyle(c, "opacity", canMoveUp ? "1" : "0");
+                } imButtonEnd(c);
+
+                const canMoveDown = i < instructions.length - 1;
+                const moveDownClicked = imButtonBegin(c, "v"); {
+                    if (moveDownClicked && canMoveDown) {
+                        arraySwap(instructions, i, i + 1)
+                        edited = true;
+                    }
+                    elSetStyle(c, "opacity", canMoveDown ? "1" : "0");
+                } imButtonEnd(c);
+
+                // select checkbox
+                const isSelected = selectedRange.hasSelection && 
+                                   selectedRange.instructions === instructions &&
+                                   selectedRange.start <= i && i <= selectedRange.end;
+
+                imCheckboxBegin(c); {
+                    if (elHasMousePress(c)) {
+                        selectedRange.hasSelection = true;
+                        selectedRange.wasStartCheckboxSelectedAlready = isSelected;
+                        selectedRange.isSelecting = true;
+                        selectedRange.instructions = instructions;
+                        selectedRange.start = i;
+                        selectedRange.end = i;
+                    }
+
+                    if (elHasMouseClick(c)) {
+                        if (
+                            selectedRange.wasStartCheckboxSelectedAlready && 
+                            selectedRange.hasSelection && 
+                            selectedRange.instructions === instructions && 
+                            selectedRange.end === selectedRange.start
+                        ) {
+                            selectedRange.hasSelection = false;
+                            selectedRange.isSelecting = false;
+                        }
+                    }
+
+                    if (elHasMouseOver(c) && selectedRange.isSelecting && selectedRange.instructions === instructions) {
+                        // I had written this extending logic for single-press rather than hold logic.
+                        // It seems to work fine in a hold+drag context as well though, so no changes for now
+
+                        if (selectedRange.instructions !== instructions) {
+                            selectedRange.instructions = instructions;
+                            selectedRange.start = i;
+                            selectedRange.end = i;
+                        } else {
+                            if (i < selectedRange.start) {
+                                selectedRange.start = i;
+                            } else if (selectedRange.end < i) {
+                                selectedRange.end = i;
+                            } else {
+                                const distToStart = i - selectedRange.start; assert(distToStart >= 0);
+                                const distToEnd = selectedRange.end - i; assert(distToEnd >= 0);
+                                if (distToStart < distToEnd) {
+                                    selectedRange.start = i;
+                                } else {
+                                    selectedRange.end = i;
+                                }
+                            }
+                        }
+                    }
+
+                    imCheckboxCheckBegin(c, isSelected); 
+                    imCheckboxCheckEnd(c);
+                } imCheckboxEnd(c);
+
 
                 // If-statement toggle
                 {
@@ -796,24 +926,6 @@ export function imInstructionArrayEditor(
                         edited = true;
                     }
 
-                    const canMoveUp = i > 0;
-                    const moveUpClicked = imButtonBegin(c, "^"); {
-                        if (moveUpClicked && canMoveUp) {
-                            arraySwap(instructions, i, i - 1)
-                            edited = true;
-                        }
-                        elSetStyle(c, "opacity", canMoveUp ? "1" : "0");
-                    } imButtonEnd(c);
-
-                    const canMoveDown = i < instructions.length - 1;
-                    const moveDownClicked = imButtonBegin(c, "v"); {
-                        if (moveDownClicked && canMoveDown) {
-                            arraySwap(instructions, i, i + 1)
-                            edited = true;
-                        }
-                        elSetStyle(c, "opacity", canMoveDown ? "1" : "0");
-                    } imButtonEnd(c);
-
                     if (imButtonIsClicked(c, "x")) {
                         filterInPlace(instructions, i => i !== instruction);
                         edited = true;
@@ -824,7 +936,7 @@ export function imInstructionArrayEditor(
 
         if (imIf(c) && instruction.ifelseInnerBlock) {
             imLayout(c, BLOCK); imPadding(c, 0, NA, 0, NA, 0, NA, 30, PX); {
-                const ifEdited = imInstructionArrayEditor(c, editor, instruction.ifelseInnerBlock.inner);
+                const ifEdited = imInstructionArrayEditor(c, editor, instruction.ifelseInnerBlock.inner, instructions, i);
                 if (ifEdited) {
                     edited = true;
                 }
@@ -832,7 +944,7 @@ export function imInstructionArrayEditor(
         } imIfEnd(c);
     } imForEnd(c);
 
-    imLayout(c, ROW); {
+    imLayout(c, ROW); imGap(c, 10, PX); {
         if (imButtonIsClicked(c, "Add line")) {
             if (instructions.length > 0) {
                 const lastInstruction = instructions[instructions.length - 1];
@@ -845,6 +957,69 @@ export function imInstructionArrayEditor(
                 edited = true;
             }
         }
+
+        const hasSelection = selectedRange.hasSelection && selectedRange.instructions === instructions;
+        imLayout(c, ROW); {
+            const canMoveOut = !!parent && hasSelection && selectedRange.end === instructions.length - 1;
+
+            imOpacity(c, canMoveOut ? 1 : 0);
+
+            // blud needs to implement this IRL ...
+            if (imButtonIsClicked(c, "<- Move out ")) {
+                if (canMoveOut) {
+                    assert(!!parent);
+
+                    // Get instructions to move
+                    const len = selectedRange.end - selectedRange.start + 1;
+                    const toMove = instructions.splice(selectedRange.start, len);
+
+                    // Move said instructions
+                    parent.splice(idxInParent + 1, 0, ...toMove);
+
+                    // Maintain selection
+                    selectedRange.instructions = parent;
+                    selectedRange.start = idxInParent + 1;
+                    selectedRange.end = idxInParent + 1 + len - 1;
+
+                    edited = true;
+                }
+            }
+        } imLayoutEnd(c);
+
+        imLayout(c, ROW); {
+            const canMoveIn = hasSelection &&
+                selectedRange.start > 0;
+
+            imOpacity(c, canMoveIn ? 1 : 0);
+
+            if (imButtonIsClicked(c, "Move in -> ")) {
+                if (canMoveIn) {
+                    // Get instructions to move
+                    const len = selectedRange.end - selectedRange.start + 1;
+                    const toMove = instructions.splice(selectedRange.start, len);
+
+                    // Move into the if-statement above
+                    const instrBeforeStart = instructions[selectedRange.start - 1];
+                    let insertionPoint = instrBeforeStart.ifelseInnerBlock?.inner;
+                    if (!insertionPoint) {
+                        instrBeforeStart.ifelseInnerBlock = {
+                            isElseBlock: false,
+                            inner: [],
+                        };
+                        insertionPoint = instrBeforeStart.ifelseInnerBlock.inner;
+                    }
+                    insertionPoint.push(...toMove);
+
+                    // Maintain selection
+                    selectedRange.instructions = insertionPoint;
+                    selectedRange.start = insertionPoint.length - len;
+                    selectedRange.end = insertionPoint.length - 1;
+
+                    edited = true;
+                }
+            }
+        } imLayoutEnd(c);
+
     } imLayoutEnd(c);
 
     return edited;

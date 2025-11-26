@@ -66,7 +66,7 @@ export function instrToString(instr: InstructionType | undefined): string {
 
 // NOTE: should be JSON serializable
 export type WaveProgram = {
-    instructions: DspSynthInstructionItem[]
+    instructions: WaveProgramInstructionItem[]
 };
 
 export type ParameterInfo = { name: string; };
@@ -117,12 +117,12 @@ function square(t: number) {
 
 
 // The final instructions are just integers. This is just for the UI and the build step
-export type DspSynthInstructionItem = {
+export type WaveProgramInstructionItem = {
     // only one of these codegen related parts should be present at a time.
     instruction?: InstructionPart;
     ifelseInnerBlock?: {
         isElseBlock: boolean;
-        inner: DspSynthInstructionItem[]; 
+        inner: WaveProgramInstructionItem[]; 
     };
 
     comment?: string;
@@ -265,7 +265,7 @@ export function computeSample(s: SampleContext, instructions: number[]) {
     return s.registers[IDX_OUTPUT];
 }
 
-export function compileInstructions(instructions: DspSynthInstructionItem[], dst: number[] = []): number[] {
+export function compileInstructions(instructions: WaveProgramInstructionItem[], dst: number[] = []): number[] {
     dst.length = 0;
 
     compileToInstructionsInternal(instructions, dst);
@@ -301,8 +301,8 @@ export function isIfInstruction(type: InstructionType) {
  *  --------------- Z jumps here if condition not met
  *
  */
-export function compileToInstructionsInternal(instructions: DspSynthInstructionItem[], dst: number[]) {
-    let currentIfBlock: DspSynthInstructionItem | undefined;
+export function compileToInstructionsInternal(instructions: WaveProgramInstructionItem[], dst: number[]) {
+    let currentIfBlock: WaveProgramInstructionItem | undefined;
     const jumpToBlockEndInstructionIndexes: number[] = [];
     for (let i = 0; i <= instructions.length; i++) {
         const instr = arrayAt(instructions, i);
@@ -405,8 +405,8 @@ export function fixInstructionPartInstructionPartArgument(arg: InstructionPartAr
 /** 
  * Mutates instructions as less as needed to get it into a runnable state  
  **/
-export function fixInstructions(instructions: DspSynthInstructionItem[]) {
-    let prevInstr: DspSynthInstructionItem | undefined;
+export function fixInstructions(instructions: WaveProgramInstructionItem[]) {
+    let prevInstr: WaveProgramInstructionItem | undefined;
     for (const instr of instructions) {
         if (instr.instruction) {
             fixInstructionPartInstructionPartArgument(instr.instruction.arg1);
