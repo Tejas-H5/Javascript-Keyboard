@@ -175,7 +175,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
         }
 
         // Only step the DSP if we have things playing
-        if (isPlaying) {
+        if (isPlaying && state.allSamples.length < 100_000) {
             dspProcess(state.dsp, state.output);
 
             const samples = state.output[0][0];

@@ -54,6 +54,7 @@ import {
     INSTR_LT,
     INSTR_LTE,
     INSTR_MULTIPLY,
+    INSTR_RECIPR_DT,
     INSTR_MULTIPLY_DT,
     INSTR_NEQ,
     INSTR_SIN,
@@ -69,7 +70,8 @@ import {
     registerIdxToString,
     updateSampleContext,
     WaveProgram,
-    WaveProgramInstructionItem
+    WaveProgramInstructionItem,
+    INSTR_ADD_RECIPR_DT
 } from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings } from "src/dsp/dsp-loop-interface";
 import { arrayAt, arraySwap, filterInPlace } from "src/utils/array-utils";
@@ -92,7 +94,7 @@ import {
 } from "src/utils/im-core";
 import { EL_B, elHasMouseClick, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imEl, imElEnd, imOn, imStr, imStrFmt } from "src/utils/im-dom";
 import { clamp, gridsnapRound } from "src/utils/math-utils";
-import { getNoteFrequency } from "src/utils/music-theory-utils";
+import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
 import { bytesToMegabytes, utf16ByteLength } from "src/utils/utf8";
 import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
@@ -111,9 +113,11 @@ const instructionChoices: InstructionType[] = [
     INSTR_SQUARE,
     INSTR_ADD,
     INSTR_ADD_DT,
+    INSTR_ADD_RECIPR_DT,
     INSTR_SUBTRACT,
     INSTR_MULTIPLY,
     INSTR_MULTIPLY_DT,
+    INSTR_RECIPR_DT,
     INSTR_DIVIDE,
     INSTR_LT,
     INSTR_LTE,
@@ -397,7 +401,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                     const mockSampleRate = 44800;
 
                     const s = imGet(c, imWaveProgramEditor) ?? imSet(c, {
-                        noteIdx: 0,
+                        noteIdx: getNoteIndex("A", 3),
                         ctx: newSampleContext(),
 
                         samples: Array(mockSampleRate * 3).fill(0) as number[],
@@ -727,7 +731,7 @@ export function imInstructionArrayEditor(
         const prevInstruction = arrayAt(instructions, i - 1);
         const instruction = instructions[i];
 
-        if (imIf(c) && (instruction.instruction || instruction.ifelseInnerBlock)) {
+        if (imIf(c) && (instruction.instructionEnabled || instruction.ifelseInnerBlock)) {
             const instr = instruction.instruction;
 
             imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 10, PX); {
@@ -735,24 +739,6 @@ export function imInstructionArrayEditor(
                     elSetStyle(c, "lineHeight", "1");
                     elSetStyle(c, "userSelect", "none");
                 }
-
-                const canMoveUp = i > 0;
-                const moveUpClicked = imButtonBegin(c, "^"); {
-                    if (moveUpClicked && canMoveUp) {
-                        arraySwap(instructions, i, i - 1)
-                        edited = true;
-                    }
-                    elSetStyle(c, "opacity", canMoveUp ? "1" : "0");
-                } imButtonEnd(c);
-
-                const canMoveDown = i < instructions.length - 1;
-                const moveDownClicked = imButtonBegin(c, "v"); {
-                    if (moveDownClicked && canMoveDown) {
-                        arraySwap(instructions, i, i + 1)
-                        edited = true;
-                    }
-                    elSetStyle(c, "opacity", canMoveDown ? "1" : "0");
-                } imButtonEnd(c);
 
                 // select checkbox
                 const isSelected = selectedRange.hasSelection && 
@@ -815,7 +801,7 @@ export function imInstructionArrayEditor(
                 {
                     let text = "if";
                     if (instruction.ifelseInnerBlock?.isElseBlock) {
-                        if (!instruction.instruction) {
+                        if (!instruction.instructionEnabled) {
                             text = "else";
                         } else {
                             text = "else if";
@@ -825,23 +811,35 @@ export function imInstructionArrayEditor(
                     const ifButtonClicked = imButtonBegin(c, text, !!instruction.ifelseInnerBlock); imNoWrap(c); {
                         if (ifButtonClicked) {
                             if (instruction.ifelseInnerBlock) {
-                                let becameElseBock = false;
-
-                                const canTransitionToElse = prevInstruction && prevInstruction.ifelseInnerBlock;
-                                if (canTransitionToElse) {
+                                let transitioned = false;
+                                if (prevInstruction && prevInstruction.ifelseInnerBlock) {
                                     if (!instruction.ifelseInnerBlock.isElseBlock) {
-                                        becameElseBock = true;
+                                        //  if -> if-else
                                         instruction.ifelseInnerBlock.isElseBlock = true;
-                                    } else if (instruction.instruction) {
-                                        becameElseBock = true;
-                                        instruction.instruction = undefined;
+                                        transitioned = true;
+                                    } else if (instruction.instructionEnabled) {
+                                        //  if-else -> else
+                                        instruction.instructionEnabled = false;
+                                        transitioned = true;
+                                    } else {
+                                        if (instruction.ifelseInnerBlock.inner.length > 0) {
+                                            // else -> if
+                                            // (because we don't want to delete these instructions, seems like an unnatural interaction)
+                                            instruction.ifelseInnerBlock.isElseBlock = false;
+                                            instruction.instructionEnabled = true;
+                                            transitioned = true;
+                                        }
                                     }
-                                }
+                                } 
 
-                                if (!becameElseBock) {
+                                if (!transitioned) {
+                                    // if -> nothing
                                     instruction.ifelseInnerBlock = undefined;
+                                    instruction.instructionEnabled = true;
+                                    transitioned = true;
                                 }
                             } else {
+                                // nothing -> if
                                 instruction.ifelseInnerBlock = {
                                     isElseBlock: false,
                                     inner: [],
@@ -852,7 +850,7 @@ export function imInstructionArrayEditor(
                     } imButtonEnd(c);
                 }
 
-                if (imIf(c) && instr) {
+                if (imIf(c) && instruction.instructionEnabled) {
                     // register value 1
                     const editedValue1 = imRegisterArgumentEditor(c, editor, instr, instr.arg1);
                     if (editedValue1) {
@@ -952,7 +950,10 @@ export function imInstructionArrayEditor(
                 instructions.push(copy);
                 edited = true;
             } else {
-                const benignInstr = { instruction: newDspInstruction(0, false, INSTR_ADD, 0, false, IDX_OUTPUT) };
+                const benignInstr: WaveProgramInstructionItem = {
+                    instructionEnabled: true,
+                    instruction: newDspInstruction(0, false, INSTR_ADD, 0, false, IDX_OUTPUT)
+                };
                 instructions.push(benignInstr);
                 edited = true;
             }
@@ -1014,6 +1015,52 @@ export function imInstructionArrayEditor(
                     selectedRange.instructions = insertionPoint;
                     selectedRange.start = insertionPoint.length - len;
                     selectedRange.end = insertionPoint.length - 1;
+
+                    edited = true;
+                }
+            }
+        } imLayoutEnd(c);
+
+        imLayout(c, ROW); {
+            const canMoveUp = hasSelection && selectedRange.start > 0;
+            imOpacity(c, canMoveUp ? 1 : 0);
+
+            // blud needs to implement this IRL ...
+            if (imButtonIsClicked(c, "^ Move up")) {
+                if (canMoveUp) {
+                    // Get instructions to move
+                    const len = selectedRange.end - selectedRange.start + 1;
+                    const toMove = instructions.splice(selectedRange.start, len);
+
+                    // Move said instructions
+                    instructions.splice(selectedRange.start - 1, 0, ...toMove);
+
+                    // Maintain selection
+                    selectedRange.start--;
+                    selectedRange.end = selectedRange.start + len - 1;
+
+                    edited = true;
+                }
+            }
+        } imLayoutEnd(c);
+
+        imLayout(c, ROW); {
+            const canMoveDown = hasSelection && selectedRange.end < instructions.length - 1;
+            imOpacity(c, canMoveDown ? 1 : 0);
+
+            // blud needs to implement this IRL ...
+            if (imButtonIsClicked(c, "v Move down")) {
+                if (canMoveDown) {
+                    // Get instructions to move
+                    const len = selectedRange.end - selectedRange.start + 1;
+                    const toMove = instructions.splice(selectedRange.start, len);
+
+                    // Move said instructions
+                    instructions.splice(selectedRange.start + 1, 0, ...toMove);
+
+                    // Maintain selection
+                    selectedRange.start++;
+                    selectedRange.end = selectedRange.start + len - 1;
 
                     edited = true;
                 }

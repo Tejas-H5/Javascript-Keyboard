@@ -1,32 +1,37 @@
 import { arrayAt } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
+import { assert, unreachable } from "src/utils/assert";
 
-export const INSTR_SIN              = 1;
-export const INSTR_SQUARE           = 2;
-export const INSTR_ADD              = 3;
-export const INSTR_ADD_DT           = 4;
-export const INSTR_SUBTRACT         = 5;
-export const INSTR_MULTIPLY         = 6;
-export const INSTR_MULTIPLY_DT      = 7;
-export const INSTR_DIVIDE           = 8;
-export const INSTR_LT               = 9;
-export const INSTR_LTE              = 10;
-export const INSTR_GT               = 11;
-export const INSTR_GTE              = 12;
-export const INSTR_EQ               = 13;
-export const INSTR_NEQ              = 14;
-export const INSTR_JUMP_IF_NZ       = 15;
-export const INSTR_JUMP_IF_Z        = 16;
-export const INSTR_NUM_INSTRUCTIONS = 17;
+// NOTE: Only add new values onto the end, for deserialization reasons
+export const INSTR_SIN                = 1;
+export const INSTR_SQUARE             = 2;
+export const INSTR_ADD                = 3;
+export const INSTR_ADD_DT             = 4;
+export const INSTR_SUBTRACT           = 5;
+export const INSTR_MULTIPLY           = 6;
+export const INSTR_MULTIPLY_DT        = 7;
+export const INSTR_DIVIDE             = 8;
+export const INSTR_LT                 = 9;
+export const INSTR_LTE                = 10;
+export const INSTR_GT                 = 11;
+export const INSTR_GTE                = 12;
+export const INSTR_EQ                 = 13;
+export const INSTR_NEQ                = 14;
+export const INSTR_JUMP_IF_NZ         = 15;
+export const INSTR_JUMP_IF_Z          = 16;
+export const INSTR_RECIPR_DT          = 17;
+export const INSTR_ADD_RECIPR_DT      = 19;
+export const INSTR_NUM_INSTRUCTIONS   = 20;
 
 export type InstructionType
     = typeof INSTR_SIN
     | typeof INSTR_SQUARE
     | typeof INSTR_ADD
     | typeof INSTR_ADD_DT
+    | typeof INSTR_ADD_RECIPR_DT
     | typeof INSTR_SUBTRACT
     | typeof INSTR_MULTIPLY
     | typeof INSTR_MULTIPLY_DT
+    | typeof INSTR_RECIPR_DT
     | typeof INSTR_DIVIDE
     | typeof INSTR_LT
     | typeof INSTR_LTE
@@ -40,28 +45,29 @@ export type InstructionType
 export function instrToString(instr: InstructionType | undefined): string {
     if (!instr) return "No-op";
 
-    let result;
-
     switch (instr) {
-        case INSTR_SIN:         result = "* sin";     break;
-        case INSTR_SQUARE:      result = "* square";  break;
-        case INSTR_ADD:         result = "+";       break;
-        case INSTR_ADD_DT:      result = "+ dt*";   break;
-        case INSTR_SUBTRACT:    result = "-";       break;
-        case INSTR_MULTIPLY:    result = "*";       break;
-        case INSTR_MULTIPLY_DT: result = "* dt *";   break;
-        case INSTR_DIVIDE:      result = "/";       break;
-        case INSTR_LT:          result = "<";       break;
-        case INSTR_LTE:         result = "<=";      break;
-        case INSTR_GT:          result = ">";       break;
-        case INSTR_GTE:         result = ">=";      break;
-        case INSTR_EQ:          result = "==";      break;
-        case INSTR_NEQ:         result = "!=";      break;
-        case INSTR_JUMP_IF_NZ:  result = "[internal] Jump if non-zero"; break;
-        case INSTR_JUMP_IF_Z:   result = "[internal] Jump if zero"; break;
-    }
+        case INSTR_SIN:         return "* sin";
+        case INSTR_SQUARE:      return "* square";
+        case INSTR_ADD:         return "+";
+        case INSTR_ADD_DT:      return "+ dt*";
+        case INSTR_ADD_RECIPR_DT: return "+ dt /";
+        case INSTR_SUBTRACT:    return "-";
+        case INSTR_MULTIPLY:    return "*";
 
-    return result;
+        case INSTR_MULTIPLY_DT:        return "* dt *";
+        case INSTR_RECIPR_DT: return "* dt /";
+
+        case INSTR_DIVIDE: return "/";
+        case INSTR_LT:     return "<";
+        case INSTR_LTE:    return "<=";
+        case INSTR_GT:     return ">";
+        case INSTR_GTE:    return ">=";
+        case INSTR_EQ:     return "==";
+        case INSTR_NEQ:    return "!=";
+        case INSTR_JUMP_IF_NZ: return "[internal] Jump if non-zero";
+        case INSTR_JUMP_IF_Z:  return "[internal] Jump if zero";
+        default: unreachable(instr, "Got invalid instruction type");
+    }
 }
 
 // NOTE: should be JSON serializable
@@ -115,11 +121,15 @@ function square(t: number) {
     return t > 1 ? 1 : -1;
 }
 
+const BLOCK_TYPE_IF = 1;
+const BLOCK_TYPE_IF_ELSE = 2;
+const BLOCK_TYPE_ELSE = 3;
 
 // The final instructions are just integers. This is just for the UI and the build step
 export type WaveProgramInstructionItem = {
     // only one of these codegen related parts should be present at a time.
-    instruction?: InstructionPart;
+    instruction: InstructionPart;
+    instructionEnabled: boolean;
     ifelseInnerBlock?: {
         isElseBlock: boolean;
         inner: WaveProgramInstructionItem[]; 
@@ -227,24 +237,26 @@ export function computeSample(s: SampleContext, instructions: number[]) {
             case INSTR_SQUARE:      { result = val1 * square(val2);  } break;
             case INSTR_ADD:         { result = val1 + val2;          } break;
             case INSTR_ADD_DT:      { result = val1 + (s.dt * val2); } break;
+            case INSTR_ADD_RECIPR_DT: { result = val1 + (s.dt * (1 / val2)); } break;
             case INSTR_SUBTRACT:    { result = val1 - val2;          } break;
             case INSTR_MULTIPLY:    { result = val1 * val2;          } break;
             case INSTR_MULTIPLY_DT: { result = val1 * s.dt * val2;   } break;
+            case INSTR_RECIPR_DT:   { result = val1 * s.dt * (1 / val2); } break;
             case INSTR_DIVIDE:      { result = val1 / val2;          } break;
             case INSTR_JUMP_IF_NZ: {
                 result = val1;
                 if (val1 !== 0) {
                     i = val2;
-                    continue;
                 }
-            }; break;
+                continue;
+            };
             case INSTR_JUMP_IF_Z: {
                 result = val1;
                 if (val1 === 0) {
                     i = val2;
-                    continue;
                 }
-            }; break;
+                continue;
+            }; 
             case INSTR_LT:  { result = val1 < val2 ? 1 : 0;     } break; 
             case INSTR_LTE: { result = val1 <= val2 ? 1 : 0;    } break; 
             case INSTR_GT:  { result = val1 > val2 ? 1 : 0;     } break; 
@@ -252,10 +264,7 @@ export function computeSample(s: SampleContext, instructions: number[]) {
             case INSTR_EQ:  { result = val1 === val2 ? 1 : 0;   } break; 
             case INSTR_NEQ: { result = val1 !== val2 ? 1 : 0;   } break; 
             default: {
-                if (isIfInstruction(type)) {
-                    throw new Error("If-instructions are not valid compilation output");
-                }
-                throw new Error("Unknown instruction type");
+                unreachable(type, "Got invalid instruction type");
             }
         };
 
@@ -329,8 +338,8 @@ export function compileToInstructionsInternal(instructions: WaveProgramInstructi
             break;
         }
 
-        if (instr.instruction) {
-            pushInstruction(instr.instruction, dst);
+        if (instr.instructionEnabled) {
+            pushInstruction(instr.instruction, dst, instr.ifelseInnerBlock ? IDX_JMP_RESULT : undefined);
         } else {
             // Need to at least have an else block if no instructions
             assert(!!instr.ifelseInnerBlock);
@@ -348,12 +357,11 @@ export function compileToInstructionsInternal(instructions: WaveProgramInstructi
             }
 
             let jumpIfInstrIdx = -1;
-            if (instr.instruction) {
+            if (instr.instructionEnabled) {
                 jumpIfInstrIdx = dst.length;
                 pushInstruction({
                     type: INSTR_JUMP_IF_Z,
-                    // read result of last instruction
-                    arg1: { reg: true, val: instr.instruction.dst},
+                    arg1: { reg: true, val: IDX_JMP_RESULT },
                     // after codegen, needs to point to the if-check of the next if-block.
                     // We jump there if the previous comparison was false
                     arg2: { reg: false, val: -1 },
@@ -408,7 +416,7 @@ export function fixInstructionPartInstructionPartArgument(arg: InstructionPartAr
 export function fixInstructions(instructions: WaveProgramInstructionItem[]) {
     let prevInstr: WaveProgramInstructionItem | undefined;
     for (const instr of instructions) {
-        if (instr.instruction) {
+        if (instr.instructionEnabled) {
             fixInstructionPartInstructionPartArgument(instr.instruction.arg1);
             fixInstructionPartInstructionPartArgument(instr.instruction.arg2);
             instr.instruction.dst = Math.floor(instr.instruction.dst);
@@ -426,7 +434,7 @@ export function fixInstructions(instructions: WaveProgramInstructionItem[]) {
         }
 
         // do this _after_ fixing if/else blocks
-        if (!instr.instruction && !instr.ifelseInnerBlock) {
+        if (!instr.instructionEnabled && !instr.ifelseInnerBlock) {
             // All statements need at least an instruction or be an else block.
             const benignInstr = newDspInstruction(0, false, INSTR_ADD, 0, false, IDX_OUTPUT);
             instr.instruction = benignInstr;
@@ -444,9 +452,9 @@ export const OFFSET_VAL2 = 4;
 export const OFFSET_REG2 = 5;
 export const OFFSET_INSTRUCTION_SIZE = 6;
 
-export function pushInstruction(instr: InstructionPart, dst: number[]) {
+export function pushInstruction(instr: InstructionPart, dst: number[], dstRegisterOverride?: number) {
     dst.push(instr.type);           // 0
-    dst.push(instr.dst);            // 1
+    dst.push(dstRegisterOverride ?? instr.dst);            // 1
     dst.push(instr.arg1.val);           // 2
     dst.push(instr.arg1.reg ? 1 : 0);   // 3
     dst.push(instr.arg2.val);           // 4

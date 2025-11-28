@@ -17,7 +17,8 @@ import {
     newSampleContext,
     OFFSET_INSTRUCTION_SIZE,
     pushInstruction,
-    updateSampleContext
+    updateSampleContext,
+    WaveProgramInstructionItem
 } from "./dsp-loop-instruction-set";
 
 // I recon that it is important to develop a testing philosophy, since it is really easy to just
@@ -68,10 +69,10 @@ export const dspLoopInstructionSetTests = [
         newTest("Simple program", (test, ctx) => {
             const temp = IDX_USER + 1;
             const angle = IDX_USER;
-            const instructions = [
-                { instruction: newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp) },
-                { instruction: newDspInstruction(angle, true, INSTR_ADD_DT, temp, true, angle) },
-                { instruction: newDspInstruction(1, false, INSTR_SIN, angle, true, IDX_OUTPUT) },
+            const instructions: WaveProgramInstructionItem[] = [
+                { instructionEnabled: true, instruction: newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp) },
+                { instructionEnabled: true, instruction: newDspInstruction(angle, true, INSTR_ADD_DT, temp, true, angle) },
+                { instructionEnabled: true, instruction: newDspInstruction(1, false, INSTR_SIN, angle, true, IDX_OUTPUT) },
             ];
             const compiled = compileInstructions(instructions);
 
@@ -95,25 +96,26 @@ export const dspLoopInstructionSetTests = [
         }),
         newTest("If generation", (test, ctx) => {
             const TEMP_IDX = IDX_USER + 0;
-            const instructions = [
-                { instruction: newDspInstruction(100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX) },
-                { instruction: newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT) },
+            const instructions: WaveProgramInstructionItem[] = [
+                { instructionEnabled: true, instruction: newDspInstruction(100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX) },
+                { instructionEnabled: true, instruction: newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT) },
                 { 
-                    instruction: newDspInstruction(IDX_OUTPUT, true, INSTR_LT, 100, false, TEMP_IDX),
+                    instructionEnabled: true, instruction: newDspInstruction(IDX_OUTPUT, true, INSTR_LT, 100, false, TEMP_IDX),
                     ifelseInnerBlock: {
                         isElseBlock: false,
                         inner: [
-                            { instruction: newDspInstruction(100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX) },
-                            { instruction: newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT) },
+                            { instructionEnabled: true, instruction: newDspInstruction(100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX) },
+                            { instructionEnabled: true, instruction: newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT) },
                         ],
                     },
                 }, 
                 { 
+                    instructionEnabled: false, instruction: newDspInstruction(0, false, 1, 0, false, 0),
                     ifelseInnerBlock: {
                         isElseBlock: true,
                         inner: [
-                            { instruction: newDspInstruction(-100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX) },
-                            { instruction: newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT) },
+                            { instructionEnabled: true, instruction: newDspInstruction(-100, false, INSTR_MULTIPLY_DT, 1, false, TEMP_IDX) },
+                            { instructionEnabled: true, instruction: newDspInstruction(TEMP_IDX, true, INSTR_ADD, IDX_OUTPUT, true, IDX_OUTPUT) },
                         ],
                     },
                 },

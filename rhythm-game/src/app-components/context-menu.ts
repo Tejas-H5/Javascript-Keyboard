@@ -1,4 +1,4 @@
-import { COL, imAbsolute, imFixed, imJustify, imLayout, imLayoutEnd, NA, PX, ROW } from "src/components/core/layout";
+import { COL, imAbsolute, imFixed, imJustify, imLayout, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { ImCache, imIf, imIfEnd, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
@@ -26,7 +26,7 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState): number | nu
     const y = s.position.y;
 
     if (imIf(c) && s.open) {
-        imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+        imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, 10000); {
             imLayout(c, COL); imAbsolute(c, y, PX, 0, NA, 0, NA, x, PX); {
                 if (isFirstishRender(c)) {
                     elSetStyle(c, "padding", "3px");

@@ -19,6 +19,6 @@ export function mustGetDefined<T>(val: T | undefined, field = "this value"): T {
     return val;
 }
 
-export function unreachable(val?: never): never {
-    throw new Error("This function should be unreachable");
+export function unreachable(val?: never, message = "This code should be unreachable"): never {
+    throw new Error(message);
 }

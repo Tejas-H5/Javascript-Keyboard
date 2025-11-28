@@ -43,7 +43,9 @@ import {
     updateSampleContext,
     IDX_DT,
     INSTR_MULTIPLY_DT,
-    INSTR_ADD_DT
+    INSTR_ADD_DT,
+    INSTR_RECIPR_DT,
+    INSTR_ADD_RECIPR_DT
 } from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 
@@ -84,9 +86,9 @@ export function getDefaultInstructions() {
     const angle = IDX_USER + 1;
     const temp = IDX_USER;
     const instructions: WaveProgramInstructionItem[] = [
-        { instruction: newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp) },
-        { instruction: newDspInstruction(angle, true, INSTR_ADD, temp, true, angle) },
-        { instruction: newDspInstruction(IDX_SIGNAL, true, INSTR_SIN, angle, true, IDX_OUTPUT) },
+        { instructionEnabled: true, instruction: newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp) },
+        { instructionEnabled: true, instruction: newDspInstruction(angle, true, INSTR_ADD, temp, true, angle) },
+        { instructionEnabled: true, instruction: newDspInstruction(IDX_SIGNAL, true, INSTR_SIN, angle, true, IDX_OUTPUT) },
     ];
     return instructions;
 }
@@ -191,7 +193,7 @@ export function updateOscillator(
     }
 
     const dt = 1 / sampleRate;
-    if (inputs.signal || state.value > OSC_GAIN_AWAKE_THRESHOLD) {
+    if (inputs.signal || Math.abs(state.value) > OSC_GAIN_AWAKE_THRESHOLD) {
         state.time += dt;
     }
 
@@ -244,16 +246,16 @@ export function updateOscillator(
         // Update the oscillator
 
         // Oscillator gain curve. attack/decay/sustain
-        if (inputs.signal) {
-            if (tPressed <= attack) {
-                targetGain = attackVolume; rate = attack;
-            } else {
-                targetGain = sustainVolume; rate = sustain;
-            }
-        } else {
-            targetGain = 0.0;
-            rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
-        }
+        // if (inputs.signal) {
+        //     if (tPressed <= attack) {
+        //         targetGain = attackVolume; rate = attack;
+        //     } else {
+        //         targetGain = sustainVolume; rate = sustain;
+        //     }
+        // } else {
+        //     targetGain = 0.0;
+        //     rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
+        // }
 
         // let maxRange = max(parameters.low, parameters.hi);
         // for (let i = -parameters.low; i <= parameters.hi; i += parameters.increment) {
@@ -723,7 +725,7 @@ export function dspProcess(s: DspState, outputs: Float32Array[][]) {
     {
         filterInPlace(s.playingOscillators, (osc) => {
             return osc[1].inputs.signal > OSC_GAIN_AWAKE_THRESHOLD ||
-                osc[1].state.value > OSC_GAIN_AWAKE_THRESHOLD;
+                Math.abs(osc[1].state.value) > OSC_GAIN_AWAKE_THRESHOLD;
         });
     }
 
@@ -833,8 +835,8 @@ export function getDspLoopClassUrl(): string {
         { value: INSTR_SQUARE, name: "INSTR_SQUARE" },
         { value: INSTR_ADD, name: "INSTR_ADD" },
         { value: INSTR_ADD_DT, name: "INSTR_ADD_DT" },
+        { value: INSTR_ADD_RECIPR_DT, name: "INSTR_ADD_RECIPR_DT" },
         { value: INSTR_SUBTRACT, name: "INSTR_SUBTRACT" },
-        { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
         { value: INSTR_MULTIPLY_DT, name: "INSTR_MULTIPLY_DT" },
         { value: INSTR_DIVIDE, name: "INSTR_DIVIDE" },
         { value: INSTR_LT, name: "INSTR_LT" },
@@ -846,6 +848,8 @@ export function getDspLoopClassUrl(): string {
         { value: INSTR_JUMP_IF_NZ, name: "INSTR_JUMP_IF_NZ" },
         { value: INSTR_JUMP_IF_Z, name: "INSTR_JUMP_IF_Z" },
         { value: INSTR_NUM_INSTRUCTIONS, name: "INSTR_NUM_INSTRUCTIONS" },
+        { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
+        { value: INSTR_RECIPR_DT, name: "INSTR_RECIPR_DT" },
         { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
         // NOTE: not sure if indices are really needed tbh.
         { value: IDX_WANTED_FREQUENCY, name: "IDX_WANTED_FREQUENCY" },
