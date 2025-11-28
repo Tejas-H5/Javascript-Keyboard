@@ -12,6 +12,10 @@ export function utf8ByteLength(str: string) {
     return s;
 }
 
+export function utf16ByteLength(str: string) {
+    return str.length * 2;
+}
+
 export function bytesToMegabytes(bytes: number) {
     return bytes / 1024 / 1024;
 }

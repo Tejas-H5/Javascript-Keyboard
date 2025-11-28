@@ -35,6 +35,7 @@ export function newFunctionUrl(
     const argsToString = args.join(",");
 
     let src = `
+"use strict"
 
 function main() {
 // These dependencies were passed on externally, and stringified in an automated manner

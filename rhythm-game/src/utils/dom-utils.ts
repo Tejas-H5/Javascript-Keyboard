@@ -1,3 +1,5 @@
+// DOM-utils v1.0
+
 /** Sets an input's value while retaining it's selection */
 export function setInputValue(el: HTMLInputElement | HTMLTextAreaElement, text: string) {
     if (
@@ -39,7 +41,8 @@ export const EXTENT_START      = 1 << 3;
 export const EXTENT_END        = 1 << 4;
 
 /**
- * Get the amount you will need to scroll along the horizontal and vertical axes to get the element into view
+ * Get the amount you will need to scroll along the horizontal and vertical axes to get the element into view,
+ * It is a simplified version of {@link getScrollVHEx}.
  */
 export function getScrollVH(
     scrollParent: HTMLElement,
@@ -47,12 +50,49 @@ export function getScrollVH(
     verticalOffset: number | null = null,
     horizontalOffset: number | null = null,
 ) {
+    return getScrollVHEx(
+        scrollParent, scrollTo,
+        verticalOffset, verticalOffset,
+        horizontalOffset, horizontalOffset
+    );
+}
+
+/**
+ * Get the amount you will need to scroll along the horizontal and vertical axes to get the element into view.
+ * Specify which point on the item needs to scroll to which point on the viewport.
+ *
+ *
+ * +----------------0
+ * |                |
+ * |            -   | <--- B
+ * |            ^   |
+ * |  +----0    | C |
+ * |  |    |<-A |   |
+ * |  |    |        |
+ * |  +----1        |
+ * +----------------1
+ * 
+ * A - the item offset 
+ * B - the viewport offset
+ * C - this is the scrolling that needs to take place to line up A with B.
+ *     the scrollTop and scrollLeft returned by this method will make this happen,
+ *     when assigned to the scrollTop and scrollLeft of the scrollParent.
+ *
+ */
+export function getScrollVHEx(
+    scrollParent: HTMLElement,
+    scrollTo: HTMLElement,
+    verticalOffsetViewport: number | null,
+    verticalOffsetItem: number | null,
+    horizontalOffsetViewport: number | null,
+    horizontalOffsetItem: number | null,
+) {
     let scrollLeft = scrollParent.scrollLeft;
     let scrollTop = scrollParent.scrollTop;
 
-    if (horizontalOffset !== null) {
-        const scrollOffset = horizontalOffset * scrollParent.offsetWidth;
-        const elementWidthOffset = horizontalOffset * scrollTo.getBoundingClientRect().width;
+    if (horizontalOffsetViewport !== null && horizontalOffsetItem !== null) {
+        const scrollOffset = horizontalOffsetViewport * scrollParent.offsetWidth;
+        const elementWidthOffset = horizontalOffsetItem * scrollTo.getBoundingClientRect().width;
 
         // offsetLeft is relative to the document, not the scroll parent. lmao
         const scrollToElOffsetLeft = scrollTo.offsetLeft - scrollParent.offsetLeft;
@@ -60,11 +100,11 @@ export function getScrollVH(
         scrollLeft = scrollToElOffsetLeft - scrollOffset + elementWidthOffset;
     }
 
-    if (verticalOffset !== null) {
+    if (verticalOffsetItem !== null && verticalOffsetViewport !== null) {
         // NOTE: just a copy paste from above
         
-        const scrollOffset = verticalOffset * scrollParent.offsetHeight;
-        const elementHeightOffset = verticalOffset * scrollTo.getBoundingClientRect().height;
+        const scrollOffset = verticalOffsetViewport * scrollParent.offsetHeight;
+        const elementHeightOffset = verticalOffsetItem * scrollTo.getBoundingClientRect().height;
 
         // offsetTop is relative to the document, not the scroll parent. lmao
         const scrollToElOffsetTop = scrollTo.offsetTop - scrollParent.offsetTop;

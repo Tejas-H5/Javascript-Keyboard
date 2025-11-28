@@ -3,35 +3,124 @@
 // put it in dsp-loop-interface.ts instead.
 // It seems like it's OK to import types though.
 
-import { BASE_NOTE, noteIdToSample } from "src/state/keyboard-state";
-import { filterInPlace } from "src/utils/array-utils";
+import { BASE_NOTE, getSampleIdx } from "src/state/keyboard-state";
+import { arrayAt, filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
-import { clamp, derivative, lerp, max, min, moveTowards } from "src/utils/math-utils";
+import { clamp, derivative, inverseLerp, lerp, max, min, moveTowards } from "src/utils/math-utils";
 import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
 import { newFunctionUrl } from "src/utils/web-workers";
+import {
+    compileInstructions,
+    computeSample,
+    WaveProgramInstructionItem,
+    IDX_WANTED_FREQUENCY,
+    IDX_COUNT,
+    IDX_OUTPUT,
+    IDX_USER,
+    INSTR_ADD,
+    INSTR_DIVIDE,
+    INSTR_JUMP_IF_NZ,
+    INSTR_MULTIPLY,
+    INSTR_NUM_INSTRUCTIONS,
+    INSTR_SIN,
+    INSTR_SQUARE,
+    INSTR_SUBTRACT,
+    newDspInstruction,
+    newSampleContext,
+    SampleContext,
+    INSTR_LT,
+    INSTR_LTE,
+    INSTR_GT,
+    INSTR_GTE,
+    INSTR_EQ,
+    INSTR_NEQ,
+    INSTR_JUMP_IF_Z,
+    IDX_SIGNAL,
+    IDX_JMP_RESULT,
+    compileToInstructionsInternal,
+    pushInstruction,
+    updateSampleContext,
+    IDX_DT,
+    INSTR_MULTIPLY_DT,
+    INSTR_ADD_DT,
+    INSTR_RECIPR_DT,
+    INSTR_ADD_RECIPR_DT
+} from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 
+type DspSynthParameters = {
+    instructions: number[];
+}
+
 export type DSPPlaySettings = {
+    isUserDriven: boolean;
+    parameters: DspSynthParameters;
+
+    // NOTE: these might become deprecated after we have a fully programmable DSP
     attack: number;
     attackVolume: number;
     decay: number;
     sustain: number;
     sustainVolume: number;
-    isUserDriven: boolean;
+
+}
+
+export function newDspPlaySettings(): DSPPlaySettings {
+    const settings: DSPPlaySettings = {
+        attack: 0.05,
+        decay: 3,
+        attackVolume: 0.2,
+        sustainVolume: 0.05,
+        sustain: 0.5,
+        isUserDriven: false,
+        parameters: { instructions: [] },
+    }
+
+    compileDefaultInstructions(settings.parameters.instructions);
+
+    return settings;
+}
+
+export function getDefaultInstructions() {
+    const angle = IDX_USER + 1;
+    const temp = IDX_USER;
+    const instructions: WaveProgramInstructionItem[] = [
+        { instructionEnabled: true, instruction: newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp) },
+        { instructionEnabled: true, instruction: newDspInstruction(angle, true, INSTR_ADD, temp, true, angle) },
+        { instructionEnabled: true, instruction: newDspInstruction(IDX_SIGNAL, true, INSTR_SIN, angle, true, IDX_OUTPUT) },
+    ];
+    return instructions;
+}
+
+export function copyInstruction(instr: WaveProgramInstructionItem): WaveProgramInstructionItem {
+    return JSON.parse(JSON.stringify(instr));
+}
+
+export function compileDefaultInstructions(dst: number[]) {
+    dst.length = 0;
+    const instructions = getDefaultInstructions();
+    compileInstructions(instructions, dst);
 }
 
 export type PlayingOscillator = {
     state: {
         _lastNoteIndex: number;
         _frequency: number;
+        _sampleContext: SampleContext;
+
         prevSignal: number;
         time: number;
         pressedTime: number;
-        gain: number;
+        releasedTime: number;
         volume: number;
         manuallyPressed: boolean;
         value: number;
+
+        idx1: number;
+        acc1: number;
+        acc2: number;
+        acc3: number;
     };
     inputs: {
         noteId: number;
@@ -39,6 +128,7 @@ export type PlayingOscillator = {
     },
 };
 
+// NOTE: we don't currently play samples
 export type PlayingSampleFile = {
     state: {
         prevSampleFile: string;
@@ -57,16 +147,12 @@ export type DspLoopMessage = 1337 | {
     playSettings?:                     Partial<DSPPlaySettings>;
     setOscilatorSignal?:               [number, PlayingOscillator["inputs"]];
     clearAllOscilatorSignals?:         true;
-    playSample?:                       [number, PlayingSampleFile["inputs"]];
 
     scheduleKeys?:    ScheduledKeyPress[] | null;
     newPlaybackTime?: number;
 
     scheduleKeysVolume?:               number;
     scheduleKeysSpeed?:                number;
-    // This samples record is so massive that my editor lags way too hard when I edit that file. So I
-    // put it in a different file, and just inject it on startup, since it's JSON serialzable
-    setAllSamples?:                    Record<string, number[]>;
 };
 
 
@@ -78,10 +164,25 @@ export type DspInfo = {
     sampleRate: number;
 }
 
-const OSC_GAIN_AWAKE_THRESHOLD = 0.001;
+const OSC_GAIN_AWAKE_THRESHOLD = 0.00001;
 
-export function updateOscillator(osc: PlayingOscillator, s: DspState) {
+function sampleSamples(samples: number[], sampleDuration: number, time: number) {
+    let idxFloating = ((time / sampleDuration) * samples.length) % (samples.length - 1);
+
+    const low = Math.floor(idxFloating);
+    const hi = low + 1;
+    assert(hi < samples.length);
+
+    return lerp(samples[low], samples[hi], idxFloating % 1);
+}
+
+export function updateOscillator(
+    osc: PlayingOscillator,
+    s: DspState,
+    randomSamples: number[]
+) {
     const sampleRate = s.sampleRate;
+    const parameters = s.playSettings.parameters;
     const { attack, attackVolume, decay, sustain, sustainVolume } = s.playSettings;
 
     const { inputs, state } = osc;
@@ -91,19 +192,9 @@ export function updateOscillator(osc: PlayingOscillator, s: DspState) {
         state._frequency = getNoteFrequency(inputs.noteId);
     }
 
-    if (inputs.signal || state.gain > OSC_GAIN_AWAKE_THRESHOLD) {
-        state.time += 1 / sampleRate;
-    }
-
-    if (inputs.signal) {
-        const tPressed = state.time - state.pressedTime;
-        if (tPressed <= attack) {
-            state.gain = moveTowards(state.gain, attackVolume, (1 / attack) / sampleRate);
-        } else {
-            state.gain = moveTowards(state.gain, sustainVolume, (1 / sustain) / sampleRate);
-        }
-    } else {
-        state.gain = moveTowards(state.gain, 0, (1 / decay) / sampleRate);
+    const dt = 1 / sampleRate;
+    if (inputs.signal || Math.abs(state.value) > OSC_GAIN_AWAKE_THRESHOLD) {
+        state.time += dt;
     }
 
     if (rng === null) {
@@ -115,37 +206,95 @@ export function updateOscillator(osc: PlayingOscillator, s: DspState) {
     // Simplified my oscillator code so much damn.
     // And now I know more than just sine wave. Very epic.
 
-    // Update the various oscillators
-    {
-        const t = state.time;
-        const f = state._frequency;
+    const t = state.time;
+    const f = state._frequency;
+    let idx1 = state.idx1;
+    let sampleValue = 0;
 
-        let val = 0;
-        let total = 0;
+    // TODO: fix how we're using the gain here
+    // the gain is indicative of how much the key is 'pressed down', not the actual attack/decay envelope.
 
-        let n = 1;
-        let sign = 1;
+    let targetGain = 0;
+    let rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
 
-        for (let i = 1; i <= n; i++) {
-            // if (i % 2 === 0) continue;
+    const tPressed = state.time - state.pressedTime;
 
-            if (1) {
+    const sampleIdx = getSampleIdx(inputs.noteId);
+    if (sampleIdx !== -1) {
+        // Play a procedurally generated drum
 
-                let m = 1 / (i);
+        sampleValue += square(0.5 * f * t);
 
-                const f2 = f * (i) ;
-                let x = m * sin(t * f2);
-
-                // x *= sign;
-                // sign = -sign;
-
-                val += x;
-                total += m;
+        // Drum gain curve. whtaver.
+        let attack = 0.01;
+        if (inputs.signal) {
+            if (tPressed <= attack) {
+                targetGain = attackVolume; 
+                rate = attack;
+            } else {
+                const tReleased = tPressed - attack;
+                targetGain = (1 - tReleased); 
+                targetGain **= 20;
+                targetGain *= attackVolume;
+                rate = 0.0001;
             }
+        } else {
+            targetGain = 0; 
+            rate = 2;
         }
+    } else {
+        // Update the oscillator
 
-        state.value = val * state.gain / total;
+        // Oscillator gain curve. attack/decay/sustain
+        // if (inputs.signal) {
+        //     if (tPressed <= attack) {
+        //         targetGain = attackVolume; rate = attack;
+        //     } else {
+        //         targetGain = sustainVolume; rate = sustain;
+        //     }
+        // } else {
+        //     targetGain = 0.0;
+        //     rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
+        // }
+
+        // let maxRange = max(parameters.low, parameters.hi);
+        // for (let i = -parameters.low; i <= parameters.hi; i += parameters.increment) {
+        //     let f2 = f;
+        //     if (i < 0) {
+        //         f2 = -f / i;
+        //     } else if (i > 0) {
+        //         f2 = f * i;
+        //     }
+        //
+        //     val = sin(f2 * t); 
+        //     amp = maxRange - Math.abs(i);
+        //     m += amp; x += val * amp;
+        // }
+
+
+        // val = sin(f * (t + 0.001 * noise)); amp = 1;
+        // m += amp; x += val * amp;
+        //
+        // val = sin(f * t / 3); amp = 0.3;
+        // m += amp; x += val * amp;
+        //
+        // val = sin(f * t * 2); amp = 0.2;
+        // m += amp; x += val * amp;
+        //
+        // val = sin(f * t * 3); amp = 0.1;
+        // m += amp; x += val * amp;
+        //
+        // val = sin(f * t * 4); amp = 0.02;
+        // m += amp; x += val * amp;
+
+        updateSampleContext(state._sampleContext, f, osc.inputs.signal, 1 / sampleRate);
+        sampleValue += computeSample(state._sampleContext, parameters.instructions);
+
+        // sampleValue = x;
+        // sampleTotal = m;
     }
+
+    state.value = sampleValue;
 }
 
 
@@ -230,14 +379,7 @@ function getMessageForMainThread(s: DspState, signals = true) {
         for (const [key, osc] of s.playingOscillators) {
             currentPlaybackSignals.push([
                 key,
-                max(osc.inputs.signal, osc.state.gain),
-                osc.state.manuallyPressed ? 0 : 1
-            ]);
-        }
-        for (const [key, osc] of s.playingSamples) {
-            currentPlaybackSignals.push([
-                key,
-                1 - (osc.state.sampleIdx / osc.state.sampleArray.length),
+                max(osc.inputs.signal, osc.state.value),
                 osc.state.manuallyPressed ? 0 : 1
             ]);
         }
@@ -309,19 +451,11 @@ function getSampleFileValue(oscs: PlayingSampleFile) {
 }
 
 
-export function newDspState(): DspState {
-    return {
+export function newDspState(sampleRate: number): DspState {
+    const s: DspState = {
         sampleRate: 1,
-        playSettings: {
-            attack: 50,
-            attackVolume: 1,
-            decay: 10,
-            sustain: 1,
-            sustainVolume: 1,
-            isUserDriven: false,
-        },
+        playSettings: newDspPlaySettings(),
         playingOscillators: [],
-        playingSamples: [],
         trackPlayback: {
             // set this to true to send a message back to the UI after all samples in the current loop are processed
             shouldSendUiUpdateSignals: false,
@@ -333,8 +467,20 @@ export function newDspState(): DspState {
             scheduledPlaybackCurrentIdx: 0,
             isPaused: false,
         },
-        allSamples: {},
+        randomSamples: []
     }
+
+    // We want this array to be deterministic
+    const rng = newRandomNumberGenerator();
+    setRngSeed(rng, 2);
+    let n = 44800;
+    for (let i = 0; i <= n; i++) {
+        s.randomSamples.push(-1 + 2 * getNextRng(rng));
+        // let t = i / n;
+        // s.randomSamples.push(sin(t));
+    }
+
+    return s;
 }
 
 
@@ -342,7 +488,6 @@ export type DspState = {
     sampleRate: number;
     playSettings: DSPPlaySettings,
     playingOscillators: [number, PlayingOscillator][];
-    playingSamples: [number, PlayingSampleFile][];
     trackPlayback: {
         shouldSendUiUpdateSignals: boolean;
         scheduleKeys?: ScheduledKeyPress[];
@@ -353,7 +498,7 @@ export type DspState = {
         scheduledPlaybackCurrentIdx: number;
         isPaused: boolean;
     };
-    allSamples: Record<string, number[]>;
+    randomSamples: number[]
 };
 
 function getPlayingOscillator(s: DspState, id: number): PlayingOscillator | undefined {
@@ -365,20 +510,11 @@ function getPlayingOscillator(s: DspState, id: number): PlayingOscillator | unde
     return undefined;
 }
 
-function getPlayingSample(s: DspState, id: number) {
-    for (let i = 0; i < s.playingSamples.length; i++) {
-        if (s.playingSamples[i][0] === id) {
-            return s.playingSamples[i][1];
-        }
-    }
-    return undefined;
-}
-
-
 // Runs a whole lot, so it needs to be highly optimized
 function processSample(s: DspState, idx: number) {
     let sample = 0;
     let count = 0;
+    const sampleRate = s.sampleRate;
 
     const trackPlayback = s.trackPlayback;
     const currentlyPlaying = trackPlayback.scheduedKeysCurrentlyPlaying;
@@ -409,27 +545,22 @@ function processSample(s: DspState, idx: number) {
                     continue;
                 }
 
-                const sample = getPlayingSample(s, nextItem.keyId);
                 const osc = getPlayingOscillator(s, nextItem.keyId);
 
-                if (!sample && !osc) {
+                if (
+                    !osc ||
+                    osc.inputs.signal < OSC_GAIN_AWAKE_THRESHOLD
+                ) {
+                    // This oscilator is not playing
                     allUserNotes = false;
-                } else if (sample) {
-                    if (!sample.state.manuallyPressed) {
-                        allUserNotes = false;
-                    }
-                } else if (osc) {
-                    if (!osc.state.manuallyPressed) {
-                        allUserNotes = false;
-                    } else if (osc.inputs.signal < OSC_GAIN_AWAKE_THRESHOLD) {
-                        // s oscilator was released, so not really user input anymore
-                        allUserNotes = false;
-                    }
-                }
-
-                if (!allUserNotes) {
                     break;
-                }
+                } 
+
+                if (!osc.state.manuallyPressed) {
+                    // This oscillator wasn't scheduled by the user
+                    allUserNotes = false;
+                    break;
+                } 
             }
 
             // Pause playback as required
@@ -463,24 +594,13 @@ function processSample(s: DspState, idx: number) {
                 // maybe in the future, we'll want some keys to be user driven and others
                 // to be automated. 
 
-
-                const sample = noteIdToSample(nextItem.noteId);
-                if (sample) {
-                    const osc = getOrCreatePlayingSample(s, nextItem.keyId);
-                    osc.inputs = {
-                        sample: sample,
-                    };
-                    osc.state.sampleIdx = 0;
-                    osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
-                } else {
-                    const osc = getOrCreatePlayingOscillator(s, nextItem.keyId);
-                    osc.inputs = {
-                        noteId: nextItem.noteId,
-                        signal: 1,
-                    };
+                const osc = getOrCreatePlayingOscillator(s, nextItem.keyId);
+                if (osc.inputs.noteId !== nextItem.noteId || osc.inputs.signal !== 1) {
+                    osc.inputs.noteId = nextItem.noteId;
+                    osc.inputs.signal = 1;
                     osc.state.pressedTime = osc.state.time;
-                    osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
                 }
+                osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
 
                 trackPlayback.shouldSendUiUpdateSignals = true;
             }
@@ -520,21 +640,9 @@ function processSample(s: DspState, idx: number) {
         for (let i = 0; i < s.playingOscillators.length; i++) {
             const osc = s.playingOscillators[i][1];
 
-            updateOscillator(osc, s);
+            updateOscillator(osc, s, s.randomSamples);
 
             sample += osc.state.value * osc.state.volume;
-            count += 1;
-        }
-    }
-
-    // update samples
-    {
-        for (let i = 0; i < s.playingSamples.length; i++) {
-            const sampleFile = s.playingSamples[i][1];
-
-            updateSample(sampleFile, s.allSamples);
-
-            sample += getSampleFileValue(sampleFile) * sampleFile.state.volume;
             count += 1;
         }
     }
@@ -544,7 +652,22 @@ function processSample(s: DspState, idx: number) {
 
 export function newPlayingOscilator(): PlayingOscillator {
     return {
-        state: { _lastNoteIndex: -1, _frequency: 0, prevSignal: 0, time: 0, pressedTime: 0, gain: 0, volume: 0, manuallyPressed: false, value: 0 },
+        state: {
+            _lastNoteIndex: -1,
+            _frequency: 0,
+            _sampleContext: newSampleContext(),
+            prevSignal: 0,
+            time: 0,
+            releasedTime: 0,
+            pressedTime: 0,
+            volume: 0,
+            manuallyPressed: false,
+            value: 0,
+            idx1: 0,
+            acc1: 0,
+            acc2: 0,
+            acc3: 0,
+        },
         inputs: { noteId: 0, signal: 0 },
     };
 }
@@ -555,6 +678,7 @@ function getOrCreatePlayingOscillator(s: DspState, id: number): PlayingOscillato
         return osc;
     }
 
+    // TODO: consider pooling?
     const newOsc = newPlayingOscilator();
     s.playingOscillators.push([id, newOsc]);
     newOsc.state.time = 0;
@@ -565,21 +689,6 @@ function getOrCreatePlayingOscillator(s: DspState, id: number): PlayingOscillato
 
     return newOsc;
 }
-
-function getOrCreatePlayingSample(s: DspState, id: number): PlayingSampleFile {
-    const sample = getPlayingSample(s, id);
-    if (sample) {
-        return sample;
-    }
-
-    const newSample: PlayingSampleFile = {
-        state: { sampleIdx: 0, prevSampleFile: "", sampleArray: [], volume: 0, manuallyPressed: false },
-        inputs: { sample: "" }
-    };
-    s.playingSamples.push([id, newSample]);
-    return newSample;
-}
-
 
 function stopPlayingScheduledKeys(s: DspState) {
     const trackPlayback = s.trackPlayback;
@@ -614,15 +723,9 @@ export function dspProcess(s: DspState, outputs: Float32Array[][]) {
 
     // clean up dead oscilators and samples
     {
-        let lastCount = s.playingOscillators.length;
         filterInPlace(s.playingOscillators, (osc) => {
             return osc[1].inputs.signal > OSC_GAIN_AWAKE_THRESHOLD ||
-                osc[1].state.gain > OSC_GAIN_AWAKE_THRESHOLD;
-        });
-
-        lastCount = s.playingSamples.length;
-        filterInPlace(s.playingSamples, (osc) => {
-            return osc[1].state.sampleIdx !== osc[1].state.sampleArray.length;
+                Math.abs(osc[1].state.value) > OSC_GAIN_AWAKE_THRESHOLD;
         });
     }
 
@@ -651,8 +754,9 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
         const [id, inputs] = e.setOscilatorSignal;
         const osc = getOrCreatePlayingOscillator(s, id);
 
+        const prevSignal = osc.inputs.signal;
         osc.inputs = inputs;
-        if (inputs.signal > 0) {
+        if (prevSignal === 0 && inputs.signal > 0) {
             osc.state.pressedTime = osc.state.time;
         }
 
@@ -663,16 +767,6 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
         for (const [, osc] of s.playingOscillators) {
             osc.inputs.signal = 0;
         }
-    }
-
-    if (e.playSample) {
-        const [id, inputs] = e.playSample;
-        const osc = getOrCreatePlayingSample(s, id);
-
-        osc.inputs = inputs;
-        osc.state.sampleIdx = 0;
-
-        giveUserOwnership(osc);
     }
 
     const trackPlayback = s.trackPlayback;
@@ -702,10 +796,6 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
 
     if (e.scheduleKeysSpeed !== undefined) {
         s.trackPlayback.scheduledKeysSpeed = e.scheduleKeysSpeed;
-    }
-
-    if (e.setAllSamples) {
-        s.allSamples = e.setAllSamples;
     }
 }
 
@@ -737,8 +827,44 @@ export function getDspLoopClassUrl(): string {
     }
 
     // Every single dependency must be injected here manually, so that the worker url has access to everything it needs.
+    // (I want the entire web-app to be a single HTML file that can be easily saved, at any cost)
 
     lastUrl = newFunctionUrl([
+        newDspInstruction,
+        { value: INSTR_SIN, name: "INSTR_SIN" },
+        { value: INSTR_SQUARE, name: "INSTR_SQUARE" },
+        { value: INSTR_ADD, name: "INSTR_ADD" },
+        { value: INSTR_ADD_DT, name: "INSTR_ADD_DT" },
+        { value: INSTR_ADD_RECIPR_DT, name: "INSTR_ADD_RECIPR_DT" },
+        { value: INSTR_SUBTRACT, name: "INSTR_SUBTRACT" },
+        { value: INSTR_MULTIPLY_DT, name: "INSTR_MULTIPLY_DT" },
+        { value: INSTR_DIVIDE, name: "INSTR_DIVIDE" },
+        { value: INSTR_LT, name: "INSTR_LT" },
+        { value: INSTR_LTE, name: "INSTR_LTE" },
+        { value: INSTR_GT, name: "INSTR_GT" },
+        { value: INSTR_GTE, name: "INSTR_GTE" },
+        { value: INSTR_EQ, name: "INSTR_EQ" },
+        { value: INSTR_NEQ, name: "INSTR_NEQ" },
+        { value: INSTR_JUMP_IF_NZ, name: "INSTR_JUMP_IF_NZ" },
+        { value: INSTR_JUMP_IF_Z, name: "INSTR_JUMP_IF_Z" },
+        { value: INSTR_NUM_INSTRUCTIONS, name: "INSTR_NUM_INSTRUCTIONS" },
+        { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
+        { value: INSTR_RECIPR_DT, name: "INSTR_RECIPR_DT" },
+        { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
+        // NOTE: not sure if indices are really needed tbh.
+        { value: IDX_WANTED_FREQUENCY, name: "IDX_WANTED_FREQUENCY" },
+        { value: IDX_SIGNAL, name: "IDX_SIGNAL" },
+        { value: IDX_DT, name: "IDX_DT" },
+        { value: IDX_JMP_RESULT, name: "IDX_JMP_RESULT" },
+        { value: IDX_USER, name: "IDX_USER" },
+        { value: IDX_COUNT, name: "IDX_COUNT" },
+        compileInstructions,
+        compileDefaultInstructions,
+        getDefaultInstructions,
+        compileToInstructionsInternal,
+        pushInstruction,
+        computeSample,
+        arrayAt,
         max,
         min,
         updateOscillator,
@@ -754,18 +880,19 @@ export function getDspLoopClassUrl(): string {
         sawtooth,
         triangle,
         square,
-        getPlayingSample,
         getPlayingOscillator,
         giveUserOwnership,
         dspProcess,
         normalizeIfGreaterThanOne,
         derivative,
         processSample,
-        getOrCreatePlayingSample,
         getOrCreatePlayingOscillator,
         newPlayingOscilator,
         filterInPlace,
         newDspState,
+        newDspPlaySettings,
+        newSampleContext,
+        updateSampleContext,
         getMessageForMainThread,
         dspReceiveMessage,
         assert,
@@ -773,9 +900,11 @@ export function getDspLoopClassUrl(): string {
         updateSample,
         getSampleFileValue,
         lerp,
+        inverseLerp,
         clamp,
         getNoteLetter,
-        noteIdToSample,
+        sampleSamples,
+        getSampleIdx,
         { value: BASE_NOTE, name: "BASE_NOTE" },
         { value: NOTE_LETTERS, name: "NOTE_LETTERS" },
         { value: null, name: "rng", },
@@ -784,12 +913,19 @@ export function getDspLoopClassUrl(): string {
         { value: OSC_GAIN_AWAKE_THRESHOLD, name: "OSC_GAIN_AWAKE_THRESHOLD",  },
     ], [
     ], function register() {
+
+        // @ts-expect-error sampleRate is in audio-worklet global sclop
+        let _sampleRate = sampleRate;
+
+        // @ts-expect-error - AudioWorkletProcessor
         class DSPLoop extends AudioWorkletProcessor {
-            s: DspState = newDspState();
+            s: DspState = newDspState(_sampleRate);
 
             constructor() {
                 super();
-                this.s.sampleRate = sampleRate;
+                this.s.sampleRate = _sampleRate;
+
+                // @ts-expect-error this.port is valid on AudioWorkletProcessor
                 this.port.onmessage = (e) => {
                     this.onMessage(e.data);
                 };
@@ -808,7 +944,7 @@ export function getDspLoopClassUrl(): string {
                 // so that the UI will update accordingly. It's not so important for when we release things though.
                 if (s.trackPlayback.shouldSendUiUpdateSignals) {
                     s.trackPlayback.shouldSendUiUpdateSignals = false;
-                    this.sendCurrentPlayingMessageBack(s.trackPlayback.shouldSendUiUpdateSignals,);
+                    this.sendCurrentPlayingMessageBack(s.trackPlayback.shouldSendUiUpdateSignals);
                 }
 
                 return result;
@@ -817,6 +953,7 @@ export function getDspLoopClassUrl(): string {
             // This is expensive, so don't call too often
             sendCurrentPlayingMessageBack(signals = true) {
                 const payload = getMessageForMainThread(this.s, signals);
+                // @ts-expect-error this.port is valid on AudioWorkletProcessor
                 this.port.postMessage(payload);
             }
 
@@ -830,6 +967,7 @@ export function getDspLoopClassUrl(): string {
             }
         }
 
+        // @ts-expect-error registerProcessor is in audio-worklet global sclop
         registerProcessor("dsp-loop", DSPLoop);
     }, {
         includeEsBuildPolyfills: true

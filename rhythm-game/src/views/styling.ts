@@ -12,6 +12,8 @@ type AppTheme = ComponentsCoreTheme & {
     unhit:     CssColor;
     mediumHit: CssColor;
     fullyHit:  CssColor;
+
+    codeHighlight: CssColor;
 };
 
 export const cssVarsApp: Record<keyof AppTheme, string> = {
@@ -24,6 +26,8 @@ export const cssVarsApp: Record<keyof AppTheme, string> = {
     unhit:     "var(--unhit)",
     mediumHit: "var(--unhit)",
     fullyHit:  "var(--fullyHit)",
+
+    codeHighlight:  "var(--codeHighlight)",
 } as const;
 
 const cssb = newCssBuilder();
@@ -85,6 +89,8 @@ const mainTheme = Object.freeze<AppTheme>({
     unhit:     newColorFromHex("#FF0000"),
     mediumHit: newColorFromHex("#FFCC00"),
     fullyHit:  newColorFromHex("#00FF00"),
+
+    codeHighlight: newColorFromHex("#FFAAFF"),
 });
 
 let currentTheme: AppTheme = mainTheme;

@@ -1,7 +1,7 @@
 import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, imZIndex, NA, PX } from "src/components/core/layout";
 import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { debugFlags, getTestSleepMs } from "src/debug-flags";
-import { releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { getDspInfo, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { ChartRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/chart-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
@@ -21,14 +21,16 @@ import {
     TIMELINE_ITEM_MEASURE,
     undoEdit
 } from "src/state/sequencer-chart";
-import { getCurrentChart, SequencerState, setSequencerChart } from "src/state/sequencer-state";
+import { SequencerState, setSequencerChart } from "src/state/sequencer-state";
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state";
+import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
-import { ImCache, imFor, imForEnd, imIf, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
+import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
+import { getLoadingPromises, newDefaultTrackedPrimise } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
@@ -37,7 +39,6 @@ import { runSaveCurrentChartTask } from "./background-tasks";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
 import { imSoundLab } from "./sound-lab-view";
 import { imUpdateModal } from "./update-modal";
-import { getLoadingPromises, newDefaultTrackedPrimise } from "src/utils/promise-utils";
 
 type AllKeysState = {
     keys: KeyState[];
@@ -75,7 +76,6 @@ export type GlobalContext = {
     savedState: SavedState;
 
     repo: ChartRepository;
-
 
     // TODO: input state
     allKeysState: AllKeysState;
@@ -421,7 +421,8 @@ export function imApp(
 ) {
     const { ui } = ctx;
 
-    const { keyDown, keyUp, blur } = getGlobalEventSystem().keyboard;
+    const { blur, keyboard } = getGlobalEventSystem();
+    const { keyDown, keyUp } = keyboard;
 
     ctx.keyPressState = null;
     ctx.keyReleaseState = null;
@@ -482,8 +483,9 @@ export function imApp(
     }
 
     imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-
-        if (imIf(c) && ui.updateModal) {
+        if (imIf(c) && ui.unitTestModal) {
+            imUnitTestsModal(c, ctx, ui.unitTestModal);
+        } else if (imIfElse(c) && ui.updateModal) {
             imUpdateModal(c, ctx, ui.updateModal);
         } imIfEnd(c);
 
@@ -503,6 +505,22 @@ export function imApp(
             imFpsCounterSimple(c, fps);
             imExtraDiagnosticInfo(c);
 
+            // What's playing?
+
+            imLayout(c, BLOCK); {
+                const info = getDspInfo();
+                imFor(c); for (const [keyId, signal] of info.currentlyPlaying) {
+                    const key = ctx.keyboard.flatKeys[keyId];
+                    imLayout(c, BLOCK); {
+                        imStr(c, "[");
+                        imStr(c, key.text);
+                        imStr(c, ",");
+                        imStr(c, signal.toFixed(1));
+                        imStr(c, "]");
+                    } imLayoutEnd(c);
+                } imForEnd(c);
+            } imLayoutEnd(c);
+
             // Info about background tasks
             imLayout(c, BLOCK); {
                 const tasks = getLoadingPromises();
@@ -520,6 +538,13 @@ export function imApp(
         } imLayoutEnd(c);
 
     } imLayoutEnd(c);
+
+    if (!ctx.handled) {
+        if (ctx.keyPressState?.key === "F1") {
+            ui.unitTestModal = newUnitTestsState();
+            ctx.handled = true;
+        }
+    }
 
     if (ctx.handled && ctx.keyPressState) {
         if (

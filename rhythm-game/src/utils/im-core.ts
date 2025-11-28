@@ -1,12 +1,13 @@
-// IM-CORE 1.045
+// IM-CORE 1.049
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
 import { assert } from "src/utils/assert";
 
 // Conventions
-//  - All methods that call `imGet` at some point in their entire execution or plan on doing it should be prefixed with 'im'.
-//    Conversely, methods that don't do so and will never do so, should NOT be prefixed with 'im'.
+//  - An 'immediate mode' method or 'im' method is any method that eventually reads from or writes to the `ImCache`.
+//    These methods should ideally be prefixed with 'im'.
+//    Conversely, methods that don't do so and will never do so, should NOT be prefixed with 'im', unless they will do so in the future.
 //    This allows developers (and in the future, static analysis tools) to know that this method can't be rendered conditionally, or
 //    out of order, similar to how React hooks work. This is really the only convention I would recommend you actually follow.
 //
@@ -16,6 +17,7 @@ import { assert } from "src/utils/assert";
 //    After wasting a lot of time thinking about a convention that 100% covers all bases, and makes it 
 //    obvious which methods push/pop and also saves as much typing as possible, I wasn't able to find a good solution, 
 //    so this is the compromise. 
+//    Some day, I plan on making aneslint rule that will make use of this convention to flag missing closing statements.
 
 export type ImCacheEntries = any[];
 
@@ -162,7 +164,6 @@ export function imCacheBegin(
             c[CACHE_ANIMATE_FN] = noOp;
             c[CACHE_ANIMATION_ID] = null;
         } else if ((flags & USE_ANIMATION_FRAME) !== 0) {
-
             c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 0;
             c[CACHE_ANIMATE_FN] = (t: number) => {
                 if (c[CACHE_IS_RENDERING] === true) {
@@ -588,9 +589,14 @@ export function __imBlockDerivedBegin(c: ImCache, internalType: number): ImCache
 // Not quite the first render - 
 // if the function errors out before the entries finish one render, 
 // this method will rerender. Use this when you want to do something maybe once or twice or several times but hopefully just once,
-// as it doesn't require an additional entry.
-// NOTE: maybe this method is used so infrequently that we get a space saving by removing the dedicated ENTRIES_COMPLETED_ONE_RENDER
-// slot from every single entry list! along with a reduction in confusion, and actual idempotency.
+// as it doesn't require an additional im-state entry. 
+// For example, if you have an API like this:
+// ```ts
+// imDiv(c); imRow(c); imCode(c); imJustifyCenter(c); imBg(c, cssVars.bg); {
+// } imDivEnd(c);
+// ```
+// Each of those methods that 'augment' the call to `imDiv` may have their own initialization logic.
+// TODO: remove this thing. the performance increase is negligble, and is gone as soon as we replace imIsFirstRender with imMemo.
 export function isFirstishRender(c: ImCache): boolean {
     const entries = c[CACHE_CURRENT_ENTRIES];
     return entries[ENTRIES_COMPLETED_ONE_RENDER] === false;
@@ -624,10 +630,53 @@ export function __imBlockDerivedEnd(c: ImCache, internalType: number) {
 }
 
 /**
- * I could write a massive doc here explaning how {@link imIf], {@link imIfElse} and {@link imIfEnd} work.
- * but it may be more effective to just arrange the methods one after the other:
+ * Usage:
+ * ```ts
+ *
+ * // Annotating the control flow is needed - otherwise it won't work
+ *
+ * if (imIf(c) && <condition>) {
+ *      // <condition> will by adequately type-narrowed by typescript
+ * } else if (imElseIf(c) && <condition2>){
+ *      // <condition>'s negative will not by adequately type-narrowed here though, sadly.
+ *      // I might raise an issue on their github soon.
+ * } else {
+ *      imElse(c);
+ *      // <condition>'s negative will not by adequately type-narrowed here though, sadly, same as above.
+ * } imIfEnd(c);
+ *
+ * ```
+ *
+ * It effectively converts a variable number of im-entries into a single if-entry,
+ * that has a fixed number of entries within it, so it still abides by 
+ * the immediate mode restrictions.
+ * This thing works by detecting if 0 things were rendered, and 
+ * then detatching the things we rendered last time if that was the case. 
+ * Even though code like below will work, you should never write it:
+ * ```ts
+ * imIf(c); if (<condition>) {
+ * } else {
+ *      imElse(c);
+ * }imIfEnd(c);
+ * ```
+ * Because it suggests that you can extend it like the following, which would
+ * no longer be correct:
+ * ```ts
+ * imIf(c); if (<condition>) {
+ * } else if (<condition2>) {
+ *      // NOO this will throw or corrupt data :((
+ *      imElseIf(c);
+ * } else {
+ *      imElse(c);
+ * } imIfEnd(c);
+ * ```
+ *
+ * The framework assumes that every conditional annotation will get called in order,
+ * till one of the conditions passes, after which the next annotation is `imIfEnd`. 
+ * But now, it is no longer guaranteed that imElseIf will always be called if <condition> was false.
+ * This means the framework has no way of telling the difference between the else-if block
+ * and the else block (else blocks and else-if blocks are handled the same internally).
  */
-
 export function imIf(c: ImCache): true {
     __imBlockArrayBegin(c);
     __imBlockConditionalBegin(c);
@@ -653,6 +702,7 @@ export const imEndFor = imForEnd;
 export const imCatch = imTryCatch;
 
 /**
+ * Example usage:
  * ```ts
  * imSwitch(c, key) switch (key) {
  *      case a: { ... } break;
@@ -660,8 +710,19 @@ export const imCatch = imTryCatch;
  *      case c: { ... } break;
  * } imSwitchEnd(c);
  * ```
- * NOTE: doesn't work as you would expect when you use fallthrough, so don't use fallthrough with imSwitch.
- * Use if-else + imIf/imIfElse/imIfEnd instead.
+ * NOTE: Don't use fallthrough, use if-else + imIf/imIfElse/imIfEnd instead. 
+ * Fallthrough doesn't work as you would expect - for example:
+ * ```ts
+ *  imSwitch(c,key); switch(key) {
+ *          case "A": { imComponent1(c); } // fallthrough (nooo)
+ *          case "B": { imComponent2(c); }
+ *  } imSwitchEnd(c);
+ * ```
+ * When the key is `b`, an instance of imComponent2 is rendered. However,
+ * when the key is `a`, two completely separate instances of `imComponent1` and `imComponent2` are rendered.
+ *      You would expect the `imComponent2` from both switch cases to be the same instance, but they are duplicates 
+ *      with none of the same state.
+ * 
  */
 export function imSwitch(c: ImCache, key: ValidKey) {
     __imBlockDerivedBegin(c, INTERNAL_TYPE_SWITCH_BLOCK);
@@ -909,7 +970,7 @@ export function getRenderCount(c: ImCache) {
  * And for things you pass around *a lot* like c: ImCache, you will incur a significant performance
  * hit by using this approach (as of 08/2025) (on top of the perf hit of using this framework).
  *
- * Here is a decision tree you can use to decide whether to use this pattern or not:
+ * Here is a decision matrix you can use to decide whether to use this pattern or not:
  *
  *                                      | I need this state everywhere,    | I infrequently need this value, but the requirement can arise 
  *                                      | and I make sure to pass it as    | naturally somewhere deep node of the component, and I have
@@ -932,7 +993,6 @@ export function globalStateStackPush<T>(gss: T[], item: T) {
 
     gss.push(item);
 }
-
 export function globalStateStackGet<T>(gss: T[]): T {
     // No context item was pushed
     assert(gss.length > 0);

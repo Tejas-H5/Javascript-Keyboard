@@ -43,6 +43,10 @@ export function clamp(val: number, min: number, max: number) {
     return val;
 }
 
+export function gridsnapRound(val: number, gridsize: number): number {
+    return Math.round(val / gridsize) * gridsize;
+}
+
 export function sqrMag(x: number, y: number): number {
     return x * x + y * y;
 }
@@ -108,4 +112,18 @@ export function derivative(src: number[] | Float32Array, dst: number[] | Float32
         dst[i] = src[i] - src[i - 1];
     }
     dst[0] = dst[1];
+}
+
+// Use this to compute the actual angle delta. 
+// If the angles are more than 2 rotations apart, this won't work.
+export function deltaAngle(to: number, from: number) {
+    const tau = 2 * Math.PI;
+    let delta = to - from;
+    const absDelta = Math.abs(delta);
+    if (Math.abs(delta + tau) < absDelta) {
+        delta = delta + tau;
+    } else if (Math.abs(delta - tau) < absDelta) {
+        delta = delta - tau;
+    }
+    return delta;
 }

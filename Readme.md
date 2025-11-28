@@ -31,6 +31,9 @@ issues that typically happens in JavaScript that you might get with per-componen
 State is saved to a `SavedState`  object, which is saved in localStorage, and automatically migrated to the latest version by copying over all the saved field values to
 a new instance of a particular object. We may move to IndexedDB in the future.
 
+For now, I've uninstalled "@types/audioworklet" - there are too many names in that global scope that I also use in my normal code that I wasn't getting any errors about.
+This is easier than figuring out how to scope these types to a particular module, or making a multi-entrypoint build configuration.
+
 ### Some things to note:
 
 - Most web browsers have a security feature that prevents sounds from being played without any user interactions.

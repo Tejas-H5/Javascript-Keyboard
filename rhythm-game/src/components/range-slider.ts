@@ -21,6 +21,8 @@ type RangeSliderState = {
     value: [
         start: number,
         end: number,
+        userDraggingStart: boolean,
+        userDraggingEnd: boolean,
     ];
 }
 
@@ -38,7 +40,8 @@ const VERY_SMALL_NUMBER = 0.0000001;
 export function imRangeSlider(
     c: ImCache,
     lowerBound: number, upperBound: number, 
-    start: number, end: number, step: number, minWidth?: number,
+    start: number, end: number, step: number, 
+    minWidth?: number, 
 ): RangeSliderState {
     let min = Math.min(lowerBound, upperBound);
     let max = Math.max(lowerBound, upperBound);
@@ -54,45 +57,55 @@ export function imRangeSlider(
             draggingStart: false,
             draggingEnd:   false,
 
-            value: [start, end],
+            value: [start, end, false, false],
         });
     }
 
     const body = imLayout(c, BLOCK); 
     const bodySize = imTrackSize(c);
-        const startHandle = imLayout(c, BLOCK); imLayoutEnd(c);
         const sliderMiddle = imLayout(c, BLOCK); imLayoutEnd(c);
+        const startHandle = imLayout(c, BLOCK); imLayoutEnd(c);
         const endHandle = imLayout(c, BLOCK); imLayoutEnd(c);
     imLayoutEnd(c);
 
     if (isFirstishRender(c)) {
-        elSetStyle(c, "height", "30px", body);
-        elSetStyle(c, "backgroundColor", cssVarsApp.mg, body);
+        const handleBodyColor = cssVarsApp.mg;
+        const handeColor = cssVarsApp.fg;
+        const bgColor = cssVarsApp.bg2;
+
+        elSetStyle(c, "height", "1em", body);
+        elSetStyle(c, "backgroundColor", bgColor, body);
         elSetStyle(c, "position", "relative", body);
+        elSetStyle(c, "borderRadius", "1000px", body);
 
         elSetStyle(c, "position", "absolute", startHandle);
         elSetStyle(c, "top", "0", startHandle);
         elSetStyle(c, "height", "100%", startHandle);
         elSetStyle(c, "aspectRatio", "1 / 1", startHandle);
-        elSetStyle(c, "backgroundColor", cssVarsApp.fg, startHandle);
+        elSetStyle(c, "backgroundColor", handeColor, startHandle);
+        elSetStyle(c, "borderRadius", "1000px", startHandle);
+        elSetStyle(c, "cursor", "ew-resize", startHandle);
 
         elSetStyle(c, "position", "absolute", sliderMiddle);
         elSetStyle(c, "top", "0", sliderMiddle);
         elSetStyle(c, "height", "100%", sliderMiddle);
-        elSetStyle(c, "backgroundColor", cssVarsApp.bg, sliderMiddle);
+        elSetStyle(c, "backgroundColor", handleBodyColor, sliderMiddle);
+        elSetStyle(c, "cursor", "ew-resize", sliderMiddle);
 
         elSetStyle(c, "position", "absolute", endHandle);
         elSetStyle(c, "top", "0", endHandle);
         elSetStyle(c, "height", "100%", endHandle);
         elSetStyle(c, "aspectRatio", "1 / 1", endHandle);
-        elSetStyle(c, "backgroundColor", cssVarsApp.fg, endHandle);
+        elSetStyle(c, "backgroundColor", handeColor, endHandle);
+        elSetStyle(c, "borderRadius", "1000px", endHandle);
+        elSetStyle(c, "cursor", "ew-resize", endHandle);
     }
 
     // Respond to pos change _after_ user has handled and set new drag values
 
     const domain = max - min;
-    s.start.pos = domain < VERY_SMALL_NUMBER ? 0 : (start - min) / domain;
-    s.end.pos   = domain < VERY_SMALL_NUMBER ? 1 : (end - min) / domain;
+    s.start.pos = domain < VERY_SMALL_NUMBER ? 0 : clamp((start - min) / domain, 0, 1);
+    s.end.pos   = domain < VERY_SMALL_NUMBER ? 1 : clamp((end - min) / domain, 0, 1);
 
     const startPosChanged    = imMemo(c, s.start.pos);
     const endPosChanged      = imMemo(c, s.end.pos);
@@ -109,8 +122,8 @@ export function imRangeSlider(
         const endPosPx   = sliderScreenLength * s.end.pos;
         elSetStyle(c, "left",  startPosPx + "px",                     startHandle);
         elSetStyle(c, "left",  (startRect.width + endPosPx) + "px",   endHandle);
-        elSetStyle(c, "left",  (startPosPx + startRect.width) + "px", sliderMiddle);
-        elSetStyle(c, "width", (endPosPx - startPosPx) + "px",        sliderMiddle);
+        elSetStyle(c, "left",  (startPosPx + startRect.width / 2) + "px", sliderMiddle);
+        elSetStyle(c, "width", (endPosPx - startPosPx + startRect.width / 2 + endRect.width / 2) + "px",        sliderMiddle);
     }
 
     const mouse = getGlobalEventSystem().mouse;
@@ -192,20 +205,23 @@ export function imRangeSlider(
     let a = min + s.start.pos * domain;
     let b = min + s.end.pos * domain;
 
-    let isDraggingBoth = s.start.dragging && s.end.dragging;
-
-    if (isDraggingBoth) {
-        minWidth = end - start;
+    let minWidthActual = 0;
+    if (s.start.dragging === s.end.dragging) {
+        minWidthActual = end - start;
     }
 
     if (minWidth !== undefined) {
-        if (b - a < minWidth) {
-            b = a + minWidth;
+        minWidthActual = Math.max(minWidth, minWidthActual);
+    }
+
+    if (minWidthActual !== undefined) {
+        if (b - a < minWidthActual) {
+            b = a + minWidthActual;
         }
 
         if (b > upperBound) {
             b = upperBound;
-            a = upperBound - minWidth;
+            a = upperBound - minWidthActual;
 
             if (a < lowerBound) {
                 a = lowerBound;
@@ -230,6 +246,8 @@ export function imRangeSlider(
 
     s.value[0] = a;
     s.value[1] = b;
+    s.value[2] = s.start.dragging;
+    s.value[3] = s.end.dragging;
 
     return s;
 }

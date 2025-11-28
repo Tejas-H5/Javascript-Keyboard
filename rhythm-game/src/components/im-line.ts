@@ -1,40 +1,41 @@
-import { BLOCK, imLayout, imLayoutEnd, imSize, NA, PERCENT, PX } from "src/components/core/layout";
+import { BLOCK, imBg, imLayout, imLayoutEnd, imOpacity, imSize, NA, PERCENT, PX } from "src/components/core/layout";
 import { newCssBuilder } from "src/utils/cssb";
-import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core";
-import { elSetClass, elSetStyle } from "src/utils/im-dom";
+import { ImCache, isFirstishRender } from "src/utils/im-core";
+import { elSetClass } from "src/utils/im-dom";
 import { cssVars } from "./core/stylesheets";
 
 const cssb = newCssBuilder();
-const cnHLine = cssb.cn("hline", [
+const cnLine = cssb.cn("line", [
     ` { transition: opacity 0.1s linear, height 0.1s linear; }`
 ]);
 
 export const LINE_HORIZONTAL = 1;
-export const LINE_VERTICAL = 2;
+export const LINE_HORIZONTAL_PADDING = 2;
+export const LINE_VERTICAL = 3;
+export const LINE_VERTICAL_PADDING = 4;
 
-// Not beating the left-pad alegations ...
+export type LineType
+    =  typeof LINE_HORIZONTAL
+    |  typeof LINE_VERTICAL
+    |  typeof LINE_HORIZONTAL_PADDING
+    |  typeof LINE_VERTICAL_PADDING;
 
 export function imLine(
     c: ImCache,
-    type: typeof LINE_HORIZONTAL | typeof LINE_VERTICAL,
+    type: LineType,
     widthPx: number = 2,
-    visible = true
+    opacity: number = 1,
 ) {
-    let height = visible ? widthPx : 0;
     let heightUnit = PX;
-    const isH = type === LINE_HORIZONTAL;
+    const isH = type === LINE_HORIZONTAL || type === LINE_HORIZONTAL_PADDING;
+    const isOpaque = type === LINE_HORIZONTAL || type === LINE_VERTICAL;
 
-    imLayout(c, BLOCK); imSize(c,
-        !isH ? height : 100, !isH ? heightUnit : PERCENT,
-         isH ? height : 100,  isH ? heightUnit : PERCENT,
-    ); {
+    imLayout(c, BLOCK); 
+    imSize(c, !isH ? widthPx : 100, !isH ? heightUnit : PERCENT,
+               isH ? widthPx : 100,  isH ? heightUnit : PERCENT); 
+    imBg(c, isOpaque ? cssVars.fg : ""); imOpacity(c, opacity); {
         if (isFirstishRender(c)) {
-            elSetStyle(c, "backgroundColor", cssVars.fg);
-            elSetClass(c, cnHLine);
-        }
-
-        if (imMemo(c, visible)) {
-            elSetStyle(c, "opacity", "" + (visible ? 1 : 0));
+            elSetClass(c, cnLine);
         }
     } imLayoutEnd(c);
 }
