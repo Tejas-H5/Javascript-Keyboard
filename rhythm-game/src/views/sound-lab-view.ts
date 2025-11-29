@@ -107,7 +107,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
 
     if (imMemo(c, state.effectRackEditor.version)) {
         const settings = getCurrentPlaySettings();
-        const rack = state.effectRackEditor.rack;
+        const rack = state.effectRackEditor.effectRack;
         compileEffectsRack(rack);
 
         // TODO: can make it more performant by updating just the specific register being edited

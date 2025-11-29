@@ -5,6 +5,7 @@ import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-
 
 export type ContextMenuState = {
     position: { x: number; y: number; };
+    distanceToClose: number;
     open: boolean;
     item: unknown | null;
     field: unknown | null;
@@ -16,6 +17,7 @@ export function newContextMenuState(): ContextMenuState {
         open: false,
         item: null,
         field: null,
+        distanceToClose: 50,
     };
 }
 
@@ -27,7 +29,24 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState): number | nu
 
     if (imIf(c) && s.open) {
         imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, 10000); {
-            imLayout(c, COL); imAbsolute(c, y, PX, 0, NA, 0, NA, x, PX); {
+            const root = imLayout(c, COL); imAbsolute(c, y, PX, 0, NA, 0, NA, x, PX); {
+                if (s.open) {
+                    const mouse = getGlobalEventSystem().mouse;
+                    const rect = root.getBoundingClientRect();
+
+                    if (Math.abs(rect.x - rect.y) > 10) {
+                        let mouseDistanceFromBorder = 0;
+                        mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, rect.left - mouse.X);
+                        mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, mouse.X - rect.right);
+                        mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, rect.top - mouse.Y);
+                        mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, mouse.Y - rect.bottom);
+
+                        if (mouseDistanceFromBorder > s.distanceToClose) {
+                            closeContextMenu(s);
+                        }
+                    }
+                }
+
                 if (isFirstishRender(c)) {
                     elSetStyle(c, "padding", "3px");
                     elSetStyle(c, "userSelect", "none");
@@ -53,14 +72,13 @@ export function imContextMenuEnd(c: ImCache, s: ContextMenuState) {
             } imLayoutEnd(c);
 
             if (elHasMousePress(c)) {
-                s.open = false;
-                s.field = null;
-                s.item = null;
+                closeContextMenu(s);
             }
         } imLayoutEnd(c);
     } imIfEnd(c);
 }
 
+// This is not as important as imContextMenuBegin/End, and can be changed for something else.
 export function imContextMenuItemBegin(c: ImCache) {
     imLayout(c, ROW); imJustify(c); {
         if (isFirstishRender(c)) {

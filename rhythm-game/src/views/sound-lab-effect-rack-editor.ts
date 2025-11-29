@@ -11,13 +11,15 @@ import {
     imJustify,
     imLayout,
     imLayoutEnd,
+    imNoWrap,
     imPadding,
+    imScrollOverflow,
     imSize,
-    INLINE_BLOCK,
     NA,
     PERCENT,
     PX,
     ROW,
+    ROW_REVERSE,
     STRETCH
 } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
@@ -30,9 +32,9 @@ import {
     EFFECT_RACK_ITEM__OSCILLATOR,
     EffectRack,
     getRegisterIdxForUIValue,
+    newEffectRackBinding,
     newEffectRack,
     newOscillator,
-    newOscillatorWave,
     RegisterIdx,
     RegisterIdxForUI
 } from "src/dsp/dsp-loop-effect-stack";
@@ -45,6 +47,7 @@ import {
     imForEnd,
     imGet,
     imIf,
+    imIfElse,
     imIfEnd,
     imMemo,
     imSet,
@@ -53,26 +56,40 @@ import {
     imSwitchEnd,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
+import { EL_B, elHasMousePress, elSetClass, elSetStyle, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
+import {
+    contextMenuIsOpen,
+    ContextMenuState,
+    imContextMenuBegin,
+    imContextMenuEnd,
+    imContextMenuItemBegin,
+    imContextMenuItemEnd,
+    newContextMenuState,
+    openContextMenuAtMouse
+} from "src/app-components/context-menu";
 
 
 export type EffectRackEditorState = {
-    rack: EffectRack;
+    effectRack: EffectRack;
     currentViewingRegisterInOscilloscope: RegisterIdx;
     version: number;
+
+    contextMenu: ContextMenuState;
 
     edited: boolean;
 };
 
 export function newEffectRackEditorState(): EffectRackEditorState {
     return {
-        rack: newEffectRack(),
+        effectRack: newEffectRack(),
         currentViewingRegisterInOscilloscope: asRegisterIdx(0),
         version: 0,
+
+        contextMenu: newContextMenuState(),
 
         edited: false,
     };
@@ -93,6 +110,9 @@ const cnEffectRackEditor = cssb.cn("effectRackEditor", [
 
 export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: EffectRackEditorState) {
     const playSettings = getCurrentPlaySettings();
+    const rack = editor.effectRack;
+
+    const FIELD_OSC_DST = 1;
 
     imModalBegin(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
         if (isFirstishRender(c)) {
@@ -117,45 +137,43 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         elSetStyle(c, "padding", "3px");
                     }
 
-                    imFor(c); for (let effectIdx = 0; effectIdx < editor.rack.effects.length; effectIdx++) {
-                        const effect = editor.rack.effects[effectIdx];
+                    imFor(c); for (let effectIdx = 0; effectIdx < editor.effectRack.effects.length; effectIdx++) {
+                        const effect = editor.effectRack.effects[effectIdx];
 
                         imSwitch(c, effect.type); switch(effect.type) {
                             case EFFECT_RACK_ITEM__OSCILLATOR: {
                                 const oscillator = effect;
 
                                 imLayout(c, COL); imAlign(c, STRETCH); imGap(c, 5, PX); {
-                                    imStr(c, "Wave ");
-                                    imStr(c, effectIdx);
-
-                                    imFor(c); for (
-                                        let waveIdx = 0;
-                                        waveIdx < oscillator.waves.length;
-                                        waveIdx++
-                                    ) {
-                                        imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 5, PX); {
-                                            const wave = oscillator.waves[waveIdx];
-                                            imRegisterEditor(c, editor, wave.phaseUI, "phase");
-                                            imRegisterEditor(c, editor, wave.amplitudeUI, "amplitude");
-                                            imRegisterEditor(c, editor, wave.frequencyUI, "*frequency");
-                                            imRegisterEditor(c, editor, wave.sinUI, "sin");
-                                            imRegisterEditor(c, editor, wave.squareUI, "square");
-                                            imRegisterEditor(c, editor, wave.triangleUI, "triangle");
-                                            imRegisterEditor(c, editor, wave.sawUI, "saw");
+                                    const wave = oscillator.wave;
+                                    imLayout(c, ROW); imAlign(c, STRETCH); imGap(c, 5, PX); {
+                                        imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
+                                            imValueOrBindingEditor(c, editor, wave.phaseUI);
+                                            imValueOrBindingEditor(c, editor, wave.amplitudeUI);
+                                            imValueOrBindingEditor(c, editor, wave.frequencyUI);
+                                            imValueOrBindingEditor(c, editor, wave.sinUI);
+                                            imValueOrBindingEditor(c, editor, wave.squareUI);
+                                            imValueOrBindingEditor(c, editor, wave.triangleUI);
+                                            imValueOrBindingEditor(c, editor, wave.sawUI);
                                         } imLayoutEnd(c);
-                                    } imForEnd(c);
-
-                                    if (imButtonIsClicked(c, "Add Wave")) {
-                                        oscillator.waves.push(newOscillatorWave());
-                                        editor.edited = true;
-                                    }
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                            imStr(c, " -> ");
+                                        } imLayoutEnd(c);
+                                        imLayout(c, ROW); imAlign(c); imGap(c, 30, PX);  {
+                                            const newDst = imBindingEditor(c, editor, oscillator, FIELD_OSC_DST, oscillator.dst);
+                                            if (newDst !== oscillator.dst) {
+                                                oscillator.dst = newDst;
+                                                editor.edited = true;
+                                            }
+                                        } imLayoutEnd(c);
+                                    } imLayoutEnd(c);
                                 } imLayoutEnd(c);
                             } break;
                         } imSwitchEnd(c);
                     } imForEnd(c);
 
                     if (imButtonIsClicked(c, "Add Oscillator")) {
-                        editor.rack.effects.push(newOscillator());
+                        editor.effectRack.effects.push(newOscillator());
                         editor.edited = true;
                     }
                 } imScrollContainerEnd(c);
@@ -191,8 +209,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         imStr(c, "Computational cost: ");
                         imStr(c, playSettings.parameters.instructions.length);
                     } imLayoutEnd(c);
-
-                    const rack = editor.rack;
 
                     let samplesRecomputed = false;
                     if (s.viewingInvalidated) {
@@ -289,6 +305,20 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                 }
 
                 imHeading(c, "Bindings");
+
+                imLayout(c, BLOCK); imScrollOverflow(c); imFlex(c); {
+                    imFor(c); for (const binding of rack.bindings) {
+                        imLayout(c, BLOCK); {
+                            imStr(c, binding.name);
+                            imStr(c, binding.readonly ? " [readonly]" : "");
+                        } imLayoutEnd(c);
+                    } imForEnd(c);
+                } imLayoutEnd(c);
+
+                if (imButtonIsClicked(c, "Add binding")) {
+                    // TODO: rename the bindings
+                    newBindingForEditor(editor);
+                }
             } imLayoutEnd(c);
         } imLayoutEnd(c);
     } imModalEnd(c);
@@ -310,39 +340,158 @@ function registerValueToString(num: number) {
     return num.toFixed(4);
 }
 
-function imRegisterEditor(c: ImCache, editor: EffectRackEditorState, reg: RegisterIdxForUI, name: string) {
-    imLayout(c, BLOCK); imFlex(c); {
-        imLayout(c, COL); imAlign(c); {
-            imLayout(c, INLINE_BLOCK); {
-                if (isFirstishRender(c)) {
-                    elSetClass(c, "hoverable");
-                    elSetStyle(c, "userSelect", "none");
-                }
+const BINDING_UI_ROW = 1 << 0;
 
-                const value = getRegisterIdxForUIValue(editor.rack, reg);
+function imValueOrBindingEditor(
+    c: ImCache,
+    editor: EffectRackEditorState,
+    reg: RegisterIdxForUI,
+    flags: number = 0
+) {
+    const FIELD__REG_VALUE = 0;
+    const FIELD__REG_NAME = 1;
+
+    const rack = editor.effectRack;
+
+    const row = !!(flags & BINDING_UI_ROW);
+    imLayout(c, row ? ROW_REVERSE : COL); imAlign(c); imJustify(c); imNoWrap(c); imGap(c, 10, row ? PX : NA); 
+    imPadding(c, 0, NA, 10, PX, 0, NA, 10, PX); {
+        imLayout(c, BLOCK); {
+            if (imIf(c) && reg.bindingIdx === -1) {
+                const value = getRegisterIdxForUIValue(editor.effectRack, reg);
                 imStrFmt(c, value, registerValueToString);
 
-                if (imIf(c) && reg.bindingIdx === -1) {
-                    let dragEvent = imParameterSliderInteraction(
-                        c,
-                        -1_000_000, 1_000_000, 0.00001, value, 0,
-                        DRAG_TYPE_CIRCULAR
-                    );
-                    if (dragEvent) {
-                        reg.value = dragEvent.val;
-                        editor.edited = true;
-                    }
-                } imIfEnd(c);
-            } imLayoutEnd(c);
-
-            imLayout(c, INLINE_BLOCK); {
-                if (isFirstishRender(c)) {
-                    elSetClass(c, "hoverable");
-                    elSetStyle(c, "userSelect", "none");
+                let dragEvent = imParameterSliderInteraction(c, reg.min, reg.max, 0.0001, value, 0, DRAG_TYPE_CIRCULAR);
+                if (dragEvent) {
+                    reg.value = dragEvent.val;
+                    editor.edited = true;
                 }
+            } else {
+                imIfElse(c);
 
-                imStr(c, name);
-            } imLayoutEnd(c);
+                const binding = rack.bindings[reg.bindingIdx]; assert(!!binding);
+                imStr(c, "<"); imStr(c, binding.name); imStr(c, ">");
+            } imIfEnd(c);
+        } imLayoutEnd(c);
+
+        imLayout(c, BLOCK); {
+            imStr(c, reg.name);
+            imStr(c, row ? ":" : "");
+
+            const newBindingIdx = imBindingEditorContextMenu(c, editor, reg, FIELD__REG_NAME, reg.bindingIdx, reg.value);
+            if (newBindingIdx !== reg.bindingIdx) {
+                reg.bindingIdx = newBindingIdx;
+                editor.edited = true;
+            }
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 }
+
+function imBindingEditorContextMenu(
+    c: ImCache,
+    editor: EffectRackEditorState,
+    item: unknown,
+    field: unknown,
+    currentIdx: RegisterIdx,
+    value: number | null,
+): RegisterIdx {
+    if (isFirstishRender(c)) {
+        elSetStyle(c, "userSelect", "none");
+        elSetClass(c, "hoverable");
+    }
+
+    if (elHasMousePress(c)) {
+        openContextMenuAtMouse(editor.contextMenu, item, field);
+    }
+
+    const rack = editor.effectRack;
+
+    if (imIf(c) && contextMenuIsOpen(editor.contextMenu, item, field)) {
+        imContextMenuBegin(c, editor.contextMenu); {
+            if (imIf(c) && value !== null) {
+                imContextMenuItemBegin(c); {
+                    if (isFirstishRender(c)) {
+                        elSetClass(c, "hoverable");
+                    }
+
+                    imStr(c, "value: ");
+                    imStrFmt(c, value, registerValueToString);
+
+                    if (elHasMousePress(c)) {
+                        currentIdx = asRegisterIdx(-1);
+                    }
+                } imContextMenuItemEnd(c);
+            } imIfEnd(c);
+
+            imFor(c); for (
+                let bindingIdx = 0;
+                bindingIdx < rack.bindings.length;
+                bindingIdx++
+            ) {
+                const binding = rack.bindings[bindingIdx];
+                if (binding.readonly) {
+                    continue;
+                }
+
+                imContextMenuItemBegin(c); {
+                    if (isFirstishRender(c)) {
+                        elSetClass(c, "hoverable");
+                    }
+
+                    imStr(c, "Binding: ");
+                    imStr(c, binding.name);
+
+                    if (elHasMousePress(c)) {
+                        currentIdx = asRegisterIdx(bindingIdx);
+                    }
+                } imContextMenuItemEnd(c);
+            } imForEnd(c);
+
+            imContextMenuItemBegin(c); {
+                if (isFirstishRender(c)) {
+                    elSetClass(c, "hoverable");
+                }
+
+                imStr(c, "+New binding");
+                if (elHasMousePress(c)) {
+                    const idx = newBindingForEditor(editor);
+                    currentIdx = idx;
+                }
+            } imContextMenuItemEnd(c);
+        } imContextMenuEnd(c, editor.contextMenu);
+    } imIfEnd(c);
+
+    if (value === null) {
+        assert(currentIdx !== -1);
+    }
+
+    return currentIdx;
+}
+
+function imBindingEditor(
+    c: ImCache,
+    editor: EffectRackEditorState,
+    item: unknown,
+    field: unknown,
+    currentIdx: RegisterIdx,
+): RegisterIdx {
+    const rack = editor.effectRack;
+
+    imLayout(c, ROW);  {
+        const binding = rack.bindings[currentIdx]; assert(!!binding);
+        imStr(c, binding.name);
+        currentIdx = imBindingEditorContextMenu(c, editor, item, field, currentIdx, null);
+    } imLayoutEnd(c);
+
+    return currentIdx;
+}
+
+function newBindingForEditor(editor: EffectRackEditorState): RegisterIdx {
+    const newBinding = newEffectRackBinding("binding " + editor.effectRack.bindings.length, false);
+    const idx = asRegisterIdx(editor.effectRack.bindings.length);
+    editor.effectRack.bindings.push(newBinding);
+    editor.edited = true;
+    return idx;
+}
+
+

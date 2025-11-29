@@ -1,5 +1,4 @@
 import { closeContextMenu, contextMenuIsOpen, ContextMenuState, imContextMenuBegin, imContextMenuEnd, imContextMenuItemBegin, imContextMenuItemEnd, newContextMenuState, openContextMenuAtMouse } from "src/app-components/context-menu";
-import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideInteractionFeedback, imCompactLinearDragSlideInteraction } from "src/app-components/drag-slider-interaction";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
 import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
@@ -47,6 +46,7 @@ import {
     IDX_USER,
     INSTR_ADD,
     INSTR_ADD_DT,
+    INSTR_ADD_RECIPR_DT,
     INSTR_DIVIDE,
     INSTR_EQ,
     INSTR_GT,
@@ -54,9 +54,9 @@ import {
     INSTR_LT,
     INSTR_LTE,
     INSTR_MULTIPLY,
-    INSTR_RECIPR_DT,
     INSTR_MULTIPLY_DT,
     INSTR_NEQ,
+    INSTR_RECIPR_DT,
     INSTR_SIN,
     INSTR_SQUARE,
     INSTR_SUBTRACT,
@@ -70,11 +70,10 @@ import {
     registerIdxToString,
     updateSampleContext,
     WaveProgram,
-    WaveProgramInstructionItem,
-    INSTR_ADD_RECIPR_DT
+    WaveProgramInstructionItem
 } from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings } from "src/dsp/dsp-loop-interface";
-import { arrayAt, arraySwap, filterInPlace } from "src/utils/array-utils";
+import { arrayAt, filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
 import {
@@ -93,14 +92,13 @@ import {
     isFirstishRender
 } from "src/utils/im-core";
 import { EL_B, elHasMouseClick, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imEl, imElEnd, imOn, imStr, imStrFmt } from "src/utils/im-dom";
-import { clamp, gridsnapRound } from "src/utils/math-utils";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
 import { bytesToMegabytes, utf16ByteLength } from "src/utils/utf8";
 import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
+import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 import { SoundLabState } from "./sound-lab-view";
 import { cssVarsApp } from "./styling";
-import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 
 const cssb = newCssBuilder();
 const cnWaveProgramEditor = cssb.cn("waveProgramEditor", [
