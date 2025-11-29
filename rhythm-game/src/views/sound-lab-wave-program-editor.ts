@@ -100,6 +100,7 @@ import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
 import { SoundLabState } from "./sound-lab-view";
 import { cssVarsApp } from "./styling";
+import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 
 const cssb = newCssBuilder();
 const cnWaveProgramEditor = cssb.cn("waveProgramEditor", [
@@ -207,8 +208,7 @@ function newUndoBuffer(): WaveProgramEditorUndoBuffer {
     };
 }
 
-export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabState) {
-    const editor = state.instructionBuilder;
+export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, editor: WaveProgramEditorState) {
     const playSettings = getCurrentPlaySettings();
 
     editor.highlightedRegister = editor.highlightedRegisterNext;
@@ -570,10 +570,8 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
             if (key === "Escape") {
                 if (editor.modal !== MODAL_NONE) {
                     editor.modal = MODAL_NONE;
-                } else {
-                    state.isEditingInstructions = false;
+                    ctx.handled = true;
                 }
-                ctx.handled = true;
             } else if (keyUpper === "Z" && ctrlPressed && !shiftPressed) {
                 writePendingUndoToUndoBuffer(editor);
 
@@ -600,7 +598,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
     }
 
     if (updateSettings) {
-        state.instructionBuilder.instructionsVersion++;
+        editor.instructionsVersion++;
 
         if (!wasUndoTraversal) {
             undoBuffer.timer = UNDO_DEBOUNCE_SECONDS;
@@ -615,51 +613,6 @@ function imHeading(c: ImCache, text: string) {
 }
 
 
-const DRAG_TYPE_LINEAR = 1;
-const DRAG_TYPE_CIRCULAR = 2;
-
-function imParameterSliderInteraction(
-    c: ImCache,
-    min: number,
-    max: number,
-    step: number,
-    val: number,
-    defaultValue: number,
-    dragType = DRAG_TYPE_LINEAR,
-): { val: number } | null {
-    let initialVal = val;
-
-    const { mouse } = getGlobalEventSystem();
-
-    if (mouse.ev?.shiftKey) {
-        step = 0.1
-    }
-
-    if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
-        const state = imCompactCircularDragSlideInteraction(c, val, min, max, 100, 1);
-        imCompactCircularDragSlideInteractionFeedback(c, state);
-
-        val = state.value;
-    } else {
-        imElse(c);
-        val = imCompactLinearDragSlideInteraction(c, 100, val, min, max);
-    } imEndIf(c);
-
-    val = gridsnapRound(val, step);
-    val = clamp(val, min, max);
-
-    if (elHasMousePress(c) && mouse.rightMouseButton) {
-        // Reset to default value on rightclick
-        mouse.ev?.preventDefault();
-        val = defaultValue;
-    }
-
-    if (val !== initialVal) {
-        return { val };
-    }
-
-    return null;
-}
 function imBindableParameter(
     c: ImCache,
     editor: WaveProgramEditorState,
@@ -1092,7 +1045,7 @@ export function imWaveProgramPreview(
 
         const sc = imState(c, newScrollContainer);
         imScrollContainerBegin(c, sc); {
-            imFor(c); for (const instr of state.instructionBuilder.waveProgram.instructions) {
+            imFor(c); for (const instr of state.waveProgramEditorLegacy.waveProgram.instructions) {
                 imLayout(c, ROW); imGap(c, 6, PX); {
                     imStrFmt(c, instr.instruction?.type, instrToString);
 

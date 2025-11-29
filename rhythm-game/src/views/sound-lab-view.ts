@@ -36,6 +36,8 @@ import { imWaveProgramEditor, imWaveProgramPreview, newWaveProgramEditorState, W
 import { getCurrentTheme } from "./styling";
 import { drawSamples, newPlotState } from "./plotting";
 import { compileInstructions, fixInstructions } from "src/dsp/dsp-loop-instruction-set";
+import { EffectRackEditorState, imEffectRackEditor, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
+import { compileEffectsRack } from "src/dsp/dsp-loop-effect-stack";
 
 export type SoundLabState = {
     dsp: DspState;
@@ -60,7 +62,8 @@ export type SoundLabState = {
     output: [[Float32Array]]; 
 
     isEditingInstructions: boolean;
-    instructionBuilder: WaveProgramEditorState;
+    waveProgramEditorLegacy: WaveProgramEditorState;
+    effectRackEditor: EffectRackEditorState;
 }
 
 function newSoundLabState(): SoundLabState {
@@ -85,7 +88,8 @@ function newSoundLabState(): SoundLabState {
         output: [[new Float32Array()]],
 
         isEditingInstructions: !!debugFlags.testSoundLabWaveEditor,
-        instructionBuilder: newWaveProgramEditorState(), 
+        waveProgramEditorLegacy: newWaveProgramEditorState(), 
+        effectRackEditor: newEffectRackEditorState(),
     };
 }
 
@@ -93,13 +97,26 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     const MIN_ZOOM = 100;
 
     const state = imState(c, newSoundLabState);
-    if (imMemo(c, state.instructionBuilder.instructionsVersion)) {
+    if (imMemo(c, state.waveProgramEditorLegacy.instructionsVersion)) {
         const settings = getCurrentPlaySettings();
-        const waveProgram = state.instructionBuilder.waveProgram;
+        const waveProgram = state.waveProgramEditorLegacy.waveProgram;
         fixInstructions(waveProgram.instructions);
         compileInstructions(waveProgram.instructions, settings.parameters.instructions);
         updatePlaySettings();
     }
+
+    if (imMemo(c, state.effectRackEditor.version)) {
+        const settings = getCurrentPlaySettings();
+        const rack = state.effectRackEditor.rack;
+        compileEffectsRack(rack);
+
+        // TODO: can make it more performant by updating just the specific register being edited
+        // rather than the entire effect rack if we're editing a value in realtime
+        
+        settings.parameters.rack = rack;
+        updatePlaySettings();
+    }
+
 
     let soundPlayed = false;
 
@@ -188,8 +205,12 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     }
 
     imLayout(c, COL); imFlex(c); {
+        if (imIf(c) && state.isEditingInstructions && 0) {
+            imWaveProgramEditor(c, ctx, state.waveProgramEditorLegacy);
+        } imIfEnd(c);
+
         if (imIf(c) && state.isEditingInstructions) {
-            imWaveProgramEditor(c, ctx, state);
+            imEffectRackEditor(c, ctx, state.effectRackEditor);
         } imIfEnd(c);
 
         imLayout(c, COL); imFlex(c); {

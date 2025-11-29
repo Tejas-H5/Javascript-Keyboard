@@ -710,7 +710,7 @@ export const imCatch = imTryCatch;
  *      case c: { ... } break;
  * } imSwitchEnd(c);
  * ```
- * NOTE: Don't use fallthrough, use if-else + imIf/imIfElse/imIfEnd instead. 
+ * ERROR: Don't use fallthrough, use if-else + imIf/imIfElse/imIfEnd instead. 
  * Fallthrough doesn't work as you would expect - for example:
  * ```ts
  *  imSwitch(c,key); switch(key) {

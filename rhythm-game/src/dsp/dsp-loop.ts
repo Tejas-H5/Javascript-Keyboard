@@ -48,9 +48,12 @@ import {
     INSTR_ADD_RECIPR_DT
 } from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
+import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils/turn-based-waves";
+import { EffectRack, newEffectRack } from "./dsp-loop-effect-stack";
 
 type DspSynthParameters = {
     instructions: number[];
+    rack: EffectRack;
 }
 
 export type DSPPlaySettings = {
@@ -74,7 +77,10 @@ export function newDspPlaySettings(): DSPPlaySettings {
         sustainVolume: 0.05,
         sustain: 0.5,
         isUserDriven: false,
-        parameters: { instructions: [] },
+        parameters: {
+            instructions: [],
+            rack: newEffectRack(),
+        },
     }
 
     compileDefaultInstructions(settings.parameters.instructions);
@@ -287,8 +293,9 @@ export function updateOscillator(
         // val = sin(f * t * 4); amp = 0.02;
         // m += amp; x += val * amp;
 
-        updateSampleContext(state._sampleContext, f, osc.inputs.signal, 1 / sampleRate);
-        sampleValue += computeSample(state._sampleContext, parameters.instructions);
+        // updateSampleContext(state._sampleContext, f, osc.inputs.signal, 1 / sampleRate);
+        // sampleValue += computeSample(state._sampleContext, parameters.instructions);
+        // computeSample
 
         // sampleValue = x;
         // sampleTotal = m;
@@ -297,64 +304,6 @@ export function updateOscillator(
     state.value = sampleValue;
 }
 
-
-/**
-
-// Funnni
-{
-        const t = state.time;
-        const f = state._frequency;
-
-        let val = 0;
-        let total = 0;
-
-        let n = 10;
-        for (let i = 1; i <= n; i++) {
-
-            let m = 1 
-
-            const f2 = f * (1+ i) / (1 + t);
-
-            let x = m * sin(t * f2)
-
-            // x *= sign;
-            // sign = -sign;
-
-            val += x;
-            total += m;
-        }
-
-        state.value = val * state.gain / total;
-    }
-
-// computer noises
-    {
-        const t = state.time;
-        const f = state._frequency;
-
-        let val = 0;
-        let total = 0;
-
-        let n = 10;
-        for (let i = 1; i <= n; i++) {
-
-            let m = 1 
-
-            const f2 = Math.pow(f, i);
-
-            let x = m * sin(t * f2)
-
-            // x *= sign;
-            // sign = -sign;
-
-            val += x;
-            total += m;
-        }
-
-        state.value = val * state.gain / total;
-    }
-
-*/
 
 function updateSample(osc: PlayingSampleFile, allSamples: Record<string, number[]>) {
     const { inputs, state } = osc;
@@ -392,50 +341,6 @@ function getMessageForMainThread(s: DspState, signals = true) {
     payload.isPaused = s.trackPlayback.isPaused;
 
     return payload;
-}
-
-function sin(t: number) {
-    return Math.sin(t * Math.PI * 2);
-}
-
-function absMin(a: number, b: number) {
-    if (Math.abs(a) > Math.abs(b)) {
-        return b;
-    }
-    return a;
-}
-
-function absMax(a: number, b: number) {
-    if (Math.abs(a) < Math.abs(b)) {
-        return b;
-    }
-    return a;
-}
-
-function sawtooth(t: number) {
-    return 2 * (t % 1) - 1;
-}
-
-function triangle(t: number) {
-    if (t < 0) t = -t;
-    t %= 1;
-    let result;
-    if (t > 0.5) {
-        result = 2 - 2 * t;
-    } else {
-        result = 2 * t;
-    }
-
-    return 2 * (result - 0.5);
-}
-
-function square(t: number) {
-    t = t % 2;
-    return t > 1 ? 1 : -1;
-}
-
-function step(t: number) {
-    return Math.floor(t) % 2;
 }
 
 let rng: RandomNumberGenerator | null = null;
