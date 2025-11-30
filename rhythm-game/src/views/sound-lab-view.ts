@@ -105,7 +105,8 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
         updatePlaySettings();
     }
 
-    if (imMemo(c, state.effectRackEditor.version)) {
+    const versionChanged = imMemo(c, state.effectRackEditor.version);
+    if (versionChanged) {
         const settings = getCurrentPlaySettings();
         const rack = state.effectRackEditor.effectRack;
         compileEffectsRack(rack);
@@ -234,8 +235,13 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
             let handled = false;
 
             if (key === "Escape") {
-                setViewChartSelect(ctx);
-                handled = true;
+                if (state.isEditingInstructions) {
+                    state.isEditingInstructions = false;
+                    handled = true;
+                } else {
+                    setViewChartSelect(ctx);
+                    handled = true;
+                }
             } else if (keyUpper === "E" && shiftPressed) {
                 state.isEditingInstructions = !state.isEditingInstructions;
                 handled = true;
@@ -383,10 +389,6 @@ function imOscilloscope(c: ImCache, state: SoundLabState) {
 
                 if (resize || isNewFrame) {
                     ctx.clearRect(0, 0, width, height);
-
-                    ctx.strokeStyle = "blue";
-                    ctx.lineWidth = 2;
-                    drawSamples(state.frequencies, plotState, ctx, state.frequenciesStartIdx, state.frequenciesLength);
 
                     ctx.strokeStyle = "red";
                     ctx.lineWidth = 2;

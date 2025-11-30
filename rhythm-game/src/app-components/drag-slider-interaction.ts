@@ -115,6 +115,8 @@ function newCompactCircularDragSlideInteractionState(): CompactCircularDragSlide
 }
 
 // Actually a better idea than I thought. Haven't seen it other people do it yet for some reason.
+// As a side-effect of the implementation, you can right-click to reposition the centerpoint in the middle of the interaction.
+// I kinda just dont want to fix this bug for now xD
 export function imCompactCircularDragSlideInteraction(
     c: ImCache,
     value: number,

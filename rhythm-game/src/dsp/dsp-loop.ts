@@ -49,7 +49,33 @@ import {
 } from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils/turn-based-waves";
-import { asRegisterIdx, compileEffectsRack, computeEffectsRackIteration, EFFECT_RACK_ITEM__ENVELOPE, EFFECT_RACK_ITEM__OSCILLATOR, EFFECT_RACK_MINIMUM_SIZE, EffectRack, getRegisterIdxForUIValue, newEffectRack, newEffectRackBinding, newEnvelope, newOscillator, newOscillatorWave, newRegisterValueMetadata, REG_IDX_KEY_FREQUENCY, REG_IDX_KEY_SIGNAL, REG_IDX_NONE, REG_IDX_OUTPUT, registerIdxAsNumber } from "./dsp-loop-effect-rack";
+import {
+    asRegisterIdx,
+    compileEffectsRack,
+    computeEffectsRackIteration,
+    EFFECT_RACK_ITEM__ENVELOPE,
+    EFFECT_RACK_ITEM__OSCILLATOR,
+    EFFECT_RACK_MINIMUM_SIZE,
+    EffectRack,
+    EffectRackRegisters,
+    getRegisterIdxForUIValue,
+    newEffectRack,
+    newEffectRackBinding,
+    newEffectRackRegisters,
+    newEnvelope,
+    newOscillator,
+    newOscillatorWave,
+    newRegisterValueMetadata,
+    REG_IDX_KEY_FREQUENCY,
+    REG_IDX_KEY_SIGNAL,
+    REG_IDX_NONE,
+    REG_IDX_OUTPUT,
+    registerIdxAsNumber,
+    r,
+    w,
+    allocateRegisterIdx,
+    allocateRegisterIdxIfNeeded,
+} from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
     instructions: number[];
@@ -61,6 +87,7 @@ export type DSPPlaySettings = {
     parameters: DspSynthParameters;
 
     // NOTE: these might become deprecated after we have a fully programmable DSP
+    // TODO: Delete these once our programmable DSP is good enough
     attack: number;
     attackVolume: number;
     decay: number;
@@ -114,6 +141,7 @@ export type PlayingOscillator = {
         _lastNoteIndex: number;
         _frequency: number;
         _sampleContext: SampleContext;
+        _effectRackRegisters: EffectRackRegisters;
 
         prevSignal: number;
         time: number;
@@ -189,7 +217,6 @@ export function updateOscillator(
 ) {
     const sampleRate = s.sampleRate;
     const parameters = s.playSettings.parameters;
-    const { attack, attackVolume, decay, sustain, sustainVolume } = s.playSettings;
 
     const { inputs, state } = osc;
 
@@ -211,95 +238,22 @@ export function updateOscillator(
     // GOAT website: https://www.dspforaudioprogramming.com
     // Simplified my oscillator code so much damn.
     // And now I know more than just sine wave. Very epic.
+    // NOTE: the current effects rack is no longer capable of 
+    // generating the triangle wave from hundreds of tiny sine waves.
+    // Not sure if I care though.
 
-    const t = state.time;
     const f = state._frequency;
-    let idx1 = state.idx1;
     let sampleValue = 0;
 
     // TODO: fix how we're using the gain here
     // the gain is indicative of how much the key is 'pressed down', not the actual attack/decay envelope.
-
-    let targetGain = 0;
-    let rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
-
-    const tPressed = state.time - state.pressedTime;
-
-    const sampleIdx = getSampleIdx(inputs.noteId);
-    if (sampleIdx !== -1) {
-        // Play a procedurally generated drum
-
-        sampleValue += square(0.5 * f * t);
-
-        // Drum gain curve. whtaver.
-        let attack = 0.01;
-        if (inputs.signal) {
-            if (tPressed <= attack) {
-                targetGain = attackVolume; 
-                rate = attack;
-            } else {
-                const tReleased = tPressed - attack;
-                targetGain = (1 - tReleased); 
-                targetGain **= 20;
-                targetGain *= attackVolume;
-                rate = 0.0001;
-            }
-        } else {
-            targetGain = 0; 
-            rate = 2;
-        }
-    } else {
-        // Update the oscillator
-
-        // Oscillator gain curve. attack/decay/sustain
-        // if (inputs.signal) {
-        //     if (tPressed <= attack) {
-        //         targetGain = attackVolume; rate = attack;
-        //     } else {
-        //         targetGain = sustainVolume; rate = sustain;
-        //     }
-        // } else {
-        //     targetGain = 0.0;
-        //     rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
-        // }
-
-        // let maxRange = max(parameters.low, parameters.hi);
-        // for (let i = -parameters.low; i <= parameters.hi; i += parameters.increment) {
-        //     let f2 = f;
-        //     if (i < 0) {
-        //         f2 = -f / i;
-        //     } else if (i > 0) {
-        //         f2 = f * i;
-        //     }
-        //
-        //     val = sin(f2 * t); 
-        //     amp = maxRange - Math.abs(i);
-        //     m += amp; x += val * amp;
-        // }
-
-
-        // val = sin(f * (t + 0.001 * noise)); amp = 1;
-        // m += amp; x += val * amp;
-        //
-        // val = sin(f * t / 3); amp = 0.3;
-        // m += amp; x += val * amp;
-        //
-        // val = sin(f * t * 2); amp = 0.2;
-        // m += amp; x += val * amp;
-        //
-        // val = sin(f * t * 3); amp = 0.1;
-        // m += amp; x += val * amp;
-        //
-        // val = sin(f * t * 4); amp = 0.02;
-        // m += amp; x += val * amp;
-
-        // updateSampleContext(state._sampleContext, f, osc.inputs.signal, 1 / sampleRate);
-        // sampleValue += computeSample(state._sampleContext, parameters.instructions);
-        // computeSample
-
-        // sampleValue = x;
-        // sampleTotal = m;
-    }
+    sampleValue = computeEffectsRackIteration(
+        parameters.rack,
+        osc.state._effectRackRegisters,
+        f,
+        osc.inputs.signal,
+        1 / sampleRate
+    );
 
     state.value = sampleValue;
 }
@@ -561,6 +515,7 @@ export function newPlayingOscilator(): PlayingOscillator {
             _lastNoteIndex: -1,
             _frequency: 0,
             _sampleContext: newSampleContext(),
+            _effectRackRegisters: newEffectRackRegisters(),
             prevSignal: 0,
             time: 0,
             releasedTime: 0,
@@ -834,6 +789,11 @@ export function getDspLoopClassUrl(): string {
         { value: REG_IDX_KEY_SIGNAL, name: "REG_IDX_KEY_SIGNAL" },
         compileEffectsRack,
         computeEffectsRackIteration,
+        newEffectRackRegisters,
+        r, 
+        w,
+        allocateRegisterIdx,
+        allocateRegisterIdxIfNeeded,
     ], [
     ], function register() {
 

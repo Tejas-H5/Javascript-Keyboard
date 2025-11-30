@@ -8,6 +8,7 @@ import {
     newContextMenuState,
     openContextMenuAtMouse
 } from "src/app-components/context-menu";
+import { imVerticalText } from "src/app-components/misc";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
 import { imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
@@ -46,6 +47,7 @@ import {
     getRegisterIdxForUIValue,
     newEffectRack,
     newEffectRackBinding,
+    newEffectRackRegisters,
     newEnvelope,
     newOscillator,
     RegisterIdx,
@@ -79,6 +81,7 @@ import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-dr
 export type EffectRackEditorState = {
     effectRack: EffectRack;
     currentViewingRegisterInOscilloscope: RegisterIdx;
+
     version: number;
 
     contextMenu: ContextMenuState;
@@ -90,16 +93,19 @@ export function newEffectRackEditorState(): EffectRackEditorState {
     const state: EffectRackEditorState = {
         effectRack: newEffectRack(),
         currentViewingRegisterInOscilloscope: asRegisterIdx(0),
-        version: 0,
 
         contextMenu: newContextMenuState(),
 
         edited: false,
+
+        version: 0,
     };
 
     const env = newEnvelope();
     state.effectRack.effects.push(env);
 
+    const osc = newOscillator();
+    state.effectRack.effects.push(osc);
 
     return state;
 }
@@ -133,11 +139,10 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                 elSetClass(c, cnEffectRackEditor);
             }
 
-
             imLayout(c, COL); imFlex(c, 3); {
                 imLayout(c, COL); imFlex(c, 2); {
                     imLayout(c, ROW); imAlign(c); {
-                        imFlex1(c); imHeading(c, "Effects"); imFlex1(c);
+                        imFlex1(c); imHeading(c, "Effects rack"); imFlex1(c);
                     } imLayoutEnd(c);
 
                     const sc = imState(c, newScrollContainer);
@@ -153,11 +158,42 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         imFor(c); for (let effectIdx = 0; effectIdx < editor.effectRack.effects.length; effectIdx++) {
                             const effect = rack.effects[effectIdx];
 
-                            imLayout(c, ROW); imAlign(c); {
+                            imLayout(c, ROW); imAlign(c); 
+                            imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+                                let name = "???";
+                                switch (effect.type) {
+                                    case EFFECT_RACK_ITEM__OSCILLATOR: name = "OSC"; break;
+                                    case EFFECT_RACK_ITEM__ENVELOPE:   name = "ENV"; break;
+                                    default: unreachable(effect);
+                                } 
+
+                                imVerticalText(c); imAlign(c); {
+                                    const canMoveDown = effectIdx < rack.effects.length - 1;
+                                    if (imButtonIsClicked(c, "<", false, !canMoveDown)) {
+                                        deferredAction = () => {
+                                            // don't mutate effects while iterating
+                                            arraySwap(rack.effects, effectIdx, effectIdx + 1);
+                                            editor.edited = true;
+                                        }
+                                    }
+
+                                    imStr(c, name);
+
+                                    const canMoveUp = effectIdx > 0;
+                                    if (imButtonIsClicked(c, ">", false, !canMoveUp)) {
+                                        deferredAction = () => {
+                                            // don't mutate effects while iterating
+                                            arraySwap(rack.effects, effectIdx, effectIdx - 1);
+                                            editor.edited = true;
+                                        }
+                                    }
+                                } imLayoutEnd(c);
+
+                                imLine(c, LINE_VERTICAL, 5);
+
                                 imSwitch(c, effect.type); switch (effect.type) {
                                     case EFFECT_RACK_ITEM__OSCILLATOR: {
                                         const oscillator = effect;
-
                                         const wave = oscillator.wave;
                                         imValueOrBindingEditor(c, editor, wave.phaseUI);
                                         imValueOrBindingEditor(c, editor, wave.amplitudeUI);
@@ -194,25 +230,10 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                 imFlex1(c);
 
                                 imLayout(c, ROW); {
-                                    const canMoveUp = effectIdx > 0;
-                                    if (imButtonIsClicked(c, "^", false, !canMoveUp) && canMoveUp) {
-                                        deferredAction = () => {
-                                            // don't mutate effects while iterating
-                                            arraySwap(rack.effects, effectIdx, effectIdx - 1);
-                                        }
-                                    }
-
-                                    const canMoveDown = effectIdx < rack.effects.length - 1;
-                                    if (imButtonIsClicked(c, "v", false, !canMoveDown) && canMoveDown) {
-                                        deferredAction = () => {
-                                            // don't mutate effects while iterating
-                                            arraySwap(rack.effects, effectIdx, effectIdx + 1);
-                                        }
-                                    }
-
                                     if (imButtonIsClicked(c, "x")) {
                                         deferredAction = () => {
                                             filterInPlace(rack.effects, e => e !== effect)
+                                            editor.edited = true;
                                         }
                                     }
                                 } imLayoutEnd(c);
@@ -220,7 +241,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         } imForEnd(c);
 
                         if (deferredAction) {
-                            editor.edited = true;
                             deferredAction();
                         }
 
@@ -474,6 +494,8 @@ function imOscilloscope(c: ImCache, editor: EffectRackEditorState) {
 
         samplePressedIdx: 14430,
         sampleReleasedIdx: 28090,
+
+        registers: newEffectRackRegisters(),
     });
 
     if (imMemo(c, s.noteIdx)) s.viewingInvalidated = true;
@@ -491,15 +513,15 @@ function imOscilloscope(c: ImCache, editor: EffectRackEditorState) {
         compileEffectsRack(editor.effectRack);
 
         for (let i = 0; i < s.samples.length; i++) {
-            assert(editor.currentViewingRegisterInOscilloscope < rack.registers.length);
+            assert(editor.currentViewingRegisterInOscilloscope < rack.registersTemplate.length);
 
             let signal = 0;
             if (s.samplePressedIdx < i && i < s.sampleReleasedIdx) {
                 signal = 1;
             }
 
-            computeEffectsRackIteration(rack, keyFrequency, signal, dt);
-            s.samples[i] = rack.registers[editor.currentViewingRegisterInOscilloscope];
+            computeEffectsRackIteration(rack, s.registers, keyFrequency, signal, dt);
+            s.samples[i] = s.registers.values[editor.currentViewingRegisterInOscilloscope];
         }
     }
 
