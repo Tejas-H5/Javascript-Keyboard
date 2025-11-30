@@ -7,13 +7,15 @@ export function max(a: number, b: number): number {
 }
 
 export function moveTowards(a: number, b: number, maxDelta: number) {
-    if (Math.abs(a - b) < maxDelta) return b;
-
-    if (a > b) {
-        return a - maxDelta;
+    if (a < b) {
+        a += maxDelta;
+        if (a > b) a = b;
+    } else if (a > b) {
+        a -= maxDelta;
+        if (a < b) a = b;
     }
 
-    return a + maxDelta;
+    return a;
 }
 
 export function lerp(a: number, b: number, t: number) {

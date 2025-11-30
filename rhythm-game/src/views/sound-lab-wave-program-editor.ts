@@ -1,6 +1,6 @@
 import { closeContextMenu, contextMenuIsOpen, ContextMenuState, imContextMenuBegin, imContextMenuEnd, imContextMenuItemBegin, imContextMenuItemEnd, newContextMenuState, openContextMenuAtMouse } from "src/app-components/context-menu";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
-import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
+import { BUTTON_TOGGLED, imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
 import { imCheckboxBegin, imCheckboxCheckBegin, imCheckboxCheckEnd, imCheckboxEnd } from "src/components/checkbox";
 import {
@@ -759,7 +759,7 @@ export function imInstructionArrayEditor(
                         }
                     }
 
-                    const ifButtonClicked = imButtonBegin(c, text, !!instruction.ifelseInnerBlock); imNoWrap(c); {
+                    const ifButtonClicked = imButtonBegin(c, text, instruction.ifelseInnerBlock ? BUTTON_TOGGLED : 0); imNoWrap(c); {
                         if (ifButtonClicked) {
                             if (instruction.ifelseInnerBlock) {
                                 let transitioned = false;

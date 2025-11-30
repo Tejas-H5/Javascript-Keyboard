@@ -13,11 +13,13 @@ const cnButton = (() => {
     padding: 5px 0px; 
     display: flex; align-items: center; justify-content: center;
 }`,
+    `.hidden { opacity: 0; }`,
         ` .inner { 
     cursor: pointer;
     user-select: none;
     color: ${cssVars.fg};
 }`,
+    `.hidden .inner { cursor: default; }`,
     `.compact { 
     padding-top: 0; padding-bottom: 0;
 }`,
@@ -35,33 +37,33 @@ const cnButton = (() => {
     ]);
 })();
 
-export function imButton(c: ImCache, toggled = false) {
-    if (isFirstishRender(c)) {
-        elSetClass(c, cnButton);
-        // elSetClass(c, "radius");
-    }
-    if (imMemo(c, toggled))  elSetClass(c, "toggled", toggled);
-}
+export const BUTTON_TOGGLED = 1 << 0;
+export const BUTTON_HIDDEN = 1 << 1;
 
-export function imButtonNoRadius(c: ImCache, toggled = false) {
+export function imButton(c: ImCache, flags = 0) {
     if (isFirstishRender(c)) {
         elSetClass(c, cnButton);
     }
-    if (imMemo(c, toggled))  elSetClass(c, "toggled", toggled);
-}
 
+    if (imMemo(c, flags)) {
+        const toggled = !!(flags & BUTTON_TOGGLED);
+        const hidden = !!(flags & BUTTON_HIDDEN);
+        elSetClass(c, "toggled", toggled);
+        elSetClass(c, "hidden", hidden);
+    }
+}
 
 export function imButtonBegin(
     c: ImCache, 
     text: string,
-    toggled: boolean = false,
+    flags: number = 0,
     type: DisplayType = BLOCK,
     compact: boolean = false,
 ) {
 
     let result = false;
 
-    imLayout(c, type); imButton(c, toggled); {
+    imLayout(c, type); imButton(c, flags); {
         if (imMemo(c, compact)) {
             elSetClass(c, "compact", compact);
         }
@@ -72,7 +74,10 @@ export function imButtonBegin(
             }
 
             imStr(c, text);
-            result = elHasMousePress(c);
+
+            if (!(flags & BUTTON_HIDDEN)) {
+                result = elHasMousePress(c);
+            }
         } // imLayoutEnd(c);
     } // imLayoutEnd(c);
 
@@ -89,9 +94,13 @@ export function imButtonEnd(c: ImCache) {
 export function imButtonIsClicked(
     c: ImCache, 
     text: string,
-    toggled?: boolean,
+    toggled: boolean = false,
+    hidden: boolean = false,
 ): boolean {
-    const result = imButtonBegin(c, text, toggled);
+    let flags = 0;
+    if (toggled) flags = flags | BUTTON_TOGGLED;
+    if (hidden) flags = flags | BUTTON_HIDDEN;
+    const result = imButtonBegin(c, text, flags);
     imButtonEnd(c);
 
     return result;
