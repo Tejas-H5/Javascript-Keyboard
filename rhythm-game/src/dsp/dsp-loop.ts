@@ -49,7 +49,7 @@ import {
 } from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils/turn-based-waves";
-import { asRegisterIdx, compileEffectsRack, computeEffectsRackIteration, EFFECT_RACK_ITEM__ENVELOPE, EFFECT_RACK_ITEM__OSCILLATOR, EFFECT_RACK_MINIMUM_SIZE, EffectRack, getRegisterIdxForUIValue, newEffectRack, newEffectRackBinding, newEnvelope, newOscillator, newOscillatorWave, newRegisterValueMetadata, REG_IDX_KEY_FREQUENCY, REG_IDX_KEY_SIGNAL, REG_IDX_NONE, REG_IDX_OUTPUT, registerIdxAsNumber } from "./dsp-loop-effect-stack";
+import { asRegisterIdx, compileEffectsRack, computeEffectsRackIteration, EFFECT_RACK_ITEM__ENVELOPE, EFFECT_RACK_ITEM__OSCILLATOR, EFFECT_RACK_MINIMUM_SIZE, EffectRack, getRegisterIdxForUIValue, newEffectRack, newEffectRackBinding, newEnvelope, newOscillator, newOscillatorWave, newRegisterValueMetadata, REG_IDX_KEY_FREQUENCY, REG_IDX_KEY_SIGNAL, REG_IDX_NONE, REG_IDX_OUTPUT, registerIdxAsNumber } from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
     instructions: number[];

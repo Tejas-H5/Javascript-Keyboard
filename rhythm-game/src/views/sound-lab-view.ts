@@ -37,7 +37,7 @@ import { getCurrentTheme } from "./styling";
 import { drawSamples, newPlotState } from "./plotting";
 import { compileInstructions, fixInstructions } from "src/dsp/dsp-loop-instruction-set";
 import { EffectRackEditorState, imEffectRackEditor, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
-import { compileEffectsRack } from "src/dsp/dsp-loop-effect-stack";
+import { compileEffectsRack } from "src/dsp/dsp-loop-effect-rack";
 
 export type SoundLabState = {
     dsp: DspState;

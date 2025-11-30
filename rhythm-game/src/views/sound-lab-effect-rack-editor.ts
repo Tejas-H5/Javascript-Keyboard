@@ -50,7 +50,7 @@ import {
     newOscillator,
     RegisterIdx,
     RegisterIdxUiMetadata
-} from "src/dsp/dsp-loop-effect-stack";
+} from "src/dsp/dsp-loop-effect-rack";
 import { arraySwap, filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
