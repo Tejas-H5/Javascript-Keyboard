@@ -11,10 +11,12 @@ import { IDX_OUTPUT } from "./dsp-loop-instruction-set";
 
 export const EFFECT_RACK_ITEM__OSCILLATOR = 0;
 export const EFFECT_RACK_ITEM__ENVELOPE = 1;
+export const EFFECT_RACK_ITEM__MATHS = 2;
 
 export type EffectRackItemType
     = typeof EFFECT_RACK_ITEM__OSCILLATOR
-    | typeof EFFECT_RACK_ITEM__ENVELOPE;
+    | typeof EFFECT_RACK_ITEM__ENVELOPE
+    | typeof EFFECT_RACK_ITEM__MATHS;
 
 type EffectRackItemTypeBase = {
     type: number;
@@ -25,7 +27,8 @@ type EffectRackItemTypeBase = {
 
 export type EffectRackItem 
     = EffectRackOscillator
-    | EffectRackEnvelope;
+    | EffectRackEnvelope
+    | EffectRackMathsItem;
 
 // If we're using a RegisterIndex without reading from or writing to a register, then we're using it wrong.
 // -1 -> No register assigned.
@@ -119,7 +122,7 @@ export type EffectRackOscillator = EffectRackItemTypeBase & {
     wave: OscillatorWave;
 };
 
-export function newOscillator(): EffectRackOscillator {
+export function newEffectRackOscillator(): EffectRackOscillator {
     return {
         type: EFFECT_RACK_ITEM__OSCILLATOR,
         wave: newOscillatorWave(),
@@ -172,7 +175,7 @@ export type EffectRackEnvelope = EffectRackItemTypeBase & {
     releaseUI: RegisterIdxUiMetadata;
 };
 
-export function newEnvelope(): EffectRackEnvelope {
+export function newEffectRackEnvelope(): EffectRackEnvelope {
     return {
         type: EFFECT_RACK_ITEM__ENVELOPE,
 
@@ -192,6 +195,93 @@ export function newEnvelope(): EffectRackEnvelope {
         releaseUI: newRegisterValueMetadata("release", 0.2, 0, 1),
 
         dst: asRegisterIdx(0),
+    };
+}
+
+export type EffectRackMathsItem = EffectRackItemTypeBase & {
+    type: typeof EFFECT_RACK_ITEM__MATHS;
+
+    src: RegisterIdx;
+
+    opTree: EffectRackMathsItemTreeNode;
+
+    operations: {
+        value: RegisterIdx;
+        valueUI: RegisterIdxUiMetadata;
+        operator: EffectRackMathsItemOperator;
+    }[];
+};
+
+export type EffectRackMathsItemTreeNode = {
+    a: RegisterIdx;
+    aUI: RegisterIdxUiMetadata;
+    aNode: EffectRackMathsItemTreeNode | null;
+
+    b: RegisterIdx;
+    bUI: RegisterIdxUiMetadata;
+    bNode: EffectRackMathsItemTreeNode | null;
+
+    operator: EffectRackMathsItemOperator;
+};
+
+export function newEffectRackMathsItemTreeNode(): EffectRackMathsItemTreeNode {
+    return {
+        a: asRegisterIdx(0),
+        aUI: newRegisterValueMetadata("a", 0),
+        aNode: null,
+
+        b: asRegisterIdx(0),
+        bUI: newRegisterValueMetadata("b", 0),
+        bNode: null,
+
+        operator: MATH_OPERATOR_ADD,
+    };
+}
+
+export type EffectRackMathsItemOperation = {
+    value: RegisterIdx;
+    valueUI: RegisterIdxUiMetadata;
+    operator: EffectRackMathsItemOperator;
+};
+
+export function newEffectRackMathsItemOperation(): EffectRackMathsItemOperation {
+    return {
+        value: asRegisterIdx(0),
+        valueUI: newRegisterValueMetadata("value", 0, -100_000_000, 100_000_000),
+        operator: 0,
+    };
+}
+
+export const MATH_OPERATOR_ADD = 0;
+export const MATH_OPERATOR_SUBTRACT = 1;
+export const MATH_OPERATOR_MULTIPLY = 2;
+export const MATH_OPERATOR_DIVIDE = 3;
+
+export type EffectRackMathsItemOperator 
+    = typeof MATH_OPERATOR_ADD
+    | typeof MATH_OPERATOR_SUBTRACT
+    | typeof MATH_OPERATOR_MULTIPLY
+    | typeof MATH_OPERATOR_DIVIDE
+
+export function mathOperatorToString(op: EffectRackMathsItemOperator): string {
+    switch (op) {
+        case MATH_OPERATOR_ADD:      return "+";
+        case MATH_OPERATOR_SUBTRACT: return "-";
+        case MATH_OPERATOR_MULTIPLY: return "*";
+        case MATH_OPERATOR_DIVIDE:   return "/";
+        default: unreachable(op);
+    }
+}
+
+export function newEffectRackMathsItem(): EffectRackMathsItem  {
+    return {
+        type: EFFECT_RACK_ITEM__MATHS,
+        operations: [],
+        dst: asRegisterIdx(0),
+
+        src: asRegisterIdx(0),
+
+        opTree: newEffectRackMathsItemTreeNode(),
     };
 }
 
@@ -277,7 +367,7 @@ export function allocateRegisterIdxIfNeeded(e: EffectRack, regUi: RegisterIdxUiM
 /**
  * Resets all effects, and allocates the register indices based on bindings and constants. 
  */
-export function compileEffectsRack(e: EffectRack) {
+export function compileEffectRack(e: EffectRack) {
     e.version++;
 
     // Need output binding. If it was not present, all other indices in the effect rack are off by 1
@@ -316,6 +406,27 @@ export function compileEffectsRack(e: EffectRack) {
                 envelope.decay   = allocateRegisterIdxIfNeeded(e, envelope.decayUI);
                 envelope.sustain = allocateRegisterIdxIfNeeded(e, envelope.sustainUI);
                 envelope.release = allocateRegisterIdxIfNeeded(e, envelope.releaseUI);
+            } break;
+            case EFFECT_RACK_ITEM__MATHS: {
+                const maths = effect;
+
+                for (const op of maths.operations) {
+                    op.value = allocateRegisterIdxIfNeeded(e, op.valueUI);
+                }
+
+                const dfs = (node: EffectRackMathsItemTreeNode) => {
+                    if (node.aNode === null) {
+                        node.a = allocateRegisterIdxIfNeeded(e, node.aUI);
+                    } else {
+                        dfs(node.aNode);
+                    }
+                    if (node.bNode === null) {
+                        node.b = allocateRegisterIdxIfNeeded(e, node.bUI);
+                    } else {
+                        dfs(node.bNode);
+                    }
+                };
+                dfs(maths.opTree);
             } break;
             default: unreachable(effect);
         }
@@ -422,6 +533,23 @@ export function computeEffectsRackIteration(
 
                 w(re, envelope.value, value);
                 w(re, envelope.stage, stage);
+            } break;
+            case EFFECT_RACK_ITEM__MATHS: {
+                const maths = effect;
+
+                value = r(re, maths.src);
+
+                for (let i = 0; i < maths.operations.length; i++) {
+                    const op = maths.operations[i];
+                    switch (op.operator) {
+                        case MATH_OPERATOR_ADD:      value += r(re, op.value); break;
+                        case MATH_OPERATOR_SUBTRACT: value -= r(re, op.value); break;
+                        case MATH_OPERATOR_MULTIPLY: value *= r(re, op.value); break;
+                        case MATH_OPERATOR_DIVIDE:   value /= r(re, op.value); break;
+                    }
+                }
+
+
             } break;
             default: unreachable(effect);
         }

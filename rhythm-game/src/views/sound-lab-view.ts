@@ -37,7 +37,7 @@ import { getCurrentTheme } from "./styling";
 import { drawSamples, newPlotState } from "./plotting";
 import { compileInstructions, fixInstructions } from "src/dsp/dsp-loop-instruction-set";
 import { EffectRackEditorState, imEffectRackEditor, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
-import { compileEffectsRack } from "src/dsp/dsp-loop-effect-rack";
+import { compileEffectRack } from "src/dsp/dsp-loop-effect-rack";
 
 export type SoundLabState = {
     dsp: DspState;
@@ -109,7 +109,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     if (versionChanged) {
         const settings = getCurrentPlaySettings();
         const rack = state.effectRackEditor.effectRack;
-        compileEffectsRack(rack);
+        compileEffectRack(rack);
 
         // TODO: can make it more performant by updating just the specific register being edited
         // rather than the entire effect rack if we're editing a value in realtime

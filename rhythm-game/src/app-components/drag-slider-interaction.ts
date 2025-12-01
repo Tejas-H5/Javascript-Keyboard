@@ -175,6 +175,8 @@ export function imCompactCircularDragSlideInteraction(
 
 
 export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: CompactCircularDragSlideInteractionState) {
+    let wantedCursor = "move";
+
     if (imIf(c) && s.isDragging) {
         // Cursor handles
         imLayout(c, BLOCK); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
@@ -186,8 +188,7 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
             if (positiveAngle < 0) positiveAngle += 2 * Math.PI;
             const wantedCursorIdx = Math.floor((positiveAngle - sectorStart) / sectorSize);
 
-            const wantedCursor = cursorsPerSector[wantedCursorIdx];
-            if (imMemo(c, wantedCursor)) elSetStyle(c, "cursor", wantedCursor);
+            wantedCursor = cursorsPerSector[wantedCursorIdx];
         } imLayoutEnd(c);
 
         // Spinning square thing
@@ -202,4 +203,6 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
             if (isFirstishRender(c)) elSetStyle(c, "transform", `translate(-50%, -50%)`);
         } imLayoutEnd(c);
     } imIfEnd(c);
+
+    if (imMemo(c, wantedCursor)) elSetStyle(c, "cursor", wantedCursor);
 }
