@@ -76,12 +76,9 @@ import {
     allocateRegisterIdx,
     allocateRegisterIdxIfNeeded,
     newEffectRackMathsItem,
-    MATH_OPERATOR_ADD,
-    MATH_OPERATOR_SUBTRACT,
-    MATH_OPERATOR_MULTIPLY,
-    MATH_OPERATOR_DIVIDE,
-    EFFECT_RACK_ITEM__MATHS,
-    newEffectRackMathsItemOperation,
+    newEffectRackMathsItemCoefficient,
+    newEffectRackMathsItemTerm,
+    EFFECT_RACK_ITEM__MATHS
 } from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
@@ -802,12 +799,9 @@ export function getDspLoopClassUrl(): string {
         w,
         allocateRegisterIdx,
         allocateRegisterIdxIfNeeded,
-        { value: MATH_OPERATOR_ADD, name: "MATH_OPERATOR_ADD" },
-        { value: MATH_OPERATOR_SUBTRACT, name: "MATH_OPERATOR_SUBTRACT" },
-        { value: MATH_OPERATOR_MULTIPLY, name: "MATH_OPERATOR_MULTIPLY" },
-        { value: MATH_OPERATOR_DIVIDE, name: "MATH_OPERATOR_DIVIDE" },
         newEffectRackMathsItem,
-        newEffectRackMathsItemOperation,
+        newEffectRackMathsItemTerm,
+        newEffectRackMathsItemCoefficient,
     ], [
     ], function register() {
 

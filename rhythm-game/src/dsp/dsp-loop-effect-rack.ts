@@ -200,88 +200,41 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
 
 export type EffectRackMathsItem = EffectRackItemTypeBase & {
     type: typeof EFFECT_RACK_ITEM__MATHS;
-
-    src: RegisterIdx;
-
-    opTree: EffectRackMathsItemTreeNode;
-
-    operations: {
-        value: RegisterIdx;
-        valueUI: RegisterIdxUiMetadata;
-        operator: EffectRackMathsItemOperator;
-    }[];
+    terms: EffectRackMathsItemTerm[];
 };
 
-export type EffectRackMathsItemTreeNode = {
-    a: RegisterIdx;
-    aUI: RegisterIdxUiMetadata;
-    aNode: EffectRackMathsItemTreeNode | null;
-
-    b: RegisterIdx;
-    bUI: RegisterIdxUiMetadata;
-    bNode: EffectRackMathsItemTreeNode | null;
-
-    operator: EffectRackMathsItemOperator;
+export type EffectRackMathsItemTerm = {
+    // Bro put his designer hat on.
+    coefficients: EffectRackMathsItemTermCoefficient[];
+    name: string;
 };
 
-export function newEffectRackMathsItemTreeNode(): EffectRackMathsItemTreeNode {
-    return {
-        a: asRegisterIdx(0),
-        aUI: newRegisterValueMetadata("a", 0),
-        aNode: null,
-
-        b: asRegisterIdx(0),
-        bUI: newRegisterValueMetadata("b", 0),
-        bNode: null,
-
-        operator: MATH_OPERATOR_ADD,
+export function newEffectRackMathsItemTerm(idx: number): EffectRackMathsItemTerm {
+    const name = "x" + idx;
+    return { 
+        coefficients: [newEffectRackMathsItemCoefficient(name, 0)], 
+        name: name,
     };
 }
 
-export type EffectRackMathsItemOperation = {
+export type EffectRackMathsItemTermCoefficient = {
     value: RegisterIdx;
     valueUI: RegisterIdxUiMetadata;
-    operator: EffectRackMathsItemOperator;
 };
 
-export function newEffectRackMathsItemOperation(): EffectRackMathsItemOperation {
+export function newEffectRackMathsItemCoefficient(name: string, idx: number): EffectRackMathsItemTermCoefficient {
+    name += "" + idx;
     return {
         value: asRegisterIdx(0),
-        valueUI: newRegisterValueMetadata("value", 0, -100_000_000, 100_000_000),
-        operator: 0,
+        valueUI: newRegisterValueMetadata(name, 1, -1_000_000, 1_000_000),
     };
-}
-
-export const MATH_OPERATOR_ADD = 0;
-export const MATH_OPERATOR_SUBTRACT = 1;
-export const MATH_OPERATOR_MULTIPLY = 2;
-export const MATH_OPERATOR_DIVIDE = 3;
-
-export type EffectRackMathsItemOperator 
-    = typeof MATH_OPERATOR_ADD
-    | typeof MATH_OPERATOR_SUBTRACT
-    | typeof MATH_OPERATOR_MULTIPLY
-    | typeof MATH_OPERATOR_DIVIDE
-
-export function mathOperatorToString(op: EffectRackMathsItemOperator): string {
-    switch (op) {
-        case MATH_OPERATOR_ADD:      return "+";
-        case MATH_OPERATOR_SUBTRACT: return "-";
-        case MATH_OPERATOR_MULTIPLY: return "*";
-        case MATH_OPERATOR_DIVIDE:   return "/";
-        default: unreachable(op);
-    }
 }
 
 export function newEffectRackMathsItem(): EffectRackMathsItem  {
     return {
         type: EFFECT_RACK_ITEM__MATHS,
-        operations: [],
+        terms: [],
         dst: asRegisterIdx(0),
-
-        src: asRegisterIdx(0),
-
-        opTree: newEffectRackMathsItemTreeNode(),
     };
 }
 
@@ -410,23 +363,13 @@ export function compileEffectRack(e: EffectRack) {
             case EFFECT_RACK_ITEM__MATHS: {
                 const maths = effect;
 
-                for (const op of maths.operations) {
-                    op.value = allocateRegisterIdxIfNeeded(e, op.valueUI);
+                for (let i = 0; i < maths.terms.length; i++) {
+                    const term = maths.terms[i];
+                    for (let i = 0; i < term.coefficients.length; i++) {
+                        const c = term.coefficients[i];
+                        c.value = allocateRegisterIdxIfNeeded(e, c.valueUI);
+                    }
                 }
-
-                const dfs = (node: EffectRackMathsItemTreeNode) => {
-                    if (node.aNode === null) {
-                        node.a = allocateRegisterIdxIfNeeded(e, node.aUI);
-                    } else {
-                        dfs(node.aNode);
-                    }
-                    if (node.bNode === null) {
-                        node.b = allocateRegisterIdxIfNeeded(e, node.bUI);
-                    } else {
-                        dfs(node.bNode);
-                    }
-                };
-                dfs(maths.opTree);
             } break;
             default: unreachable(effect);
         }
@@ -537,18 +480,17 @@ export function computeEffectsRackIteration(
             case EFFECT_RACK_ITEM__MATHS: {
                 const maths = effect;
 
-                value = r(re, maths.src);
+                for (let i = 0; i < maths.terms.length; i++) {
+                    const term = maths.terms[i];
 
-                for (let i = 0; i < maths.operations.length; i++) {
-                    const op = maths.operations[i];
-                    switch (op.operator) {
-                        case MATH_OPERATOR_ADD:      value += r(re, op.value); break;
-                        case MATH_OPERATOR_SUBTRACT: value -= r(re, op.value); break;
-                        case MATH_OPERATOR_MULTIPLY: value *= r(re, op.value); break;
-                        case MATH_OPERATOR_DIVIDE:   value /= r(re, op.value); break;
+                    let termValue = 1;
+                    for (let i = 0; i < term.coefficients.length; i++) {
+                        const c = term.coefficients[i];
+                        termValue *= r(re, c.value);
                     }
-                }
 
+                    value += termValue;
+                }
 
             } break;
             default: unreachable(effect);

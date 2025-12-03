@@ -45,13 +45,7 @@ import {
     EFFECT_RACK_ITEM__MATHS,
     EFFECT_RACK_ITEM__OSCILLATOR,
     EffectRack,
-    EffectRackMathsItemOperator,
     getRegisterIdxForUIValue,
-    MATH_OPERATOR_ADD,
-    MATH_OPERATOR_DIVIDE,
-    MATH_OPERATOR_MULTIPLY,
-    MATH_OPERATOR_SUBTRACT,
-    mathOperatorToString,
     newEffectRack,
     newEffectRackBinding,
     newEffectRackMathsItem,
@@ -60,7 +54,8 @@ import {
     newEffectRackOscillator,
     RegisterIdx,
     RegisterIdxUiMetadata,
-    newEffectRackMathsItemOperation
+    newEffectRackMathsItemCoefficient,
+    newEffectRackMathsItemTerm
 } from "src/dsp/dsp-loop-effect-rack";
 import { arraySwap, filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
@@ -80,7 +75,7 @@ import {
     imSwitchEnd,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, elHasMousePress, elSetClass, elSetStyle, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
+import { EL_B, EL_I, elHasMousePress, elSetClass, elSetStyle, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
@@ -140,13 +135,6 @@ const cnEffectRackEditor = cssb.cn("effectRackEditor", [
     // TODO: better styling xD
     ` .hoverable:hover { cursor: pointer; outline: 2px solid ${cssVars.fg}; border-radius: 4px; }`
 ]);
-
-const allMathsOperators: EffectRackMathsItemOperator[] = [
-    MATH_OPERATOR_ADD,
-    MATH_OPERATOR_SUBTRACT,
-    MATH_OPERATOR_MULTIPLY,
-    MATH_OPERATOR_DIVIDE,
-];
 
 export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: EffectRackEditorState) {
     const rack = editor.effectRack;
@@ -245,49 +233,60 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                         imValueOrBindingEditor(c, editor, envelope.releaseUI);
                                     } break;
                                     case EFFECT_RACK_ITEM__MATHS: {
-                                        // TODO: UI to write a math expression, and convert it into a linear sequence of instructions
+                                        const math = effect;
 
-                                        const maths = effect;
-                                        imLayout(c, ROW); imAlign(c); imJustify(c); {
-                                            const newSrc = imBindingEditor(c, editor, effect, FIELD_OSC_DST, effect.src);
-                                            if (newSrc !== effect.src) {
-                                                effect.src = newSrc;
-                                                editor.edited = true;
-                                            }
-                                        } imLayoutEnd(c);
+                                        imFor(c); for (let i = 0; i < math.terms.length; i++) {
+                                            const term = math.terms[i];
+                                            imLayout(c, COL); {
+                                                imLayout(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
+                                                    imEl(c, EL_I); 
+                                                    imEl(c, EL_B); imStr(c, term.name); imElEnd(c, EL_B);
+                                                                                        imElEnd(c, EL_I);
 
-                                        imFlex1(c);
-
-                                        imLayout(c, COL); imFlex(c); imAlign(c); {
-                                            imFor(c); for (const op of maths.operations) {
-                                                imLayout(c, ROW); {
-                                                    imValueOrBindingEditor(c, editor, op.valueUI, BINDING_UI_ROW);
-
-                                                    if (imButtonIsClicked(c, mathOperatorToString(op.operator))) {
-                                                        openContextMenuAtMouse(editor.contextMenu, op, FIELD_MATHS_OPERATOR);
+                                                    if (imButtonIsClicked(c, "-")) {
+                                                        deferredAction = () => {
+                                                            filterInPlace(math.terms, termOther => termOther !== term);
+                                                            editor.edited = true;
+                                                        };
                                                     }
-
-                                                    if (imIf(c) && contextMenuIsOpen(editor.contextMenu, op, FIELD_MATHS_OPERATOR)) {
-                                                        imContextMenuBegin(c, editor.contextMenu); {
-                                                            imFor(c); for (const operator of allMathsOperators) {
-                                                                imEditorContextMenuItemBegin(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                                                                    imStrFmt(c, operator, mathOperatorToString);
-                                                                    if (elHasMousePress(c)) {
-                                                                        op.operator = operator;
-                                                                        editor.edited = true;
-                                                                    }
-                                                                } imEditorContextMenuItemEnd(c);
-                                                            } imForEnd(c);
-                                                        } imContextMenuEnd(c, editor.contextMenu);
-                                                    } imIfEnd(c);
                                                 } imLayoutEnd(c);
-                                            } imForEnd(c);
 
-                                            if (imButtonIsClicked(c, "Add operation")) {
-                                                maths.operations.push(newEffectRackMathsItemOperation());
-                                                editor.edited = true;
-                                            }
-                                        } imLayoutEnd(c);
+                                                imFor(c); for (let i = 0; i < term.coefficients.length; i++) {
+                                                    const co = term.coefficients[i];
+                                                    imLayout(c, ROW); imJustify(c); {
+                                                        imValueOrBindingEditor(c, editor, co.valueUI, BINDING_UI_ROW);
+
+                                                        if (imButtonIsClicked(c, "-")) {
+                                                            deferredAction = () => {
+                                                                filterInPlace(term.coefficients, coOther => coOther !== co);
+                                                                editor.edited = true;
+                                                            };
+                                                        }
+                                                    } imLayoutEnd(c);
+                                                    if (imIf(c) && i < term.coefficients.length - 1) {
+                                                        imLayout(c, ROW); imJustify(c); {
+                                                            imStr(c, " * ");
+                                                        } imLayoutEnd(c);
+                                                    } imIfEnd(c);
+                                                } imForEnd(c);
+                                                if (imButtonIsClicked(c, "Add coefficient")) {
+                                                    const co = newEffectRackMathsItemCoefficient(term.name, term.coefficients.length);
+                                                    term.coefficients.push(co);
+                                                    editor.edited = true;
+                                                }
+                                            } imLayoutEnd(c);
+
+                                            if (imIf(c) && i < math.terms.length - 1) {
+                                                imStr(c, " + ");
+                                            } imIfEnd(c);
+
+                                        } imForEnd(c);
+
+                                        if (imButtonIsClicked(c, "Add term")) {
+                                            const term = newEffectRackMathsItemTerm(math.terms.length);
+                                            math.terms.push(term);
+                                            editor.edited = true;
+                                        }
                                     } break;
                                     default: unreachable(effect);
                                 } imSwitchEnd(c);
