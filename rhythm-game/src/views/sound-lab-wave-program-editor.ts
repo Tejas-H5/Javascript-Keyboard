@@ -93,7 +93,7 @@ import {
 } from "src/utils/im-core";
 import { EL_B, elHasMouseClick, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imEl, imElEnd, imOn, imStr, imStrFmt } from "src/utils/im-dom";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
-import { bytesToMegabytes, utf16ByteLength } from "src/utils/utf8";
+import { canRedo, canUndo, JSONUndoBuffer, newUndoBuffer, redo, stepUndoBufferTimer, undo, writeToUndoBufferDebounced } from "src/utils/undo-buffer";
 import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
@@ -130,7 +130,7 @@ const UNDO_DEBOUNCE_SECONDS = 0.2;
 
 export type WaveProgramEditorState = {
     waveProgram: WaveProgram;
-    undoBuffer: WaveProgramEditorUndoBuffer;
+    undoBuffer: JSONUndoBuffer<WaveProgram>;
 
     instructionsVersion: number;
     registersInUseWrite: Set<number>;
@@ -175,7 +175,7 @@ export function newWaveProgramEditorState(): WaveProgramEditorState {
         highlightedRegisterNext: -1,
         currentViewingRegisterInOscilloscope: 0,
         contextMenu: newContextMenuState(),
-        undoBuffer: newUndoBuffer(),
+        undoBuffer: newUndoBuffer<WaveProgram>(),
         modal: MODAL_NONE,
         selectedRange: {
             isSelecting: false,
@@ -185,24 +185,6 @@ export function newWaveProgramEditorState(): WaveProgramEditorState {
             start: 0,
             end: 0
         },
-    };
-}
-
-type WaveProgramEditorUndoBuffer = {
-    // JSON is actually smarter than objects here - we can compare if two programs are the same or not, 
-    // estimate undo buffer size easier, and the `string` datatype will enforce immutability for us
-    programVersionsJSON: string[];
-    programVersionsJSONSizeMb: number;
-    position: number;
-    timer: number;
-};
-
-function newUndoBuffer(): WaveProgramEditorUndoBuffer {
-    return {
-        programVersionsJSON: [],
-        programVersionsJSONSizeMb: 0,
-        position: 0,
-        timer: -1,
     };
 }
 
@@ -235,16 +217,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, editor: Wave
         dfs(editor.waveProgram.instructions);
     }
 
-    const undoBuffer = editor.undoBuffer;
-    if (undoBuffer.timer > 0) {
-        undoBuffer.timer -= ctx.deltaTime;
-        if (undoBuffer.timer <= 0) {
-            writeProgramToUndoBuffer(editor);
-        }
-    } else if (undoBuffer.programVersionsJSON.length === 0) {
-        // We need to write the very first version ourselves, and then let the debounce handle successive writes.
-        writeProgramToUndoBuffer(editor);
-    }
+    stepUndoBufferTimer(editor.undoBuffer, ctx.deltaTime, editor.waveProgram);
 
     imModalBegin(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
         if (isFirstishRender(c)) {
@@ -382,7 +355,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, editor: Wave
 
                 imLayout(c, BLOCK); imSize(c, 0, NA, 5, PX); imBg(c, cssVars.bg); imRelative(c); {
                     // Will the undo buffer reach 5 mb doe ??. (it will totally reach 1mb.)
-                    const percentage = 100 * undoBuffer.programVersionsJSONSizeMb / 5.0;
+                    const percentage = 100 * editor.undoBuffer.fileVersionsJSONSizeMb / 5.0;
                     imLayout(c, BLOCK); imBg(c, cssVars.fg);
                     imAbsolute(c, 0, PX, 0, NA, 0, PX, 0, PX); imSize(c, percentage, PERCENT, 0, NA); {
                     } imLayoutEnd(c);
@@ -571,11 +544,8 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, editor: Wave
                     ctx.handled = true;
                 }
             } else if (keyUpper === "Z" && ctrlPressed && !shiftPressed) {
-                writePendingUndoToUndoBuffer(editor);
-
-                if (undoBuffer.position > 0) {
-                    undoBuffer.position--;
-                    editor.waveProgram = JSON.parse(undoBuffer.programVersionsJSON[undoBuffer.position]);
+                if (canUndo(editor.undoBuffer)) {
+                    editor.waveProgram = undo(editor.undoBuffer, editor.waveProgram);
                     updateSettings = true;
                     wasUndoTraversal = true;
                 }
@@ -584,9 +554,8 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, editor: Wave
                 (keyUpper === "Z" && ctrlPressed && shiftPressed) ||
                 (keyUpper === "Y" && ctrlPressed && !shiftPressed)
             ) {
-                if (undoBuffer.position < undoBuffer.programVersionsJSON.length - 1) {
-                    undoBuffer.position++;
-                    editor.waveProgram = JSON.parse(undoBuffer.programVersionsJSON[undoBuffer.position]);
+                if (canRedo(editor.undoBuffer)) {
+                    editor.waveProgram = redo(editor.undoBuffer);
                     updateSettings = true;
                     wasUndoTraversal = true;
                 }
@@ -599,7 +568,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, editor: Wave
         editor.instructionsVersion++;
 
         if (!wasUndoTraversal) {
-            undoBuffer.timer = UNDO_DEBOUNCE_SECONDS;
+            writeToUndoBufferDebounced(editor.undoBuffer, editor.waveProgram, UNDO_DEBOUNCE_SECONDS);
         }
     }
 }
@@ -1174,42 +1143,6 @@ function imRegisterArgumentEditor(
     } imLayoutEnd(c);
 
     return edited;
-}
-
-function writeProgramToUndoBuffer(editor: WaveProgramEditorState) {
-    const undoBuffer = editor.undoBuffer;
-
-    const currentProgramJSON = JSON.stringify(editor.waveProgram);
-    if (undoBuffer.programVersionsJSON.length > 0) {
-        const lastProgram = undoBuffer.programVersionsJSON[undoBuffer.programVersionsJSON.length - 1];
-        if (lastProgram === currentProgramJSON) {
-            // Don't write anything if its literally the same program
-            return;
-        }
-    }
-
-    // Truncate undo buffer if needed
-    if (undoBuffer.position !== undoBuffer.programVersionsJSON.length) {
-        undoBuffer.programVersionsJSON.length = undoBuffer.position;
-    }
-
-    undoBuffer.programVersionsJSON.push(currentProgramJSON);
-    undoBuffer.position++;
-
-    // for the lolz
-    let sizeBytes = 0;
-    for (const program of editor.undoBuffer.programVersionsJSON) {
-        sizeBytes += utf16ByteLength(program);
-    }
-    undoBuffer.programVersionsJSONSizeMb = bytesToMegabytes(sizeBytes);
-}
-
-function writePendingUndoToUndoBuffer(editor: WaveProgramEditorState) {
-    const undoBuffer = editor.undoBuffer;
-    if (undoBuffer.timer > 0) {
-        writeProgramToUndoBuffer(editor);
-        undoBuffer.timer = -1;
-    }
 }
 
 function imRegisterHighlightBg(c: ImCache, editor: WaveProgramEditorState, regIdx: number) {

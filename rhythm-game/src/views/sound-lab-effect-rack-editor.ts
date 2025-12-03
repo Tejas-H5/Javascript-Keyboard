@@ -15,6 +15,7 @@ import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "
 import {
     BLOCK,
     COL,
+    imAbsolute,
     imAlign,
     imBg,
     imFlex,
@@ -25,6 +26,7 @@ import {
     imLayoutEnd,
     imNoWrap,
     imPadding,
+    imRelative,
     imScrollOverflow,
     imSize,
     NA,
@@ -80,10 +82,17 @@ import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
 import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
+import { canRedo, canUndo, JSONUndoBuffer, newUndoBuffer, redo, stepUndoBufferTimer, undo, writeToUndoBufferDebounced } from "src/utils/undo-buffer";
+import { WaveProgram } from "src/dsp/dsp-loop-instruction-set";
 
+
+const UNDO_DEBOUNCE_SECONDS = 0.2;
 
 export type EffectRackEditorState = {
     effectRack: EffectRack;
+    undoBuffer: JSONUndoBuffer<EffectRack>;
+
+
     currentViewingRegisterInOscilloscope: RegisterIdx;
 
     version: number;
@@ -96,6 +105,8 @@ export type EffectRackEditorState = {
 export function newEffectRackEditorState(): EffectRackEditorState {
     const state: EffectRackEditorState = {
         effectRack: newEffectRack(),
+        undoBuffer: newUndoBuffer<WaveProgram>(),
+
         currentViewingRegisterInOscilloscope: asRegisterIdx(0),
 
         contextMenu: newContextMenuState(),
@@ -142,6 +153,8 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
     const FIELD_OSC_DST = 1;
     const FIELD_EDITOR_ADD_EFFECT = 2;
     const FIELD_MATHS_OPERATOR = 3;
+
+    stepUndoBufferTimer(editor.undoBuffer, ctx.deltaTime, editor.effectRack);
 
     imModalBegin(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
         if (isFirstishRender(c)) {
@@ -197,7 +210,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                     const canMoveUp = effectIdx > 0;
                                     if (imButtonIsClicked(c, ">", false, !canMoveUp)) {
                                         deferredAction = () => {
-                                            // don't mutate effects while iterating
                                             arraySwap(rack.effects, effectIdx, effectIdx - 1);
                                             editor.edited = true;
                                         }
@@ -319,7 +331,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                             deferredAction();
                         }
 
-
                         if (imButtonIsClicked(c, "Add")) {
                             openContextMenuAtMouse(editor.contextMenu, editor, FIELD_EDITOR_ADD_EFFECT);
                         }
@@ -379,19 +390,52 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                     }
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
+
+
+            imLayout(c, BLOCK); imSize(c, 0, NA, 5, PX); imBg(c, cssVars.bg); imRelative(c); {
+                // Will the undo buffer reach 5 mb doe ??. (it will totally reach 1mb.)
+                const percentage = 100 * editor.undoBuffer.fileVersionsJSONSizeMb / 5.0;
+                imLayout(c, BLOCK); imBg(c, cssVars.fg);
+                imAbsolute(c, 0, PX, 0, NA, 0, PX, 0, PX); imSize(c, percentage, PERCENT, 0, NA); {
+                } imLayoutEnd(c);
+            } imLayoutEnd(c);
         } imLayoutEnd(c);
     } imModalEnd(c);
 
+    let wasUndoTraversed = false;
+
     if (!ctx.handled) {
         if (ctx.keyPressState) {
-            // Soon. I guess
-            // const { key, keyUpper, ctrlPressed, shiftPressed } = ctx.keyPressState;
+            const { keyUpper, ctrlPressed, shiftPressed } = ctx.keyPressState;
+
+            if (keyUpper === "Z" && ctrlPressed && !shiftPressed) {
+                if (canUndo(editor.undoBuffer)) {
+                    editor.effectRack = undo(editor.undoBuffer, editor.effectRack);
+                    editor.edited = true;
+                    wasUndoTraversed = true;
+                }
+                ctx.handled = true;
+            } else if (
+                (keyUpper === "Z" && ctrlPressed && shiftPressed) ||
+                (keyUpper === "Y" && ctrlPressed && !shiftPressed)
+            ) {
+                if (canRedo(editor.undoBuffer)) {
+                    editor.effectRack = redo(editor.undoBuffer);
+                    editor.edited = true;
+                    wasUndoTraversed = true;
+                }
+                ctx.handled = true;
+            }
         }
     }
 
     if (editor.edited) {
         editor.edited = false;
         editor.version++;
+
+        if (!wasUndoTraversed) {
+            writeToUndoBufferDebounced(editor.undoBuffer, editor.effectRack, UNDO_DEBOUNCE_SECONDS);
+        }
     }
 }
 
