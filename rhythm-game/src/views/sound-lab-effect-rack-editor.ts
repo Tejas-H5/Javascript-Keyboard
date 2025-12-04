@@ -84,6 +84,7 @@ import { drawSamples, newPlotState } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 import { canRedo, canUndo, JSONUndoBuffer, newUndoBuffer, redo, stepUndoBufferTimer, undo, writeToUndoBufferDebounced } from "src/utils/undo-buffer";
 import { WaveProgram } from "src/dsp/dsp-loop-instruction-set";
+import { DND_AUTOMOVE, imDragAndDrop, imDragCssTransform, imDragHandle, imDropZone, imDropZoneForPrototyping } from "src/components/drag-and-drop";
 
 
 const UNDO_DEBOUNCE_SECONDS = 0.2;
@@ -182,11 +183,16 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         // don't mutate effects while iterating - assign to this instead
                         let deferredAction: (() => void) | undefined;
 
+                        const dnd = imDragAndDrop(c, editor.effectRack.effects, DND_AUTOMOVE);
+
                         imFor(c); for (let effectIdx = 0; effectIdx < editor.effectRack.effects.length; effectIdx++) {
                             const effect = rack.effects[effectIdx];
 
                             imLayout(c, ROW); imAlign(c); 
                             imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imGap(c, 10, PX); {
+                                imDropZoneForPrototyping(c, dnd, effectIdx);
+                                imDragCssTransform(c, dnd, effectIdx);
+
                                 let name = "???";
                                 switch (effect.type) {
                                     case EFFECT_RACK_ITEM__OSCILLATOR: name = "OSC";   break;
@@ -196,6 +202,8 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                 } 
 
                                 imVerticalText(c); imAlign(c); {
+                                    imDragHandle(c, dnd, effectIdx);
+
                                     const canMoveDown = effectIdx < rack.effects.length - 1;
                                     if (imButtonIsClicked(c, "<", false, !canMoveDown)) {
                                         deferredAction = () => {

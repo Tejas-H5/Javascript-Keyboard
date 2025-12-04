@@ -13,6 +13,8 @@ export const EFFECT_RACK_ITEM__OSCILLATOR = 0;
 export const EFFECT_RACK_ITEM__ENVELOPE = 1;
 export const EFFECT_RACK_ITEM__MATHS = 2;
 
+// export const EFFECT_RACK_DSP_INSTRUCTION_SET; this would be quite funny wouldnt it.
+
 export type EffectRackItemType
     = typeof EFFECT_RACK_ITEM__OSCILLATOR
     | typeof EFFECT_RACK_ITEM__ENVELOPE
