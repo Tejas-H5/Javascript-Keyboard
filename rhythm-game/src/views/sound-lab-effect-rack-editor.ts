@@ -36,6 +36,7 @@ import {
     ROW_REVERSE
 } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
+import { DND_AUTOMOVE, imDragAndDrop, imDragCssTransform, imDragHandle, imDropZoneForPrototyping } from "src/components/drag-and-drop";
 import { imLine, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
@@ -50,16 +51,17 @@ import {
     getRegisterIdxForUIValue,
     newEffectRack,
     newEffectRackBinding,
-    newEffectRackMathsItem,
-    newEffectRackRegisters,
     newEffectRackEnvelope,
-    newEffectRackOscillator,
-    RegisterIdx,
-    RegisterIdxUiMetadata,
+    newEffectRackMathsItem,
     newEffectRackMathsItemCoefficient,
-    newEffectRackMathsItemTerm
+    newEffectRackMathsItemTerm,
+    newEffectRackOscillator,
+    newEffectRackRegisters,
+    RegisterIdx,
+    RegisterIdxUiMetadata
 } from "src/dsp/dsp-loop-effect-rack";
-import { arraySwap, filterInPlace } from "src/utils/array-utils";
+import { WaveProgram } from "src/dsp/dsp-loop-instruction-set";
+import { filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
 import {
@@ -77,14 +79,12 @@ import {
     imSwitchEnd,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, EL_I, elHasMousePress, elSetClass, elSetStyle, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
+import { EL_B, EL_I, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
+import { canRedo, canUndo, JSONUndoBuffer, newUndoBuffer, redo, stepUndoBufferTimer, undo, writeToUndoBufferDebounced } from "src/utils/undo-buffer";
 import { GlobalContext } from "./app";
 import { drawSamples, newPlotState } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
-import { canRedo, canUndo, JSONUndoBuffer, newUndoBuffer, redo, stepUndoBufferTimer, undo, writeToUndoBufferDebounced } from "src/utils/undo-buffer";
-import { WaveProgram } from "src/dsp/dsp-loop-instruction-set";
-import { DND_AUTOMOVE, imDragAndDrop, imDragCssTransform, imDragHandle, imDropZone, imDropZoneForPrototyping } from "src/components/drag-and-drop";
 
 
 const UNDO_DEBOUNCE_SECONDS = 0.2;
@@ -183,15 +183,15 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         // don't mutate effects while iterating - assign to this instead
                         let deferredAction: (() => void) | undefined;
 
-                        const dnd = imDragAndDrop(c, editor.effectRack.effects, DND_AUTOMOVE);
+                        const effectsDnd = imDragAndDrop(c, editor.effectRack.effects, DND_AUTOMOVE);
 
                         imFor(c); for (let effectIdx = 0; effectIdx < editor.effectRack.effects.length; effectIdx++) {
                             const effect = rack.effects[effectIdx];
 
                             imLayout(c, ROW); imAlign(c); 
                             imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imGap(c, 10, PX); {
-                                imDropZoneForPrototyping(c, dnd, effectIdx);
-                                imDragCssTransform(c, dnd, effectIdx);
+                                imDropZoneForPrototyping(c, effectsDnd, effectIdx);
+                                imDragCssTransform(c, effectsDnd, effectIdx);
 
                                 let name = "???";
                                 switch (effect.type) {
@@ -202,25 +202,16 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                 } 
 
                                 imVerticalText(c); imAlign(c); {
-                                    imDragHandle(c, dnd, effectIdx);
+                                    imDragHandle(c, effectsDnd, effectIdx);
 
-                                    const canMoveDown = effectIdx < rack.effects.length - 1;
-                                    if (imButtonIsClicked(c, "<", false, !canMoveDown)) {
-                                        deferredAction = () => {
-                                            // don't mutate effects while iterating
-                                            arraySwap(rack.effects, effectIdx, effectIdx + 1);
-                                            editor.edited = true;
-                                        }
+                                    if (imButtonIsClicked(c, "<", false, effectIdx < rack.effects.length - 1)) {
+                                        effectsDnd.move = { a: effectIdx, b: effectIdx + 1 };
                                     }
 
                                     imStr(c, name);
 
-                                    const canMoveUp = effectIdx > 0;
-                                    if (imButtonIsClicked(c, ">", false, !canMoveUp)) {
-                                        deferredAction = () => {
-                                            arraySwap(rack.effects, effectIdx, effectIdx - 1);
-                                            editor.edited = true;
-                                        }
+                                    if (imButtonIsClicked(c, ">", false, effectIdx > 0)) {
+                                        effectsDnd.move = { a: effectIdx, b: effectIdx - 1 };
                                     }
                                 } imLayoutEnd(c);
 
@@ -271,9 +262,16 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                                     }
                                                 } imLayoutEnd(c);
 
+                                                const coefficientsDnd = imDragAndDrop(c, term.coefficients, DND_AUTOMOVE);
                                                 imFor(c); for (let i = 0; i < term.coefficients.length; i++) {
                                                     const co = term.coefficients[i];
-                                                    imLayout(c, ROW); imJustify(c); {
+                                                    imLayout(c, ROW); imJustify(c); imDropZoneForPrototyping(c, coefficientsDnd, i); {
+                                                        imDragCssTransform(c, coefficientsDnd, i);
+
+                                                        imLayout(c, ROW); imSize(c, 20, PX, 0, NA); imBg(c, elHasMouseOver(c) ? cssVars.fg : ""); {
+                                                            imDragHandle(c, coefficientsDnd, i);
+                                                        } imLayoutEnd(c);
+
                                                         imValueOrBindingEditor(c, editor, co.valueUI, BINDING_UI_ROW);
 
                                                         if (imButtonIsClicked(c, "-")) {
@@ -289,7 +287,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                                         } imLayoutEnd(c);
                                                     } imIfEnd(c);
                                                 } imForEnd(c);
-                                                if (imButtonIsClicked(c, "Add coefficient")) {
+                                                if (imButtonIsClicked(c, "+")) {
                                                     const co = newEffectRackMathsItemCoefficient(term.name, term.coefficients.length);
                                                     term.coefficients.push(co);
                                                     editor.edited = true;
@@ -302,7 +300,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
 
                                         } imForEnd(c);
 
-                                        if (imButtonIsClicked(c, "Add term")) {
+                                        if (imButtonIsClicked(c, "+")) {
                                             const term = newEffectRackMathsItemTerm(math.terms.length);
                                             math.terms.push(term);
                                             editor.edited = true;

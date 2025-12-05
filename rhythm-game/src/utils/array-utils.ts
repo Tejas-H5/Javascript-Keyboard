@@ -6,6 +6,10 @@ export function filterInPlace<T>(arr: T[], predicate: (v: T, i: number) => boole
     arr.length = i2;
 }
 
+export function removeItem<T>(arr: T[], toDelete: T) {
+    filterInPlace(arr, val => val !== toDelete);
+}
+
 export function filteredCopy<T, U extends T>(src: T[], dst: T[], predicate: (v: T, i: number) => v is U) {
     dst.length = 0;
     for (let i = 0; i < src.length; i++) {
@@ -55,4 +59,9 @@ export function arraySwap(arr: unknown[], i: number, j: number) {
     const temp = arr[i];
     arr[i] = arr[j];
     arr[j] = temp;
+}
+
+export function arrayMove(arr: unknown[], a: number, b: number) {
+    const val = arr.splice(a, 1);
+    arr.splice(b, 0, ...val);
 }

@@ -95,11 +95,11 @@ export function imButtonIsClicked(
     c: ImCache, 
     text: string,
     toggled: boolean = false,
-    hidden: boolean = false,
+    visible: boolean = true,
 ): boolean {
     let flags = 0;
     if (toggled) flags = flags | BUTTON_TOGGLED;
-    if (hidden) flags = flags | BUTTON_HIDDEN;
+    if (!visible) flags = flags | BUTTON_HIDDEN;
     const result = imButtonBegin(c, text, flags);
     imButtonEnd(c);
 
