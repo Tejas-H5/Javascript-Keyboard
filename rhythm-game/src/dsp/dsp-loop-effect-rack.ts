@@ -457,6 +457,8 @@ export type EffectRackRegisters = {
 
 // An effect rack is stateless. All it's state lives in one of these.
 export function newEffectRackRegisters(): EffectRackRegisters {
+    // TODO: enforce just a single effect rack at a time.
+    // Currently not needed, as there is just one effect rack in the entire program.
     return {
         values: [],
         version: 0,

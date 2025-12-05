@@ -35,7 +35,7 @@ import {
     ROW,
     ROW_REVERSE
 } from "src/components/core/layout";
-import { cssVars } from "src/components/core/stylesheets";
+import { cn, cssVars } from "src/components/core/stylesheets";
 import { DND_AUTOMOVE, imDragAndDrop, imDragCssTransform, imDragHandle, imDropZoneForPrototyping } from "src/components/drag-and-drop";
 import { imLine, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
@@ -48,10 +48,8 @@ import {
     EFFECT_RACK_ITEM__MATHS,
     EFFECT_RACK_ITEM__OSCILLATOR,
     EFFECT_RACK_ITEM__SWITCH,
-    SWITCH_OP_LT,
     EffectRack,
     getRegisterIdxForUIValue,
-    newEffectRack,
     newEffectRackBinding,
     newEffectRackEnvelope,
     newEffectRackMathsItem,
@@ -59,14 +57,15 @@ import {
     newEffectRackMathsItemTerm,
     newEffectRackOscillator,
     newEffectRackRegisters,
+    newEffectRackSwitch,
+    newEffectRackSwitchCondition,
     RegisterIdx,
     RegisterIdxUiMetadata,
     SWITCH_OP_GT,
-    newEffectRackSwitchCondition,
-    newEffectRackSwitch
+    SWITCH_OP_LT
 } from "src/dsp/dsp-loop-effect-rack";
 import { WaveProgram } from "src/dsp/dsp-loop-instruction-set";
-import { arrayMove, filterInPlace, removeItem } from "src/utils/array-utils";
+import { filterInPlace, removeItem } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
 import {
@@ -88,9 +87,13 @@ import { EL_B, EL_I, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, im
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
 import { canRedo, canUndo, JSONUndoBuffer, newUndoBuffer, redo, stepUndoBufferTimer, undo, writeToUndoBufferDebounced } from "src/utils/undo-buffer";
 import { GlobalContext } from "./app";
+import { imExportModal, imImportModal } from "./import-export-modals";
 import { drawSamples, newPlotState } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 
+const MODAL_NONE = 0;
+const MODAL_EXPORT = 1;
+const MODAL_IMPORT = 2;
 
 const UNDO_DEBOUNCE_SECONDS = 0.2;
 
@@ -98,12 +101,13 @@ export type EffectRackEditorState = {
     effectRack: EffectRack;
     undoBuffer: JSONUndoBuffer<EffectRack>;
 
-
     currentViewingRegisterInOscilloscope: RegisterIdx;
 
     version: number;
 
     contextMenu: ContextMenuState;
+
+    modal: number;
 
     edited: boolean;
 };
@@ -116,6 +120,8 @@ export function newEffectRackEditorState(effectRack: EffectRack): EffectRackEdit
         currentViewingRegisterInOscilloscope: asRegisterIdx(0),
 
         contextMenu: newContextMenuState(),
+
+        modal: MODAL_NONE,
 
         edited: false,
 
@@ -152,6 +158,62 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
             elSetStyle(c, "fontSize", "20px");
         }
 
+        if (imIf(c) && editor.modal === MODAL_EXPORT) {
+            imExportModal(c, editor.effectRack);
+
+            if (ctx.keyPressState) {
+                const { key } = ctx.keyPressState;
+                if (key === "Escape") {
+                    editor.modal = MODAL_NONE;
+                    ctx.handled = true;
+                } else {
+                    // We need to be able to copy the text. fr fr.
+                    ctx.handled = true;
+                    ctx.dontPreventDefault = true;
+                }
+            }
+        } else if (imIfElse(c) && editor.modal ===  MODAL_IMPORT) {
+            const importModal = imImportModal(c);
+            if (importModal.event) {
+                if (importModal.event.previewUpdated) {
+                    importModal.importError = "";
+                } else if (importModal.event.import) {
+                    // Try running it
+                    try {
+                        // TODO: use our custom deserialization utils for proper versioning etc of data.
+                        const effectRack: EffectRack = JSON.parse(importModal.json);
+                        if (!effectRack.effects || !Array.isArray(effectRack.effects)) {
+                            throw new Error("Wrong JSON format");
+                        }
+
+                        // Try computing a sample. Does it work??
+                        compileEffectRack(effectRack);
+                        const registers = newEffectRackRegisters();
+                        const f = getNoteFrequency(getNoteIndex("C", 4));
+                        computeEffectRackIteration(effectRack, registers, f, 1, 1 / 48000);
+
+                        // If we reach here, then yeah its probably legit...
+                        editor.effectRack = effectRack;
+                        editor.undoBuffer = newUndoBuffer();
+                        editor.modal = MODAL_NONE;
+                        editor.edited = true;
+
+                        importModal.importError = "";
+                    } catch (e) {
+                        importModal.importError = "" + e;
+                    }
+                }
+            }
+
+            if (ctx.keyPressState) {
+                if (ctx.keyPressState.key === "Escape") {
+                    editor.modal = MODAL_NONE;
+                    ctx.handled = true;
+                }
+            }
+
+        } imIfEnd(c);
+
         imLayout(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
             if (isFirstishRender(c)) {
                 elSetClass(c, cnEffectRackEditor);
@@ -160,7 +222,19 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
             imLayout(c, COL); imFlex(c, 3); {
                 imLayout(c, COL); imFlex(c, 2); {
                     imLayout(c, ROW); imAlign(c); {
-                        imFlex1(c); imHeading(c, "Effects rack"); imFlex1(c);
+                        imLayout(c, ROW); imFlex(c); imGap(c, 10, PX); {
+                            if (imButtonIsClicked(c, "Import")) {
+                                editor.modal = MODAL_IMPORT;
+                            }
+
+                            if (imButtonIsClicked(c, "Export")) {
+                                editor.modal = MODAL_EXPORT;
+                            }
+                        } imLayoutEnd(c);
+
+                        imHeading(c, "Effects rack");
+
+                        imFlex1(c);
                     } imLayoutEnd(c);
 
                     const sc = imState(c, newScrollContainer);
@@ -237,66 +311,74 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                     case EFFECT_RACK_ITEM__MATHS: {
                                         const math = effect;
 
-                                        imFor(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
-                                            const term = math.terms[termIdx];
-                                            imLayout(c, COL); {
-                                                imLayout(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
-                                                    imEl(c, EL_I); {
-                                                        imEl(c, EL_B); imStr(c, "x"); imStr(c, termIdx); imElEnd(c, EL_B);
-                                                    } imElEnd(c, EL_I);
+                                        imLayout(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                                            if (isFirstishRender(c)) {
+                                                elSetStyle(c, "flexFlow", "wrap");
+                                            }
 
-                                                    if (imButtonIsClicked(c, "-")) {
-                                                        deferredAction = () => {
-                                                            filterInPlace(math.terms, termOther => termOther !== term);
-                                                            editor.edited = true;
-                                                        };
-                                                    }
-                                                } imLayoutEnd(c);
-
-                                                const coefficientsDnd = imDragAndDrop(c, term.coefficients, DND_AUTOMOVE);
-                                                imFor(c); for (let coIdx = 0; coIdx < term.coefficients.length; coIdx++) {
-                                                    const co = term.coefficients[coIdx];
-                                                    imLayout(c, ROW); imJustify(c); imDropZoneForPrototyping(c, coefficientsDnd, coIdx); {
-                                                        imDragCssTransform(c, coefficientsDnd, coIdx);
-
-                                                        imLayout(c, ROW); imSize(c, 20, PX, 0, NA); imBg(c, elHasMouseOver(c) ? cssVars.fg : ""); {
-                                                            imDragHandle(c, coefficientsDnd, coIdx);
-                                                        } imLayoutEnd(c);
-
-                                                        if (imMemo(c, co)) co.valueUI.name = "x" + termIdx.toString() + coIdx.toString();
-                                                        imValueOrBindingEditor(c, editor, co.valueUI, BINDING_UI_ROW);
+                                            imFor(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
+                                                const term = math.terms[termIdx];
+                                                imLayout(c, COL); {
+                                                    imLayout(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
+                                                        imEl(c, EL_I); {
+                                                            imEl(c, EL_B); imStr(c, "x"); imStr(c, termIdx); imElEnd(c, EL_B);
+                                                        } imElEnd(c, EL_I);
 
                                                         if (imButtonIsClicked(c, "-")) {
                                                             deferredAction = () => {
-                                                                filterInPlace(term.coefficients, coOther => coOther !== co);
+                                                                filterInPlace(math.terms, termOther => termOther !== term);
                                                                 editor.edited = true;
                                                             };
                                                         }
                                                     } imLayoutEnd(c);
-                                                    if (imIf(c) && coIdx < term.coefficients.length - 1) {
-                                                        imLayout(c, ROW); imJustify(c); {
-                                                            imStr(c, " * ");
+
+                                                    // order of coefficients literally doesnt matter here at all. 
+                                                    // I have added this just because I can.
+                                                    const coefficientsDnd = imDragAndDrop(c, term.coefficients, DND_AUTOMOVE);
+                                                    imFor(c); for (let coIdx = 0; coIdx < term.coefficients.length; coIdx++) {
+                                                        const co = term.coefficients[coIdx];
+                                                        imLayout(c, ROW); imJustify(c); imDropZoneForPrototyping(c, coefficientsDnd, coIdx); {
+                                                            imDragCssTransform(c, coefficientsDnd, coIdx);
+
+                                                            imLayout(c, ROW); imSize(c, 20, PX, 0, NA); imBg(c, elHasMouseOver(c) ? cssVars.fg : ""); {
+                                                                imDragHandle(c, coefficientsDnd, coIdx);
+                                                            } imLayoutEnd(c);
+
+                                                            if (imMemo(c, co)) co.valueUI.name = "x" + termIdx.toString() + coIdx.toString();
+                                                            imValueOrBindingEditor(c, editor, co.valueUI, BINDING_UI_ROW);
+
+                                                            if (imButtonIsClicked(c, "-")) {
+                                                                deferredAction = () => {
+                                                                    filterInPlace(term.coefficients, coOther => coOther !== co);
+                                                                    editor.edited = true;
+                                                                };
+                                                            }
                                                         } imLayoutEnd(c);
-                                                    } imIfEnd(c);
-                                                } imForEnd(c);
-                                                if (imButtonIsClicked(c, "+")) {
-                                                    const co = newEffectRackMathsItemCoefficient();
-                                                    term.coefficients.push(co);
-                                                    editor.edited = true;
-                                                }
-                                            } imLayoutEnd(c);
+                                                        if (imIf(c) && coIdx < term.coefficients.length - 1) {
+                                                            imLayout(c, ROW); imJustify(c); {
+                                                                imStr(c, " * ");
+                                                            } imLayoutEnd(c);
+                                                        } imIfEnd(c);
+                                                    } imForEnd(c);
+                                                    if (imButtonIsClicked(c, "+")) {
+                                                        const co = newEffectRackMathsItemCoefficient();
+                                                        term.coefficients.push(co);
+                                                        editor.edited = true;
+                                                    }
+                                                } imLayoutEnd(c);
 
-                                            if (imIf(c) && termIdx < math.terms.length - 1) {
-                                                imStr(c, " + ");
-                                            } imIfEnd(c);
+                                                if (imIf(c) && termIdx < math.terms.length - 1) {
+                                                    imStr(c, " + ");
+                                                } imIfEnd(c);
 
-                                        } imForEnd(c);
+                                            } imForEnd(c);
 
-                                        if (imButtonIsClicked(c, "+")) {
-                                            const term = newEffectRackMathsItemTerm();
-                                            math.terms.push(term);
-                                            editor.edited = true;
-                                        }
+                                            if (imButtonIsClicked(c, "+")) {
+                                                const term = newEffectRackMathsItemTerm();
+                                                math.terms.push(term);
+                                                editor.edited = true;
+                                            }
+                                        } imLayoutEnd(c);
                                     } break;
                                     case EFFECT_RACK_ITEM__SWITCH: {
                                         const switchEffect = effect;
