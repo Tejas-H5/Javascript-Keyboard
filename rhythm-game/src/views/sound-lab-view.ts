@@ -23,10 +23,13 @@ import { fft, resizeNumberArrayPowerOf2 } from "src/utils/fft";
 import {
     getRenderCount,
     ImCache,
+    imGet,
     imIf,
     imIfEnd,
     imMemo,
-    imState
+    imSet,
+    imState,
+    inlineTypeId
 } from "src/utils/im-core";
 import { imStr } from "src/utils/im-dom";
 import { derivative } from "src/utils/math-utils";
@@ -66,8 +69,11 @@ export type SoundLabState = {
     effectRackEditor: EffectRackEditorState;
 }
 
-function newSoundLabState(): SoundLabState {
-    return {
+export function imSoundLab(c: ImCache, ctx: GlobalContext) {
+    const MIN_ZOOM = 100;
+
+    const settings = getCurrentPlaySettings();
+    const state = imGet(c, inlineTypeId(imSoundLab)) ?? imSet<SoundLabState>(c, {
         dsp: newDspState(44800),
         allSamples: [0],
         allSamplesStartIdx: 0,
@@ -89,16 +95,10 @@ function newSoundLabState(): SoundLabState {
 
         isEditingInstructions: !!debugFlags.testSoundLabWaveEditor,
         waveProgramEditorLegacy: newWaveProgramEditorState(), 
-        effectRackEditor: newEffectRackEditorState(),
-    };
-}
+        effectRackEditor: newEffectRackEditorState(settings.parameters.rack),
+    });
 
-export function imSoundLab(c: ImCache, ctx: GlobalContext) {
-    const MIN_ZOOM = 100;
-
-    const state = imState(c, newSoundLabState);
     if (imMemo(c, state.waveProgramEditorLegacy.instructionsVersion)) {
-        const settings = getCurrentPlaySettings();
         const waveProgram = state.waveProgramEditorLegacy.waveProgram;
         fixInstructions(waveProgram.instructions);
         compileInstructions(waveProgram.instructions, settings.parameters.instructions);

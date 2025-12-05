@@ -17,6 +17,8 @@ export type DragAndDropState =  {
 
 export const DND_AUTOMOVE = 1 << 0;
 
+// NOTE: API not complete - it works well enough for lists, but we don't know how it will handle Kanban style dnd
+// TODO: animate inserts and removes. not easy and we really dont need it most of the time so I may never get around to it.
 export function imDragAndDrop(c: ImCache, list: unknown[], flags = 0): DragAndDropState {
     const dnd = imGet(c, imDragAndDrop) ?? imSet<DragAndDropState>(c, {
         move: null,

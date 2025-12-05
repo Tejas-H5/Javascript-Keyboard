@@ -43,10 +43,12 @@ import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from
 import {
     asRegisterIdx,
     compileEffectRack,
-    computeEffectsRackIteration,
+    computeEffectRackIteration,
     EFFECT_RACK_ITEM__ENVELOPE,
     EFFECT_RACK_ITEM__MATHS,
     EFFECT_RACK_ITEM__OSCILLATOR,
+    EFFECT_RACK_ITEM__SWITCH,
+    SWITCH_OP_LT,
     EffectRack,
     getRegisterIdxForUIValue,
     newEffectRack,
@@ -58,10 +60,13 @@ import {
     newEffectRackOscillator,
     newEffectRackRegisters,
     RegisterIdx,
-    RegisterIdxUiMetadata
+    RegisterIdxUiMetadata,
+    SWITCH_OP_GT,
+    newEffectRackSwitchCondition,
+    newEffectRackSwitch
 } from "src/dsp/dsp-loop-effect-rack";
 import { WaveProgram } from "src/dsp/dsp-loop-instruction-set";
-import { filterInPlace } from "src/utils/array-utils";
+import { arrayMove, filterInPlace, removeItem } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
 import {
@@ -103,9 +108,9 @@ export type EffectRackEditorState = {
     edited: boolean;
 };
 
-export function newEffectRackEditorState(): EffectRackEditorState {
+export function newEffectRackEditorState(effectRack: EffectRack): EffectRackEditorState {
     const state: EffectRackEditorState = {
-        effectRack: newEffectRack(),
+        effectRack: effectRack,
         undoBuffer: newUndoBuffer<WaveProgram>(),
 
         currentViewingRegisterInOscilloscope: asRegisterIdx(0),
@@ -116,21 +121,6 @@ export function newEffectRackEditorState(): EffectRackEditorState {
 
         version: 0,
     };
-
-
-    // Good default:
-    {
-        const env = newEffectRackEnvelope();
-        state.effectRack.effects.push(env);
-
-        const osc = newEffectRackOscillator();
-        state.effectRack.effects.push(osc);
-    }
-
-    // Rest are for testing purposes
-
-    const math = newEffectRackMathsItem();
-    state.effectRack.effects.push(math);
 
     return state;
 }
@@ -195,9 +185,10 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
 
                                 let name = "???";
                                 switch (effect.type) {
-                                    case EFFECT_RACK_ITEM__OSCILLATOR: name = "OSC";   break;
-                                    case EFFECT_RACK_ITEM__ENVELOPE:   name = "ENV";   break;
-                                    case EFFECT_RACK_ITEM__MATHS:      name = "MATHS"; break;
+                                    case EFFECT_RACK_ITEM__OSCILLATOR: name = "OSC";    break;
+                                    case EFFECT_RACK_ITEM__ENVELOPE:   name = "ENV";    break;
+                                    case EFFECT_RACK_ITEM__MATHS:      name = "MATHS";  break;
+                                    case EFFECT_RACK_ITEM__SWITCH:     name = "SWITCH"; break;
                                     default: unreachable(effect);
                                 } 
 
@@ -246,13 +237,13 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                     case EFFECT_RACK_ITEM__MATHS: {
                                         const math = effect;
 
-                                        imFor(c); for (let i = 0; i < math.terms.length; i++) {
-                                            const term = math.terms[i];
+                                        imFor(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
+                                            const term = math.terms[termIdx];
                                             imLayout(c, COL); {
                                                 imLayout(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
-                                                    imEl(c, EL_I); 
-                                                    imEl(c, EL_B); imStr(c, term.name); imElEnd(c, EL_B);
-                                                                                        imElEnd(c, EL_I);
+                                                    imEl(c, EL_I); {
+                                                        imEl(c, EL_B); imStr(c, "x"); imStr(c, termIdx); imElEnd(c, EL_B);
+                                                    } imElEnd(c, EL_I);
 
                                                     if (imButtonIsClicked(c, "-")) {
                                                         deferredAction = () => {
@@ -263,15 +254,16 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                                 } imLayoutEnd(c);
 
                                                 const coefficientsDnd = imDragAndDrop(c, term.coefficients, DND_AUTOMOVE);
-                                                imFor(c); for (let i = 0; i < term.coefficients.length; i++) {
-                                                    const co = term.coefficients[i];
-                                                    imLayout(c, ROW); imJustify(c); imDropZoneForPrototyping(c, coefficientsDnd, i); {
-                                                        imDragCssTransform(c, coefficientsDnd, i);
+                                                imFor(c); for (let coIdx = 0; coIdx < term.coefficients.length; coIdx++) {
+                                                    const co = term.coefficients[coIdx];
+                                                    imLayout(c, ROW); imJustify(c); imDropZoneForPrototyping(c, coefficientsDnd, coIdx); {
+                                                        imDragCssTransform(c, coefficientsDnd, coIdx);
 
                                                         imLayout(c, ROW); imSize(c, 20, PX, 0, NA); imBg(c, elHasMouseOver(c) ? cssVars.fg : ""); {
-                                                            imDragHandle(c, coefficientsDnd, i);
+                                                            imDragHandle(c, coefficientsDnd, coIdx);
                                                         } imLayoutEnd(c);
 
+                                                        if (imMemo(c, co)) co.valueUI.name = "x" + termIdx.toString() + coIdx.toString();
                                                         imValueOrBindingEditor(c, editor, co.valueUI, BINDING_UI_ROW);
 
                                                         if (imButtonIsClicked(c, "-")) {
@@ -281,31 +273,75 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                                             };
                                                         }
                                                     } imLayoutEnd(c);
-                                                    if (imIf(c) && i < term.coefficients.length - 1) {
+                                                    if (imIf(c) && coIdx < term.coefficients.length - 1) {
                                                         imLayout(c, ROW); imJustify(c); {
                                                             imStr(c, " * ");
                                                         } imLayoutEnd(c);
                                                     } imIfEnd(c);
                                                 } imForEnd(c);
                                                 if (imButtonIsClicked(c, "+")) {
-                                                    const co = newEffectRackMathsItemCoefficient(term.name, term.coefficients.length);
+                                                    const co = newEffectRackMathsItemCoefficient();
                                                     term.coefficients.push(co);
                                                     editor.edited = true;
                                                 }
                                             } imLayoutEnd(c);
 
-                                            if (imIf(c) && i < math.terms.length - 1) {
+                                            if (imIf(c) && termIdx < math.terms.length - 1) {
                                                 imStr(c, " + ");
                                             } imIfEnd(c);
 
                                         } imForEnd(c);
 
                                         if (imButtonIsClicked(c, "+")) {
-                                            const term = newEffectRackMathsItemTerm(math.terms.length);
+                                            const term = newEffectRackMathsItemTerm();
                                             math.terms.push(term);
                                             editor.edited = true;
                                         }
                                     } break;
+                                    case EFFECT_RACK_ITEM__SWITCH: {
+                                        const switchEffect = effect;
+
+                                        imFlex1(c);
+
+                                        imLayout(c, COL); {
+                                            imFor(c); for (let i = 0; i < switchEffect.conditions.length; i++) {
+                                                const cond = switchEffect.conditions[i];
+
+                                                imLayout(c, ROW); {
+                                                    imValueOrBindingEditor(c, editor, cond.aUi, BINDING_UI_ROW);
+
+                                                    if (imButtonIsClicked(c, cond.operator === SWITCH_OP_LT ? "<" : ">")) {
+                                                        if (cond.operator === SWITCH_OP_LT) {
+                                                            cond.operator = SWITCH_OP_GT;
+                                                            editor.edited = true;
+                                                        } else {
+                                                            cond.operator = SWITCH_OP_LT;
+                                                            editor.edited = true;
+                                                        }
+                                                    }
+
+                                                    imValueOrBindingEditor(c, editor, cond.bUi, BINDING_UI_ROW);
+
+                                                    imValueOrBindingEditor(c, editor, cond.valUi, BINDING_UI_ROW);
+
+                                                    if (imButtonIsClicked(c, "-")) {
+                                                        deferredAction = () => {
+                                                            removeItem(switchEffect.conditions, cond);
+                                                            editor.edited = true;
+                                                        };
+                                                    }
+                                                } imLayoutEnd(c);
+                                            } imForEnd(c);
+
+                                            if (imButtonIsClicked(c, "+")) {
+                                                const condition = newEffectRackSwitchCondition();
+                                                switchEffect.conditions.push(condition);
+                                                editor.edited = true;
+                                            }
+
+                                            imValueOrBindingEditor(c, editor, effect.defaultUi, BINDING_UI_ROW);
+                                        } imLayoutEnd(c);
+                                    } break; 
                                     default: unreachable(effect);
                                 } imSwitchEnd(c);
 
@@ -323,7 +359,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
 
 
                                 imLayout(c, ROW); {
-                                    if (imButtonIsClicked(c, "x")) {
+                                    if (imButtonIsClicked(c, "-")) {
                                         deferredAction = () => {
                                             filterInPlace(rack.effects, e => e !== effect)
                                             editor.edited = true;
@@ -337,7 +373,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                             deferredAction();
                         }
 
-                        if (imButtonIsClicked(c, "Add")) {
+                        if (imButtonIsClicked(c, "+")) {
                             openContextMenuAtMouse(editor.contextMenu, editor, FIELD_EDITOR_ADD_EFFECT);
                         }
 
@@ -361,6 +397,13 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                     imStr(c, "Maths");
                                     if (elHasMousePress(c)) {
                                         editor.effectRack.effects.push(newEffectRackMathsItem());
+                                        editor.edited = true;
+                                    }
+                                } imContextMenuItemEnd(c);
+                                imEditorContextMenuItemBegin(c); {
+                                    imStr(c, "Switch");
+                                    if (elHasMousePress(c)) {
+                                        editor.effectRack.effects.push(newEffectRackSwitch());
                                         editor.edited = true;
                                     }
                                 } imContextMenuItemEnd(c);
@@ -656,7 +699,7 @@ function imOscilloscope(c: ImCache, editor: EffectRackEditorState) {
                 signal = 1;
             }
 
-            computeEffectsRackIteration(rack, s.registers, keyFrequency, signal, dt);
+            computeEffectRackIteration(rack, s.registers, keyFrequency, signal, dt);
             s.samples[i] = s.registers.values[editor.currentViewingRegisterInOscilloscope];
         }
     }

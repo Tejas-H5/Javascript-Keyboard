@@ -12,13 +12,16 @@ import { IDX_OUTPUT } from "./dsp-loop-instruction-set";
 export const EFFECT_RACK_ITEM__OSCILLATOR = 0;
 export const EFFECT_RACK_ITEM__ENVELOPE = 1;
 export const EFFECT_RACK_ITEM__MATHS = 2;
+export const EFFECT_RACK_ITEM__SWITCH = 3;
 
 // export const EFFECT_RACK_DSP_INSTRUCTION_SET; this would be quite funny wouldnt it.
 
 export type EffectRackItemType
     = typeof EFFECT_RACK_ITEM__OSCILLATOR
     | typeof EFFECT_RACK_ITEM__ENVELOPE
-    | typeof EFFECT_RACK_ITEM__MATHS;
+    | typeof EFFECT_RACK_ITEM__MATHS
+    | typeof EFFECT_RACK_ITEM__SWITCH
+    ;
 
 type EffectRackItemTypeBase = {
     type: number;
@@ -26,11 +29,6 @@ type EffectRackItemTypeBase = {
     // All items have an output register
     dst:           RegisterIdx; 
 };
-
-export type EffectRackItem 
-    = EffectRackOscillator
-    | EffectRackEnvelope
-    | EffectRackMathsItem;
 
 // If we're using a RegisterIndex without reading from or writing to a register, then we're using it wrong.
 // -1 -> No register assigned.
@@ -208,14 +206,12 @@ export type EffectRackMathsItem = EffectRackItemTypeBase & {
 export type EffectRackMathsItemTerm = {
     // Bro put his designer hat on.
     coefficients: EffectRackMathsItemTermCoefficient[];
-    name: string;
 };
 
-export function newEffectRackMathsItemTerm(idx: number): EffectRackMathsItemTerm {
-    const name = "x" + idx;
+export function newEffectRackMathsItemTerm(): EffectRackMathsItemTerm {
     return { 
-        coefficients: [newEffectRackMathsItemCoefficient(name, 0)], 
-        name: name,
+        // NOTE: UI will need to set this dynamically
+        coefficients: [newEffectRackMathsItemCoefficient()], 
     };
 }
 
@@ -224,11 +220,11 @@ export type EffectRackMathsItemTermCoefficient = {
     valueUI: RegisterIdxUiMetadata;
 };
 
-export function newEffectRackMathsItemCoefficient(name: string, idx: number): EffectRackMathsItemTermCoefficient {
-    name += "" + idx;
+export function newEffectRackMathsItemCoefficient(): EffectRackMathsItemTermCoefficient {
     return {
         value: asRegisterIdx(0),
-        valueUI: newRegisterValueMetadata(name, 1, -1_000_000, 1_000_000),
+        // NOTE: UI will need to set this dynamically
+        valueUI: newRegisterValueMetadata("", 1, -1_000_000, 1_000_000),
     };
 }
 
@@ -239,6 +235,69 @@ export function newEffectRackMathsItem(): EffectRackMathsItem  {
         dst: asRegisterIdx(0),
     };
 }
+
+export type EffectRackSwitch = EffectRackItemTypeBase & {
+    type: typeof EFFECT_RACK_ITEM__SWITCH;
+    conditions: EffectRackSwitchCondition[];
+
+    default: RegisterIdx;
+    defaultUi: RegisterIdxUiMetadata;
+}
+
+export function newEffectRackSwitch(): EffectRackSwitch {
+    return {
+        type: EFFECT_RACK_ITEM__SWITCH,
+
+        conditions: [
+            newEffectRackSwitchCondition(),
+        ],
+        default: asRegisterIdx(0),
+        defaultUi: newRegisterValueMetadata("default", 0, -1_000_000, 1_000_000, REG_IDX_OUTPUT),
+
+        dst: asRegisterIdx(0),
+    };
+}
+
+export const SWITCH_OP_LT = 1;
+export const SWITCH_OP_GT = 2;
+
+export type EffectRackSwitchOperator
+    = typeof SWITCH_OP_LT
+    | typeof SWITCH_OP_GT
+    ;
+
+export type EffectRackSwitchCondition = {
+    a: RegisterIdx;
+    b: RegisterIdx;
+    operator: EffectRackSwitchOperator;
+
+    val: RegisterIdx;
+
+    aUi: RegisterIdxUiMetadata;
+    bUi: RegisterIdxUiMetadata;
+    valUi: RegisterIdxUiMetadata;
+};
+
+export function newEffectRackSwitchCondition(): EffectRackSwitchCondition {
+    return {
+        a: asRegisterIdx(0),
+        b: asRegisterIdx(0),
+        val: asRegisterIdx(0),
+
+        operator: SWITCH_OP_LT,
+
+        aUi:   newRegisterValueMetadata("a", 0),
+        bUi:   newRegisterValueMetadata("b", 0),
+        valUi: newRegisterValueMetadata("then", 0),
+    };
+}
+
+export type EffectRackItem 
+    = EffectRackOscillator
+    | EffectRackEnvelope
+    | EffectRackMathsItem
+    | EffectRackSwitch
+    ;
 
 export type EffectRack = {
     effects:   EffectRackItem[];
@@ -373,6 +432,19 @@ export function compileEffectRack(e: EffectRack) {
                     }
                 }
             } break;
+            case EFFECT_RACK_ITEM__SWITCH: {
+                const switchEffect = effect;
+
+                for (let i = 0; i < switchEffect.conditions.length; i++) {
+                    const cond = switchEffect.conditions[i];
+
+                    cond.a = allocateRegisterIdxIfNeeded(e, cond.aUi);
+                    cond.b = allocateRegisterIdxIfNeeded(e, cond.bUi);
+                    cond.val = allocateRegisterIdxIfNeeded(e, cond.valUi);
+                }
+
+                switchEffect.default = allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi);
+            } break;
             default: unreachable(effect);
         }
     }
@@ -391,7 +463,7 @@ export function newEffectRackRegisters(): EffectRackRegisters {
     };
 }
 
-export function computeEffectsRackIteration(
+export function computeEffectRackIteration(
     e: EffectRack,
     registers: EffectRackRegisters,
     keyFreqeuency: number,
@@ -494,6 +566,33 @@ export function computeEffectsRackIteration(
                     value += termValue;
                 }
 
+            } break;
+            case EFFECT_RACK_ITEM__SWITCH: {
+                const switchEffect = effect;
+
+                let broke = false;
+                for (let i = 0; i < switchEffect.conditions.length; i++) {
+                    const cond = switchEffect.conditions[i];
+
+                    const a = r(re, cond.a);
+                    const b = r(re, cond.b);
+
+                    let result;
+                    if (cond.operator === SWITCH_OP_LT) {
+                        result = a < b;
+                    } else {
+                        result = a > b;
+                    }
+
+                    if (result) {
+                        value = r(re, cond.val);
+                        broke = true;
+                        break;
+                    }
+                }
+                if (!broke) {
+                    value = r(re, switchEffect.default);
+                }
             } break;
             default: unreachable(effect);
         }

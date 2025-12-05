@@ -52,7 +52,7 @@ import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils
 import {
     asRegisterIdx,
     compileEffectRack,
-    computeEffectsRackIteration,
+    computeEffectRackIteration,
     EFFECT_RACK_ITEM__ENVELOPE,
     EFFECT_RACK_ITEM__OSCILLATOR,
     EFFECT_RACK_MINIMUM_SIZE,
@@ -78,7 +78,12 @@ import {
     newEffectRackMathsItem,
     newEffectRackMathsItemCoefficient,
     newEffectRackMathsItemTerm,
-    EFFECT_RACK_ITEM__MATHS
+    EFFECT_RACK_ITEM__MATHS,
+    EFFECT_RACK_ITEM__SWITCH,
+    SWITCH_OP_LT,
+    SWITCH_OP_GT,
+    newEffectRackSwitch,
+    newEffectRackSwitchCondition
 } from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
@@ -115,6 +120,26 @@ export function newDspPlaySettings(): DSPPlaySettings {
     }
 
     compileDefaultInstructions(settings.parameters.instructions);
+
+
+    const rack = settings.parameters.rack;
+
+    // Good default:
+    const env = newEffectRackEnvelope();
+    rack.effects.push(env);
+
+    const osc = newEffectRackOscillator();
+    rack.effects.push(osc);
+
+
+    // Rest are for testing purposes
+    {
+        const math = newEffectRackMathsItem();
+        rack.effects.push(math);
+
+        const switchEffect = newEffectRackSwitch();
+        rack.effects.push(switchEffect);
+    }
 
     return settings;
 }
@@ -251,7 +276,7 @@ export function updateOscillator(
 
     // TODO: fix how we're using the gain here
     // the gain is indicative of how much the key is 'pressed down', not the actual attack/decay envelope.
-    sampleValue = computeEffectsRackIteration(
+    sampleValue = computeEffectRackIteration(
         parameters.rack,
         osc.state._effectRackRegisters,
         f,
@@ -778,6 +803,9 @@ export function getDspLoopClassUrl(): string {
         { value: EFFECT_RACK_ITEM__OSCILLATOR, name: "EFFECT_RACK_ITEM__OSCILLATOR" },
         { value: EFFECT_RACK_ITEM__ENVELOPE, name: "EFFECT_RACK_ITEM__ENVELOPE" },
         { value: EFFECT_RACK_ITEM__MATHS, name: "EFFECT_RACK_ITEM__MATHS" },
+        { value: EFFECT_RACK_ITEM__SWITCH, name: "EFFECT_RACK_ITEM__SWITCH" },
+        { value: SWITCH_OP_LT, name: "SWITCH_OP_LT" },
+        { value: SWITCH_OP_GT, name: "SWITCH_OP_GT" },
         asRegisterIdx,
         registerIdxAsNumber,
         getRegisterIdxForUIValue,
@@ -793,7 +821,7 @@ export function getDspLoopClassUrl(): string {
         { value: REG_IDX_KEY_FREQUENCY, name: "REG_IDX_KEY_FREQUENCY" },
         { value: REG_IDX_KEY_SIGNAL, name: "REG_IDX_KEY_SIGNAL" },
         compileEffectRack,
-        computeEffectsRackIteration,
+        computeEffectRackIteration,
         newEffectRackRegisters,
         r, 
         w,
@@ -802,6 +830,8 @@ export function getDspLoopClassUrl(): string {
         newEffectRackMathsItem,
         newEffectRackMathsItemTerm,
         newEffectRackMathsItemCoefficient,
+        newEffectRackSwitch,
+        newEffectRackSwitchCondition,
     ], [
     ], function register() {
 
