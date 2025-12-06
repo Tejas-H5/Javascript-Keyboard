@@ -61,6 +61,8 @@ export const debugFlags: DebugFlags = {
     testAsyncALittle: ON_EVERYWHERE,
 };
 
+// You're welcome
+(window as any).debugFlags = debugFlags;
 
 // NOTE: to test this correctly if at all, put the timeout _after_ something that might be a single API request
 export function getTestSleepMs(f: DebugFlags): number {

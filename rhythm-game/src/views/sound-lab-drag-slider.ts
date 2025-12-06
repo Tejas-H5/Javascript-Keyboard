@@ -25,31 +25,56 @@ export function imParameterSliderInteraction(
 
     const { mouse } = getGlobalEventSystem();
 
+    let shift = false;
+
     if (mouse.ev?.shiftKey) {
         step = 0.1
+        shift = true;
     }
+
+    let pixelsPerUnit = 100;
+
+    if (mouse.ev?.ctrlKey) {
+        pixelsPerUnit = 1000;
+        if (shift) {
+            step = 0.001;
+        }
+    }
+
+    let isDragging = false;
 
     if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
-        const state = imCompactCircularDragSlideInteraction(c, val, min, max, 100, 1);
+        const state = imCompactCircularDragSlideInteraction(c, val, min, max, pixelsPerUnit, 1);
         imCompactCircularDragSlideInteractionFeedback(c, state);
 
-        val = state.value;
+        if (state.isDragging) {
+            isDragging = true;
+            val = state.value;
+        }
     } else {
         imElse(c);
-        val = imCompactLinearDragSlideInteraction(c, 100, val, min, max);
+
+        const state = imCompactLinearDragSlideInteraction(c, 100, val, min, max);
+        if (state.isDragging) {
+            isDragging = true;
+            val = state.draggedValue;
+        }
     } imEndIf(c);
 
-    val = gridsnapRound(val, step);
-    val = clamp(val, min, max);
 
-    if (elHasMousePress(c) && mouse.rightMouseButton) {
-        // Reset to default value on rightclick
-        mouse.ev?.preventDefault();
-        val = defaultValue;
-    }
+    if (isDragging) {
+        val = gridsnapRound(val, step);
+        val = clamp(val, min, max);
 
-    if (val !== initialVal) {
-        return { val };
+        if (elHasMousePress(c) && mouse.rightMouseButton) {
+            // Reset to default value on rightclick
+            mouse.ev?.preventDefault();
+            val = defaultValue;
+        }
+
+        if (val !== initialVal) {
+            return { val };
+        }
     }
 
     return null;

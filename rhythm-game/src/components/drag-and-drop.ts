@@ -1,4 +1,3 @@
-import { arrayMove } from "src/utils/array-utils";
 import { ImCache, imGet, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { elHasMouseOver, elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
 import { imBg } from "./core/layout";
@@ -6,6 +5,7 @@ import { cssVars } from "./core/stylesheets";
 
 export type DragAndDropState =  {
     move: { a: number; b: number; } | null;
+    moved: { a: number; b: number; } | null;
 
     drag: {
         startX: number;
@@ -15,27 +15,21 @@ export type DragAndDropState =  {
     } | null;
 };
 
-export const DND_AUTOMOVE = 1 << 0;
-
 // NOTE: API not complete - it works well enough for lists, but we don't know how it will handle Kanban style dnd
 // TODO: animate inserts and removes. not easy and we really dont need it most of the time so I may never get around to it.
-export function imDragAndDrop(c: ImCache, list: unknown[], flags = 0): DragAndDropState {
+export function imDragAndDrop(c: ImCache): DragAndDropState {
     const dnd = imGet(c, imDragAndDrop) ?? imSet<DragAndDropState>(c, {
         move: null,
-
+        moved: null,
         drag: null,
     });
 
+    if (dnd.moved) {
+        dnd.moved = null;
+    }
+
     if (dnd.move) {
-        if (flags & DND_AUTOMOVE) {
-            const a = dnd.move.a;
-            const b = dnd.move.b;
-
-            if (a >= 0 && a < list.length && b >= 0 && b < list.length) {
-                arrayMove(list, a, b);
-            }
-        }
-
+        dnd.moved = dnd.move;
         dnd.move = null;
         // If we just moved something, dragging should be cleared out as well. 
         dnd.drag = null;

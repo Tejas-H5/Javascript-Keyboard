@@ -45,6 +45,11 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState): number | nu
                             closeContextMenu(s);
                         }
                     }
+
+                    if (s.position.y + rect.height > window.innerHeight) {
+                        const wantedTop = s.position.y - rect.height;
+                        s.position.y = wantedTop;
+                    }
                 }
 
                 if (isFirstishRender(c)) {

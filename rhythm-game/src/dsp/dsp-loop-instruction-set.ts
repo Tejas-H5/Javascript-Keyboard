@@ -90,6 +90,7 @@ export const IDX_COUNT            = 32;
 export const REGISTER_INFO  = {
     reserved: [
         { name: "Output" },
+        { name: "Debug output" },
         { name: "Frequency" },
         { name: "Signal" },
         { name: "DeltaTime" },

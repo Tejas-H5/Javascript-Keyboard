@@ -1,8 +1,16 @@
 import { BLOCK, imAbsolute, imBg, imFg, imFixed, imLayout, imLayoutEnd, imOpacity, imSize, NA, PX } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { ImCache, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { ImCache, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
 import { clamp, deltaAngle } from "src/utils/math-utils";
+
+export type CompactLinearDragSlideInteractionState = {
+    isDragging: boolean;
+    lastMouseX: number;
+    // Track our own copy of the value being dragged, so that
+    // clamping can be implemented userside properly
+    draggedValue: number;
+};
 
 export function imCompactLinearDragSlideInteraction(
     c: ImCache,
@@ -10,8 +18,8 @@ export function imCompactLinearDragSlideInteraction(
     value: number,
     min: number,
     max: number,
-): number {
-    const s = imGetInline(c, imCompactLinearDragSlideInteraction) ?? imSet(c, {
+): CompactLinearDragSlideInteractionState {
+    const s = imGet(c, imCompactLinearDragSlideInteraction) ?? imSet(c, {
         isDragging: false,
         lastMouseX: 0,
         // Track our own copy of the value being dragged, so that
@@ -50,11 +58,10 @@ export function imCompactLinearDragSlideInteraction(
         if (Math.abs(dragDistance) > 0.000001) {
             s.draggedValue += dragDistance / pixelsPerUnit;
             s.draggedValue = clamp(s.draggedValue, min, max);
-            value = s.draggedValue;
         }
     }
 
-    return value;
+    return s;
 }
 
 

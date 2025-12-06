@@ -45,7 +45,7 @@ import {
     INSTR_MULTIPLY_DT,
     INSTR_ADD_DT,
     INSTR_RECIPR_DT,
-    INSTR_ADD_RECIPR_DT
+    INSTR_ADD_RECIPR_DT,
 } from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils/turn-based-waves";
@@ -64,7 +64,6 @@ import {
     newEffectRackRegisters,
     newEffectRackEnvelope,
     newEffectRackOscillator,
-    newOscillatorWave,
     newRegisterValueMetadata,
     REG_IDX_KEY_FREQUENCY,
     REG_IDX_KEY_SIGNAL,
@@ -83,7 +82,8 @@ import {
     SWITCH_OP_LT,
     SWITCH_OP_GT,
     newEffectRackSwitch,
-    newEffectRackSwitchCondition
+    newEffectRackSwitchCondition,
+    newEffectRackItem
 } from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
@@ -125,20 +125,21 @@ export function newDspPlaySettings(): DSPPlaySettings {
     const rack = settings.parameters.rack;
 
     // Good default:
-    const env = newEffectRackEnvelope();
-    rack.effects.push(env);
-
     const osc = newEffectRackOscillator();
-    rack.effects.push(osc);
+    rack.effects.push(newEffectRackItem(osc));
+
+    const env = newEffectRackEnvelope();
+    rack.effects.push(newEffectRackItem(env));
+
 
 
     // Rest are for testing purposes
     {
         const math = newEffectRackMathsItem();
-        rack.effects.push(math);
+        rack.effects.push(newEffectRackItem(math));
 
         const switchEffect = newEffectRackSwitch();
-        rack.effects.push(switchEffect);
+        rack.effects.push(newEffectRackItem(switchEffect));
     }
 
     return settings;
@@ -740,7 +741,6 @@ export function getDspLoopClassUrl(): string {
         { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
         { value: INSTR_RECIPR_DT, name: "INSTR_RECIPR_DT" },
         { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
-        // NOTE: not sure if indices are really needed tbh.
         { value: IDX_WANTED_FREQUENCY, name: "IDX_WANTED_FREQUENCY" },
         { value: IDX_SIGNAL, name: "IDX_SIGNAL" },
         { value: IDX_DT, name: "IDX_DT" },
@@ -811,8 +811,8 @@ export function getDspLoopClassUrl(): string {
         getRegisterIdxForUIValue,
         newRegisterValueMetadata,
         newEffectRackOscillator,
-        newOscillatorWave,
         newEffectRackEnvelope,
+        newEffectRackItem,
         newEffectRackBinding,
         newEffectRack,
         { value: EFFECT_RACK_MINIMUM_SIZE, name: "EFFECT_RACK_MINIMUM_SIZE" },

@@ -62,6 +62,9 @@ export function arraySwap(arr: unknown[], i: number, j: number) {
 }
 
 export function arrayMove(arr: unknown[], a: number, b: number) {
-    const val = arr.splice(a, 1);
-    arr.splice(b, 0, ...val);
+    if (a >= 0 && a < arr.length && b >= 0 && b < arr.length) {
+        const val = arr.splice(a, 1);
+        arr.splice(b, 0, ...val);
+    }
 }
+

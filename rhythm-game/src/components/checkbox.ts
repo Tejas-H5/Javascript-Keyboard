@@ -21,13 +21,17 @@ const cnL = {
 // TODO: replace label for `children` static parameter.
 // NOTE: the main reason why we would want to inject the label as a child here is so that we may click on the 
 // label to trigger the checkbox as well, just because it can be easier to do so.
-export function imCheckbox(c: ImCache, checked: boolean): boolean {
-    let result = checked;
+export function imCheckbox(c: ImCache, checked: boolean): { checked: boolean } | null {
+    // Actually a good reason to prefer event based returns instead of the normal 
+    // immediate mode thing of nextValue = fn(value) - it fks up when multiple
+    // UI widgets all depend on each other. A change in one value is incorrectly
+    // interpreted by calling code as a change in another widget as well.
+    let result = null;
 
     // I didn't think a checkbox could be broken down any further ...
     imCheckboxBegin(c); {
         if (elHasMousePress(c)) {
-            result = !result;
+            result = { checked: !checked }
         }
         imCheckboxCheckBegin(c, checked);
         imCheckboxCheckEnd(c);
