@@ -1,12 +1,11 @@
 import { COL, imAbsolute, imFixed, imJustify, imLayout, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { ImCache, imIf, imIfEnd, isFirstishRender } from "src/utils/im-core";
+import { ImCache, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
 
 export type ContextMenuState = {
     position: { x: number; y: number; };
     distanceToClose: number;
-    open: boolean;
     item: unknown | null;
     field: unknown | null;
 };
@@ -14,7 +13,6 @@ export type ContextMenuState = {
 export function newContextMenuState(): ContextMenuState {
     return {
         position: { x: 0, y: 0 },
-        open: false,
         item: null,
         field: null,
         distanceToClose: 50,
@@ -27,60 +25,58 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState): number | nu
     const x = s.position.x;
     const y = s.position.y;
 
-    if (imIf(c) && s.open) {
-        imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, 10000); {
-            const root = imLayout(c, COL); imAbsolute(c, y, PX, 0, NA, 0, NA, x, PX); {
-                if (s.open) {
-                    const mouse = getGlobalEventSystem().mouse;
-                    const rect = root.getBoundingClientRect();
+    imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, 10000); {
+        const root = imLayout(c, COL); imAbsolute(c, y, PX, 0, NA, 0, NA, x, PX); {
+            const mouse = getGlobalEventSystem().mouse;
+            const rect = root.getBoundingClientRect();
 
-                    if (Math.abs(rect.x - rect.y) > 10) {
-                        let mouseDistanceFromBorder = 0;
-                        mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, rect.left - mouse.X);
-                        mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, mouse.X - rect.right);
-                        mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, rect.top - mouse.Y);
-                        mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, mouse.Y - rect.bottom);
+            if (Math.abs(rect.x - rect.y) > 10) {
+                let mouseDistanceFromBorder = 0;
+                mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, rect.left - mouse.X);
+                mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, mouse.X - rect.right);
+                mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, rect.top - mouse.Y);
+                mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, mouse.Y - rect.bottom);
 
-                        if (mouseDistanceFromBorder > s.distanceToClose) {
-                            closeContextMenu(s);
-                        }
-                    }
-
-                    if (s.position.y + rect.height > window.innerHeight) {
-                        const wantedTop = s.position.y - rect.height;
-                        s.position.y = wantedTop;
-                    }
+                if (mouseDistanceFromBorder > s.distanceToClose) {
+                    closeContextMenu(s);
                 }
+            }
 
-                if (isFirstishRender(c)) {
-                    elSetStyle(c, "padding", "3px");
-                    elSetStyle(c, "userSelect", "none");
-                    elSetStyle(c, "backgroundColor", cssVars.bg);
-                    elSetStyle(c, "boxShadow", "4px 4px 5px 0px rgba(0,0,0,0.37)");
-                    elSetStyle(c, "border", "1px solid rgba(0,0,0,0.37)");
-                }
+            if (s.position.y + rect.height > window.innerHeight) {
+                const wantedTop = s.position.y - rect.height;
+                s.position.y = wantedTop;
+            }
 
-            } // imLayoutEnd(c);
+            if (isFirstishRender(c)) {
+                elSetStyle(c, "padding", "3px");
+                elSetStyle(c, "userSelect", "none");
+                elSetStyle(c, "backgroundColor", cssVars.bg);
+                elSetStyle(c, "boxShadow", "4px 4px 5px 0px rgba(0,0,0,0.37)");
+                elSetStyle(c, "border", "1px solid rgba(0,0,0,0.37)");
+            }
+
         } // imLayoutEnd(c);
-    } // imIfEnd(c);
+    } // imLayoutEnd(c);
 
     return result;
 }
 
 export function imContextMenuEnd(c: ImCache, s: ContextMenuState) {
-    // imIf
+    // imLayout
     {
         // imLayout
         {
-            // imLayout
-            {
-            } imLayoutEnd(c);
-
             if (elHasMousePress(c)) {
-                closeContextMenu(s);
+                const mouse = getGlobalEventSystem().mouse;
+                mouse.mouseDownElements.clear();
+                mouse.mouseClickElements.clear();
             }
         } imLayoutEnd(c);
-    } imIfEnd(c);
+
+        if (elHasMousePress(c)) {
+            closeContextMenu(s);
+        }
+    } imLayoutEnd(c);
 }
 
 // This is not as important as imContextMenuBegin/End, and can be changed for something else.
@@ -99,7 +95,6 @@ export function imContextMenuItemEnd(c: ImCache) {
 }
 
 export function openContextMenu(s: ContextMenuState, x: number, y: number, item: unknown, field: unknown) {
-    s.open = true;
     s.position.x = x;
     s.position.y = y;
     s.item = item;
@@ -107,7 +102,6 @@ export function openContextMenu(s: ContextMenuState, x: number, y: number, item:
 }
 
 export function closeContextMenu(s: ContextMenuState) {
-    s.open = false;
     s.item = null;
     s.field = null;
 }
@@ -119,5 +113,5 @@ export function openContextMenuAtMouse(s: ContextMenuState, item: unknown, field
 
 
 export function contextMenuIsOpen(s: ContextMenuState, item: unknown, field: unknown) {
-    return s.open && s.item === item && s.field === field;
+    return s.item === item && s.field === field;
 }

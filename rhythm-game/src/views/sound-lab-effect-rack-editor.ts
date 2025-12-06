@@ -1,4 +1,5 @@
 import {
+    closeContextMenu,
     contextMenuIsOpen,
     ContextMenuState,
     imContextMenuBegin,
@@ -52,7 +53,9 @@ import {
     EFFECT_RACK_ITEM__OSCILLATOR,
     EFFECT_RACK_ITEM__SWITCH,
     EffectRack,
+    EffectRackOscillatorWaveType,
     EffectRackRegisters,
+    getEffectRackOscillatorWaveTypeName,
     getRegisterIdxForUIValue,
     newEffectRackBinding,
     newEffectRackEnvelope,
@@ -64,6 +67,10 @@ import {
     newEffectRackRegisters,
     newEffectRackSwitch,
     newEffectRackSwitchCondition,
+    OSC_WAVE__SAWTOOTH,
+    OSC_WAVE__SIN,
+    OSC_WAVE__SQUARE,
+    OSC_WAVE__TRIANGLE,
     RegisterIdx,
     RegisterIdxUiMetadata,
     SWITCH_OP_GT,
@@ -80,6 +87,8 @@ import {
     imIf,
     imIfElse,
     imIfEnd,
+    imKeyedBegin,
+    imKeyedEnd,
     imMemo,
     imState,
     imSwitch,
@@ -95,6 +104,13 @@ import { drawSamples, newPlotState } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 import { cssVarsApp } from "./styling";
 import { getDspInfo } from "src/dsp/dsp-loop-interface";
+
+const allWaveTypes: EffectRackOscillatorWaveType[] = [
+    OSC_WAVE__SIN,
+    OSC_WAVE__SQUARE,
+    OSC_WAVE__SAWTOOTH,
+    OSC_WAVE__TRIANGLE,
+];
 
 const MODAL_NONE = 0;
 const MODAL_EXPORT = 1;
@@ -202,6 +218,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
 
     const FIELD_OSC_DST = 1;
     const FIELD_EDITOR_ADD_EFFECT = 2;
+    const FIELD_WAVE_TYPE = 3;
 
     editor.highlightedRegister = editor.highlightedRegisterNext;
     editor.highlightedRegisterNext = -1;
@@ -353,256 +370,251 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         imFor(c); for (let effectIdx = 0; effectIdx < rack.effects.length; effectIdx++) {
                             const effect = rack.effects[effectIdx];
 
-                            const effectDisabled = !effect.enabled || 
-                                (rack.debugEffectIdx !== -1 && effectIdx > rack.debugEffectIdx);
+                            imKeyedBegin(c, effect); {
+                                const effectDisabled = !effect.enabled ||
+                                    (rack.debugEffectIdx !== -1 && effectIdx > rack.debugEffectIdx);
 
-                            imLayout(c, COL); {
-                                imLayout(c, ROW); imAlign(c);
-                                imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imGap(c, 10, PX); {
-                                    imFg(c, effectDisabled ? cssVars.mg : "");
+                                imLayout(c, COL); {
+                                    imLayout(c, ROW); imAlign(c);
+                                    imPadding(c, 5, PX, 5, PX, 5, PX, 5, PX); imGap(c, 10, PX); {
+                                        imFg(c, effectDisabled ? cssVars.mg : "");
 
-                                    imDropZoneForPrototyping(c, effectsDnd, effectIdx);
-                                    imDragCssTransform(c, effectsDnd, effectIdx);
+                                        imDropZoneForPrototyping(c, effectsDnd, effectIdx);
+                                        imDragCssTransform(c, effectsDnd, effectIdx);
 
-                                    let name = "???";
-                                    switch (effect.value.type) {
-                                        case EFFECT_RACK_ITEM__OSCILLATOR: name = "OSC"; break;
-                                        case EFFECT_RACK_ITEM__ENVELOPE: name = "ENV"; break;
-                                        case EFFECT_RACK_ITEM__MATHS: name = "MATHS"; break;
-                                        case EFFECT_RACK_ITEM__SWITCH: name = "SWITCH"; break;
-                                        default: unreachable(effect.value);
-                                    }
+                                        let name = "???";
+                                        switch (effect.value.type) {
+                                            case EFFECT_RACK_ITEM__OSCILLATOR: name = "OSC"; break;
+                                            case EFFECT_RACK_ITEM__ENVELOPE: name = "ENV"; break;
+                                            case EFFECT_RACK_ITEM__MATHS: name = "MATHS"; break;
+                                            case EFFECT_RACK_ITEM__SWITCH: name = "SWITCH"; break;
+                                            default: unreachable(effect.value);
+                                        }
 
-                                    imVerticalText(c); imAlign(c); {
-                                        imDragHandle(c, effectsDnd, effectIdx);
-                                        imStr(c, name);
-                                    } imLayoutEnd(c);
-
-                                    imLine(c, LINE_VERTICAL, 5);
-
-                                    imLayout(c, COL); imGap(c, 10, PX); {
-                                        imLayout(c, ROW); {
-                                            const ev = imCheckbox(c, effect.enabled);
-                                            if (ev) {
-                                                effect.enabled = ev.checked;
-                                                editor.edited = true;
-                                            }
+                                        imVerticalText(c); imAlign(c); {
+                                            imDragHandle(c, effectsDnd, effectIdx);
+                                            imStr(c, name);
                                         } imLayoutEnd(c);
-                                        imLayout(c, ROW); {
-                                            const isDebugging = effectIdx === rack.debugEffectIdx;
-                                            const ev = imCheckbox(c, isDebugging);
-                                            if (ev) {
-                                                if (ev.checked) {
-                                                    rack.debugEffectIdx = effectIdx;
-                                                } else {
-                                                    rack.debugEffectIdx = -1;
+
+                                        imLine(c, LINE_VERTICAL, 5);
+
+                                        imLayout(c, ROW); imGap(c, 10, PX); {
+                                            imLayout(c, ROW); {
+                                                const ev = imCheckbox(c, effect.enabled);
+                                                if (ev) {
+                                                    effect.enabled = ev.checked;
+                                                    editor.edited = true;
                                                 }
-                                                editor.edited = true;
-                                            }
-                                        } imLayoutEnd(c);
-                                    } imLayoutEnd(c);
-
-                                    imLine(c, LINE_VERTICAL, 5);
-
-                                    const effectValue = effect.value;
-                                    imSwitch(c, effectValue.type); switch (effectValue.type) {
-                                        case EFFECT_RACK_ITEM__OSCILLATOR: {
-                                            const osc = effectValue;
-
-                                            imValueOrBindingEditor(c, editor, osc.amplitudeUI);
-
-                                            imFlex1(c);
-
-                                            imValueOrBindingEditor(c, editor, osc.phaseUI);
-                                            imValueOrBindingEditor(c, editor, osc.frequencyUI);
-                                            imValueOrBindingEditor(c, editor, osc.sinUI);
-                                            imValueOrBindingEditor(c, editor, osc.squareUI);
-                                            imValueOrBindingEditor(c, editor, osc.triangleUI);
-                                            imValueOrBindingEditor(c, editor, osc.sawUI);
-                                        } break;
-                                        case EFFECT_RACK_ITEM__ENVELOPE: {
-                                            const envelope = effectValue;
-
-                                            const newTarget = imBindingEditor(c, editor, effect, FIELD_OSC_DST, envelope.toModulate);
-                                            if (newTarget !== envelope.toModulate) {
-                                                envelope.toModulate = newTarget;
-                                                editor.edited = true;
-                                            }
-
-                                            imLayout(c, ROW); imFlex(c); imJustify(c); {
-                                                imStr(c, " * ");
                                             } imLayoutEnd(c);
+                                            imLayout(c, ROW); {
+                                                const isDebugging = effectIdx === rack.debugEffectIdx;
+                                                const ev = imCheckbox(c, isDebugging);
+                                                if (ev) {
+                                                    if (ev.checked) {
+                                                        rack.debugEffectIdx = effectIdx;
+                                                    } else {
+                                                        rack.debugEffectIdx = -1;
+                                                    }
+                                                    editor.edited = true;
+                                                }
+                                            } imLayoutEnd(c);
+                                        } imLayoutEnd(c);
 
-                                            imValueOrBindingEditor(c, editor, envelope.signalUI);
-                                            imValueOrBindingEditor(c, editor, envelope.attackUI);
-                                            imValueOrBindingEditor(c, editor, envelope.decayUI);
-                                            imValueOrBindingEditor(c, editor, envelope.sustainUI);
-                                            imValueOrBindingEditor(c, editor, envelope.releaseUI);
-                                        } break;
-                                        case EFFECT_RACK_ITEM__MATHS: {
-                                            const math = effectValue;
+                                        imLine(c, LINE_VERTICAL, 5);
 
-                                            imLayout(c, ROW); imAlign(c); imGap(c, 10, PX); {
-                                                if (isFirstishRender(c)) {
-                                                    elSetStyle(c, "flexFlow", "wrap");
+                                        const effectValue = effect.value;
+                                        imSwitch(c, effectValue.type); switch (effectValue.type) {
+                                            case EFFECT_RACK_ITEM__OSCILLATOR: {
+                                                const osc = effectValue;
+
+                                                imValueOrBindingEditor(c, editor, osc.amplitudeUI, BINDING_UI_ROW);
+
+                                                if (imIf(c) && contextMenuIsOpen(editor.contextMenu, osc, FIELD_WAVE_TYPE)) {
+                                                    imContextMenuBegin(c, editor.contextMenu); {
+                                                        imFor(c); for (const type of allWaveTypes) {
+                                                            imEditorContextMenuItemBegin(c); {
+                                                                if (elHasMousePress(c)) {
+                                                                    osc.waveType = type;
+                                                                    editor.edited = true;
+                                                                }
+                                                                imStrFmt(c, type, getEffectRackOscillatorWaveTypeName);
+                                                            } imEditorContextMenuItemEnd(c);
+                                                        } imForEnd(c);
+                                                    } imContextMenuEnd(c, editor.contextMenu);
+                                                } imIfEnd(c);
+
+                                                if (imButtonIsClicked(c, getEffectRackOscillatorWaveTypeName(osc.waveType))) {
+                                                    openContextMenuAtMouse(editor.contextMenu, osc, FIELD_WAVE_TYPE);
                                                 }
 
-                                                imFor(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
-                                                    const term = math.terms[termIdx];
-                                                    imLayout(c, COL); {
-                                                        imLayout(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
-                                                            imEl(c, EL_I); {
-                                                                imEl(c, EL_B); imStr(c, "x"); imStr(c, termIdx); imElEnd(c, EL_B);
-                                                            } imElEnd(c, EL_I);
+                                                imValueOrBindingEditor(c, editor, osc.frequencyUI, BINDING_UI_ROW);
+                                                imValueOrBindingEditor(c, editor, osc.phaseUI, BINDING_UI_ROW);
+                                            } break;
+                                            case EFFECT_RACK_ITEM__ENVELOPE: {
+                                                const envelope = effectValue;
 
-                                                            if (imButtonIsClicked(c, "-")) {
-                                                                deferredAction = () => {
-                                                                    filterInPlace(math.terms, termOther => termOther !== term);
-                                                                    editor.edited = true;
-                                                                };
+                                                const newTarget = imBindingEditor(c, editor, effect, FIELD_OSC_DST, envelope.toModulate);
+                                                if (newTarget !== envelope.toModulate) {
+                                                    envelope.toModulate = newTarget;
+                                                    editor.edited = true;
+                                                }
+
+                                                imLayout(c, ROW); imFlex(c); imJustify(c); {
+                                                    imStr(c, " * ");
+                                                } imLayoutEnd(c);
+
+                                                imValueOrBindingEditor(c, editor, envelope.signalUI);
+                                                imValueOrBindingEditor(c, editor, envelope.attackUI);
+                                                imValueOrBindingEditor(c, editor, envelope.decayUI);
+                                                imValueOrBindingEditor(c, editor, envelope.sustainUI);
+                                                imValueOrBindingEditor(c, editor, envelope.releaseUI);
+                                            } break;
+                                            case EFFECT_RACK_ITEM__MATHS: {
+                                                const math = effectValue;
+
+                                                imLayout(c, COL); imAlign(c); imGap(c, 10, PX); {
+                                                    imFor(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
+                                                        const term = math.terms[termIdx];
+                                                        imLayout(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                                                            if (isFirstishRender(c)) {
+                                                                elSetStyle(c, "flexFlow", "wrap");
                                                             }
-                                                        } imLayoutEnd(c);
 
-                                                        // order of coefficients literally doesnt matter here at all. 
-                                                        // I have added this just because I can.
-                                                        const coefficientsDnd = imDragAndDrop(c);
-                                                        if (coefficientsDnd.moved) {
-                                                            const a = coefficientsDnd.moved.a;
-                                                            const b = coefficientsDnd.moved.b;
-                                                            arrayMove(term.coefficients, a, b);
-                                                            editor.edited = true;
-                                                        }
-                                                        imFor(c); for (let coIdx = 0; coIdx < term.coefficients.length; coIdx++) {
-                                                            const co = term.coefficients[coIdx];
-                                                            imLayout(c, ROW); imJustify(c); imDropZoneForPrototyping(c, coefficientsDnd, coIdx); {
-                                                                imDragCssTransform(c, coefficientsDnd, coIdx);
-
-                                                                imLayout(c, ROW); imSize(c, 20, PX, 0, NA); imBg(c, elHasMouseOver(c) ? cssVars.fg : ""); {
-                                                                    imDragHandle(c, coefficientsDnd, coIdx);
-                                                                } imLayoutEnd(c);
-
-                                                                if (imMemo(c, co)) co.valueUI.name = "x" + termIdx.toString() + coIdx.toString();
-                                                                imValueOrBindingEditor(c, editor, co.valueUI, BINDING_UI_ROW);
+                                                            imLayout(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
+                                                                imEl(c, EL_I); {
+                                                                    imEl(c, EL_B); imStr(c, "x"); imStr(c, termIdx); imElEnd(c, EL_B);
+                                                                } imElEnd(c, EL_I);
 
                                                                 if (imButtonIsClicked(c, "-")) {
                                                                     deferredAction = () => {
-                                                                        filterInPlace(term.coefficients, coOther => coOther !== co);
+                                                                        filterInPlace(math.terms, termOther => termOther !== term);
                                                                         editor.edited = true;
                                                                     };
                                                                 }
                                                             } imLayoutEnd(c);
-                                                            if (imIf(c) && coIdx < term.coefficients.length - 1) {
+
+                                                            imFor(c); for (let coIdx = 0; coIdx < term.coefficients.length; coIdx++) {
+                                                                const co = term.coefficients[coIdx];
                                                                 imLayout(c, ROW); imJustify(c); {
-                                                                    imStr(c, " * ");
+                                                                    if (imMemo(c, co)) co.valueUI.name = "x" + termIdx.toString() + coIdx.toString();
+                                                                    imValueOrBindingEditor(c, editor, co.valueUI, BINDING_UI_ROW);
+
+                                                                    if (imButtonIsClicked(c, "-")) {
+                                                                        deferredAction = () => {
+                                                                            filterInPlace(term.coefficients, coOther => coOther !== co);
+                                                                            editor.edited = true;
+                                                                        };
+                                                                    }
                                                                 } imLayoutEnd(c);
-                                                            } imIfEnd(c);
-                                                        } imForEnd(c);
-                                                        if (imButtonIsClicked(c, "+")) {
-                                                            const co = newEffectRackMathsItemCoefficient();
-                                                            term.coefficients.push(co);
-                                                            editor.edited = true;
-                                                        }
-                                                    } imLayoutEnd(c);
-
-                                                    if (imIf(c) && termIdx < math.terms.length - 1) {
-                                                        imStr(c, " + ");
-                                                    } imIfEnd(c);
-
-                                                } imForEnd(c);
-
-                                                if (imButtonIsClicked(c, "+")) {
-                                                    const term = newEffectRackMathsItemTerm();
-                                                    math.terms.push(term);
-                                                    editor.edited = true;
-                                                }
-                                            } imLayoutEnd(c);
-                                        } break;
-                                        case EFFECT_RACK_ITEM__SWITCH: {
-                                            const switchEffect = effectValue;
-
-                                            imFlex1(c);
-
-                                            imLayout(c, COL); {
-                                                imFor(c); for (let i = 0; i < switchEffect.conditions.length; i++) {
-                                                    const cond = switchEffect.conditions[i];
-
-                                                    imLayout(c, ROW); {
-                                                        imValueOrBindingEditor(c, editor, cond.aUi, BINDING_UI_ROW);
-
-                                                        if (imButtonIsClicked(c, cond.operator === SWITCH_OP_LT ? "<" : ">")) {
-                                                            if (cond.operator === SWITCH_OP_LT) {
-                                                                cond.operator = SWITCH_OP_GT;
-                                                                editor.edited = true;
-                                                            } else {
-                                                                cond.operator = SWITCH_OP_LT;
+                                                                if (imIf(c) && coIdx < term.coefficients.length - 1) {
+                                                                    imLayout(c, ROW); imJustify(c); {
+                                                                        imStr(c, " * ");
+                                                                    } imLayoutEnd(c);
+                                                                } imIfEnd(c);
+                                                            } imForEnd(c);
+                                                            if (imButtonIsClicked(c, "+")) {
+                                                                const co = newEffectRackMathsItemCoefficient();
+                                                                term.coefficients.push(co);
                                                                 editor.edited = true;
                                                             }
-                                                        }
+                                                        } imLayoutEnd(c);
 
-                                                        imValueOrBindingEditor(c, editor, cond.bUi, BINDING_UI_ROW);
+                                                        if (imIf(c) && termIdx < math.terms.length - 1) {
+                                                            imStr(c, " + ");
+                                                        } imIfEnd(c);
 
-                                                        imValueOrBindingEditor(c, editor, cond.valUi, BINDING_UI_ROW);
+                                                    } imForEnd(c);
 
-                                                        if (imButtonIsClicked(c, "-")) {
-                                                            deferredAction = () => {
-                                                                removeItem(switchEffect.conditions, cond);
-                                                                editor.edited = true;
-                                                            };
-                                                        }
-                                                    } imLayoutEnd(c);
-                                                } imForEnd(c);
+                                                    if (imButtonIsClicked(c, "+")) {
+                                                        const term = newEffectRackMathsItemTerm();
+                                                        math.terms.push(term);
+                                                        editor.edited = true;
+                                                    }
+                                                } imLayoutEnd(c);
+                                            } break;
+                                            case EFFECT_RACK_ITEM__SWITCH: {
+                                                const switchEffect = effectValue;
 
-                                                if (imButtonIsClicked(c, "+")) {
-                                                    const condition = newEffectRackSwitchCondition();
-                                                    switchEffect.conditions.push(condition);
+                                                imFlex1(c);
+
+                                                imLayout(c, COL); {
+                                                    imFor(c); for (let i = 0; i < switchEffect.conditions.length; i++) {
+                                                        const cond = switchEffect.conditions[i];
+
+                                                        imLayout(c, ROW); {
+                                                            imValueOrBindingEditor(c, editor, cond.aUi, BINDING_UI_ROW);
+
+                                                            if (imButtonIsClicked(c, cond.operator === SWITCH_OP_LT ? "<" : ">")) {
+                                                                if (cond.operator === SWITCH_OP_LT) {
+                                                                    cond.operator = SWITCH_OP_GT;
+                                                                    editor.edited = true;
+                                                                } else {
+                                                                    cond.operator = SWITCH_OP_LT;
+                                                                    editor.edited = true;
+                                                                }
+                                                            }
+
+                                                            imValueOrBindingEditor(c, editor, cond.bUi, BINDING_UI_ROW);
+
+                                                            imValueOrBindingEditor(c, editor, cond.valUi, BINDING_UI_ROW);
+
+                                                            if (imButtonIsClicked(c, "-")) {
+                                                                deferredAction = () => {
+                                                                    removeItem(switchEffect.conditions, cond);
+                                                                    editor.edited = true;
+                                                                };
+                                                            }
+                                                        } imLayoutEnd(c);
+                                                    } imForEnd(c);
+
+                                                    if (imButtonIsClicked(c, "+")) {
+                                                        const condition = newEffectRackSwitchCondition();
+                                                        switchEffect.conditions.push(condition);
+                                                        editor.edited = true;
+                                                    }
+
+                                                    imValueOrBindingEditor(c, editor, switchEffect.defaultUi, BINDING_UI_ROW);
+                                                } imLayoutEnd(c);
+                                            } break;
+                                            default: unreachable(effectValue);
+                                        } imSwitchEnd(c);
+
+                                        imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imNoWrap(c); {
+                                            imStr(c, " -> ");
+                                        } imLayoutEnd(c);
+
+                                        imLayout(c, ROW); imAlign(c); {
+                                            const newDst = imBindingEditor(c, editor, effect, FIELD_OSC_DST, effect.dst);
+                                            if (newDst !== effect.dst) {
+                                                effect.dst = newDst;
+                                                editor.edited = true;
+                                            }
+                                        } imLayoutEnd(c);
+
+
+                                        imLayout(c, ROW); imGap(c, 10, PX); {
+                                            if (imButtonIsClicked(c, "-")) {
+                                                deferredAction = () => {
+                                                    filterInPlace(rack.effects, e => e !== effect)
                                                     editor.edited = true;
                                                 }
-
-                                                imValueOrBindingEditor(c, editor, switchEffect.defaultUi, BINDING_UI_ROW);
-                                            } imLayoutEnd(c);
-                                        } break;
-                                        default: unreachable(effectValue);
-                                    } imSwitchEnd(c);
-
-                                    imLayout(c, ROW); imAlign(c); imJustify(c); imFlex(c); imNoWrap(c); {
-                                        imStr(c, " -> ");
-                                    } imLayoutEnd(c);
-
-                                    imLayout(c, ROW); imAlign(c); {
-                                        const newDst = imBindingEditor(c, editor, effect, FIELD_OSC_DST, effect.dst);
-                                        if (newDst !== effect.dst) {
-                                            effect.dst = newDst;
-                                            editor.edited = true;
-                                        }
-                                    } imLayoutEnd(c);
-
-
-                                    imLayout(c, COL); {
-                                        if (imButtonIsClicked(c, "-")) {
-                                            deferredAction = () => {
-                                                filterInPlace(rack.effects, e => e !== effect)
-                                                editor.edited = true;
                                             }
-                                        }
 
-                                        if (imButtonIsClicked(c, "+")) { // Duplicate button
-                                            deferredAction = () => {
-                                                const copy = copyEffectRackItem(effect);
-                                                rack.effects.splice(effectIdx, 0, copy);
-                                                editor.edited = true;
+                                            if (imButtonIsClicked(c, "+")) { // Duplicate button
+                                                deferredAction = () => {
+                                                    const copy = copyEffectRackItem(effect);
+                                                    rack.effects.splice(effectIdx, 0, copy);
+                                                    editor.edited = true;
+                                                }
                                             }
-                                        }
+                                        } imLayoutEnd(c);
                                     } imLayoutEnd(c);
                                 } imLayoutEnd(c);
-                            } imLayoutEnd(c);
+                            } imKeyedEnd(c);
                         } imForEnd(c);
 
                         if (deferredAction) {
                             deferredAction();
-                        }
-
-                        if (imButtonIsClicked(c, "+")) {
-                            openContextMenuAtMouse(editor.contextMenu, editor, FIELD_EDITOR_ADD_EFFECT);
                         }
 
                         if (imIf(c) && contextMenuIsOpen(editor.contextMenu, editor, FIELD_EDITOR_ADD_EFFECT)) {
@@ -637,6 +649,11 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                 } imContextMenuItemEnd(c);
                             } imContextMenuEnd(c, editor.contextMenu);
                         } imIfEnd(c);
+
+                        if (imButtonIsClicked(c, "+")) {
+                            openContextMenuAtMouse(editor.contextMenu, editor, FIELD_EDITOR_ADD_EFFECT);
+                        }
+
                     } imScrollContainerEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
@@ -783,6 +800,8 @@ const FIELD_READ = 2;
 function imEditorContextMenuItemBegin(c: ImCache) {
     imContextMenuItemBegin(c); {
         if (isFirstishRender(c)) {
+            // TODO: things in apps should be non-selectable by default, and opt-in to the selection process.
+            // This is a webapp, not a document.
             elSetStyle(c, "userSelect", "none");
             elSetClass(c, "hoverable");
         }
@@ -804,10 +823,6 @@ function imBindingEditorContextMenu(
     perms = FIELD_READ,
     value: number | null
 ): RegisterIdx {
-    if (elHasMousePress(c)) {
-        openContextMenuAtMouse(editor.contextMenu, item, field);
-    }
-
     const rack = editor.effectRack;
 
     if (imIf(c) && contextMenuIsOpen(editor.contextMenu, item, field)) {
@@ -819,6 +834,7 @@ function imBindingEditorContextMenu(
 
                     if (elHasMousePress(c)) {
                         currentIdx = asRegisterIdx(-1);
+                        closeContextMenu(editor.contextMenu);
                     }
                 } imEditorContextMenuItemEnd(c);
             } imIfEnd(c);
@@ -841,6 +857,7 @@ function imBindingEditorContextMenu(
 
                     if (elHasMousePress(c)) {
                         currentIdx = asRegisterIdx(bindingIdx);
+                        closeContextMenu(editor.contextMenu);
                     }
                 } imContextMenuItemEnd(c);
             } imForEnd(c);
@@ -850,10 +867,15 @@ function imBindingEditorContextMenu(
                 if (elHasMousePress(c)) {
                     const idx = newBindingForEditor(editor);
                     currentIdx = idx;
+                    closeContextMenu(editor.contextMenu);
                 }
             } imContextMenuItemEnd(c);
         } imContextMenuEnd(c, editor.contextMenu);
     } imIfEnd(c);
+
+    if (elHasMousePress(c)) {
+        openContextMenuAtMouse(editor.contextMenu, item, field);
+    }
 
     if (value === null) {
         assert(currentIdx !== -1);

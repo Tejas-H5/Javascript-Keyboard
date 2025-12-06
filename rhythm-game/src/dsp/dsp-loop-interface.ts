@@ -1,4 +1,4 @@
-import { DspInfo, DspLoopMessage, DSPPlaySettings, getDspLoopClassUrl, newDspPlaySettings } from "./dsp-loop";
+import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {

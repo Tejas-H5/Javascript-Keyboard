@@ -85,6 +85,28 @@ export function newRegisterValueMetadata(
     };
 }
 
+export const  OSC_WAVE__SIN      = 0;
+export const  OSC_WAVE__SQUARE   = 1;
+export const  OSC_WAVE__SAWTOOTH = 2;
+export const  OSC_WAVE__TRIANGLE = 3;
+
+export type EffectRackOscillatorWaveType
+    = typeof OSC_WAVE__SIN
+    | typeof OSC_WAVE__SQUARE
+    | typeof OSC_WAVE__SAWTOOTH
+    | typeof OSC_WAVE__TRIANGLE
+    ;
+
+export function getEffectRackOscillatorWaveTypeName(e: EffectRackOscillatorWaveType) {
+    switch (e) {
+        case OSC_WAVE__SIN: return "sin";
+        case OSC_WAVE__SQUARE: return "square";
+        case OSC_WAVE__SAWTOOTH: return "sawtooth";
+        case OSC_WAVE__TRIANGLE: return "triangle";
+    }
+    return "???";
+}
+
 export type EffectRackOscillator = {
     type: typeof EFFECT_RACK_ITEM__OSCILLATOR;
 
@@ -95,21 +117,14 @@ export type EffectRackOscillator = {
 
     phase:       RegisterIdx;
     amplitude:   RegisterIdx;
-    // Want this to be the key frequency. But also be bindable somehow. But also be controlable by value. 
-    // Not sure. Maybe we need some more default stuffs.
     frequency:   RegisterIdx; 
-    sin:         RegisterIdx;
-    square:      RegisterIdx;
-    triangle:    RegisterIdx;
-    saw:         RegisterIdx;
+
+    // It occurs to me that I cannot animate this ... yet ...
+    waveType:    EffectRackOscillatorWaveType;
 
     phaseUI:     RegisterIdxUiMetadata;
     amplitudeUI: RegisterIdxUiMetadata;
     frequencyUI: RegisterIdxUiMetadata;
-    sinUI:       RegisterIdxUiMetadata;
-    squareUI:    RegisterIdxUiMetadata;
-    triangleUI:  RegisterIdxUiMetadata;
-    sawUI:       RegisterIdxUiMetadata;
 };
 
 export function newEffectRackOscillator(): EffectRackOscillator {
@@ -121,18 +136,11 @@ export function newEffectRackOscillator(): EffectRackOscillator {
         amplitude:   asRegisterIdx(1),
         phase:       asRegisterIdx(0),
         frequency:   asRegisterIdx(REG_IDX_KEY_FREQUENCY),
-        sin:         asRegisterIdx(0),
-        square:      asRegisterIdx(0),
-        triangle:    asRegisterIdx(0),
-        saw:         asRegisterIdx(0),
+        waveType:    OSC_WAVE__SIN,
 
         amplitudeUI: newRegisterValueMetadata("amplitude", 1, 0, 1),
         phaseUI:     newRegisterValueMetadata("phase", 0, 0, 1),
         frequencyUI: newRegisterValueMetadata("frequency", 0, 0, 20_000, REG_IDX_KEY_FREQUENCY),
-        sinUI:       newRegisterValueMetadata("sin", 1, -1, 1),
-        squareUI:    newRegisterValueMetadata("square", 0, -1, 1),
-        triangleUI:  newRegisterValueMetadata("triangle", 0, -1, 1),
-        sawUI:       newRegisterValueMetadata("saw", 0, -1, 1),
     };
 }
 
@@ -407,10 +415,6 @@ export function compileEffectRack(e: EffectRack) {
                 wave.phase     = allocateRegisterIdxIfNeeded(e, wave.phaseUI);
                 wave.amplitude = allocateRegisterIdxIfNeeded(e, wave.amplitudeUI);
                 wave.frequency = allocateRegisterIdxIfNeeded(e, wave.frequencyUI);
-                wave.sin       = allocateRegisterIdxIfNeeded(e, wave.sinUI);
-                wave.square    = allocateRegisterIdxIfNeeded(e, wave.squareUI);
-                wave.triangle  = allocateRegisterIdxIfNeeded(e, wave.triangleUI);
-                wave.saw       = allocateRegisterIdxIfNeeded(e, wave.sawUI);
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effect;
@@ -510,10 +514,12 @@ export function computeEffectRackIteration(
                     const t = r(re, wave.t);
                     const t2 = t + r(re, wave.phase);
 
-                    value += r(re, wave.sin) * sin(t2);
-                    value += r(re, wave.square) * square(t2);
-                    value += r(re, wave.triangle) * triangle(t2);
-                    value += r(re, wave.saw) * sawtooth(t2);
+                    switch (wave.waveType) {
+                        case OSC_WAVE__SIN:      value += sin(t2);      break;
+                        case OSC_WAVE__SQUARE:   value += square(t2);   break;
+                        case OSC_WAVE__TRIANGLE: value += triangle(t2); break;
+                        case OSC_WAVE__SAWTOOTH: value += sawtooth(t2); break;
+                    }
 
                     w(re, wave.t, t + dt * r(re, wave.frequency));
                     value *= a;

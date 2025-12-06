@@ -1,4 +1,5 @@
-// IM-DOM 1.35
+// IM-DOM 1.40
+// NOTE: this version may be unstable, as we've updated the DOM diffing algorithm.
 
 import { assert } from "src/utils/assert";
 import {
@@ -31,7 +32,8 @@ export type DomAppender<E extends AppendableElement> = {
     // depending on how the browser has implemented DOM node rendering.
     manualDom: boolean;
     // if null, root is a text node. else, it can be appended to.
-    children: (DomAppender<any>[] | null);
+    children: (DomAppender<AppendableElement>[] | null);
+    childrenLast: (DomAppender<AppendableElement>[] | null);
     rendered: boolean;
     parentIdx: number;
     childrenChanged: boolean;
@@ -43,6 +45,7 @@ export function newDomAppender<E extends AppendableElement>(root: E, children: (
         ref: null,
         idx: -1,
         children,
+        childrenLast: children ? [] : null,
         lastIdx: -1,
         manualDom: false,
         rendered: false,
@@ -91,20 +94,33 @@ export function appendToDomRoot(appender: DomAppender<any>, child: DomAppender<a
 
 export function finalizeDomAppender(appender: DomAppender<ValidElement>) {
     if (
-        appender.children !== null &&
+        appender.children !== null && appender.childrenLast !== null &&
         (appender.childrenChanged || appender.lastIdx !== appender.idx)
     )  {
         appender.childrenChanged = false;
 
-        // TODO: optimize
+        // I've tried to do this in such a way that multiple DomAppenders could
+        // be appending to the same DOM node, but they only 'manage' the nodes that they've actually inserted,
+        // allowing multiple different dom appenders to effectively act on the same node.
+        // What could possibly go wrong...
+        
+        // NOTE: this loop only works because appendToDomRoot reorders nodes such that 
+        // we're left with a list of [...the new children in the desired order, ...other children we want to remove]
         for (let i = 0; i <= appender.idx; i++) {
             const val = appender.children[i];
 
-            const realChildren = appender.root.children;
-            if (i >= realChildren.length) {
+            if (i >= appender.childrenLast.length) {
                 appender.root.append(val.root);
-            } else if (realChildren[i] !== val.root) {
-                appender.root.insertBefore(val.root, realChildren[i]);
+                appender.childrenLast.push(val);
+            } else if (appender.childrenLast[i] !== val) {
+                if (i === 0) {
+                    appender.root.prepend(val.root);
+                } else {
+                    const prev = appender.childrenLast[i - 1].root;
+                    const reference = prev.nextSibling;
+                    appender.root.insertBefore(val.root, reference);
+                }
+                appender.childrenLast[i] = val;
             }
         }
 
@@ -112,26 +128,9 @@ export function finalizeDomAppender(appender: DomAppender<ValidElement>) {
             appender.children[i].root.remove();
         }
 
+        appender.childrenLast.length = appender.idx + 1;
         appender.lastIdx = appender.idx;
     }
-
-
-    // TODO: by now everthing that wasnt rendered should be after idx. so we jsut remove those. all g. ?
-
-    // if (
-    //     (appender.childrenChanged === true || appender.idx !== appender.lastIdx) &&
-    //     appender.manualDom === false
-    // ) {
-    //     for (let i = 0; i < appender.lastIdx; i++) {
-    //         const child = appender.children[i];
-    //         if (child.rendered === false) {
-    //             child.root.remove();
-    //         }
-    //     }
-    //
-    //     appender.childrenChanged = false;
-    //     appender.lastIdx = appender.idx;
-    // }
 }
 
 

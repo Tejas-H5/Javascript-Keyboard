@@ -10,8 +10,8 @@ import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
 import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import {imApp, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab} from "./views/app";
 import { TrackedPromise } from "./utils/promise-utils";
+import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app";
 
 "use strict"
 
@@ -87,7 +87,6 @@ const programState = new TrackedPromise(async () => {
 
 function imMainInner(c: ImCache) {
     const globalContext = programState.value;
-
 
     if (imIf(c) && globalContext) {
         globalContext.deltaTime = getDeltaTimeSeconds(c);

@@ -83,7 +83,11 @@ import {
     SWITCH_OP_GT,
     newEffectRackSwitch,
     newEffectRackSwitchCondition,
-    newEffectRackItem
+    newEffectRackItem,
+    OSC_WAVE__SIN,
+    OSC_WAVE__SQUARE,
+    OSC_WAVE__SAWTOOTH,
+    OSC_WAVE__TRIANGLE
 } from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
@@ -832,6 +836,10 @@ export function getDspLoopClassUrl(): string {
         newEffectRackMathsItemCoefficient,
         newEffectRackSwitch,
         newEffectRackSwitchCondition,
+        { value: OSC_WAVE__SIN, name: "OSC_WAVE__SIN" },
+        { value: OSC_WAVE__SQUARE, name: "OSC_WAVE__SQUARE" },
+        { value: OSC_WAVE__SAWTOOTH, name: "OSC_WAVE__SAWTOOTH" },
+        { value: OSC_WAVE__TRIANGLE, name: "OSC_WAVE__TRIANGLE" },
     ], [
     ], function register() {
 

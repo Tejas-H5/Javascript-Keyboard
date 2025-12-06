@@ -740,10 +740,6 @@ export function imInstructionArrayEditor(
                     imLayout(c, ROW); imAlign(c); imJustify(c); imSize(c, 10, PERCENT, 0, NA); {
                         if (isFirstishRender(c)) elSetClass(c, "hoverable");
 
-                        if (elHasMousePress(c)) {
-                            openContextMenuAtMouse(editor.contextMenu, instr, CONTEXT_MENU_FIELD__TYPE);
-                        }
-
                         if (
                             imIf(c) &&
                             editor.contextMenu.item === instr &&
@@ -763,6 +759,10 @@ export function imInstructionArrayEditor(
                                 } imForEnd(c);
                             } imContextMenuEnd(c, editor.contextMenu);
                         } imIfEnd(c);
+
+                        if (elHasMousePress(c)) {
+                            openContextMenuAtMouse(editor.contextMenu, instr, CONTEXT_MENU_FIELD__TYPE);
+                        }
 
                         imLayout(c, INLINE_BLOCK); imNoWrap(c); {
                             imStrFmt(c, instr.type, instrToString);
@@ -1002,10 +1002,6 @@ function imRegisterContextMenu(
             elSetClass(c, "hoverable");
         }
 
-        if (elHasMousePress(c)) {
-            openContextMenuAtMouse(editor.contextMenu, instr, field);
-        }
-
         if (imIf(c) && contextMenuIsOpen(editor.contextMenu, instr, field)) {
             imContextMenuBegin(c, editor.contextMenu); {
                 let allowNewRegister = true;
@@ -1047,6 +1043,11 @@ function imRegisterContextMenu(
                 }
             } imContextMenuEnd(c, editor.contextMenu);
         } imIfEnd(c);
+
+        if (elHasMousePress(c)) {
+            openContextMenuAtMouse(editor.contextMenu, instr, field);
+        }
+
         imStrFmt(c, currentRegister, registerIdxToString);
     } imLayoutEnd(c);
 
