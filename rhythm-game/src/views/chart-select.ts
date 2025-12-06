@@ -21,6 +21,7 @@ import {
     setViewStartScreen
 } from "./app";
 import { cssVarsApp } from "./styling";
+import { imVerticalText } from "src/app-components/misc";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
     if (!ctx.keyPressState) return false;
@@ -470,15 +471,6 @@ function imVerticalHistogram(c: ImCache, arr: number[], arrMax: number) {
             } imLayoutEnd(c);
         } imForEnd(c);
     } imLayoutEnd(c);
-}
-
-function imVerticalText(c: ImCache) {
-    imLayout(c, ROW); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "writingMode", "sideways-lr");
-            elSetStyle(c, "textOrientation", "mixed");
-        }
-    }
 }
 
 function getItemStart01(chart: SequencerChart, item: TimelineItem) {

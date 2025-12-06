@@ -1,8 +1,16 @@
 import { BLOCK, imAbsolute, imBg, imFg, imFixed, imLayout, imLayoutEnd, imOpacity, imSize, NA, PX } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { ImCache, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { ImCache, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
 import { clamp, deltaAngle } from "src/utils/math-utils";
+
+export type CompactLinearDragSlideInteractionState = {
+    isDragging: boolean;
+    lastMouseX: number;
+    // Track our own copy of the value being dragged, so that
+    // clamping can be implemented userside properly
+    draggedValue: number;
+};
 
 export function imCompactLinearDragSlideInteraction(
     c: ImCache,
@@ -10,8 +18,8 @@ export function imCompactLinearDragSlideInteraction(
     value: number,
     min: number,
     max: number,
-): number {
-    const s = imGetInline(c, imCompactLinearDragSlideInteraction) ?? imSet(c, {
+): CompactLinearDragSlideInteractionState {
+    const s = imGet(c, imCompactLinearDragSlideInteraction) ?? imSet(c, {
         isDragging: false,
         lastMouseX: 0,
         // Track our own copy of the value being dragged, so that
@@ -50,11 +58,10 @@ export function imCompactLinearDragSlideInteraction(
         if (Math.abs(dragDistance) > 0.000001) {
             s.draggedValue += dragDistance / pixelsPerUnit;
             s.draggedValue = clamp(s.draggedValue, min, max);
-            value = s.draggedValue;
         }
     }
 
-    return value;
+    return s;
 }
 
 
@@ -115,6 +122,8 @@ function newCompactCircularDragSlideInteractionState(): CompactCircularDragSlide
 }
 
 // Actually a better idea than I thought. Haven't seen it other people do it yet for some reason.
+// As a side-effect of the implementation, you can right-click to reposition the centerpoint in the middle of the interaction.
+// I kinda just dont want to fix this bug for now xD
 export function imCompactCircularDragSlideInteraction(
     c: ImCache,
     value: number,
@@ -173,6 +182,8 @@ export function imCompactCircularDragSlideInteraction(
 
 
 export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: CompactCircularDragSlideInteractionState) {
+    let wantedCursor = "move";
+
     if (imIf(c) && s.isDragging) {
         // Cursor handles
         imLayout(c, BLOCK); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
@@ -184,8 +195,7 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
             if (positiveAngle < 0) positiveAngle += 2 * Math.PI;
             const wantedCursorIdx = Math.floor((positiveAngle - sectorStart) / sectorSize);
 
-            const wantedCursor = cursorsPerSector[wantedCursorIdx];
-            if (imMemo(c, wantedCursor)) elSetStyle(c, "cursor", wantedCursor);
+            wantedCursor = cursorsPerSector[wantedCursorIdx];
         } imLayoutEnd(c);
 
         // Spinning square thing
@@ -200,4 +210,6 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
             if (isFirstishRender(c)) elSetStyle(c, "transform", `translate(-50%, -50%)`);
         } imLayoutEnd(c);
     } imIfEnd(c);
+
+    if (imMemo(c, wantedCursor)) elSetStyle(c, "cursor", wantedCursor);
 }

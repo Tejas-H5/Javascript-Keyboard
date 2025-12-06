@@ -1,13 +1,13 @@
-// IM-CORE 1.049
+// IM-CORE 1.050
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
 import { assert } from "src/utils/assert";
 
 // Conventions
-//  - An 'immediate mode' method or 'im' method is any method that eventually reads from or writes to the `ImCache`.
+//  - An 'immediate mode' method or 'im' method is any method that eventually _writes_ to the `ImCache`.
 //    These methods should ideally be prefixed with 'im'.
-//    Conversely, methods that don't do so and will never do so, should NOT be prefixed with 'im', unless they will do so in the future.
+//    Conversely, methods that don't touch the imCache, or that will only ever _read_ from the imCache, should NOT be prefixed with 'im'.
 //    This allows developers (and in the future, static analysis tools) to know that this method can't be rendered conditionally, or
 //    out of order, similar to how React hooks work. This is really the only convention I would recommend you actually follow.
 //
@@ -710,7 +710,7 @@ export const imCatch = imTryCatch;
  *      case c: { ... } break;
  * } imSwitchEnd(c);
  * ```
- * NOTE: Don't use fallthrough, use if-else + imIf/imIfElse/imIfEnd instead. 
+ * ERROR: Don't use fallthrough, use if-else + imIf/imIfElse/imIfEnd instead. 
  * Fallthrough doesn't work as you would expect - for example:
  * ```ts
  *  imSwitch(c,key); switch(key) {

@@ -45,12 +45,50 @@ import {
     INSTR_MULTIPLY_DT,
     INSTR_ADD_DT,
     INSTR_RECIPR_DT,
-    INSTR_ADD_RECIPR_DT
+    INSTR_ADD_RECIPR_DT,
 } from "./dsp-loop-instruction-set";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
+import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils/turn-based-waves";
+import {
+    asRegisterIdx,
+    compileEffectRack,
+    computeEffectRackIteration,
+    EFFECT_RACK_ITEM__ENVELOPE,
+    EFFECT_RACK_ITEM__OSCILLATOR,
+    EFFECT_RACK_MINIMUM_SIZE,
+    EffectRack,
+    EffectRackRegisters,
+    getRegisterIdxForUIValue,
+    newEffectRack,
+    newEffectRackBinding,
+    newEffectRackRegisters,
+    newEffectRackEnvelope,
+    newEffectRackOscillator,
+    newRegisterValueMetadata,
+    REG_IDX_KEY_FREQUENCY,
+    REG_IDX_KEY_SIGNAL,
+    REG_IDX_NONE,
+    REG_IDX_OUTPUT,
+    registerIdxAsNumber,
+    r,
+    w,
+    allocateRegisterIdx,
+    allocateRegisterIdxIfNeeded,
+    newEffectRackMathsItem,
+    newEffectRackMathsItemCoefficient,
+    newEffectRackMathsItemTerm,
+    EFFECT_RACK_ITEM__MATHS,
+    EFFECT_RACK_ITEM__SWITCH,
+    SWITCH_OP_LT,
+    SWITCH_OP_GT,
+    newEffectRackSwitch,
+    newEffectRackSwitchCondition,
+    newEffectRackItem
+} from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
     instructions: number[];
+    rack: EffectRack;
 }
 
 export type DSPPlaySettings = {
@@ -58,6 +96,7 @@ export type DSPPlaySettings = {
     parameters: DspSynthParameters;
 
     // NOTE: these might become deprecated after we have a fully programmable DSP
+    // TODO: Delete these once our programmable DSP is good enough
     attack: number;
     attackVolume: number;
     decay: number;
@@ -74,10 +113,34 @@ export function newDspPlaySettings(): DSPPlaySettings {
         sustainVolume: 0.05,
         sustain: 0.5,
         isUserDriven: false,
-        parameters: { instructions: [] },
+        parameters: {
+            instructions: [],
+            rack: newEffectRack(),
+        },
     }
 
     compileDefaultInstructions(settings.parameters.instructions);
+
+
+    const rack = settings.parameters.rack;
+
+    // Good default:
+    const osc = newEffectRackOscillator();
+    rack.effects.push(newEffectRackItem(osc));
+
+    const env = newEffectRackEnvelope();
+    rack.effects.push(newEffectRackItem(env));
+
+
+
+    // Rest are for testing purposes
+    {
+        const math = newEffectRackMathsItem();
+        rack.effects.push(newEffectRackItem(math));
+
+        const switchEffect = newEffectRackSwitch();
+        rack.effects.push(newEffectRackItem(switchEffect));
+    }
 
     return settings;
 }
@@ -108,6 +171,7 @@ export type PlayingOscillator = {
         _lastNoteIndex: number;
         _frequency: number;
         _sampleContext: SampleContext;
+        _effectRackRegisters: EffectRackRegisters;
 
         prevSignal: number;
         time: number;
@@ -183,7 +247,6 @@ export function updateOscillator(
 ) {
     const sampleRate = s.sampleRate;
     const parameters = s.playSettings.parameters;
-    const { attack, attackVolume, decay, sustain, sustainVolume } = s.playSettings;
 
     const { inputs, state } = osc;
 
@@ -205,156 +268,26 @@ export function updateOscillator(
     // GOAT website: https://www.dspforaudioprogramming.com
     // Simplified my oscillator code so much damn.
     // And now I know more than just sine wave. Very epic.
+    // NOTE: the current effects rack is no longer capable of 
+    // generating the triangle wave from hundreds of tiny sine waves.
+    // Not sure if I care though.
 
-    const t = state.time;
     const f = state._frequency;
-    let idx1 = state.idx1;
     let sampleValue = 0;
 
     // TODO: fix how we're using the gain here
     // the gain is indicative of how much the key is 'pressed down', not the actual attack/decay envelope.
-
-    let targetGain = 0;
-    let rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
-
-    const tPressed = state.time - state.pressedTime;
-
-    const sampleIdx = getSampleIdx(inputs.noteId);
-    if (sampleIdx !== -1) {
-        // Play a procedurally generated drum
-
-        sampleValue += square(0.5 * f * t);
-
-        // Drum gain curve. whtaver.
-        let attack = 0.01;
-        if (inputs.signal) {
-            if (tPressed <= attack) {
-                targetGain = attackVolume; 
-                rate = attack;
-            } else {
-                const tReleased = tPressed - attack;
-                targetGain = (1 - tReleased); 
-                targetGain **= 20;
-                targetGain *= attackVolume;
-                rate = 0.0001;
-            }
-        } else {
-            targetGain = 0; 
-            rate = 2;
-        }
-    } else {
-        // Update the oscillator
-
-        // Oscillator gain curve. attack/decay/sustain
-        // if (inputs.signal) {
-        //     if (tPressed <= attack) {
-        //         targetGain = attackVolume; rate = attack;
-        //     } else {
-        //         targetGain = sustainVolume; rate = sustain;
-        //     }
-        // } else {
-        //     targetGain = 0.0;
-        //     rate = Math.max(decay, 0.0000001); // should never ever be 0. ever
-        // }
-
-        // let maxRange = max(parameters.low, parameters.hi);
-        // for (let i = -parameters.low; i <= parameters.hi; i += parameters.increment) {
-        //     let f2 = f;
-        //     if (i < 0) {
-        //         f2 = -f / i;
-        //     } else if (i > 0) {
-        //         f2 = f * i;
-        //     }
-        //
-        //     val = sin(f2 * t); 
-        //     amp = maxRange - Math.abs(i);
-        //     m += amp; x += val * amp;
-        // }
-
-
-        // val = sin(f * (t + 0.001 * noise)); amp = 1;
-        // m += amp; x += val * amp;
-        //
-        // val = sin(f * t / 3); amp = 0.3;
-        // m += amp; x += val * amp;
-        //
-        // val = sin(f * t * 2); amp = 0.2;
-        // m += amp; x += val * amp;
-        //
-        // val = sin(f * t * 3); amp = 0.1;
-        // m += amp; x += val * amp;
-        //
-        // val = sin(f * t * 4); amp = 0.02;
-        // m += amp; x += val * amp;
-
-        updateSampleContext(state._sampleContext, f, osc.inputs.signal, 1 / sampleRate);
-        sampleValue += computeSample(state._sampleContext, parameters.instructions);
-
-        // sampleValue = x;
-        // sampleTotal = m;
-    }
+    sampleValue = computeEffectRackIteration(
+        parameters.rack,
+        osc.state._effectRackRegisters,
+        f,
+        osc.inputs.signal,
+        1 / sampleRate
+    );
 
     state.value = sampleValue;
 }
 
-
-/**
-
-// Funnni
-{
-        const t = state.time;
-        const f = state._frequency;
-
-        let val = 0;
-        let total = 0;
-
-        let n = 10;
-        for (let i = 1; i <= n; i++) {
-
-            let m = 1 
-
-            const f2 = f * (1+ i) / (1 + t);
-
-            let x = m * sin(t * f2)
-
-            // x *= sign;
-            // sign = -sign;
-
-            val += x;
-            total += m;
-        }
-
-        state.value = val * state.gain / total;
-    }
-
-// computer noises
-    {
-        const t = state.time;
-        const f = state._frequency;
-
-        let val = 0;
-        let total = 0;
-
-        let n = 10;
-        for (let i = 1; i <= n; i++) {
-
-            let m = 1 
-
-            const f2 = Math.pow(f, i);
-
-            let x = m * sin(t * f2)
-
-            // x *= sign;
-            // sign = -sign;
-
-            val += x;
-            total += m;
-        }
-
-        state.value = val * state.gain / total;
-    }
-
-*/
 
 function updateSample(osc: PlayingSampleFile, allSamples: Record<string, number[]>) {
     const { inputs, state } = osc;
@@ -392,50 +325,6 @@ function getMessageForMainThread(s: DspState, signals = true) {
     payload.isPaused = s.trackPlayback.isPaused;
 
     return payload;
-}
-
-function sin(t: number) {
-    return Math.sin(t * Math.PI * 2);
-}
-
-function absMin(a: number, b: number) {
-    if (Math.abs(a) > Math.abs(b)) {
-        return b;
-    }
-    return a;
-}
-
-function absMax(a: number, b: number) {
-    if (Math.abs(a) < Math.abs(b)) {
-        return b;
-    }
-    return a;
-}
-
-function sawtooth(t: number) {
-    return 2 * (t % 1) - 1;
-}
-
-function triangle(t: number) {
-    if (t < 0) t = -t;
-    t %= 1;
-    let result;
-    if (t > 0.5) {
-        result = 2 - 2 * t;
-    } else {
-        result = 2 * t;
-    }
-
-    return 2 * (result - 0.5);
-}
-
-function square(t: number) {
-    t = t % 2;
-    return t > 1 ? 1 : -1;
-}
-
-function step(t: number) {
-    return Math.floor(t) % 2;
 }
 
 let rng: RandomNumberGenerator | null = null;
@@ -656,6 +545,7 @@ export function newPlayingOscilator(): PlayingOscillator {
             _lastNoteIndex: -1,
             _frequency: 0,
             _sampleContext: newSampleContext(),
+            _effectRackRegisters: newEffectRackRegisters(),
             prevSignal: 0,
             time: 0,
             releasedTime: 0,
@@ -851,7 +741,6 @@ export function getDspLoopClassUrl(): string {
         { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
         { value: INSTR_RECIPR_DT, name: "INSTR_RECIPR_DT" },
         { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
-        // NOTE: not sure if indices are really needed tbh.
         { value: IDX_WANTED_FREQUENCY, name: "IDX_WANTED_FREQUENCY" },
         { value: IDX_SIGNAL, name: "IDX_SIGNAL" },
         { value: IDX_DT, name: "IDX_DT" },
@@ -911,6 +800,38 @@ export function getDspLoopClassUrl(): string {
         { value: C_0, name: "C_0", },
         { value: TWELVTH_ROOT_OF_TWO, name: "TWELVTH_ROOT_OF_TWO",  },
         { value: OSC_GAIN_AWAKE_THRESHOLD, name: "OSC_GAIN_AWAKE_THRESHOLD",  },
+        { value: EFFECT_RACK_ITEM__OSCILLATOR, name: "EFFECT_RACK_ITEM__OSCILLATOR" },
+        { value: EFFECT_RACK_ITEM__ENVELOPE, name: "EFFECT_RACK_ITEM__ENVELOPE" },
+        { value: EFFECT_RACK_ITEM__MATHS, name: "EFFECT_RACK_ITEM__MATHS" },
+        { value: EFFECT_RACK_ITEM__SWITCH, name: "EFFECT_RACK_ITEM__SWITCH" },
+        { value: SWITCH_OP_LT, name: "SWITCH_OP_LT" },
+        { value: SWITCH_OP_GT, name: "SWITCH_OP_GT" },
+        asRegisterIdx,
+        registerIdxAsNumber,
+        getRegisterIdxForUIValue,
+        newRegisterValueMetadata,
+        newEffectRackOscillator,
+        newEffectRackEnvelope,
+        newEffectRackItem,
+        newEffectRackBinding,
+        newEffectRack,
+        { value: EFFECT_RACK_MINIMUM_SIZE, name: "EFFECT_RACK_MINIMUM_SIZE" },
+        { value: REG_IDX_NONE, name: "REG_IDX_NONE" },
+        { value: REG_IDX_OUTPUT, name: "REG_IDX_OUTPUT" },
+        { value: REG_IDX_KEY_FREQUENCY, name: "REG_IDX_KEY_FREQUENCY" },
+        { value: REG_IDX_KEY_SIGNAL, name: "REG_IDX_KEY_SIGNAL" },
+        compileEffectRack,
+        computeEffectRackIteration,
+        newEffectRackRegisters,
+        r, 
+        w,
+        allocateRegisterIdx,
+        allocateRegisterIdxIfNeeded,
+        newEffectRackMathsItem,
+        newEffectRackMathsItemTerm,
+        newEffectRackMathsItemCoefficient,
+        newEffectRackSwitch,
+        newEffectRackSwitchCondition,
     ], [
     ], function register() {
 

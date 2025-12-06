@@ -1,3 +1,5 @@
+// NOTE: this may now be redudnant
+
 import { expectEqual, newTest, Test, testSuite } from "src/utils/testing";
 import {
     compileInstructions,

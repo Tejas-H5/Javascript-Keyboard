@@ -1,7 +1,6 @@
 import { closeContextMenu, contextMenuIsOpen, ContextMenuState, imContextMenuBegin, imContextMenuEnd, imContextMenuItemBegin, imContextMenuItemEnd, newContextMenuState, openContextMenuAtMouse } from "src/app-components/context-menu";
-import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideInteractionFeedback, imCompactLinearDragSlideInteraction } from "src/app-components/drag-slider-interaction";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
-import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
+import { BUTTON_TOGGLED, imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
 import { imCheckboxBegin, imCheckboxCheckBegin, imCheckboxCheckEnd, imCheckboxEnd } from "src/components/checkbox";
 import {
@@ -32,7 +31,6 @@ import {
     STRETCH
 } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
 import { imLine, LINE_HORIZONTAL_PADDING, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
@@ -47,6 +45,7 @@ import {
     IDX_USER,
     INSTR_ADD,
     INSTR_ADD_DT,
+    INSTR_ADD_RECIPR_DT,
     INSTR_DIVIDE,
     INSTR_EQ,
     INSTR_GT,
@@ -54,9 +53,9 @@ import {
     INSTR_LT,
     INSTR_LTE,
     INSTR_MULTIPLY,
-    INSTR_RECIPR_DT,
     INSTR_MULTIPLY_DT,
     INSTR_NEQ,
+    INSTR_RECIPR_DT,
     INSTR_SIN,
     INSTR_SQUARE,
     INSTR_SUBTRACT,
@@ -70,11 +69,10 @@ import {
     registerIdxToString,
     updateSampleContext,
     WaveProgram,
-    WaveProgramInstructionItem,
-    INSTR_ADD_RECIPR_DT
+    WaveProgramInstructionItem
 } from "src/dsp/dsp-loop-instruction-set";
 import { getCurrentPlaySettings } from "src/dsp/dsp-loop-interface";
-import { arrayAt, arraySwap, filterInPlace } from "src/utils/array-utils";
+import { arrayAt, filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
 import {
@@ -92,12 +90,13 @@ import {
     imState,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, elHasMouseClick, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imEl, imElEnd, imOn, imStr, imStrFmt } from "src/utils/im-dom";
-import { clamp, gridsnapRound } from "src/utils/math-utils";
+import { EL_B, elHasMouseClick, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
-import { bytesToMegabytes, utf16ByteLength } from "src/utils/utf8";
+import { canRedo, canUndo, JSONUndoBuffer, newUndoBuffer, redo, stepUndoBufferTimer, undo, writeToUndoBufferDebounced } from "src/utils/undo-buffer";
 import { GlobalContext } from "./app";
+import { imExportModal, imImportModal } from "./import-export-modals";
 import { drawSamples, newPlotState } from "./plotting";
+import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 import { SoundLabState } from "./sound-lab-view";
 import { cssVarsApp } from "./styling";
 
@@ -131,7 +130,7 @@ const UNDO_DEBOUNCE_SECONDS = 0.2;
 
 export type WaveProgramEditorState = {
     waveProgram: WaveProgram;
-    undoBuffer: WaveProgramEditorUndoBuffer;
+    undoBuffer: JSONUndoBuffer<WaveProgram>;
 
     instructionsVersion: number;
     registersInUseWrite: Set<number>;
@@ -176,7 +175,7 @@ export function newWaveProgramEditorState(): WaveProgramEditorState {
         highlightedRegisterNext: -1,
         currentViewingRegisterInOscilloscope: 0,
         contextMenu: newContextMenuState(),
-        undoBuffer: newUndoBuffer(),
+        undoBuffer: newUndoBuffer<WaveProgram>(),
         modal: MODAL_NONE,
         selectedRange: {
             isSelecting: false,
@@ -189,26 +188,7 @@ export function newWaveProgramEditorState(): WaveProgramEditorState {
     };
 }
 
-type WaveProgramEditorUndoBuffer = {
-    // JSON is actually smarter than objects here - we can compare if two programs are the same or not, 
-    // estimate undo buffer size easier, and the `string` datatype will enforce immutability for us
-    programVersionsJSON: string[];
-    programVersionsJSONSizeMb: number;
-    position: number;
-    timer: number;
-};
-
-function newUndoBuffer(): WaveProgramEditorUndoBuffer {
-    return {
-        programVersionsJSON: [],
-        programVersionsJSONSizeMb: 0,
-        position: 0,
-        timer: -1,
-    };
-}
-
-export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: SoundLabState) {
-    const editor = state.instructionBuilder;
+export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, editor: WaveProgramEditorState) {
     const playSettings = getCurrentPlaySettings();
 
     editor.highlightedRegister = editor.highlightedRegisterNext;
@@ -237,16 +217,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
         dfs(editor.waveProgram.instructions);
     }
 
-    const undoBuffer = editor.undoBuffer;
-    if (undoBuffer.timer > 0) {
-        undoBuffer.timer -= ctx.deltaTime;
-        if (undoBuffer.timer <= 0) {
-            writeProgramToUndoBuffer(editor);
-        }
-    } else if (undoBuffer.programVersionsJSON.length === 0) {
-        // We need to write the very first version ourselves, and then let the debounce handle successive writes.
-        writeProgramToUndoBuffer(editor);
-    }
+    stepUndoBufferTimer(editor.undoBuffer, ctx.deltaTime, editor.waveProgram);
 
     imModalBegin(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
         if (isFirstishRender(c)) {
@@ -254,94 +225,53 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
         }
 
         if (imIf(c) && editor.modal === MODAL_EXPORT) {
-            imModalBegin(c, 200); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                imLayout(c, COL); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
-                    imHeading(c, "Paste this JSON somewhere safe!");
+            imExportModal(c, editor.waveProgram);
 
-                    const s = imGet(c, imWaveProgramEditor) ?? imSet(c, { json: "" });
-                    if (imMemo(c, true)) {
-                        s.json = JSON.stringify(editor.waveProgram);
-                    }
-
-                    if (ctx.keyPressState) {
-                        const { key } = ctx.keyPressState;
-                        if (key === "Escape") {
-                            editor.modal = MODAL_NONE;
-                            ctx.handled = true;
-                        } else {
-                            // We need to be able to copy the text. fr fr.
-                            ctx.handled = true;
-                            ctx.dontPreventDefault = true;
-                        }
-                    }
-
-                    imLayout(c, BLOCK); imFlex(c); imScrollOverflow(c); {
-                        imStr(c, s.json);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
-            } imModalEnd(c);
+            if (ctx.keyPressState) {
+                const { key } = ctx.keyPressState;
+                if (key === "Escape") {
+                    editor.modal = MODAL_NONE;
+                    ctx.handled = true;
+                } else {
+                    // We need to be able to copy the text. fr fr.
+                    ctx.handled = true;
+                    ctx.dontPreventDefault = true;
+                }
+            }
         } else if (imIfElse(c) && editor.modal ===  MODAL_IMPORT) {
-            imModalBegin(c, 200); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                imLayout(c, COL); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
-                    const s = imGet(c, imWaveProgramEditor) ?? imSet(c, {
-                        json: "",
-                        importError: "",
-                    });
-
-                    imLayout(c, COL); imFlex(c); imScrollOverflow(c); {
-                        const [_, textArea] = imTextAreaBegin(c, {
-                            value: s.json,
-                            placeholder: "Paste in your wave program JSON!"
-                        }); {
-                            if (isFirstishRender(c)) {
-                            }
-
-                            const ev = imOn(c, EV_INPUT);
-                            if (ev) {
-                                s.json = textArea.value;
-                                ctx.handled = true;
-                            }
-                        } imTextAreaEnd(c);
-                    } imLayoutEnd(c);
-
-                    if (imIf(c) && s.importError) {
-                        imLayout(c, BLOCK); imBg(c, cssVarsApp.error); {
-                            imStr(c, s.importError);
-                        } imLayoutEnd(c);
-                    } imIfEnd(c);
-
-                    imLayout(c, ROW); {
-                        if (imButtonIsClicked(c, "Import")) {
-                            // Try running it
-                            try {
-                                const program: WaveProgram = JSON.parse(s.json);
-                                if (!program.instructions || !Array.isArray(program.instructions)) {
-                                    throw new Error("Wrong JSON format");
-                                }
-
-                                fixInstructions(program.instructions);
-                                const instructions = compileInstructions(program.instructions);
-                                if (instructions.length === 0) {
-                                    throw new Error("No instructions found");
-                                }
-
-                                const sampleContext = newSampleContext();
-                                updateSampleContext(sampleContext, 240, 1, 1 / 48000);
-                                // Try computing a sample. Does it work??
-                                computeSample(sampleContext, instructions);
-
-                                editor.waveProgram = program;
-                                editor.undoBuffer = newUndoBuffer();
-                                editor.modal = MODAL_NONE;
-
-                                s.importError = "";
-                            } catch (e) {
-                                s.importError = "" + e;
-                            }
+            const importModal = imImportModal(c);
+            if (importModal.event) {
+                if (importModal.event.previewUpdated) {
+                    importModal.importError = "";
+                } else if (importModal.event.import) {
+                    // Try running it
+                    try {
+                        const program: WaveProgram = JSON.parse(importModal.json);
+                        if (!program.instructions || !Array.isArray(program.instructions)) {
+                            throw new Error("Wrong JSON format");
                         }
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
-            } imModalEnd(c);
+
+                        fixInstructions(program.instructions);
+                        const instructions = compileInstructions(program.instructions);
+                        if (instructions.length === 0) {
+                            throw new Error("No instructions found");
+                        }
+
+                        const sampleContext = newSampleContext();
+                        updateSampleContext(sampleContext, 240, 1, 1 / 48000);
+                        // Try computing a sample. Does it work??
+                        computeSample(sampleContext, instructions);
+
+                        editor.waveProgram = program;
+                        editor.undoBuffer = newUndoBuffer();
+                        editor.modal = MODAL_NONE;
+
+                        importModal.importError = "";
+                    } catch (e) {
+                        importModal.importError = "" + e;
+                    }
+                }
+            }
         } imIfEnd(c);
 
         imLayout(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
@@ -384,7 +314,7 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
 
                 imLayout(c, BLOCK); imSize(c, 0, NA, 5, PX); imBg(c, cssVars.bg); imRelative(c); {
                     // Will the undo buffer reach 5 mb doe ??. (it will totally reach 1mb.)
-                    const percentage = 100 * undoBuffer.programVersionsJSONSizeMb / 5.0;
+                    const percentage = 100 * editor.undoBuffer.fileVersionsJSONSizeMb / 5.0;
                     imLayout(c, BLOCK); imBg(c, cssVars.fg);
                     imAbsolute(c, 0, PX, 0, NA, 0, PX, 0, PX); imSize(c, percentage, PERCENT, 0, NA); {
                     } imLayoutEnd(c);
@@ -570,16 +500,11 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
             if (key === "Escape") {
                 if (editor.modal !== MODAL_NONE) {
                     editor.modal = MODAL_NONE;
-                } else {
-                    state.isEditingInstructions = false;
+                    ctx.handled = true;
                 }
-                ctx.handled = true;
             } else if (keyUpper === "Z" && ctrlPressed && !shiftPressed) {
-                writePendingUndoToUndoBuffer(editor);
-
-                if (undoBuffer.position > 0) {
-                    undoBuffer.position--;
-                    editor.waveProgram = JSON.parse(undoBuffer.programVersionsJSON[undoBuffer.position]);
+                if (canUndo(editor.undoBuffer)) {
+                    editor.waveProgram = undo(editor.undoBuffer, editor.waveProgram);
                     updateSettings = true;
                     wasUndoTraversal = true;
                 }
@@ -588,9 +513,8 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
                 (keyUpper === "Z" && ctrlPressed && shiftPressed) ||
                 (keyUpper === "Y" && ctrlPressed && !shiftPressed)
             ) {
-                if (undoBuffer.position < undoBuffer.programVersionsJSON.length - 1) {
-                    undoBuffer.position++;
-                    editor.waveProgram = JSON.parse(undoBuffer.programVersionsJSON[undoBuffer.position]);
+                if (canRedo(editor.undoBuffer)) {
+                    editor.waveProgram = redo(editor.undoBuffer);
                     updateSettings = true;
                     wasUndoTraversal = true;
                 }
@@ -600,10 +524,10 @@ export function imWaveProgramEditor(c: ImCache, ctx: GlobalContext, state: Sound
     }
 
     if (updateSettings) {
-        state.instructionBuilder.instructionsVersion++;
+        editor.instructionsVersion++;
 
         if (!wasUndoTraversal) {
-            undoBuffer.timer = UNDO_DEBOUNCE_SECONDS;
+            writeToUndoBufferDebounced(editor.undoBuffer, editor.waveProgram, UNDO_DEBOUNCE_SECONDS);
         }
     }
 }
@@ -615,51 +539,6 @@ function imHeading(c: ImCache, text: string) {
 }
 
 
-const DRAG_TYPE_LINEAR = 1;
-const DRAG_TYPE_CIRCULAR = 2;
-
-function imParameterSliderInteraction(
-    c: ImCache,
-    min: number,
-    max: number,
-    step: number,
-    val: number,
-    defaultValue: number,
-    dragType = DRAG_TYPE_LINEAR,
-): { val: number } | null {
-    let initialVal = val;
-
-    const { mouse } = getGlobalEventSystem();
-
-    if (mouse.ev?.shiftKey) {
-        step = 0.1
-    }
-
-    if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
-        const state = imCompactCircularDragSlideInteraction(c, val, min, max, 100, 1);
-        imCompactCircularDragSlideInteractionFeedback(c, state);
-
-        val = state.value;
-    } else {
-        imElse(c);
-        val = imCompactLinearDragSlideInteraction(c, 100, val, min, max);
-    } imEndIf(c);
-
-    val = gridsnapRound(val, step);
-    val = clamp(val, min, max);
-
-    if (elHasMousePress(c) && mouse.rightMouseButton) {
-        // Reset to default value on rightclick
-        mouse.ev?.preventDefault();
-        val = defaultValue;
-    }
-
-    if (val !== initialVal) {
-        return { val };
-    }
-
-    return null;
-}
 function imBindableParameter(
     c: ImCache,
     editor: WaveProgramEditorState,
@@ -808,7 +687,7 @@ export function imInstructionArrayEditor(
                         }
                     }
 
-                    const ifButtonClicked = imButtonBegin(c, text, !!instruction.ifelseInnerBlock); imNoWrap(c); {
+                    const ifButtonClicked = imButtonBegin(c, text, instruction.ifelseInnerBlock ? BUTTON_TOGGLED : 0); imNoWrap(c); {
                         if (ifButtonClicked) {
                             if (instruction.ifelseInnerBlock) {
                                 let transitioned = false;
@@ -1092,7 +971,7 @@ export function imWaveProgramPreview(
 
         const sc = imState(c, newScrollContainer);
         imScrollContainerBegin(c, sc); {
-            imFor(c); for (const instr of state.instructionBuilder.waveProgram.instructions) {
+            imFor(c); for (const instr of state.waveProgramEditorLegacy.waveProgram.instructions) {
                 imLayout(c, ROW); imGap(c, 6, PX); {
                     imStrFmt(c, instr.instruction?.type, instrToString);
 
@@ -1223,42 +1102,6 @@ function imRegisterArgumentEditor(
     } imLayoutEnd(c);
 
     return edited;
-}
-
-function writeProgramToUndoBuffer(editor: WaveProgramEditorState) {
-    const undoBuffer = editor.undoBuffer;
-
-    const currentProgramJSON = JSON.stringify(editor.waveProgram);
-    if (undoBuffer.programVersionsJSON.length > 0) {
-        const lastProgram = undoBuffer.programVersionsJSON[undoBuffer.programVersionsJSON.length - 1];
-        if (lastProgram === currentProgramJSON) {
-            // Don't write anything if its literally the same program
-            return;
-        }
-    }
-
-    // Truncate undo buffer if needed
-    if (undoBuffer.position !== undoBuffer.programVersionsJSON.length) {
-        undoBuffer.programVersionsJSON.length = undoBuffer.position;
-    }
-
-    undoBuffer.programVersionsJSON.push(currentProgramJSON);
-    undoBuffer.position++;
-
-    // for the lolz
-    let sizeBytes = 0;
-    for (const program of editor.undoBuffer.programVersionsJSON) {
-        sizeBytes += utf16ByteLength(program);
-    }
-    undoBuffer.programVersionsJSONSizeMb = bytesToMegabytes(sizeBytes);
-}
-
-function writePendingUndoToUndoBuffer(editor: WaveProgramEditorState) {
-    const undoBuffer = editor.undoBuffer;
-    if (undoBuffer.timer > 0) {
-        writeProgramToUndoBuffer(editor);
-        undoBuffer.timer = -1;
-    }
 }
 
 function imRegisterHighlightBg(c: ImCache, editor: WaveProgramEditorState, regIdx: number) {

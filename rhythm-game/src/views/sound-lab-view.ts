@@ -23,10 +23,13 @@ import { fft, resizeNumberArrayPowerOf2 } from "src/utils/fft";
 import {
     getRenderCount,
     ImCache,
+    imGet,
     imIf,
     imIfEnd,
     imMemo,
-    imState
+    imSet,
+    imState,
+    inlineTypeId
 } from "src/utils/im-core";
 import { imStr } from "src/utils/im-dom";
 import { derivative } from "src/utils/math-utils";
@@ -36,6 +39,8 @@ import { imWaveProgramEditor, imWaveProgramPreview, newWaveProgramEditorState, W
 import { getCurrentTheme } from "./styling";
 import { drawSamples, newPlotState } from "./plotting";
 import { compileInstructions, fixInstructions } from "src/dsp/dsp-loop-instruction-set";
+import { EffectRackEditorState, imEffectRackEditor, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
+import { compileEffectRack } from "src/dsp/dsp-loop-effect-rack";
 
 export type SoundLabState = {
     dsp: DspState;
@@ -60,11 +65,15 @@ export type SoundLabState = {
     output: [[Float32Array]]; 
 
     isEditingInstructions: boolean;
-    instructionBuilder: WaveProgramEditorState;
+    waveProgramEditorLegacy: WaveProgramEditorState;
+    effectRackEditor: EffectRackEditorState;
 }
 
-function newSoundLabState(): SoundLabState {
-    return {
+export function imSoundLab(c: ImCache, ctx: GlobalContext) {
+    const MIN_ZOOM = 100;
+
+    const settings = getCurrentPlaySettings();
+    const state = imGet(c, inlineTypeId(imSoundLab)) ?? imSet<SoundLabState>(c, {
         dsp: newDspState(44800),
         allSamples: [0],
         allSamplesStartIdx: 0,
@@ -85,21 +94,30 @@ function newSoundLabState(): SoundLabState {
         output: [[new Float32Array()]],
 
         isEditingInstructions: !!debugFlags.testSoundLabWaveEditor,
-        instructionBuilder: newWaveProgramEditorState(), 
-    };
-}
+        waveProgramEditorLegacy: newWaveProgramEditorState(), 
+        effectRackEditor: newEffectRackEditorState(settings.parameters.rack),
+    });
 
-export function imSoundLab(c: ImCache, ctx: GlobalContext) {
-    const MIN_ZOOM = 100;
-
-    const state = imState(c, newSoundLabState);
-    if (imMemo(c, state.instructionBuilder.instructionsVersion)) {
-        const settings = getCurrentPlaySettings();
-        const waveProgram = state.instructionBuilder.waveProgram;
+    if (imMemo(c, state.waveProgramEditorLegacy.instructionsVersion)) {
+        const waveProgram = state.waveProgramEditorLegacy.waveProgram;
         fixInstructions(waveProgram.instructions);
         compileInstructions(waveProgram.instructions, settings.parameters.instructions);
         updatePlaySettings();
     }
+
+    const versionChanged = imMemo(c, state.effectRackEditor.version);
+    if (versionChanged) {
+        const settings = getCurrentPlaySettings();
+        const rack = state.effectRackEditor.effectRack;
+        compileEffectRack(rack);
+
+        // TODO: can make it more performant by updating just the specific register being edited
+        // rather than the entire effect rack if we're editing a value in realtime
+        
+        settings.parameters.rack = rack;
+        updatePlaySettings();
+    }
+
 
     let soundPlayed = false;
 
@@ -188,8 +206,12 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     }
 
     imLayout(c, COL); imFlex(c); {
+        if (imIf(c) && state.isEditingInstructions && 0) {
+            imWaveProgramEditor(c, ctx, state.waveProgramEditorLegacy);
+        } imIfEnd(c);
+
         if (imIf(c) && state.isEditingInstructions) {
-            imWaveProgramEditor(c, ctx, state);
+            imEffectRackEditor(c, ctx, state.effectRackEditor);
         } imIfEnd(c);
 
         imLayout(c, COL); imFlex(c); {
@@ -213,8 +235,13 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
             let handled = false;
 
             if (key === "Escape") {
-                setViewChartSelect(ctx);
-                handled = true;
+                if (state.isEditingInstructions) {
+                    state.isEditingInstructions = false;
+                    handled = true;
+                } else {
+                    setViewChartSelect(ctx);
+                    handled = true;
+                }
             } else if (keyUpper === "E" && shiftPressed) {
                 state.isEditingInstructions = !state.isEditingInstructions;
                 handled = true;
@@ -362,10 +389,6 @@ function imOscilloscope(c: ImCache, state: SoundLabState) {
 
                 if (resize || isNewFrame) {
                     ctx.clearRect(0, 0, width, height);
-
-                    ctx.strokeStyle = "blue";
-                    ctx.lineWidth = 2;
-                    drawSamples(state.frequencies, plotState, ctx, state.frequenciesStartIdx, state.frequenciesLength);
 
                     ctx.strokeStyle = "red";
                     ctx.lineWidth = 2;

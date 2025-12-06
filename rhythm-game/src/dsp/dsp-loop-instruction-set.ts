@@ -1,5 +1,8 @@
+// NOTE: this may now be redudnant
+
 import { arrayAt } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
+import { sin, square } from "src/utils/turn-based-waves";
 
 // NOTE: Only add new values onto the end, for deserialization reasons
 export const INSTR_SIN                = 1;
@@ -87,6 +90,7 @@ export const IDX_COUNT            = 32;
 export const REGISTER_INFO  = {
     reserved: [
         { name: "Output" },
+        { name: "Debug output" },
         { name: "Frequency" },
         { name: "Signal" },
         { name: "DeltaTime" },
@@ -94,32 +98,6 @@ export const REGISTER_INFO  = {
     ],
     totalCount: IDX_COUNT,
 };
-
-function sin(t: number) {
-    return Math.sin(t * Math.PI * 2);
-}
-
-function sawtooth(t: number) {
-    return 2 * (t % 1) - 1;
-}
-
-function triangle(t: number) {
-    if (t < 0) t = -t;
-    t %= 1;
-    let result;
-    if (t > 0.5) {
-        result = 2 - 2 * t;
-    } else {
-        result = 2 * t;
-    }
-
-    return 2 * (result - 0.5);
-}
-
-function square(t: number) {
-    t = Math.abs(t) % 2;
-    return t > 1 ? 1 : -1;
-}
 
 const BLOCK_TYPE_IF = 1;
 const BLOCK_TYPE_IF_ELSE = 2;
