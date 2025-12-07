@@ -1,4 +1,4 @@
-import { BLOCK, DisplayType, imAlign, imLayout, imLayoutEnd, INLINE, ROW } from "src/components/core/layout";
+import { DisplayType, imAlign, imLayout, imLayoutEnd, imNoWrap, INLINE, ROW } from "src/components/core/layout";
 import { newCssBuilder } from "src/utils/cssb";
 import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetClass, imStr } from "src/utils/im-dom";
@@ -63,7 +63,7 @@ export function imButtonBegin(
 
     let result = false;
 
-    imLayout(c, type); imButton(c, flags);  imAlign(c); {
+    imLayout(c, type); imButton(c, flags); imAlign(c); imNoWrap(c); {
         if (imMemo(c, compact)) {
             elSetClass(c, "compact", compact);
         }

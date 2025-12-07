@@ -190,6 +190,7 @@ export function drawSamples(
             let y0 = samples[startIdx];
             const x0Plot = getCanvasElementX(plotState, x0);
             const y0Plot = getCanvasElementY(plotState, y0);
+
             ctx.moveTo(Math.floor(x0Plot), Math.floor(y0Plot));
             for (let i = startIdx + 1; i < startIdx + numSamples; i++) {
                 const x1 = i;
@@ -226,8 +227,10 @@ export function drawSamples(
                 const x1 = i;
 
                 let x1Plot = Math.floor(getCanvasElementX(plotState, x1));
-                let y0Plot = Math.floor(getCanvasElementY(plotState, minSample));
-                let y1Plot = Math.ceil(getCanvasElementY(plotState, maxSample));
+
+                // Plotted upside down ???
+                let y0Plot = Math.ceil(getCanvasElementY(plotState, minSample));
+                let y1Plot = Math.floor(getCanvasElementY(plotState, maxSample));
 
                 ctx.moveTo(x1Plot, y0Plot - 0.5);
                 ctx.lineTo(x1Plot, y1Plot + 0.5);

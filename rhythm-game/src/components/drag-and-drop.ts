@@ -1,6 +1,6 @@
 import { ImCache, imGet, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
-import { elHasMouseOver, elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
-import { imBg } from "./core/layout";
+import { elGet, elHasMouseOver, elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
+import { COL, imBg, imFlex, imLayout, imLayoutEnd } from "./core/layout";
 import { cssVars } from "./core/stylesheets";
 
 export type DragAndDropState =  {
@@ -9,7 +9,9 @@ export type DragAndDropState =  {
 
     drag: {
         startX: number;
+        startXOffset: number;
         startY: number;
+        startYOffset: number;
         startIdx: number;
         hoveringOverIdx: number;
     } | null;
@@ -43,8 +45,11 @@ export function imDragAndDrop(c: ImCache): DragAndDropState {
     const drag = dnd.drag;
     if (drag) {
         if (!mouse.leftMouseButton) {
-            if (drag.startIdx !== drag.hoveringOverIdx) {
+            if (drag.startIdx !== drag.hoveringOverIdx && drag.hoveringOverIdx !== -1) {
                 dnd.move = { a: drag.startIdx, b: drag.hoveringOverIdx };
+                if (dnd.move.b > dnd.move.a) {
+                    dnd.move.b--;
+                }
             }
 
             dnd.drag = null;
@@ -70,7 +75,7 @@ export function imDropZoneForPrototyping(c: ImCache, dnd: DragAndDropState, idx:
     imDropZone(c, dnd, idx);
     const isHovering = dnd.drag && dnd.drag.hoveringOverIdx === idx;
     if (imMemo(c, isHovering)) {
-        elSetStyle(c, "outline", isHovering ? `solid 4px ${cssVars.fg}` : "");
+        elSetStyle(c, "borderTop", isHovering ? `solid 4px ${cssVars.fg}` : "");
     }
 }
 
@@ -84,9 +89,13 @@ export function imDragHandle(c: ImCache, dnd: DragAndDropState, idx: number) {
 
     if (elHasMousePress(c) && mouse.leftMouseButton) {
         if (!dnd.drag) {
+            const elRect = elGet(c).getBoundingClientRect();
+
             dnd.drag = {
                 startX: mouse.X,
+                startXOffset: mouse.X - elRect.left,
                 startY: mouse.Y,
+                startYOffset: mouse.Y - elRect.top,
                 startIdx: idx,
                 hoveringOverIdx: idx,
             };
@@ -94,35 +103,80 @@ export function imDragHandle(c: ImCache, dnd: DragAndDropState, idx: number) {
     }
 }
 
-export function imDragCssTransform(c: ImCache, dnd: DragAndDropState, idx: number) {
-    let isDragging = false;
+export type DragZoneState = {
+    startWidth: number;
+    startHeight: number;
+    dnd: DragAndDropState;
+};
+
+export function imDragZoneBegin(c: ImCache, dnd: DragAndDropState, idx: number): DragZoneState {
+    const s = imGet(c, imDragZoneBegin) ?? imSet<DragZoneState>(c, {
+        dnd, 
+        startWidth: 0,
+        startHeight: 0,
+    });
+
     let dX = 0, dY = 0;
+    let isDragging = false;
     if (dnd.drag && dnd.drag.startIdx === idx) {
         const mouse = getGlobalEventSystem().mouse;
-        dX = mouse.X - dnd.drag.startX;
-        dY = mouse.Y - dnd.drag.startY;
+        dX = mouse.X - dnd.drag.startX - dnd.drag.startXOffset;
+        dY = mouse.Y - dnd.drag.startY - dnd.drag.startYOffset;
         isDragging = true;
     }
 
-    imBg(c, cssVars.bg);
-
-    const dXChanged = imMemo(c, dX);
-    const dYChanged = imMemo(c, dY);
-    const isDraggingChanged = imMemo(c, isDragging);
-    if (dXChanged || dYChanged || isDraggingChanged) {
-        if (isDragging) {
-            elSetStyle(c, "transform", `translate(${dX}px, ${dY}px)`);
-        } else {
-            // Needed to not break the context menu absolute positioning, for now
-            elSetStyle(c, "transform", ``);
+    const outer = imLayout(c, COL); {
+        const isDraggingChanged = imMemo(c, isDragging);
+        if (isDraggingChanged) {
+            if (isDragging) {
+                s.startWidth = outer.clientWidth;
+                s.startHeight = outer.clientHeight;
+            }
         }
-    }
 
-    if (isDraggingChanged) {
-        elSetStyle(c, "pointerEvents", isDragging ? "none" : "all");
-        elSetStyle(c, "zIndex", isDragging ? "100000" : "");
-        elSetStyle(c, "boxShadow", isDragging ? "4px 4px 5px 0px rgba(0,0,0,0.37)" : "");
-    }
+        imLayout(c, COL); imFlex(c); {
+            imBg(c, cssVars.bg);
+
+            const dXChanged = imMemo(c, dX);
+            const dYChanged = imMemo(c, dY);
+            if (dXChanged || dYChanged || isDraggingChanged) {
+                if (dnd.drag && isDragging) {
+                    const x = dnd.drag.startX + dX;
+                    const y = dnd.drag.startY + dY;
+                    elSetStyle(c, "transform", `translate(${x}px, ${y}px)`);
+                } else {
+                    // Needed to not break the context menu absolute positioning, for now
+                    elSetStyle(c, "transform", ``);
+                }
+            }
+
+            if (isDraggingChanged) {
+                elSetStyle(c, "pointerEvents", isDragging ? "none" : "all");
+                elSetStyle(c, "zIndex", isDragging ? "100000" : "");
+                elSetStyle(c, "boxShadow", isDragging ? "4px 4px 5px 0px rgba(0,0,0,0.37)" : "");
+                elSetStyle(c, "position", isDragging ? "fixed" : "");
+                elSetStyle(c, "top", isDragging ? "0" : "");
+                elSetStyle(c, "left", isDragging ? "0" : "");
+
+                elSetStyle(c, "width", isDragging ? (s.startWidth + "px") : "", outer);
+                elSetStyle(c, "height", isDragging ? (s.startHeight + "px") : "", outer);
+            }
+        } // imLayoutEnd(c);
+    } // imLayoutEnd(c);
+
+    return s;
+}
+
+export function imDragZoneEnd(c: ImCache, z: DragZoneState, idx: number) {
+    // imLayout
+    {
+        // imLayout
+        {
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
+}
+
+function setMoveToEvent(dnd: DragAndDropState, idx: number, moveTo: number) {
 }
 
 export function imMoveButton(c: ImCache, dnd: DragAndDropState, idx: number, moveTo: number) {

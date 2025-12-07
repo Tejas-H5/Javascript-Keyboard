@@ -2,7 +2,6 @@ import { imModalBegin, imModalEnd } from "src/app-components/modal";
 import { imTestHarness } from "src/components/test-harness";
 import { COL, imBg, imLayout, imLayoutEnd, imPadding, imSize, PERCENT, PX } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { dspLoopInstructionSetTests } from "src/dsp/dsp-loop-instruction-set-tests";
 import { ImCache } from "src/utils/im-core";
 import { TestSuite } from "src/utils/testing";
 import { GlobalContext } from "src/views/app";
@@ -16,7 +15,6 @@ export function newUnitTestsState(): UnitTestsState {
 }
 
 const testSuites: TestSuite<any>[] = [
-    ...dspLoopInstructionSetTests,
 ];
 
 export function imUnitTestsModal(c: ImCache, ctx: GlobalContext, s: UnitTestsState) {

@@ -15,6 +15,7 @@ import { imLine, LINE_VERTICAL } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { debugFlags } from "src/debug-flags";
 import { dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
+import { compileEffectRack } from "src/dsp/dsp-loop-effect-rack";
 import { getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { newArray } from "src/utils/array-utils";
@@ -32,15 +33,11 @@ import {
     inlineTypeId
 } from "src/utils/im-core";
 import { imStr } from "src/utils/im-dom";
-import { derivative } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect } from "./app";
 import { imKeyboard } from "./keyboard";
-import { imWaveProgramEditor, imWaveProgramPreview, newWaveProgramEditorState, WaveProgramEditorState } from "./sound-lab-wave-program-editor";
-import { getCurrentTheme } from "./styling";
 import { drawSamples, newPlotState } from "./plotting";
-import { compileInstructions, fixInstructions } from "src/dsp/dsp-loop-instruction-set";
 import { EffectRackEditorState, imEffectRackEditor, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
-import { compileEffectRack } from "src/dsp/dsp-loop-effect-rack";
+import { getCurrentTheme } from "./styling";
 
 export type SoundLabState = {
     dsp: DspState;
@@ -52,7 +49,6 @@ export type SoundLabState = {
     frequenciesStartIdx: number;
     frequenciesLength: number;
     signalFftWindow: number[];
-    derivative: number[];
     frequenciesReal: number[];
     frequenciesIm: number[];
     frequenciesReal2: number[];
@@ -65,7 +61,6 @@ export type SoundLabState = {
     output: [[Float32Array]]; 
 
     isEditingInstructions: boolean;
-    waveProgramEditorLegacy: WaveProgramEditorState;
     effectRackEditor: EffectRackEditorState;
 }
 
@@ -83,7 +78,6 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
         frequenciesStartIdx: 0,
         frequenciesLength: 500,
         signalFftWindow: [0],
-        derivative: [0],
         frequenciesReal: [0],
         frequenciesIm: [0],
         frequenciesReal2: [0],
@@ -94,16 +88,8 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
         output: [[new Float32Array()]],
 
         isEditingInstructions: !!debugFlags.testSoundLabWaveEditor,
-        waveProgramEditorLegacy: newWaveProgramEditorState(), 
         effectRackEditor: newEffectRackEditorState(settings.parameters.rack),
     });
-
-    if (imMemo(c, state.waveProgramEditorLegacy.instructionsVersion)) {
-        const waveProgram = state.waveProgramEditorLegacy.waveProgram;
-        fixInstructions(waveProgram.instructions);
-        compileInstructions(waveProgram.instructions, settings.parameters.instructions);
-        updatePlaySettings();
-    }
 
     const versionChanged = imMemo(c, state.effectRackEditor.version);
     if (versionChanged) {
@@ -160,7 +146,6 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                 state.frequenciesReal = newArray(numFrequencies, () => 0);
                 state.frequenciesIm = newArray(numFrequencies, () => 0);
                 state.allSamples.length = 0;
-                state.derivative.length = 0;
 
                 state.autoPan = true;
             }
@@ -200,16 +185,10 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
             for (const f of samples) {
                 state.allSamples.push(f);
             }
-
-            derivative(state.allSamples, state.derivative);
         }
     }
 
     imLayout(c, COL); imFlex(c); {
-        if (imIf(c) && state.isEditingInstructions && 0) {
-            imWaveProgramEditor(c, ctx, state.waveProgramEditorLegacy);
-        } imIfEnd(c);
-
         if (imIf(c) && state.isEditingInstructions) {
             imEffectRackEditor(c, ctx, state.effectRackEditor);
         } imIfEnd(c);
@@ -220,7 +199,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
 
                 imLine(c, LINE_VERTICAL, 10, 0);
 
-                imWaveProgramPreview(c, ctx, state);
+                imStr(c, "TODO: fix this view");
             } imLayoutEnd(c);
             imLayout(c, ROW); imJustify(c); imSize(c, 0, NA, 30, PERCENT); {
                 imKeyboard(c, ctx);
@@ -327,17 +306,12 @@ function imOscilloscope(c: ImCache, state: SoundLabState) {
                 if (isNewFrame || resize) {
                     ctx.clearRect(0, 0, width, height);
 
-                    // const samples = state.output[0][0];
                     const samples = state.allSamples;
 
                     const theme = getCurrentTheme();
                     ctx.strokeStyle = theme.fg.toString();
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = 10;
                     drawSamples(samples, plotState, ctx, state.allSamplesStartIdx, state.allSamplesWindowLength);
-
-                    ctx.strokeStyle = "green";
-                    ctx.lineWidth = 2;
-                    drawSamples(state.derivative, plotState, ctx, state.allSamplesStartIdx, state.allSamplesWindowLength);
                 }
 
             } imEndCanvasRenderingContext2D(c);

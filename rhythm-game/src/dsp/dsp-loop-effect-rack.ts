@@ -7,7 +7,6 @@
 import { assert, unreachable } from "src/utils/assert";
 import { moveTowards } from "src/utils/math-utils";
 import { sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
-import { IDX_OUTPUT } from "./dsp-loop-instruction-set";
 
 // TODO: _VALUE__
 export const EFFECT_RACK_ITEM__OSCILLATOR = 0;
@@ -85,16 +84,18 @@ export function newRegisterValueMetadata(
     };
 }
 
-export const  OSC_WAVE__SIN      = 0;
-export const  OSC_WAVE__SQUARE   = 1;
-export const  OSC_WAVE__SAWTOOTH = 2;
-export const  OSC_WAVE__TRIANGLE = 3;
+export const  OSC_WAVE__SIN       = 0;
+export const  OSC_WAVE__SQUARE    = 1;
+export const  OSC_WAVE__SAWTOOTH  = 2;
+export const  OSC_WAVE__TRIANGLE  = 3;
+export const  OSC_WAVE__SAWTOOTH2 = 4;
 
 export type EffectRackOscillatorWaveType
     = typeof OSC_WAVE__SIN
     | typeof OSC_WAVE__SQUARE
     | typeof OSC_WAVE__SAWTOOTH
     | typeof OSC_WAVE__TRIANGLE
+    | typeof OSC_WAVE__SAWTOOTH2
     ;
 
 export function getEffectRackOscillatorWaveTypeName(e: EffectRackOscillatorWaveType) {
@@ -103,6 +104,7 @@ export function getEffectRackOscillatorWaveTypeName(e: EffectRackOscillatorWaveT
         case OSC_WAVE__SQUARE: return "square";
         case OSC_WAVE__SAWTOOTH: return "sawtooth";
         case OSC_WAVE__TRIANGLE: return "triangle";
+        case OSC_WAVE__SAWTOOTH2: return "-sawtooth";
     }
     return "???";
 }
@@ -184,7 +186,7 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
         sustain: asRegisterIdx(0),
         release: asRegisterIdx(0),
 
-        toModulate: asRegisterIdx(IDX_OUTPUT),
+        toModulate: asRegisterIdx(REG_IDX_OUTPUT),
 
         signalUI:  newRegisterValueMetadata("signal", 0, 0, 1, REG_IDX_KEY_SIGNAL),
         attackUI:  newRegisterValueMetadata("attack", 0.02, 0, 0.5),
@@ -519,6 +521,7 @@ export function computeEffectRackIteration(
                         case OSC_WAVE__SQUARE:   value += square(t2);   break;
                         case OSC_WAVE__TRIANGLE: value += triangle(t2); break;
                         case OSC_WAVE__SAWTOOTH: value += sawtooth(t2); break;
+                        case OSC_WAVE__SAWTOOTH2: value -= sawtooth(t2); break;
                     }
 
                     w(re, wave.t, t + dt * r(re, wave.frequency));
@@ -628,5 +631,5 @@ export function computeEffectRackIteration(
         }
     }
 
-    return re[IDX_OUTPUT];
+    return re[REG_IDX_OUTPUT];
 }

@@ -1,4 +1,6 @@
+import { debugFlags } from "src/debug-flags";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
+import { newEffectRackEnvelope, newEffectRackItem, newEffectRackMathsItem, newEffectRackOscillator, newEffectRackSwitch } from "./dsp-loop-effect-rack";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
@@ -10,7 +12,33 @@ export type ScheduledKeyPress = {
 }
 
 const audioCtx = new AudioContext()
+
 const playSettings = newDspPlaySettings();
+// init play settings
+{
+    const rack = playSettings.parameters.rack;
+
+    // Good default
+    const osc = newEffectRackOscillator();
+    rack.effects.push(newEffectRackItem(osc));
+
+    const env = newEffectRackEnvelope();
+    rack.effects.push(newEffectRackItem(env));
+
+
+    // Rest are for testing purposes
+    if (
+        debugFlags.testSoundLab &&
+        debugFlags.testSoundLabAllEffectRackEffects
+    ) {
+        const math = newEffectRackMathsItem();
+        rack.effects.push(newEffectRackItem(math));
+
+        const switchEffect = newEffectRackSwitch();
+        rack.effects.push(newEffectRackItem(switchEffect));
+    }
+}
+
 
 let dspPort: MessagePort | undefined;
 const dspInfo: DspInfo = { 

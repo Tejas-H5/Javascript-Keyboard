@@ -9,86 +9,47 @@ import { assert } from "src/utils/assert";
 import { clamp, derivative, inverseLerp, lerp, max, min, moveTowards } from "src/utils/math-utils";
 import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
+import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils/turn-based-waves";
 import { newFunctionUrl } from "src/utils/web-workers";
 import {
-    compileInstructions,
-    computeSample,
-    WaveProgramInstructionItem,
-    IDX_WANTED_FREQUENCY,
-    IDX_COUNT,
-    IDX_OUTPUT,
-    IDX_USER,
-    INSTR_ADD,
-    INSTR_DIVIDE,
-    INSTR_JUMP_IF_NZ,
-    INSTR_MULTIPLY,
-    INSTR_NUM_INSTRUCTIONS,
-    INSTR_SIN,
-    INSTR_SQUARE,
-    INSTR_SUBTRACT,
-    newDspInstruction,
-    newSampleContext,
-    SampleContext,
-    INSTR_LT,
-    INSTR_LTE,
-    INSTR_GT,
-    INSTR_GTE,
-    INSTR_EQ,
-    INSTR_NEQ,
-    INSTR_JUMP_IF_Z,
-    IDX_SIGNAL,
-    IDX_JMP_RESULT,
-    compileToInstructionsInternal,
-    pushInstruction,
-    updateSampleContext,
-    IDX_DT,
-    INSTR_MULTIPLY_DT,
-    INSTR_ADD_DT,
-    INSTR_RECIPR_DT,
-    INSTR_ADD_RECIPR_DT,
-} from "./dsp-loop-instruction-set";
-import { ScheduledKeyPress } from "./dsp-loop-interface";
-import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils/turn-based-waves";
-import {
+    allocateRegisterIdx,
+    allocateRegisterIdxIfNeeded,
     asRegisterIdx,
     compileEffectRack,
     computeEffectRackIteration,
     EFFECT_RACK_ITEM__ENVELOPE,
+    EFFECT_RACK_ITEM__MATHS,
     EFFECT_RACK_ITEM__OSCILLATOR,
+    EFFECT_RACK_ITEM__SWITCH,
     EFFECT_RACK_MINIMUM_SIZE,
     EffectRack,
     EffectRackRegisters,
     getRegisterIdxForUIValue,
     newEffectRack,
     newEffectRackBinding,
+    newEffectRackMathsItem,
+    newEffectRackMathsItemCoefficient,
+    newEffectRackMathsItemTerm,
     newEffectRackRegisters,
-    newEffectRackEnvelope,
-    newEffectRackOscillator,
+    newEffectRackSwitch,
+    newEffectRackSwitchCondition,
     newRegisterValueMetadata,
+    OSC_WAVE__SAWTOOTH,
+    OSC_WAVE__SAWTOOTH2,
+    OSC_WAVE__SIN,
+    OSC_WAVE__SQUARE,
+    OSC_WAVE__TRIANGLE,
+    r,
     REG_IDX_KEY_FREQUENCY,
     REG_IDX_KEY_SIGNAL,
     REG_IDX_NONE,
     REG_IDX_OUTPUT,
     registerIdxAsNumber,
-    r,
-    w,
-    allocateRegisterIdx,
-    allocateRegisterIdxIfNeeded,
-    newEffectRackMathsItem,
-    newEffectRackMathsItemCoefficient,
-    newEffectRackMathsItemTerm,
-    EFFECT_RACK_ITEM__MATHS,
-    EFFECT_RACK_ITEM__SWITCH,
-    SWITCH_OP_LT,
     SWITCH_OP_GT,
-    newEffectRackSwitch,
-    newEffectRackSwitchCondition,
-    newEffectRackItem,
-    OSC_WAVE__SIN,
-    OSC_WAVE__SQUARE,
-    OSC_WAVE__SAWTOOTH,
-    OSC_WAVE__TRIANGLE
+    SWITCH_OP_LT,
+    w
 } from "./dsp-loop-effect-rack";
+import { ScheduledKeyPress } from "./dsp-loop-interface";
 
 type DspSynthParameters = {
     instructions: number[];
@@ -110,7 +71,7 @@ export type DSPPlaySettings = {
 }
 
 export function newDspPlaySettings(): DSPPlaySettings {
-    const settings: DSPPlaySettings = {
+    return {
         attack: 0.05,
         decay: 3,
         attackVolume: 0.2,
@@ -121,60 +82,13 @@ export function newDspPlaySettings(): DSPPlaySettings {
             instructions: [],
             rack: newEffectRack(),
         },
-    }
-
-    compileDefaultInstructions(settings.parameters.instructions);
-
-
-    const rack = settings.parameters.rack;
-
-    // Good default:
-    const osc = newEffectRackOscillator();
-    rack.effects.push(newEffectRackItem(osc));
-
-    const env = newEffectRackEnvelope();
-    rack.effects.push(newEffectRackItem(env));
-
-
-
-    // Rest are for testing purposes
-    {
-        const math = newEffectRackMathsItem();
-        rack.effects.push(newEffectRackItem(math));
-
-        const switchEffect = newEffectRackSwitch();
-        rack.effects.push(newEffectRackItem(switchEffect));
-    }
-
-    return settings;
-}
-
-export function getDefaultInstructions() {
-    const angle = IDX_USER + 1;
-    const temp = IDX_USER;
-    const instructions: WaveProgramInstructionItem[] = [
-        { instructionEnabled: true, instruction: newDspInstruction(IDX_WANTED_FREQUENCY, true, INSTR_MULTIPLY_DT, IDX_SIGNAL, true, temp) },
-        { instructionEnabled: true, instruction: newDspInstruction(angle, true, INSTR_ADD, temp, true, angle) },
-        { instructionEnabled: true, instruction: newDspInstruction(IDX_SIGNAL, true, INSTR_SIN, angle, true, IDX_OUTPUT) },
-    ];
-    return instructions;
-}
-
-export function copyInstruction(instr: WaveProgramInstructionItem): WaveProgramInstructionItem {
-    return JSON.parse(JSON.stringify(instr));
-}
-
-export function compileDefaultInstructions(dst: number[]) {
-    dst.length = 0;
-    const instructions = getDefaultInstructions();
-    compileInstructions(instructions, dst);
+    };
 }
 
 export type PlayingOscillator = {
     state: {
         _lastNoteIndex: number;
         _frequency: number;
-        _sampleContext: SampleContext;
         _effectRackRegisters: EffectRackRegisters;
 
         prevSignal: number;
@@ -379,7 +293,7 @@ export function newDspState(sampleRate: number): DspState {
 
 export type DspState = {
     sampleRate: number;
-    playSettings: DSPPlaySettings,
+    playSettings: DSPPlaySettings;
     playingOscillators: [number, PlayingOscillator][];
     trackPlayback: {
         shouldSendUiUpdateSignals: boolean;
@@ -548,7 +462,6 @@ export function newPlayingOscilator(): PlayingOscillator {
         state: {
             _lastNoteIndex: -1,
             _frequency: 0,
-            _sampleContext: newSampleContext(),
             _effectRackRegisters: newEffectRackRegisters(),
             prevSignal: 0,
             time: 0,
@@ -724,39 +637,6 @@ export function getDspLoopClassUrl(): string {
     // (I want the entire web-app to be a single HTML file that can be easily saved, at any cost)
 
     lastUrl = newFunctionUrl([
-        newDspInstruction,
-        { value: INSTR_SIN, name: "INSTR_SIN" },
-        { value: INSTR_SQUARE, name: "INSTR_SQUARE" },
-        { value: INSTR_ADD, name: "INSTR_ADD" },
-        { value: INSTR_ADD_DT, name: "INSTR_ADD_DT" },
-        { value: INSTR_ADD_RECIPR_DT, name: "INSTR_ADD_RECIPR_DT" },
-        { value: INSTR_SUBTRACT, name: "INSTR_SUBTRACT" },
-        { value: INSTR_MULTIPLY_DT, name: "INSTR_MULTIPLY_DT" },
-        { value: INSTR_DIVIDE, name: "INSTR_DIVIDE" },
-        { value: INSTR_LT, name: "INSTR_LT" },
-        { value: INSTR_LTE, name: "INSTR_LTE" },
-        { value: INSTR_GT, name: "INSTR_GT" },
-        { value: INSTR_GTE, name: "INSTR_GTE" },
-        { value: INSTR_EQ, name: "INSTR_EQ" },
-        { value: INSTR_NEQ, name: "INSTR_NEQ" },
-        { value: INSTR_JUMP_IF_NZ, name: "INSTR_JUMP_IF_NZ" },
-        { value: INSTR_JUMP_IF_Z, name: "INSTR_JUMP_IF_Z" },
-        { value: INSTR_NUM_INSTRUCTIONS, name: "INSTR_NUM_INSTRUCTIONS" },
-        { value: INSTR_MULTIPLY, name: "INSTR_MULTIPLY" },
-        { value: INSTR_RECIPR_DT, name: "INSTR_RECIPR_DT" },
-        { value: IDX_OUTPUT, name: "IDX_OUTPUT" },
-        { value: IDX_WANTED_FREQUENCY, name: "IDX_WANTED_FREQUENCY" },
-        { value: IDX_SIGNAL, name: "IDX_SIGNAL" },
-        { value: IDX_DT, name: "IDX_DT" },
-        { value: IDX_JMP_RESULT, name: "IDX_JMP_RESULT" },
-        { value: IDX_USER, name: "IDX_USER" },
-        { value: IDX_COUNT, name: "IDX_COUNT" },
-        compileInstructions,
-        compileDefaultInstructions,
-        getDefaultInstructions,
-        compileToInstructionsInternal,
-        pushInstruction,
-        computeSample,
         arrayAt,
         max,
         min,
@@ -784,8 +664,6 @@ export function getDspLoopClassUrl(): string {
         filterInPlace,
         newDspState,
         newDspPlaySettings,
-        newSampleContext,
-        updateSampleContext,
         getMessageForMainThread,
         dspReceiveMessage,
         assert,
@@ -814,9 +692,6 @@ export function getDspLoopClassUrl(): string {
         registerIdxAsNumber,
         getRegisterIdxForUIValue,
         newRegisterValueMetadata,
-        newEffectRackOscillator,
-        newEffectRackEnvelope,
-        newEffectRackItem,
         newEffectRackBinding,
         newEffectRack,
         { value: EFFECT_RACK_MINIMUM_SIZE, name: "EFFECT_RACK_MINIMUM_SIZE" },
@@ -840,6 +715,7 @@ export function getDspLoopClassUrl(): string {
         { value: OSC_WAVE__SQUARE, name: "OSC_WAVE__SQUARE" },
         { value: OSC_WAVE__SAWTOOTH, name: "OSC_WAVE__SAWTOOTH" },
         { value: OSC_WAVE__TRIANGLE, name: "OSC_WAVE__TRIANGLE" },
+        { value: OSC_WAVE__SAWTOOTH2, name: "OSC_WAVE__SAWTOOTH2" },
     ], [
     ], function register() {
 

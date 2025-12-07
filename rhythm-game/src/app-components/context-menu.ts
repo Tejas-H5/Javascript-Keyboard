@@ -1,27 +1,27 @@
 import { COL, imAbsolute, imFixed, imJustify, imLayout, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { ImCache, isFirstishRender } from "src/utils/im-core";
+import { ImCache, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
 
 export type ContextMenuState = {
+    open: boolean;
     position: { x: number; y: number; };
     distanceToClose: number;
-    item: unknown | null;
-    field: unknown | null;
 };
 
 export function newContextMenuState(): ContextMenuState {
     return {
+        open: false,
         position: { x: 0, y: 0 },
-        item: null,
-        field: null,
         distanceToClose: 50,
     };
 }
 
-export function imContextMenuBegin(c: ImCache, s: ContextMenuState): number | null {
-    let result = null;
+export function imContextMenu(c: ImCache) {
+    return imState(c, newContextMenuState);
+}
 
+export function imContextMenuBegin(c: ImCache, s: ContextMenuState) {
     const x = s.position.x;
     const y = s.position.y;
 
@@ -38,7 +38,7 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState): number | nu
                 mouseDistanceFromBorder = Math.max(mouseDistanceFromBorder, mouse.Y - rect.bottom);
 
                 if (mouseDistanceFromBorder > s.distanceToClose) {
-                    closeContextMenu(s);
+                    s.open = false;
                 }
             }
 
@@ -57,8 +57,6 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState): number | nu
 
         } // imLayoutEnd(c);
     } // imLayoutEnd(c);
-
-    return result;
 }
 
 export function imContextMenuEnd(c: ImCache, s: ContextMenuState) {
@@ -74,7 +72,7 @@ export function imContextMenuEnd(c: ImCache, s: ContextMenuState) {
         } imLayoutEnd(c);
 
         if (elHasMousePress(c)) {
-            closeContextMenu(s);
+            s.open = false;
         }
     } imLayoutEnd(c);
 }
@@ -94,24 +92,14 @@ export function imContextMenuItemEnd(c: ImCache) {
     } imLayoutEnd(c);
 }
 
-export function openContextMenu(s: ContextMenuState, x: number, y: number, item: unknown, field: unknown) {
+export function openContextMenu(s: ContextMenuState, x: number, y: number) {
+    s.open = true;
     s.position.x = x;
     s.position.y = y;
-    s.item = item;
-    s.field = field;
 }
 
-export function closeContextMenu(s: ContextMenuState) {
-    s.item = null;
-    s.field = null;
-}
-
-export function openContextMenuAtMouse(s: ContextMenuState, item: unknown, field: unknown) {
+export function openContextMenuAtMouse(s: ContextMenuState) {
     const mouse = getGlobalEventSystem().mouse;
-    openContextMenu(s, mouse.X, mouse.Y, item, field);
+    openContextMenu(s, mouse.X, mouse.Y);
 }
 
-
-export function contextMenuIsOpen(s: ContextMenuState, item: unknown, field: unknown) {
-    return s.item === item && s.field === field;
-}

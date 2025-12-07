@@ -1,4 +1,4 @@
-// IM-CORE 1.050
+// IM-CORE 1.051
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
@@ -76,7 +76,7 @@ export type RemovedLevel
     // This is because keys are usually arbitrary values, and we can have a problem in the case that those values are
     // constantly recomputed or reloaded - the map will simply keep growing in size forever.
     | typeof REMOVE_LEVEL_DETATCHED   
-    | typeof REMOVE_LEVEL_DESTROYED;  // TODO: test that this level actually works. We haven't had to use it yet.
+    | typeof REMOVE_LEVEL_DESTROYED;
 
 // TypeIDs allow us to provide some basic sanity checks and protection
 // against the possiblity of data corruption that can happen when im-state is accessed 
@@ -596,7 +596,6 @@ export function __imBlockDerivedBegin(c: ImCache, internalType: number): ImCache
 // } imDivEnd(c);
 // ```
 // Each of those methods that 'augment' the call to `imDiv` may have their own initialization logic.
-// TODO: remove this thing. the performance increase is negligble, and is gone as soon as we replace imIsFirstRender with imMemo.
 export function isFirstishRender(c: ImCache): boolean {
     const entries = c[CACHE_CURRENT_ENTRIES];
     return entries[ENTRIES_COMPLETED_ONE_RENDER] === false;

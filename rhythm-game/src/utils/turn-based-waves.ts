@@ -23,8 +23,8 @@ export function triangle(t: number) {
 }
 
 export function square(t: number) {
-    t = t % 2;
-    return t > 1 ? 1 : -1;
+    t = (t * 2) % 2;
+    return t > 1 ? -1 : 1;
 }
 
 export function step(t: number) {

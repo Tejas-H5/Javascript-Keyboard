@@ -62,9 +62,16 @@ export function arraySwap(arr: unknown[], i: number, j: number) {
 }
 
 export function arrayMove(arr: unknown[], a: number, b: number) {
-    if (a >= 0 && a < arr.length && b >= 0 && b < arr.length) {
-        const val = arr.splice(a, 1);
-        arr.splice(b, 0, ...val);
+    if (a < 0 || a >= arr.length) return;
+
+    while (a < b && a < arr.length - 1) {
+        arraySwap(arr, a, a + 1);
+        a++;
+    }
+
+    while (a > b && a > 0) {
+        arraySwap(arr, a, a - 1);
+        a--;
     }
 }
 
