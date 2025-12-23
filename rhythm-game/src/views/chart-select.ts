@@ -7,7 +7,7 @@ import { CHART_STATUS_READONLY, getChartDurationInBeats, NoteItem, SequencerChar
 import { getCurrentChart } from "src/state/sequencer-state";
 import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "src/state/ui-state";
 import { scrollIntoViewVH } from "src/utils/dom-utils";
-import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
+import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax, clamp } from "src/utils/math-utils";
 import {
@@ -28,7 +28,7 @@ function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): bool
 
     const { key, keyUpper, listNavAxis } = ctx.keyPressState;
 
-    const currentChart = s.currentChart.loading ? null : getCurrentChart(ctx);
+    const currentChart = s.currentChartReload.isPending() ? null : getCurrentChart(ctx);
 
     if (currentChart && keyUpper === "E") {
         if (currentChart._savedStatus === CHART_STATUS_READONLY) {
@@ -69,7 +69,7 @@ function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): bool
 export function moveChartSelection(ctx: GlobalContext, listNavAxis: number) {
     if (listNavAxis === 0) return;
 
-    const availableCharts = ctx.repo.allChartMetadata;
+    const availableCharts = ctx.repo.charts.allChartMetadata;
     if (availableCharts.length === 0) return;
 
     let result;
@@ -106,20 +106,25 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
         }
     }
 
-    const availableCharts = ctx.repo.allChartMetadata;
-    const currentChart = s.currentChart.loading ? null : getCurrentChart(ctx);
+    const availableCharts = ctx.repo.charts.allChartMetadata;
+    const currentChart = s.currentChartReload.isPending() ? null : getCurrentChart(ctx);
 
     imLayout(c, COL); imFlex(c); {
         imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
             imLayout(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX); {
                 const scrollContainer = imLayout(c, COL); imFlex(c); imScrollOverflow(c, true); {
                     if (imIf(c) && availableCharts.length > 0) {
+                        const lastSelected = imGetInline(c, imChartSelect) ?? imSet(c, { id: 0 });
+
                         imFor(c); for (let i = 0; i < availableCharts.length; i++) {
                             const metadata = availableCharts[i];
 
                             const root = imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
                                 if (elHasMouseOver(c)) {
-                                    setCurrentChartMeta(ctx, metadata);
+                                    if (lastSelected.id !== metadata.id) {
+                                        lastSelected.id = metadata.id;
+                                        setCurrentChartMeta(ctx, metadata);
+                                    }
                                 }
 
                                 const chartSelected = s.currentChartMeta === metadata;

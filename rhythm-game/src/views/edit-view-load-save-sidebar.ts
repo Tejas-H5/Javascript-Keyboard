@@ -35,6 +35,7 @@ import {
 import { cssVarsApp } from "./styling";
 import { moveChartSelection } from "./chart-select";
 import { getCurrentChart } from "src/state/sequencer-state";
+import { newAsyncContext } from "src/utils/promise-utils";
 
 
 export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
@@ -45,7 +46,7 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
     const currentChart = getCurrentChart(ctx);
 
     imLayout(c, COL); imSize(c, 25, PERCENT, 0, NA); imAlign(c, STRETCH); {
-        const allAvailableCharts = ctx.repo.allChartMetadata;
+        const allAvailableCharts = ctx.repo.charts.allChartMetadata;
         imFor(c); for (let i = 0; i < allAvailableCharts.length; i++) {
             imLayout(c, ROW); {
                 const chart = allAvailableCharts[i];
@@ -154,7 +155,7 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                 const meta = getCurrentChartMetadata(ctx);
                 if (meta) {
                     setCurrentChartMeta(ctx, getChartAtIndex(ctx.repo, meta._index));
-                    deleteChart(ctx.repo, currentChart);
+                    deleteChart(newAsyncContext("Deleting chart"), ctx.repo, currentChart);
                     chartSelect.currentChartMeta
                 }
                 handled = true;

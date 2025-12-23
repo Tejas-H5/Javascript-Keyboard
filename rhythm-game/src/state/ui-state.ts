@@ -1,8 +1,8 @@
-import { newChart, SequencerChart, TimelineItem, undoEdit } from "src/state/sequencer-chart";
+import { SequencerChart, TimelineItem } from "src/state/sequencer-chart";
+import { AsyncContext, newAsyncContext } from "src/utils/promise-utils";
+import { GlobalContext } from "src/views/app";
 import { GameplayState } from "src/views/gameplay";
 import { SequencerChartMetadata } from "./chart-repository";
-import { newDefaultTrackedPrimise, TrackedPromise } from "src/utils/promise-utils";
-import { GlobalContext } from "src/views/app";
 import { UnitTestsState } from "./unit-tests";
 
 export const APP_VIEW_STARTUP = 1;
@@ -20,9 +20,10 @@ export type AppView = typeof APP_VIEW_STARTUP |
 export type ChartSelectState = {
     loading: boolean;
     loadCounter: number;
-    currentChartMeta: SequencerChartMetadata | null;
 
-    currentChart: TrackedPromise<void>;
+    currentChartReload: AsyncContext;
+    currentChartMeta: SequencerChartMetadata | null;
+    currentChart: SequencerChart | null;
     currentChartLoadingId: number | null;
 }
 
@@ -50,8 +51,9 @@ export type UpdateModalState = {
     operation:     OperationType;
     chartToUpdate: SequencerChart;
     newName:       string;
-    
-    updateResult: TrackedPromise<boolean>;
+
+    updateCtx:  AsyncContext;
+    error:      any | null;
 };
 
 export type LoadSaveState = {
@@ -96,7 +98,8 @@ export function newUiState(): UIState {
 
             // actually used to track our position in the list
             currentChartMeta: null, 
-            currentChart: newDefaultTrackedPrimise(undefined),
+            currentChartReload: newAsyncContext("Loading chart"),
+            currentChart: null,
             currentChartLoadingId: null,
         },
 

@@ -237,7 +237,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
         if (noteChanged || pressedChanged || releasedChanged || editorChanged) {
             s.viewVersion++;
 
-
             const dt = 1 / 44100;
             let keyFrequency = getNoteFrequency(s.noteIdx);
 
@@ -259,7 +258,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                     signal = 1;
                 }
 
-                computeEffectRackIteration(rack, s.registers, keyFrequency, signal, dt);
+                computeEffectRackIteration(rack, s.registers, keyFrequency, signal, dt, false);
 
                 s.samples[i] = s.registers.values[register];
             }
@@ -305,7 +304,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         compileEffectRack(effectRack);
                         const registers = newEffectRackRegisters();
                         const f = getNoteFrequency(getNoteIndex("C", 4));
-                        computeEffectRackIteration(effectRack, registers, f, 1, 1 / 48000);
+                        computeEffectRackIteration(effectRack, registers, f, 1, 1 / 48000, false);
 
                         // If we reach here, then yeah its probably legit...
                         editor.effectRack = effectRack;
@@ -617,7 +616,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
 
                         imLayout(c, ROW); imJustify(c); {
                             imDropZoneForPrototyping(c, effectsDnd, rack.effects.length);
-                            imInsertButton(c, editor);
+                            imInsertButton(c, editor, rack.effects.length - 1);
                         } imLayoutEnd(c);
 
                     } imScrollContainerEnd(c);
@@ -631,28 +630,24 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
             imLayout(c, COL); imFlex(c, 2); {
                 imHeading(c, "Oscilloscope");
 
-                imOscilloscope(c, editor);
+                imLayout(c, COL); imFlex(c); {
+                    imOscilloscope(c, editor);
+                } imLayoutEnd(c);
 
-                imHeading(c, "Bindings");
+                imHeading(c, "Presets");
 
-                imLayout(c, BLOCK); imScrollOverflow(c); imFlex(c); {
-                    imFor(c); for (
-                        let bindingIdx = 0;
-                        bindingIdx < rack.bindings.length;
-                        bindingIdx++
-                    ) {
-                        const binding = rack.bindings[bindingIdx];
-                        imLayout(c, BLOCK); {
-                            imRegisterHighlightBg(c, editor, bindingIdx);
+                imLayout(c, COL); imFlex(c, 2); {
+                    imLayout(c, BLOCK); imScrollOverflow(c); imFlex(c); {
+                        // imFor(c); for () {
+                        //     imLayout(c, BLOCK); {
+                        //     } imLayoutEnd(c);
+                        // } imForEnd(c);
 
-                            imStr(c, binding.name);
-                            imStr(c, binding.r ? " [read]" : "");
-                            imStr(c, binding.w ? " [write]" : "");
-                        } imLayoutEnd(c);
-                    } imForEnd(c);
+                        if (imButtonIsClicked(c, "+ Add preset")) {
+                        }
+                    } imLayoutEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
-
 
             imLayout(c, BLOCK); imSize(c, 0, NA, 5, PX); imBg(c, cssVars.bg); imRelative(c); {
                 // Will the undo buffer reach 5 mb doe ??. (it will totally reach 1mb.)
@@ -886,7 +881,7 @@ function newBindingForEditor(editor: EffectRackEditorState): RegisterIdx {
 function imOscilloscope(c: ImCache, editor: EffectRackEditorState) {
     const s = editor.oscilloscopeState;
 
-    imLayout(c, COL); imSize(c, 0, NA, 200, PX); {
+    imLayout(c, COL); imFlex(c); {
         const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
             const plotState = imState(c, newPlotState);
             const widthChanged = imMemo(c, width);
@@ -974,7 +969,7 @@ function imRegisterHighlightBg(c: ImCache, editor: EffectRackEditorState, regIdx
     }
 }
 
-function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx = -1) {
+function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: number) {
     const rack = editor.effectRack;
 
     let toAdd: EffectRackItem | undefined;
@@ -1020,7 +1015,7 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx = -
 
     if (toAdd) {
         editor.deferredAction = () => {
-            rack.effects.splice(insertIdx, 0, toAdd);
+            rack.effects.splice(insertIdx + 1, 0, toAdd);
             editor.edited = true;
         }
     }

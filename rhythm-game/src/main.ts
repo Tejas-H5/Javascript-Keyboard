@@ -10,20 +10,28 @@ import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
 import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import { TrackedPromise } from "./utils/promise-utils";
-import { imApp, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app";
+import { waitForOne, newAsyncContext, waitFor } from "./utils/promise-utils";
+import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app";
 
 "use strict"
 
-const programState = new TrackedPromise(async () => {
+let globalContext: GlobalContext | undefined;
+
+function initGlobalContext() {
     // Our code only works after we've established a connection with our
     // IndexedDB instance, and the audio context has loaded.
 
-    const repoPromise = newChartRepository();
+    const a = newAsyncContext("Initializing global context");
 
-    const sequencer = newSequencerState();
-    const dspPromise = initDspLoopInterface({
+    const newSequencer = newSequencerState();
+    const saveState    = loadSaveState();
+
+    const dspLoaded = waitForOne(a, initDspLoopInterface({
         render: () => {
+            const ctx = globalContext;
+            if (!ctx) return;
+
+            const sequencer = ctx.sequencer;
             const dspInfo = getDspInfo();
 
             if (sequencer.isPlaying) {
@@ -33,61 +41,66 @@ const programState = new TrackedPromise(async () => {
                 } 
             } 
         }
+    }));
+
+    const repoConnected = waitForOne(a, newChartRepository());
+
+    const ctxCreated = waitFor(a, [repoConnected, dspLoaded], ([repo, _]) => {
+        return newGlobalContext(saveState, repo, newSequencer);
     });
 
-    const saveState = loadSaveState();
+    const debugScenarioSetUp = waitFor(a, [ctxCreated], async ([ctx]) => {
+        // Setup debug scenario 
 
-    const [repo, _dspVoid] = await Promise.all([repoPromise, dspPromise]);
+        if (debugFlags.testFixDatabase) {
+            await cleanupChartRepo(a, ctx.repo)
+        }
 
-    const ctx = newGlobalContext(
-        saveState,
-        repo,
-        sequencer,
-    );
+        if (debugFlags.testSoundLab) {
+            setViewSoundLab(ctx);
+            return null;
+        } 
 
-    if (debugFlags.testFixDatabase) {
-        await cleanupChartRepo(repo);
-    }
+        if (
+            debugFlags.testEditView ||
+            debugFlags.testGameplay ||
+            debugFlags.testChartSelectView ||
+            debugFlags.testCopyModal
+        ) {
+            await loadChartMetadataList(ctx.repo);
 
-    if (debugFlags.testSoundLab) {
-        setViewSoundLab(ctx);
-    } else if (
-        debugFlags.testEditView ||
-        debugFlags.testGameplay ||
-        debugFlags.testChartSelectView ||
-        debugFlags.testCopyModal
-    ) {
-        loadChartMetadataList(ctx.repo).then(() => {
-            const charts = ctx.repo.allChartMetadata;
+            const charts = ctx.repo.charts.allChartMetadata;
             const meta = charts.find(c => c.name === debugFlags.testChart);
             assert(!!meta);
-            setCurrentChartMeta(ctx, meta).then(() => {
-                const chart = getCurrentChart(ctx);
 
-                if (debugFlags.testEditView) {
-                    setViewEditChart(ctx);
-                    if (debugFlags.testLoadSave) {
-                        setLoadSaveModalOpen(ctx);
-                    }
-                } else if (debugFlags.testGameplay) {
-                    setViewPlayCurrentChart(ctx);
-                } else if (debugFlags.testChartSelectView) {
-                    setViewChartSelect(ctx);
-                } 
+            await setCurrentChartMeta(ctx, meta);
 
-                if (debugFlags.testCopyModal) {
-                    openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
+            const chart = getCurrentChart(ctx);
+
+            if (debugFlags.testEditView) {
+                setViewEditChart(ctx);
+                if (debugFlags.testLoadSave) {
+                    setLoadSaveModalOpen(ctx);
                 }
-            });
-        });
-    }
+            } else if (debugFlags.testGameplay) {
+                setViewPlayCurrentChart(ctx);
+            } else if (debugFlags.testChartSelectView) {
+                setViewChartSelect(ctx);
+            }
 
-    return ctx;
-}, "Entrypoint");
+            if (debugFlags.testCopyModal) {
+                openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
+            }
+        }
+    });
+
+    return waitFor(a, [ctxCreated, debugScenarioSetUp], ([ctx, _]) => {
+        globalContext = ctx;
+    });
+}
+initGlobalContext();
 
 function imMainInner(c: ImCache) {
-    const globalContext = programState.value;
-
     if (imIf(c) && globalContext) {
         globalContext.deltaTime = getDeltaTimeSeconds(c);
 
@@ -119,6 +132,8 @@ function imMainInner(c: ImCache) {
                     } imIfEnd(c);
                 } imLayoutEnd(c);
             } imIfEnd(c);
+
+            imDiagnosticInfo(c, fps, globalContext);
         } catch (err) {
             imCatch(c, tryState, err);
             console.error("An error in the render loop:", err);

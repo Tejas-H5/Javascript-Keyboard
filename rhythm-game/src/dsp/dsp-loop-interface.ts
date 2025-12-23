@@ -1,6 +1,6 @@
 import { debugFlags } from "src/debug-flags";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
-import { newEffectRackEnvelope, newEffectRackItem, newEffectRackMathsItem, newEffectRackOscillator, newEffectRackSwitch } from "./dsp-loop-effect-rack";
+import { compileEffectRack, newEffectRackEnvelope, newEffectRackItem, newEffectRackMathsItem, newEffectRackOscillator, newEffectRackSwitch } from "./dsp-loop-effect-rack";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
@@ -37,6 +37,8 @@ const playSettings = newDspPlaySettings();
         const switchEffect = newEffectRackSwitch();
         rack.effects.push(newEffectRackItem(switchEffect));
     }
+
+    compileEffectRack(rack);
 }
 
 

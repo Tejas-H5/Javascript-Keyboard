@@ -41,11 +41,19 @@ export function newCssBuilder(prefix: string = "") {
         s(string: string) {
             builder.push(string);
         },
-        /** Returns `prefix + className`. Throws if it somehow clashes with an existing class someone else made. */
+        /** 
+         * Returns `prefix + className`.
+         * If this classname exists, we'll give you `prefix + classname + {incrementing number}`.
+         */
         newClassName(className: string) {
-            let name = prefix + className;
-            if (allClassNames.has(name)) {
-                throw new Error("We've already made a class with this name: " + name + " - consider adding a prefix");
+            let name = prefix + className ;
+            let baseName = name;
+            let count = 2;
+            while (allClassNames.has(name)) {
+                // Should basically never happen. Would be interesting to see if it ever does, so I am logging it
+                console.warn("conflicting class name " + name + ", generating another one");
+                name = baseName + count;
+                count++;
             }
             allClassNames.add(name);
             return name;

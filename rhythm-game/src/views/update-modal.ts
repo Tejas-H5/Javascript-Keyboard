@@ -6,13 +6,13 @@ import { cssVars } from "src/components/core/stylesheets";
 import { createChart, loadChartMetadataList, saveChart } from "src/state/chart-repository";
 import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
 import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "src/state/ui-state";
-import { unreachable } from "src/utils/assert";
+import { assert, unreachable } from "src/utils/assert";
 import { ImCache, imIf, imIfElse, imIfEnd, isFirstishRender } from "src/utils/im-core";
 import { elSetStyle, imStr } from "src/utils/im-dom";
 import { GlobalContext, setCurrentChartMeta, setLoadSaveModalClosed } from "./app";
 import { cssVarsApp } from "./styling";
-import { TrackedPromise } from "src/utils/promise-utils";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
+import { waitFor } from "src/utils/promise-utils";
 
 function getButtonText(o: OperationType): string {
     switch(o) {
@@ -34,7 +34,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
         }
 
         imLayout(c, COL); imBg(c, cssVars.bg); imSize(c, 70, PERCENT, 0, NA); imPadding(c,10, PX, 10, PX, 10, PX, 10, PX); {
-            if (imIf(c) && !s.updateResult.loading) {
+            if (imIf(c) && !s.updateCtx.isPending()) {
                 imLayout(c, ROW); imJustify(c); {
                     imStr(c, s.message);
                 } imLayoutEnd(c);
@@ -52,9 +52,9 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
                             }
                         }
 
-                        if (imIf(c) && s.updateResult.error) {
+                        if (imIf(c) && s.error) {
                             imLayout(c, ROW); imFg(c, cssVarsApp.error); {
-                                imStr(c, s.updateResult.error);
+                                imStr(c, s.error);
                             } imLayoutEnd(c);
                         } imIfEnd(c);
                     } imLayoutEnd(c);
@@ -90,13 +90,12 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     }
 
     if (copy) {
-        handleCopyChart(ctx, s);
+        handleCreateCopyOrRenameChart(ctx, s);
     } else if (escape) {
-        if (!s.updateResult.loading) {
+        if (!s.updateCtx.isPending()) {
             ctx.ui.updateModal = null;
         } else {
-            s.updateResult.cancel();
-            s.message = "Aborted.";
+            // Shouldn't abort this operation mid-way through.
         }
     } 
 
@@ -104,81 +103,101 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     ctx.handled = true;
 }
 
-function handleCopyChart(ctx: GlobalContext, s: UpdateModalState) {
-    if (s.updateResult.loading) {
-        return;
-    }
+function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState) {
+    if (s.updateCtx.isPending()) return;
+
+    s.error = null;
 
     s.newName = s.newName.trim();
+    if (!s.newName) {
+        throw new Error("Your name is empty");
+    }
 
-    s.updateResult = new TrackedPromise(async () => {
-        if (!s.newName) {
-            throw new Error("Your name is empty");
+    const charts = ctx.repo.charts.allChartMetadata;
+    const existing = charts.find(c => c.name === s.newName);
+    if (existing) {
+        throw new Error("A chart with this name already exists");
+    }
+
+    const a = s.updateCtx;
+
+    let updated;
+    let updatedId: number | undefined;
+    let loadedMetadata = false;
+    let shouldCloseLoadSaveModal = false;
+
+    switch (s.operation) {
+        case NAME_OPERATION_RENAME: {
+            s.message = "Renaming [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
+
+            const toRename = { ...s.chartToUpdate };
+            toRename.name = s.newName;
+            if (toRename._savedStatus === CHART_STATUS_SAVED) {
+                toRename._savedStatus = CHART_STATUS_UNSAVED;
+            }
+
+            updatedId = toRename.id;
+
+            updated = saveChart(a, ctx.repo, toRename);
+        } break;
+        case NAME_OPERATION_CREATE: {
+            s.message = "Creating " + s.newName + "] ...";
+
+            const toCreate = newChart(s.newName);
+
+            const created = createChart(a, ctx.repo, toCreate);
+
+            const idAssigned = waitFor(a, [created], ([newId]) => updatedId = newId);
+
+            updated = waitFor(a, [idAssigned], () => loadChartMetadataList(ctx.repo));
+
+            shouldCloseLoadSaveModal = true;
+        } break;
+        case NAME_OPERATION_COPY: {
+            s.message = "Copying [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
+
+            const toCopy = { ...s.chartToUpdate };
+            toCopy.id = -1;
+            toCopy.name = s.newName;
+            toCopy._savedStatus = CHART_STATUS_UNSAVED;
+
+            const created = createChart(a, ctx.repo, toCopy);
+
+            const idAssigned = waitFor(a, [created], ([newId]) => updatedId = newId);
+
+            updated = idAssigned;
+        } break;
+        default: unreachable(s.operation);
+    }
+    // I bet your async await can't do that
+    // (this happens instantly)
+    a.name = s.message;
+
+    if (!loadedMetadata) {
+        updated = waitFor(a, [updated], () => loadChartMetadataList(ctx.repo));
+    }
+
+    const updatedChartSelected = waitFor(a, [updated], () => {
+        assert(updatedId !== undefined);
+
+        const charts = ctx.repo.charts.allChartMetadata;
+        const chart = charts.find(c => c.id === updatedId);
+        if (!chart) {
+            throw new Error("Chart wasn't created");
         }
 
-        const charts = ctx.repo.allChartMetadata;
-        const existing = charts.find(c => c.name === s.newName);
-        if (existing) {
-            throw new Error("A chart with this name already exists");
-        }
+        return setCurrentChartMeta(ctx, chart)
+    });
 
-        let updatedId;
-
-        switch (s.operation) {
-            case NAME_OPERATION_RENAME: {
-                s.message = "Renaming [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
-
-                const toRename = { ...s.chartToUpdate };
-                toRename.name = s.newName;
-                if (toRename._savedStatus === CHART_STATUS_SAVED) {
-                    toRename._savedStatus = CHART_STATUS_UNSAVED;
-                }
-
-                updatedId = toRename.id;
-
-                await saveChart(ctx.repo, toRename);
-                await loadChartMetadataList(ctx.repo);
-            } break;
-            case NAME_OPERATION_CREATE: {
-                s.message = "Creating " + s.newName + "] ...";
-
-                const toCreate = newChart(s.newName);
-
-                const newId = await createChart(ctx.repo, toCreate);
-                updatedId = newId;
-                await loadChartMetadataList(ctx.repo);
-                const charts = ctx.repo.allChartMetadata;
-
-                // After you create a chart, that should become the chart that's selected.
-                const chart = charts.find(c => c.id === newId);
-                if (chart) {
-                    setCurrentChartMeta(ctx, chart)
-                    setLoadSaveModalClosed(ctx);
-                }
-
-            } break;
-            case NAME_OPERATION_COPY: {
-                s.message = "Copying [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
-
-                const toCopy = { ...s.chartToUpdate };
-                toCopy.id = -1;
-                toCopy.name = s.newName;
-                toCopy._savedStatus = CHART_STATUS_UNSAVED;
-
-                updatedId = await createChart(ctx.repo, toCopy);
-            } break;
-            default: unreachable(s.operation);
-        }
-
-        await loadChartMetadataList(ctx.repo);
-        const created = charts.find(c => c.id === updatedId);
-        if (created) {
-            setCurrentChartMeta(ctx, created);
+    waitFor(a, [updatedChartSelected], () => {
+        if (shouldCloseLoadSaveModal) {
+            setLoadSaveModalClosed(ctx);
         }
 
         ctx.ui.updateModal = null;
+    });
 
-        return true;
-    }, "Copying chart");
+
+    return true;
 }
 

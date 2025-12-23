@@ -2,7 +2,7 @@ import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, imZIndex,
 import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { debugFlags, getTestSleepMs } from "src/debug-flags";
 import { getDspInfo, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { ChartRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/chart-repository";
+import { DataRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/chart-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     startPlaying,
@@ -30,7 +30,7 @@ import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
 import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
-import { getLoadingPromises, newDefaultTrackedPrimise } from "src/utils/promise-utils";
+import { getAllAsyncContexts, newAsyncContext, waitFor } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
@@ -75,7 +75,7 @@ export type GlobalContext = {
 
     savedState: SavedState;
 
-    repo: ChartRepository;
+    repo: DataRepository;
 
     // TODO: input state
     allKeysState: AllKeysState;
@@ -88,7 +88,7 @@ export type GlobalContext = {
 
 export function newGlobalContext(
     saveState: SavedState,
-    repo: ChartRepository,
+    repo: DataRepository,
     sequencer: SequencerState,
 ) {
     // const firstChart = getOrCreateCurrentChart(saveState);
@@ -131,16 +131,23 @@ export function playKeyPressForUI(_ctx: GlobalContext, key: InstrumentKey) {
 
 export function setCurrentChartMeta(ctx: GlobalContext, metadata: SequencerChartMetadata) {
     const chartSelect = ctx.ui.chartSelect;
-    chartSelect.currentChartMeta = metadata;
-
-    if (chartSelect.currentChartLoadingId !== metadata.id) {
-        chartSelect.currentChart.cancel();
-        chartSelect.currentChartLoadingId = metadata.id;
-        chartSelect.currentChart = queryChart(ctx.repo, metadata.id)
-            .then(c => setSequencerChart(ctx.sequencer, c));
+    if (chartSelect.currentChartLoadingId === metadata.id) {
+        return;
     }
 
-    return chartSelect.currentChart;
+    chartSelect.currentChartLoadingId = metadata.id;
+    chartSelect.currentChartMeta      = metadata;
+    chartSelect.currentChartReload.bump();
+
+    const chartQueried = queryChart(
+        chartSelect.currentChartReload,
+        ctx.repo,
+        metadata.id
+    );
+
+    return waitFor(chartSelect.currentChartReload, [chartQueried], ([chart]) => {
+        setSequencerChart(ctx.sequencer, chart);
+    });
 }
 
 export function addNewUserChart(_ctx: GlobalContext) {
@@ -249,7 +256,8 @@ export function openChartUpdateModal(
         operation: operation,
         chartToUpdate: chart,
         newName: newName,
-        updateResult: newDefaultTrackedPrimise(false),
+        updateCtx: newAsyncContext("Updating a chart"),
+        error: null,
     };
 }
 
@@ -308,7 +316,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 editView.lastCursor = 0;
 
                 loadChartMetadataList(ctx.repo).then(() => {
-                    const availableCharts = ctx.repo.allChartMetadata;
+                    const availableCharts = ctx.repo.charts.allChartMetadata;
                     if (availableCharts.length === 0) return;
 
                     const currentChartId = ctx.sequencer._currentChart.id;
@@ -500,43 +508,6 @@ export function imApp(
             } break;
         } imSwitchEnd(c);
 
-        // diagnostic info
-        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imBg(c, `rgba(255, 255, 255, 0.6)`); imZIndex(c, 10000); {
-            imFpsCounterSimple(c, fps);
-            imExtraDiagnosticInfo(c);
-
-            // What's playing?
-
-            imLayout(c, BLOCK); {
-                const info = getDspInfo();
-                imFor(c); for (const [keyId, signal] of info.currentlyPlaying) {
-                    const key = ctx.keyboard.flatKeys[keyId];
-                    imLayout(c, BLOCK); {
-                        imStr(c, "[");
-                        imStr(c, key.text);
-                        imStr(c, ",");
-                        imStr(c, signal.toFixed(1));
-                        imStr(c, "]");
-                    } imLayoutEnd(c);
-                } imForEnd(c);
-            } imLayoutEnd(c);
-
-            // Info about background tasks
-            imLayout(c, BLOCK); {
-                const tasks = getLoadingPromises();
-                imFor(c); for (const t of tasks) {
-                    imLayout(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
-                        const ms = performance.now() - t.t0;
-                        const testDelay = getTestSleepMs(debugFlags);
-                        imStr(c, testDelay ? "[TEST]" : "");
-                        imStr(c, Math.round(ms));
-                        imStr(c, "ms |");
-                        imStr(c, t.pipelineStageName);
-                    } imLayoutEnd(c);
-                } imForEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
-
     } imLayoutEnd(c);
 
     if (!ctx.handled) {
@@ -554,6 +525,47 @@ export function imApp(
             ctx.keyPressState.e.preventDefault();
         }
     }
+}
+
+export function imDiagnosticInfo(c: ImCache, fps: FpsCounterState, ctx: GlobalContext | undefined) {
+    // diagnostic info
+    imLayout(c, BLOCK); imAbsolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imBg(c, `rgba(255, 255, 255, 0.6)`); imZIndex(c, 10000); {
+        imFpsCounterSimple(c, fps);
+        imExtraDiagnosticInfo(c);
+
+        // What's playing?
+
+        if (imIf(c) && ctx) {
+            imLayout(c, BLOCK); {
+                const info = getDspInfo();
+                imFor(c); for (const [keyId, signal] of info.currentlyPlaying) {
+                    const key = ctx.keyboard.flatKeys[keyId];
+                    imLayout(c, BLOCK); {
+                        imStr(c, "[");
+                        imStr(c, key.text);
+                        imStr(c, ",");
+                        imStr(c, signal.toFixed(1));
+                        imStr(c, "]");
+                    } imLayoutEnd(c);
+                } imForEnd(c);
+            } imLayoutEnd(c);
+        } imIfEnd(c);
+
+        // Info about background tasks
+        imLayout(c, BLOCK); {
+            const tasks = getAllAsyncContexts();
+            imFor(c); for (const t of tasks) {
+                imLayout(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
+                    const ms = performance.now() - t.t0;
+                    const testDelay = getTestSleepMs(debugFlags);
+                    imStr(c, testDelay ? "[TEST]" : "");
+                    imStr(c, Math.round(ms));
+                    imStr(c, "ms |");
+                    imStr(c, t.name);
+                } imLayoutEnd(c);
+            } imForEnd(c);
+        } imLayoutEnd(c);
+    } imLayoutEnd(c);
 }
 
 export function setLoadSaveModalOpen(ctx: GlobalContext) {

@@ -1,3 +1,5 @@
+import { sleepForMs } from "./utils/promise-utils";
+
 export const IS_PROD = import.meta.env.PROD;
 
 const ON_EVERYWHERE = 1;
@@ -46,7 +48,7 @@ export const debugFlags: DebugFlags = {
     testCopyModal:       OFF,
     testChart:           "Good old days",
     debuUndoBuffer:      OFF,
-    testChartSelectView: OFF,
+    testChartSelectView: ON,
 
     testGameplay:      OFF,
     testGameplaySpeed: getSpeed(1),
@@ -55,11 +57,11 @@ export const debugFlags: DebugFlags = {
 
     testFixDatabase: OFF,
 
-    testSoundLab: ON,
+    testSoundLab: OFF,
     testSoundLabWaveEditor: ON,
     testSoundLabAllEffectRackEffects: OFF,
 
-    testAsync: OFF,
+    testAsync: ON,
     testAsyncALittle: ON_EVERYWHERE,
 };
 
@@ -73,3 +75,7 @@ export function getTestSleepMs(f: DebugFlags): number {
     return 0;
 }
 
+export async function sleepForAsyncTesting() {
+    const testSleepMs = getTestSleepMs(debugFlags);
+    await sleepForMs(testSleepMs);
+}

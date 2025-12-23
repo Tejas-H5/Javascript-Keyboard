@@ -56,7 +56,8 @@ function fftInternal(
     assert(isPowerOfTwo(dstFreqRe.length))
     assert(isPowerOfTwo(dstFreqIm.length))
 
-    // TODO: write to not literally use recursion (warning: last time I tried, it was HARD! Wasn't able to do it)
+    // TODO: write to not literally use recursion (warning: last time I tried, it was HARD! Wasn't able to do it) 
+    // (two times I have tried and failed to do this now)
 
     const halfLen = len / 2;
 

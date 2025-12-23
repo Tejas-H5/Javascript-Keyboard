@@ -1,6 +1,7 @@
 import { saveChart } from "src/state/chart-repository";
 import { isReadonlyChart, } from "src/state/sequencer-chart";
 import { GlobalContext } from "./app";
+import { newAsyncContext } from "src/utils/promise-utils";
 
 // TODO: doesn't need to be here. does it?
 // Separate code by concern. not by 'is it a background task or not?'. xd
@@ -22,7 +23,8 @@ export function runSaveCurrentChartTask(ctx: GlobalContext) {
     const editView = ctx.ui.editView;
     editView.chartSaveTimerSeconds = -1;
 
-    const saveTask = saveChart(ctx.repo, chart)
+    const a = newAsyncContext("Saving current chart");
+    const saveTask = saveChart(a, ctx.repo, chart)
     saveTasks.add(chart.id);
     saveTask.then(() => saveTasks.delete(chart.id));
 }

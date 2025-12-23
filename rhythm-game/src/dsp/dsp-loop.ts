@@ -42,6 +42,7 @@ import {
     r,
     REG_IDX_KEY_FREQUENCY,
     REG_IDX_KEY_SIGNAL,
+    REG_IDX_KEY_SIGNAL_RAW,
     REG_IDX_NONE,
     REG_IDX_OUTPUT,
     registerIdxAsNumber,
@@ -200,7 +201,8 @@ export function updateOscillator(
         osc.state._effectRackRegisters,
         f,
         osc.inputs.signal,
-        1 / sampleRate
+        1 / sampleRate,
+        true,
     );
 
     state.value = sampleValue;
@@ -699,6 +701,7 @@ export function getDspLoopClassUrl(): string {
         { value: REG_IDX_OUTPUT, name: "REG_IDX_OUTPUT" },
         { value: REG_IDX_KEY_FREQUENCY, name: "REG_IDX_KEY_FREQUENCY" },
         { value: REG_IDX_KEY_SIGNAL, name: "REG_IDX_KEY_SIGNAL" },
+        { value: REG_IDX_KEY_SIGNAL_RAW, name: "REG_IDX_KEY_SIGNAL_RAW" },
         compileEffectRack,
         computeEffectRackIteration,
         newEffectRackRegisters,

@@ -62,10 +62,11 @@ export function getRegisterIdxForUIValue(e: EffectRack, reg: RegisterIdxUiMetada
     if (reg.bindingIdx === -1) return reg.value;
 
     const binding = e.bindings[reg.bindingIdx]; assert(!!binding);
-    while (reg.bindingIdx >= e.registersTemplate.length) {
-        e.registersTemplate.push(0);
+    // now, this method will never fail
+    while (reg.bindingIdx >= e.registersTemplate.values.length) {
+        allocateRegisterIdx(e, 0);
     }
-    return e.registersTemplate[reg.bindingIdx];
+    return e.registersTemplate.values[reg.bindingIdx];
 }
 
 export function newRegisterValueMetadata(
@@ -307,12 +308,13 @@ export type EffectRack = {
 
     // Gets cloned as needed - the same effect rack can be reused with several keys,
     // each of which will have it's own registers array.
-    registersTemplate: number[]; 
+    registersTemplate: EffectRackRegisters; 
 
     debugEffectIdx: number;
 
     // We use this to automagically re-clone the registers from the template array.
     version: number;
+    lastEffectTypes: EffectRackItemValue["type"][];
 };
 
 export function newEffectRackItem(value: EffectRackItemValue): EffectRackItem {
@@ -334,19 +336,18 @@ export function newEffectRackBinding(name: string, r: boolean, w: boolean): Regi
 export function newEffectRack(): EffectRack {
     return {
         version: 0,
+        lastEffectTypes: [],
+
         effects: [],
         // Needs to always be one output binding
         bindings: [
             newEffectRackBinding("Result", true, true),
             newEffectRackBinding("Key frequency", true, false),
             newEffectRackBinding("Signal", true, false),
+            newEffectRackBinding("Signal (Raw)", true, false),
         ],
         debugEffectIdx: -1,
-        registersTemplate: [
-            0,
-            0,
-            0
-        ],
+        registersTemplate: newEffectRackRegisters(),
     };
 }
 
@@ -356,6 +357,7 @@ export const REG_IDX_NONE = asRegisterIdx(-1);
 export const REG_IDX_OUTPUT = asRegisterIdx(0);
 export const REG_IDX_KEY_FREQUENCY = asRegisterIdx(1);
 export const REG_IDX_KEY_SIGNAL = asRegisterIdx(2);
+export const REG_IDX_KEY_SIGNAL_RAW = asRegisterIdx(3);
 
 // Read a value out of a register
 export function r(registers: number[], idx: RegisterIdx) {
@@ -372,9 +374,14 @@ export function w(registers: number[], idx: RegisterIdx, val: number) {
 // Only constant values and persistent state need a register allocated to them.
 // the other values already have them via bindings.
 // NOTE: each key on the instrument will have it's own copy of the registers.
-export function allocateRegisterIdx(e: EffectRack, initialValue: number): RegisterIdx {
-    const idx = e.registersTemplate.length;
-    e.registersTemplate.push(initialValue);
+export function allocateRegisterIdx(
+    e: EffectRack,
+    initialValue: number,
+    isDynamicState = false
+): RegisterIdx {
+    const idx = e.registersTemplate.values.length;
+    e.registersTemplate.values.push(initialValue);
+    e.registersTemplate.isPersistedBetweenFrames.push(isDynamicState);
     return asRegisterIdx(idx);
 }
 
@@ -401,18 +408,22 @@ export function compileEffectRack(e: EffectRack) {
     assert(e.bindings.length > 0);
 
     // First 0-n registers are for the bindings. bindingIdx is also a register idx.
-    e.registersTemplate.length = 0;
+    e.registersTemplate.values.length = 0;
+    e.registersTemplate.isPersistedBetweenFrames.length = 0;
     for (let i = 0; i < e.bindings.length; i++) {
         e.bindings[i]._used = false;
-        e.registersTemplate.push(0);
+        allocateRegisterIdx(e, 0);
     }
+
+    if (e.debugEffectIdx < -1) e.debugEffectIdx = -1;
+    if (e.debugEffectIdx >= e.effects.length) e.debugEffectIdx = -1;
 
     for (let i = 0; i < e.effects.length; i++) {
         const effect = e.effects[i].value;
         switch (effect.type) {
             case EFFECT_RACK_ITEM__OSCILLATOR: {
                 const wave = effect;
-                wave.t = allocateRegisterIdx(e, 0);
+                wave.t = allocateRegisterIdx(e, 0, true);
 
                 wave.phase     = allocateRegisterIdxIfNeeded(e, wave.phaseUI);
                 wave.amplitude = allocateRegisterIdxIfNeeded(e, wave.amplitudeUI);
@@ -421,8 +432,8 @@ export function compileEffectRack(e: EffectRack) {
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effect;
 
-                envelope.stage = allocateRegisterIdx(e, 0);
-                envelope.value = allocateRegisterIdx(e, 0);
+                envelope.stage = allocateRegisterIdx(e, 0, true);
+                envelope.value = allocateRegisterIdx(e, 0, true);
 
                 envelope.signal  = allocateRegisterIdxIfNeeded(e, envelope.signalUI);
                 envelope.attack  = allocateRegisterIdxIfNeeded(e, envelope.attackUI);
@@ -461,6 +472,8 @@ export function compileEffectRack(e: EffectRack) {
 
 export type EffectRackRegisters = {
     values: number[];
+    // Dynamic state persists between recompilation. It's assumed that UI can't control this state.
+    isPersistedBetweenFrames: boolean[];
     version: number;
 };
 
@@ -470,6 +483,7 @@ export function newEffectRackRegisters(): EffectRackRegisters {
     // Currently not needed, as there is just one effect rack in the entire program.
     return {
         values: [],
+        isPersistedBetweenFrames: [],
         version: 0,
     };
 }
@@ -484,20 +498,45 @@ export function computeEffectRackIteration(
     keyFreqeuency: number,
     signal: number,
     dt: number,
+    dynamic: boolean, // Set to false for determinism (cringe)
 ): number {
     const re = registers.values;
 
     if (e.version !== registers.version) {
         registers.version = e.version;
 
-        re.length = e.registersTemplate.length;
-        for (let i = 0; i < e.registersTemplate.length; i++) {
-            re[i] = e.registersTemplate[i];
+        let shapeChanged = false;
+        e.lastEffectTypes.length = e.effects.length;
+        for (let i = 0; i < e.effects.length; i++) {
+            const type = e.effects[i].value.type;
+            if (type !== e.lastEffectTypes[i]) {
+                shapeChanged = true;
+                e.lastEffectTypes[i] = type;
+            }
+        }
+        if (re.length !== e.registersTemplate.values.length) {
+            shapeChanged = true;
+            re.length = e.registersTemplate.values.length;
+        }
+
+        if (shapeChanged || dynamic === false) {
+            // full copy
+            for (let i = 0; i < e.registersTemplate.values.length; i++) {
+                re[i] = e.registersTemplate.values[i];
+            }
+        } else {
+            // only copy the parts not persisted between frames.
+            for (let i = 0; i < e.registersTemplate.values.length; i++) {
+                // could prob store these in two separate buffers, but I couldnt be botherd for now.
+                if (e.registersTemplate.isPersistedBetweenFrames[i] === true) continue;
+                re[i] = e.registersTemplate.values[i];
+            }
         }
     }
 
-    re[REG_IDX_KEY_FREQUENCY] = keyFreqeuency;
-    re[REG_IDX_KEY_SIGNAL]    = signal;
+    re[REG_IDX_KEY_FREQUENCY]  = keyFreqeuency;
+    re[REG_IDX_KEY_SIGNAL]     = signal;
+    re[REG_IDX_KEY_SIGNAL_RAW] = signal > 0.0000001 ? 1 : 0;
 
     for (let effectIdx = 0; effectIdx < e.effects.length; effectIdx++) {
         const effect = e.effects[effectIdx];
@@ -566,8 +605,9 @@ export function computeEffectRackIteration(
                     value -= dt * (1 / r(re, envelope.release))
                     if (value < 0) {
                         value = 0;
-                        stage = 0;
                     }
+                    // We want the attack to work instantly after a release and press.
+                    stage = 0;
                 }
 
                 w(re, envelope.value, value);
@@ -624,10 +664,8 @@ export function computeEffectRackIteration(
 
         w(re, effect.dst, value);
 
-        if (e.debugEffectIdx !== -1) {
-            if (e.debugEffectIdx === effectIdx) {
-                break;
-            }
+        if (e.debugEffectIdx === effectIdx) {
+            break;
         }
     }
 
