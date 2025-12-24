@@ -83,7 +83,7 @@ import { EL_B, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imStr } fr
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
 import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, } from "./app";
-import { isSavingAnyChart } from "./background-tasks";
+import { isSavingAnyChart } from "./saving-chart";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view";
 import { cssVarsApp } from "./styling";
 

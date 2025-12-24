@@ -2,7 +2,7 @@ import { SequencerChart, TimelineItem } from "src/state/sequencer-chart";
 import { AsyncContext, newAsyncContext } from "src/utils/promise-utils";
 import { GlobalContext } from "src/views/app";
 import { GameplayState } from "src/views/gameplay";
-import { SequencerChartMetadata } from "./chart-repository";
+import { SequencerChartMetadata } from "./data-repository";
 import { UnitTestsState } from "./unit-tests";
 
 export const APP_VIEW_STARTUP = 1;

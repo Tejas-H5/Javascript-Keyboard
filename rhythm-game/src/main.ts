@@ -2,8 +2,7 @@ import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
 import { BLOCK, imLayout, imLayoutEnd } from "./components/core/layout";
 import { fpsMarkRenderingEnd, fpsMarkRenderingStart, newFpsCounterState } from "./components/fps-counter";
 import { debugFlags } from "./debug-flags";
-import { cleanupChartRepo, loadChartMetadataList, newChartRepository } from "./state/chart-repository";
-import { loadSaveState } from "./state/loading-saving-charts";
+import { cleanupChartRepo, loadChartMetadataList, newDataRepository } from "./state/data-repository";
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state";
 import { NAME_OPERATION_COPY } from "./state/ui-state";
 import { assert } from "./utils/assert";
@@ -24,7 +23,6 @@ function initGlobalContext() {
     const a = newAsyncContext("Initializing global context");
 
     const newSequencer = newSequencerState();
-    const saveState    = loadSaveState();
 
     const dspLoaded = waitForOne(a, initDspLoopInterface({
         render: () => {
@@ -43,10 +41,10 @@ function initGlobalContext() {
         }
     }));
 
-    const repoConnected = waitForOne(a, newChartRepository());
+    const repoConnected = waitForOne(a, newDataRepository());
 
     const ctxCreated = waitFor(a, [repoConnected, dspLoaded], ([repo, _]) => {
-        return newGlobalContext(saveState, repo, newSequencer);
+        return newGlobalContext(repo, newSequencer);
     });
 
     const debugScenarioSetUp = waitFor(a, [ctxCreated], async ([ctx]) => {

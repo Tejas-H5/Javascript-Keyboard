@@ -15,6 +15,7 @@ import {
     SequencerChartCompressed,
     uncompressChart
 } from "./sequencer-chart";
+import { EffectRack } from "src/dsp/dsp-loop-effect-rack";
 
 const tables = {
     chartMetadata: idb.newTable<SequencerChartMetadata>("chart_metadata", "id", idb.KEYGEN_AUTOINCREMENT), 
@@ -29,9 +30,13 @@ export type DataRepository = {
         allChartMetadata: SequencerChartMetadata[];
         allChartMetadataLoading: AsyncContext;
     };
+    effectRackPresets: {
+        allEffectRackPresets: EffectRack[];
+        allEffectRackPresetsLoading: AsyncContext;
+    };
 };
 
-export function newChartRepository(): Promise<DataRepository> {
+export function newDataRepository(): Promise<DataRepository> {
     const a = newAsyncContext("Initializing chart repository");
 
     const idbConnected = idb.openConnection("KeyboardRhythmGameIDB", 1, tables, {
@@ -49,6 +54,10 @@ export function newChartRepository(): Promise<DataRepository> {
             charts: {
                 allChartMetadata: [],
                 allChartMetadataLoading: newAsyncContext("Loading chart metadata list"),
+            },
+            effectRackPresets: {
+                allEffectRackPresets: [],
+                allEffectRackPresetsLoading: newAsyncContext("Loading effect rack presets"),
             }
         };
 

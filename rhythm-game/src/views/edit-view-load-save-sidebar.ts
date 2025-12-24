@@ -1,6 +1,6 @@
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { BLOCK, COL, imAlign, imFg, imFlex, imLayout, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
-import { deleteChart, getChartAtIndex, } from "src/state/chart-repository";
+import { deleteChart, getChartAtIndex, } from "src/state/data-repository";
 import {
     playAll,
     stopPlayback

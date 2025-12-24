@@ -4,8 +4,10 @@
 
 // NOTE: these dependencies and their dependencies need to be manually injected into the DSP loop, so 
 // try to keep them small.
-import { assert, unreachable } from "src/utils/assert";
+import { arrayAt } from "src/utils/array-utils";
+import { assert, mustGetDefined, unreachable } from "src/utils/assert";
 import { moveTowards } from "src/utils/math-utils";
+import { asArray, asNumber, asObject, asString, deserializeObject, extractKey, extractKeyDefined, serializeToJSON } from "src/utils/serialization-utils";
 import { sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
 
 // TODO: _VALUE__
@@ -36,6 +38,7 @@ export function registerIdxAsNumber(val: RegisterIdx) {
 
 export type RegisterBinding = {
     name: string;
+    // TODO: should these really be serializable??
     r: boolean; w: boolean;
 
     // Populated after a compile step.
@@ -55,7 +58,7 @@ export type RegisterIdxUiMetadata = {
 
     // These are more like recommendations that UI can use to make itself more useable.
     // The UI could also choose to ignore these values.
-    max: number; min: number; name: string;
+    _max: number; _min: number; _name: string;
 };
 
 export function getRegisterIdxForUIValue(e: EffectRack, reg: RegisterIdxUiMetadata) {
@@ -63,10 +66,10 @@ export function getRegisterIdxForUIValue(e: EffectRack, reg: RegisterIdxUiMetada
 
     const binding = e.bindings[reg.bindingIdx]; assert(!!binding);
     // now, this method will never fail
-    while (reg.bindingIdx >= e.registersTemplate.values.length) {
+    while (reg.bindingIdx >= e._registersTemplate.values.length) {
         allocateRegisterIdx(e, 0);
     }
-    return e.registersTemplate.values[reg.bindingIdx];
+    return e._registersTemplate.values[reg.bindingIdx];
 }
 
 export function newRegisterValueMetadata(
@@ -78,9 +81,9 @@ export function newRegisterValueMetadata(
 ): RegisterIdxUiMetadata {
     return {
         value: val,
-        min, 
-        max,
-        name,
+        _min: min, 
+        _max: max,
+        _name: name,
         bindingIdx: regIdx,
     };
 }
@@ -107,20 +110,20 @@ export function getEffectRackOscillatorWaveTypeName(e: EffectRackOscillatorWaveT
         case OSC_WAVE__TRIANGLE: return "triangle";
         case OSC_WAVE__SAWTOOTH2: return "-sawtooth";
     }
-    return "???";
+    return "?";
 }
 
 export type EffectRackOscillator = {
     type: typeof EFFECT_RACK_ITEM__OSCILLATOR;
 
     // state:
-    t: RegisterIdx;
+    _t: RegisterIdx;
 
     // UI values:
 
-    phase:       RegisterIdx;
-    amplitude:   RegisterIdx;
-    frequency:   RegisterIdx; 
+    _phase:     RegisterIdx;
+    _amplitude: RegisterIdx;
+    _frequency: RegisterIdx; 
 
     // It occurs to me that I cannot animate this ... yet ...
     waveType:    EffectRackOscillatorWaveType;
@@ -134,11 +137,12 @@ export function newEffectRackOscillator(): EffectRackOscillator {
     return {
         type: EFFECT_RACK_ITEM__OSCILLATOR,
 
-        t: asRegisterIdx(0),
+        _t: asRegisterIdx(0),
 
-        amplitude:   asRegisterIdx(1),
-        phase:       asRegisterIdx(0),
-        frequency:   asRegisterIdx(REG_IDX_KEY_FREQUENCY),
+        _amplitude:   asRegisterIdx(1),
+        _phase:       asRegisterIdx(0),
+        _frequency:   asRegisterIdx(REG_IDX_KEY_FREQUENCY),
+
         waveType:    OSC_WAVE__SIN,
 
         amplitudeUI: newRegisterValueMetadata("amplitude", 1, 0, 1),
@@ -153,39 +157,39 @@ export type EffectRackEnvelope = {
 
     // STATE. Also needs to be stored in registers, so that
     // it can be per-key
-    stage: RegisterIdx;
-    value: RegisterIdx;
+    _stage: RegisterIdx;
+    _value: RegisterIdx;
 
     // UI
 
-    signal:  RegisterIdx; // Used to know when to pump the envelope
-
-    attack:  RegisterIdx; // time from 0 -> 1
-    decay:   RegisterIdx; // time from 1 -> sustain
-    sustain: RegisterIdx; // sustain amplitude
-    release: RegisterIdx; // time from sustain -> 0
-
-    toModulate:  RegisterIdx; // This is the signal we're supposed to modulate. Always some register.
+    _signal:  RegisterIdx; // Used to know when to pump the envelope
+    _attack:  RegisterIdx; // time from 0 -> 1
+    _decay:   RegisterIdx; // time from 1 -> sustain
+    _sustain: RegisterIdx; // sustain amplitude
+    _release: RegisterIdx; // time from sustain -> 0
 
     signalUI:     RegisterIdxUiMetadata;
     attackUI:     RegisterIdxUiMetadata;
     decayUI:      RegisterIdxUiMetadata;
     sustainUI:    RegisterIdxUiMetadata;
     releaseUI:    RegisterIdxUiMetadata;
+
+    // extra inputs
+    toModulate:  RegisterIdx; // This is the signal we're supposed to modulate. Always some register.
 };
 
 export function newEffectRackEnvelope(): EffectRackEnvelope {
     return {
         type: EFFECT_RACK_ITEM__ENVELOPE,
 
-        stage: asRegisterIdx(0),
-        value: asRegisterIdx(0),
+        _stage: asRegisterIdx(0),
+        _value: asRegisterIdx(0),
 
-        signal:  asRegisterIdx(0),
-        attack:  asRegisterIdx(0),
-        decay:   asRegisterIdx(0),
-        sustain: asRegisterIdx(0),
-        release: asRegisterIdx(0),
+        _signal:  asRegisterIdx(0),
+        _attack:  asRegisterIdx(0),
+        _decay:   asRegisterIdx(0),
+        _sustain: asRegisterIdx(0),
+        _release: asRegisterIdx(0),
 
         toModulate: asRegisterIdx(REG_IDX_OUTPUT),
 
@@ -197,7 +201,7 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
     };
 }
 
-export type EffectRackMathsItem = {
+export type EffectRackMaths = {
     type: typeof EFFECT_RACK_ITEM__MATHS;
     terms: EffectRackMathsItemTerm[];
 };
@@ -215,19 +219,19 @@ export function newEffectRackMathsItemTerm(): EffectRackMathsItemTerm {
 }
 
 export type EffectRackMathsItemTermCoefficient = {
-    value: RegisterIdx;
+    _value: RegisterIdx;
     valueUI: RegisterIdxUiMetadata;
 };
 
 export function newEffectRackMathsItemCoefficient(): EffectRackMathsItemTermCoefficient {
     return {
-        value: asRegisterIdx(0),
+        _value: asRegisterIdx(0),
         // NOTE: UI will need to set this dynamically
         valueUI: newRegisterValueMetadata("", 1, -1_000_000, 1_000_000),
     };
 }
 
-export function newEffectRackMathsItem(): EffectRackMathsItem  {
+export function newEffectRackMaths(): EffectRackMaths  {
     return {
         type: EFFECT_RACK_ITEM__MATHS,
         terms: [],
@@ -238,7 +242,7 @@ export type EffectRackSwitch = {
     type: typeof EFFECT_RACK_ITEM__SWITCH;
     conditions: EffectRackSwitchCondition[];
 
-    default: RegisterIdx;
+    _default: RegisterIdx;
     defaultUi: RegisterIdxUiMetadata;
 }
 
@@ -248,7 +252,7 @@ export function newEffectRackSwitch(): EffectRackSwitch {
         conditions: [
             newEffectRackSwitchCondition(),
         ],
-        default: asRegisterIdx(0),
+        _default: asRegisterIdx(0),
         defaultUi: newRegisterValueMetadata("default", 0, -1_000_000, 1_000_000, REG_IDX_OUTPUT),
     };
 }
@@ -262,44 +266,45 @@ export type EffectRackSwitchOperator
     ;
 
 export type EffectRackSwitchCondition = {
-    a: RegisterIdx;
-    b: RegisterIdx;
+    _a: RegisterIdx;
+    aUi: RegisterIdxUiMetadata;
+
     operator: EffectRackSwitchOperator;
 
-    val: RegisterIdx;
-
-    aUi: RegisterIdxUiMetadata;
+    _b: RegisterIdx;
     bUi: RegisterIdxUiMetadata;
+
+    _val: RegisterIdx;
     valUi: RegisterIdxUiMetadata;
 };
 
 export function newEffectRackSwitchCondition(): EffectRackSwitchCondition {
     return {
-        a: asRegisterIdx(0),
-        b: asRegisterIdx(0),
-        val: asRegisterIdx(0),
+        _a: asRegisterIdx(0),
+        aUi:   newRegisterValueMetadata("a", 0),
 
         operator: SWITCH_OP_LT,
 
-        aUi:   newRegisterValueMetadata("a", 0),
-        bUi:   newRegisterValueMetadata("b", 0),
         valUi: newRegisterValueMetadata("then", 0),
+        _val: asRegisterIdx(0),
+
+        _b: asRegisterIdx(0),
+        bUi:   newRegisterValueMetadata("b", 0),
     };
 }
 
 export type EffectRackItem = {
     // All items have an output register
     dst: RegisterIdx; 
+    value: EffectRackItemValue;
 
     enabled: boolean;
-
-    value: EffectRackItemValue;
 }
 
 type EffectRackItemValue
     = EffectRackOscillator
     | EffectRackEnvelope
-    | EffectRackMathsItem
+    | EffectRackMaths
     | EffectRackSwitch;
 
 export type EffectRack = {
@@ -308,13 +313,13 @@ export type EffectRack = {
 
     // Gets cloned as needed - the same effect rack can be reused with several keys,
     // each of which will have it's own registers array.
-    registersTemplate: EffectRackRegisters; 
+    _registersTemplate: EffectRackRegisters; 
 
-    debugEffectIdx: number;
+    _debugEffectIdx: number;
 
     // We use this to automagically re-clone the registers from the template array.
-    version: number;
-    lastEffectTypes: EffectRackItemValue["type"][];
+    _version: number;
+    _lastEffectTypes: EffectRackItemValue["type"][];
 };
 
 export function newEffectRackItem(value: EffectRackItemValue): EffectRackItem {
@@ -335,8 +340,8 @@ export function newEffectRackBinding(name: string, r: boolean, w: boolean): Regi
 
 export function newEffectRack(): EffectRack {
     return {
-        version: 0,
-        lastEffectTypes: [],
+        _version: 0,
+        _lastEffectTypes: [],
 
         effects: [],
         // Needs to always be one output binding
@@ -344,10 +349,10 @@ export function newEffectRack(): EffectRack {
             newEffectRackBinding("Result", true, true),
             newEffectRackBinding("Key frequency", true, false),
             newEffectRackBinding("Signal", true, false),
-            newEffectRackBinding("Signal (Raw)", true, false),
+            newEffectRackBinding("Raw signal", true, false),
         ],
-        debugEffectIdx: -1,
-        registersTemplate: newEffectRackRegisters(),
+        _debugEffectIdx: -1,
+        _registersTemplate: newEffectRackRegisters(),
     };
 }
 
@@ -357,6 +362,9 @@ export const REG_IDX_NONE = asRegisterIdx(-1);
 export const REG_IDX_OUTPUT = asRegisterIdx(0);
 export const REG_IDX_KEY_FREQUENCY = asRegisterIdx(1);
 export const REG_IDX_KEY_SIGNAL = asRegisterIdx(2);
+// NOTE: right now, the 'raw' signal is identical to the regular signal.
+// If I ever want to have a variable signal between 0 and 1 somehow, that is where SIGNAL_RAW will still be 0 or 1. 
+// I suppose in that case it is technically not the raw signal then xD. This name must have been influenced Unity's Input.GetAxisRaw method., I may change it later.
 export const REG_IDX_KEY_SIGNAL_RAW = asRegisterIdx(3);
 
 // Read a value out of a register
@@ -379,9 +387,9 @@ export function allocateRegisterIdx(
     initialValue: number,
     isDynamicState = false
 ): RegisterIdx {
-    const idx = e.registersTemplate.values.length;
-    e.registersTemplate.values.push(initialValue);
-    e.registersTemplate.isPersistedBetweenFrames.push(isDynamicState);
+    const idx = e._registersTemplate.values.length;
+    e._registersTemplate.values.push(initialValue);
+    e._registersTemplate.isPersistedBetweenFrames.push(isDynamicState);
     return asRegisterIdx(idx);
 }
 
@@ -402,44 +410,44 @@ export function allocateRegisterIdxIfNeeded(e: EffectRack, regUi: RegisterIdxUiM
  * Resets all effects, and allocates the register indices based on bindings and constants. 
  */
 export function compileEffectRack(e: EffectRack) {
-    e.version++;
+    e._version++;
 
     // Need output binding. If it was not present, all other indices in the effect rack are off by 1
     assert(e.bindings.length > 0);
 
     // First 0-n registers are for the bindings. bindingIdx is also a register idx.
-    e.registersTemplate.values.length = 0;
-    e.registersTemplate.isPersistedBetweenFrames.length = 0;
+    e._registersTemplate.values.length = 0;
+    e._registersTemplate.isPersistedBetweenFrames.length = 0;
     for (let i = 0; i < e.bindings.length; i++) {
         e.bindings[i]._used = false;
         allocateRegisterIdx(e, 0);
     }
 
-    if (e.debugEffectIdx < -1) e.debugEffectIdx = -1;
-    if (e.debugEffectIdx >= e.effects.length) e.debugEffectIdx = -1;
+    if (e._debugEffectIdx < -1) e._debugEffectIdx = -1;
+    if (e._debugEffectIdx >= e.effects.length) e._debugEffectIdx = -1;
 
     for (let i = 0; i < e.effects.length; i++) {
         const effect = e.effects[i].value;
         switch (effect.type) {
             case EFFECT_RACK_ITEM__OSCILLATOR: {
                 const wave = effect;
-                wave.t = allocateRegisterIdx(e, 0, true);
+                wave._t = allocateRegisterIdx(e, 0, true);
 
-                wave.phase     = allocateRegisterIdxIfNeeded(e, wave.phaseUI);
-                wave.amplitude = allocateRegisterIdxIfNeeded(e, wave.amplitudeUI);
-                wave.frequency = allocateRegisterIdxIfNeeded(e, wave.frequencyUI);
+                wave._phase     = allocateRegisterIdxIfNeeded(e, wave.phaseUI);
+                wave._amplitude = allocateRegisterIdxIfNeeded(e, wave.amplitudeUI);
+                wave._frequency = allocateRegisterIdxIfNeeded(e, wave.frequencyUI);
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effect;
 
-                envelope.stage = allocateRegisterIdx(e, 0, true);
-                envelope.value = allocateRegisterIdx(e, 0, true);
+                envelope._stage = allocateRegisterIdx(e, 0, true);
+                envelope._value = allocateRegisterIdx(e, 0, true);
 
-                envelope.signal  = allocateRegisterIdxIfNeeded(e, envelope.signalUI);
-                envelope.attack  = allocateRegisterIdxIfNeeded(e, envelope.attackUI);
-                envelope.decay   = allocateRegisterIdxIfNeeded(e, envelope.decayUI);
-                envelope.sustain = allocateRegisterIdxIfNeeded(e, envelope.sustainUI);
-                envelope.release = allocateRegisterIdxIfNeeded(e, envelope.releaseUI);
+                envelope._signal  = allocateRegisterIdxIfNeeded(e, envelope.signalUI);
+                envelope._attack  = allocateRegisterIdxIfNeeded(e, envelope.attackUI);
+                envelope._decay   = allocateRegisterIdxIfNeeded(e, envelope.decayUI);
+                envelope._sustain = allocateRegisterIdxIfNeeded(e, envelope.sustainUI);
+                envelope._release = allocateRegisterIdxIfNeeded(e, envelope.releaseUI);
             } break;
             case EFFECT_RACK_ITEM__MATHS: {
                 const maths = effect;
@@ -448,7 +456,7 @@ export function compileEffectRack(e: EffectRack) {
                     const term = maths.terms[i];
                     for (let i = 0; i < term.coefficients.length; i++) {
                         const c = term.coefficients[i];
-                        c.value = allocateRegisterIdxIfNeeded(e, c.valueUI);
+                        c._value = allocateRegisterIdxIfNeeded(e, c.valueUI);
                     }
                 }
             } break;
@@ -458,12 +466,12 @@ export function compileEffectRack(e: EffectRack) {
                 for (let i = 0; i < switchEffect.conditions.length; i++) {
                     const cond = switchEffect.conditions[i];
 
-                    cond.a = allocateRegisterIdxIfNeeded(e, cond.aUi);
-                    cond.b = allocateRegisterIdxIfNeeded(e, cond.bUi);
-                    cond.val = allocateRegisterIdxIfNeeded(e, cond.valUi);
+                    cond._a = allocateRegisterIdxIfNeeded(e, cond.aUi);
+                    cond._b = allocateRegisterIdxIfNeeded(e, cond.bUi);
+                    cond._val = allocateRegisterIdxIfNeeded(e, cond.valUi);
                 }
 
-                switchEffect.default = allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi);
+                switchEffect._default = allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi);
             } break;
             default: unreachable(effect);
         }
@@ -502,34 +510,34 @@ export function computeEffectRackIteration(
 ): number {
     const re = registers.values;
 
-    if (e.version !== registers.version) {
-        registers.version = e.version;
+    if (e._version !== registers.version) {
+        registers.version = e._version;
 
         let shapeChanged = false;
-        e.lastEffectTypes.length = e.effects.length;
+        e._lastEffectTypes.length = e.effects.length;
         for (let i = 0; i < e.effects.length; i++) {
             const type = e.effects[i].value.type;
-            if (type !== e.lastEffectTypes[i]) {
+            if (type !== e._lastEffectTypes[i]) {
                 shapeChanged = true;
-                e.lastEffectTypes[i] = type;
+                e._lastEffectTypes[i] = type;
             }
         }
-        if (re.length !== e.registersTemplate.values.length) {
+        if (re.length !== e._registersTemplate.values.length) {
             shapeChanged = true;
-            re.length = e.registersTemplate.values.length;
+            re.length = e._registersTemplate.values.length;
         }
 
         if (shapeChanged || dynamic === false) {
             // full copy
-            for (let i = 0; i < e.registersTemplate.values.length; i++) {
-                re[i] = e.registersTemplate.values[i];
+            for (let i = 0; i < e._registersTemplate.values.length; i++) {
+                re[i] = e._registersTemplate.values[i];
             }
         } else {
             // only copy the parts not persisted between frames.
-            for (let i = 0; i < e.registersTemplate.values.length; i++) {
+            for (let i = 0; i < e._registersTemplate.values.length; i++) {
                 // could prob store these in two separate buffers, but I couldnt be botherd for now.
-                if (e.registersTemplate.isPersistedBetweenFrames[i] === true) continue;
-                re[i] = e.registersTemplate.values[i];
+                if (e._registersTemplate.isPersistedBetweenFrames[i] === true) continue;
+                re[i] = e._registersTemplate.values[i];
             }
         }
     }
@@ -550,10 +558,10 @@ export function computeEffectRackIteration(
             case EFFECT_RACK_ITEM__OSCILLATOR: {
                 const wave = effectValue;
 
-                const a = r(re, wave.amplitude);
+                const a = r(re, wave._amplitude);
                 if (Math.abs(a) > 0) {
-                    const t = r(re, wave.t);
-                    const t2 = t + r(re, wave.phase);
+                    const t = r(re, wave._t);
+                    const t2 = t + r(re, wave._phase);
 
                     switch (wave.waveType) {
                         case OSC_WAVE__SIN:      value += sin(t2);      break;
@@ -563,31 +571,31 @@ export function computeEffectRackIteration(
                         case OSC_WAVE__SAWTOOTH2: value -= sawtooth(t2); break;
                     }
 
-                    w(re, wave.t, t + dt * r(re, wave.frequency));
+                    w(re, wave._t, t + dt * r(re, wave._frequency));
                     value *= a;
                 }
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effectValue;
 
-                value = r(re, envelope.value);
-                let stage = r(re, envelope.stage);
+                value = r(re, envelope._value);
+                let stage = r(re, envelope._stage);
 
                 // TODO: handle signal between 0 and 1 when we envetually get there. Right now signal can only ever be 0 or 1
                 // so it's not that important.
 
-                const signal = r(re, envelope.signal);
+                const signal = r(re, envelope._signal);
                 if (signal > 0) {
                     if (stage === 0) {
-                        value += dt * (1 / r(re, envelope.attack));
+                        value += dt * (1 / r(re, envelope._attack));
                         if (value > 1) {
                             value = 1;
                             stage = 1;
                         }
                     } else if (stage === 1) {
-                        const sustainLevel = r(re, envelope.sustain);
+                        const sustainLevel = r(re, envelope._sustain);
                         const amountToDrop = 1 - sustainLevel;
-                        value -= dt * (1 / r(re, envelope.decay)) * amountToDrop;
+                        value -= dt * (1 / r(re, envelope._decay)) * amountToDrop;
                         if (value < sustainLevel) {
                             value = sustainLevel;
                             stage = 2;
@@ -596,13 +604,13 @@ export function computeEffectRackIteration(
                         // This code probably should never hti. 
                         // May as well just track the sustain level
 
-                        const sustainLevel = r(re, envelope.sustain);
-                        const decaySpeed = 1 / r(re, envelope.decay);
+                        const sustainLevel = r(re, envelope._sustain);
+                        const decaySpeed = 1 / r(re, envelope._decay);
 
                         value = moveTowards(value, sustainLevel, decaySpeed);
                     }
                 } else if (value > 0) {
-                    value -= dt * (1 / r(re, envelope.release))
+                    value -= dt * (1 / r(re, envelope._release))
                     if (value < 0) {
                         value = 0;
                     }
@@ -610,8 +618,8 @@ export function computeEffectRackIteration(
                     stage = 0;
                 }
 
-                w(re, envelope.value, value);
-                w(re, envelope.stage, stage);
+                w(re, envelope._value, value);
+                w(re, envelope._stage, stage);
 
                 const target = r(re, envelope.toModulate);
                 value *= target;
@@ -625,7 +633,7 @@ export function computeEffectRackIteration(
                     let termValue = 1;
                     for (let i = 0; i < term.coefficients.length; i++) {
                         const c = term.coefficients[i];
-                        termValue *= r(re, c.value);
+                        termValue *= r(re, c._value);
                     }
 
                     value += termValue;
@@ -639,8 +647,8 @@ export function computeEffectRackIteration(
                 for (let i = 0; i < switchEffect.conditions.length; i++) {
                     const cond = switchEffect.conditions[i];
 
-                    const a = r(re, cond.a);
-                    const b = r(re, cond.b);
+                    const a = r(re, cond._a);
+                    const b = r(re, cond._b);
 
                     let result;
                     if (cond.operator === SWITCH_OP_LT) {
@@ -650,13 +658,13 @@ export function computeEffectRackIteration(
                     }
 
                     if (result) {
-                        value = r(re, cond.val);
+                        value = r(re, cond._val);
                         broke = true;
                         break;
                     }
                 }
                 if (!broke) {
-                    value = r(re, switchEffect.default);
+                    value = r(re, switchEffect._default);
                 }
             } break;
             default: unreachable(effectValue);
@@ -664,10 +672,117 @@ export function computeEffectRackIteration(
 
         w(re, effect.dst, value);
 
-        if (e.debugEffectIdx === effectIdx) {
+        if (e._debugEffectIdx === effectIdx) {
             break;
         }
     }
 
     return re[REG_IDX_OUTPUT];
+}
+
+
+// Prob not needed for undo buffer, but should be useful for import/export. 
+export function serializeEffectRack(effectRack: EffectRack): string {
+    return serializeToJSON(effectRack);
+}
+
+function deserializeRegisterIdxUiMetadata(dst: RegisterIdxUiMetadata, objUnknown: unknown) {
+    const obj = mustGetDefined(asObject(objUnknown));
+    dst.value = mustGetDefined(asNumber(extractKey<RegisterIdxUiMetadata>(obj, "value")));
+    dst.bindingIdx = asRegisterIdx(mustGetDefined(asNumber(extractKey<RegisterIdxUiMetadata>(obj, "bindingIdx"))));
+}
+
+export function deserializeEffectRack(json: string): EffectRack {
+    const jsonVal = JSON.parse(json);
+
+    const result = newEffectRack();
+
+    const obj = mustGetDefined(asObject(jsonVal));
+
+    const bindingsArr = mustGetDefined(asArray(extractKeyDefined<EffectRack>(obj, "bindings"))); 
+    result.bindings = bindingsArr.map((binding, i) => {
+        const existing = arrayAt(result.bindings, i);
+        const bindingObj = mustGetDefined(asObject(binding));
+        const name = mustGetDefined(asString(extractKeyDefined<RegisterBinding>(bindingObj, "name")))
+        const val = newEffectRackBinding(name, existing?.r ?? true, existing?.w ?? true);
+        deserializeObject(val, bindingObj);
+        return val;
+    });
+
+    const effectsArr = mustGetDefined(asArray<EffectRackItem>(extractKeyDefined<EffectRack>(obj, "effects"))); 
+    result.effects = effectsArr.map(effect => {
+        const valueObj = mustGetDefined(asObject(extractKeyDefined<EffectRackItem>(effect, "value")));
+        let value: EffectRackItemValue | undefined;
+        const type = mustGetDefined((valueObj as EffectRackItemValue)["type"]);
+        switch (type) {
+            case EFFECT_RACK_ITEM__OSCILLATOR: {
+                value = newEffectRackOscillator();
+
+                value.waveType = mustGetDefined(asNumber(extractKeyDefined<EffectRackOscillator>(valueObj, "waveType"))) as EffectRackOscillatorWaveType;
+                assert(getEffectRackOscillatorWaveTypeName(value.waveType) !== "?");
+
+                deserializeRegisterIdxUiMetadata(value.phaseUI, extractKeyDefined<EffectRackOscillator>(valueObj, "phaseUI"));
+                deserializeRegisterIdxUiMetadata(value.amplitudeUI, extractKeyDefined<EffectRackOscillator>(valueObj, "amplitudeUI"));
+                deserializeRegisterIdxUiMetadata(value.frequencyUI, extractKeyDefined<EffectRackOscillator>(valueObj, "frequencyUI"));
+            } break;
+            case EFFECT_RACK_ITEM__ENVELOPE: {
+                value = newEffectRackEnvelope();
+
+                deserializeRegisterIdxUiMetadata(value.attackUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "attackUI"));
+                deserializeRegisterIdxUiMetadata(value.sustainUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "sustainUI"));
+                deserializeRegisterIdxUiMetadata(value.decayUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "decayUI"));
+                deserializeRegisterIdxUiMetadata(value.releaseUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "releaseUI"));
+                deserializeRegisterIdxUiMetadata(value.signalUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "signalUI"));
+
+                value.toModulate = asRegisterIdx(mustGetDefined(asNumber(extractKeyDefined<EffectRackEnvelope>(valueObj, "toModulate"))));
+            } break;
+            case EFFECT_RACK_ITEM__MATHS: {
+                value = newEffectRackMaths();
+                const termsArr = mustGetDefined(asArray(extractKeyDefined<EffectRackMaths>(valueObj, "terms")));
+                value.terms = termsArr.map(termUnknown => {
+                    let termObj = mustGetDefined(asObject(termUnknown));
+                    const term = newEffectRackMathsItemTerm();
+                    const coefficientsArr = mustGetDefined(asArray(extractKeyDefined<EffectRackMathsItemTerm>(termObj, "coefficients")));
+
+                    term.coefficients = coefficientsArr.map(coefficientUnknown => {
+                        const coefficientObj = mustGetDefined(asObject(coefficientUnknown));
+                        const coefficient = newEffectRackMathsItemCoefficient();
+                        deserializeRegisterIdxUiMetadata(coefficient.valueUI, extractKeyDefined<EffectRackMathsItemTermCoefficient>(coefficientObj, "valueUI"));
+                        deserializeObject(coefficient, coefficientObj);
+                        return coefficient;
+                    });
+
+                    return term;
+                });
+            } break;
+            case EFFECT_RACK_ITEM__SWITCH: {
+                value = newEffectRackSwitch();
+                const conditionsArr = mustGetDefined(asArray(extractKeyDefined<EffectRackSwitch>(valueObj, "conditions")));
+                value.conditions = conditionsArr.map(uk => {
+                    const valueObj = mustGetDefined(asObject(uk));
+                    const value = newEffectRackSwitchCondition();
+                    deserializeRegisterIdxUiMetadata(value.aUi, extractKeyDefined<EffectRackSwitchCondition>(valueObj, "aUi"));
+                    deserializeRegisterIdxUiMetadata(value.bUi, extractKeyDefined<EffectRackSwitchCondition>(valueObj, "bUi"));
+                    deserializeRegisterIdxUiMetadata(value.valUi, extractKeyDefined<EffectRackSwitchCondition>(valueObj, "valUi"));
+                    value.operator = mustGetDefined(asNumber(extractKeyDefined<EffectRackSwitchCondition>(valueObj, "operator"))) as EffectRackSwitchOperator;
+                    assert(value.operator === SWITCH_OP_GT || value.operator === SWITCH_OP_LT);
+                    deserializeObject(value, obj);
+                    return value;
+                });
+                deserializeRegisterIdxUiMetadata(value.defaultUi, extractKeyDefined<EffectRackSwitch>(valueObj, "defaultUi"));
+            } break;
+        }
+
+        value = mustGetDefined(value);
+        deserializeObject(value, valueObj);
+
+        const item = newEffectRackItem(value);
+        deserializeObject(item, effect);
+
+        return item;
+    });
+
+    deserializeObject(result, obj, "effectRack");
+
+    return result;
 }

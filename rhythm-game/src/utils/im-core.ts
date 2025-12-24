@@ -1,4 +1,4 @@
-// IM-CORE 1.051
+// IM-CORE 1.052
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
@@ -653,6 +653,7 @@ export function __imBlockDerivedEnd(c: ImCache, internalType: number) {
  * then detatching the things we rendered last time if that was the case. 
  * Even though code like below will work, you should never write it:
  * ```ts
+ * // technically correct but dont do it like this:
  * imIf(c); if (<condition>) {
  * } else {
  *      imElse(c);

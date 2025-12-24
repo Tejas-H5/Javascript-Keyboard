@@ -54,7 +54,7 @@ import {
     setViewChartSelect,
     undoSequencerEdit
 } from "./app";
-import { runSaveCurrentChartTask } from "./background-tasks";
+import { runSaveCurrentChartTask } from "./saving-chart";
 import { imLoadSaveSidebar } from "./edit-view-load-save-sidebar";
 
 const OVERPLAY_MS = 1000;

@@ -57,11 +57,11 @@ export const debugFlags: DebugFlags = {
 
     testFixDatabase: OFF,
 
-    testSoundLab: OFF,
+    testSoundLab: ON,
     testSoundLabWaveEditor: ON,
     testSoundLabAllEffectRackEffects: OFF,
 
-    testAsync: ON,
+    testAsync: OFF,
     testAsyncALittle: ON_EVERYWHERE,
 };
 

@@ -8,6 +8,7 @@ import {
 } from "src/app-components/context-menu";
 import { imVerticalText } from "src/app-components/misc";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
+import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
 import { imCheckbox } from "src/components/checkbox";
@@ -36,7 +37,7 @@ import {
     ROW_REVERSE
 } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { imDragAndDrop, imDragZoneBegin, imDragHandle, imDropZoneForPrototyping, imDragZoneEnd } from "src/components/drag-and-drop";
+import { imDragAndDrop, imDragHandle, imDragZoneBegin, imDragZoneEnd, imDropZoneForPrototyping } from "src/components/drag-and-drop";
 import { imLine, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
@@ -45,6 +46,7 @@ import {
     compileEffectRack,
     computeEffectRackIteration,
     copyEffectRackItem,
+    deserializeEffectRack,
     EFFECT_RACK_ITEM__ENVELOPE,
     EFFECT_RACK_ITEM__MATHS,
     EFFECT_RACK_ITEM__OSCILLATOR,
@@ -58,7 +60,7 @@ import {
     newEffectRackBinding,
     newEffectRackEnvelope,
     newEffectRackItem,
-    newEffectRackMathsItem,
+    newEffectRackMaths,
     newEffectRackMathsItemCoefficient,
     newEffectRackMathsItemTerm,
     newEffectRackOscillator,
@@ -73,6 +75,7 @@ import {
     REG_IDX_OUTPUT,
     RegisterIdx,
     RegisterIdxUiMetadata,
+    serializeEffectRack,
     SWITCH_OP_GT,
     SWITCH_OP_LT
 } from "src/dsp/dsp-loop-effect-rack";
@@ -84,12 +87,14 @@ import {
     ImCache,
     imFor,
     imForEnd,
+    imGetInline,
     imIf,
     imIfElse,
     imIfEnd,
     imKeyedBegin,
     imKeyedEnd,
     imMemo,
+    imSet,
     imState,
     imSwitch,
     imSwitchEnd,
@@ -115,6 +120,7 @@ const allWaveTypes: EffectRackOscillatorWaveType[] = [
 const MODAL_NONE = 0;
 const MODAL_EXPORT = 1;
 const MODAL_IMPORT = 2;
+const MODAL_NEW_PRESET = 3;
 
 const UNDO_DEBOUNCE_SECONDS = 0.2;
 
@@ -248,8 +254,8 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
             s.compileTime = t1 - t0;
 
             let register = REG_IDX_OUTPUT;
-            if (rack.debugEffectIdx !== -1) {
-                register = rack.effects[rack.debugEffectIdx].dst;
+            if (rack._debugEffectIdx !== -1) {
+                register = rack.effects[rack._debugEffectIdx].dst;
             }
 
             for (let i = 0; i < s.samples.length; i++) {
@@ -273,17 +279,19 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
         }
 
         if (imIf(c) && editor.modal === MODAL_EXPORT) {
-            imExportModal(c, editor.effectRack);
+            imExportModal(c, editor.effectRack, serializeEffectRack);
 
-            if (ctx.keyPressState) {
-                const { key } = ctx.keyPressState;
-                if (key === "Escape") {
-                    editor.modal = MODAL_NONE;
-                    ctx.handled = true;
-                } else {
-                    // We need to be able to copy the text. fr fr.
-                    ctx.handled = true;
-                    ctx.dontPreventDefault = true;
+            if (!ctx.handled) {
+                if (ctx.keyPressState) {
+                    const { key } = ctx.keyPressState;
+                    if (key === "Escape") {
+                        editor.modal = MODAL_NONE;
+                        ctx.handled = true;
+                    } else {
+                        // We need to be able to copy the text. fr fr.
+                        ctx.handled = true;
+                        ctx.dontPreventDefault = true;
+                    }
                 }
             }
         } else if (imIfElse(c) && editor.modal ===  MODAL_IMPORT) {
@@ -295,7 +303,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                     // Try running it
                     try {
                         // TODO: use our custom deserialization utils for proper versioning etc of data.
-                        const effectRack: EffectRack = JSON.parse(importModal.json);
+                        const effectRack: EffectRack = deserializeEffectRack(importModal.json);
                         if (!effectRack.effects || !Array.isArray(effectRack.effects)) {
                             throw new Error("Wrong JSON format");
                         }
@@ -307,7 +315,10 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         computeEffectRackIteration(effectRack, registers, f, 1, 1 / 48000, false);
 
                         // If we reach here, then yeah its probably legit...
+                        const version = editor.effectRack._version;
                         editor.effectRack = effectRack;
+                        editor.effectRack._version = version;
+                        editor.effectRack._version++;
                         editor.undoBuffer = newUndoBuffer();
                         editor.modal = MODAL_NONE;
                         editor.edited = true;
@@ -319,13 +330,53 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                 }
             }
 
-            if (ctx.keyPressState) {
-                if (ctx.keyPressState.key === "Escape") {
-                    editor.modal = MODAL_NONE;
-                    ctx.handled = true;
+            if (!ctx.handled) {
+                if (ctx.keyPressState) {
+                    if (ctx.keyPressState.key === "Escape") {
+                        editor.modal = MODAL_NONE;
+                        ctx.handled = true;
+                    }
                 }
             }
 
+        } else if (imIfElse(c) && editor.modal ===  MODAL_NEW_PRESET) {
+            imModalBegin(c, 201); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+                imLayout(c, COL); imSize(c, 40, PERCENT, 0, NA); imBg(c, cssVars.bg); imAlign(c); {
+                    imLayout(c, BLOCK); {
+                        imStr(c, "Enter preset name: ");
+                    } imLayoutEnd(c);
+
+                    const s = imGetInline(c, imEffectRackEditor) ?? imSet(c, {
+                        newName: "",
+                        error: "",
+                    });
+
+                    const ev = imTextInputOneLine(c, s.newName);
+                    if (ev) {
+                        if (ev.newName) {
+                            s.newName = ev.newName;
+                            ctx.handled = true;
+                        }
+
+                        if (ev.submit) {
+                            
+
+                            ctx.handled = true;
+                        }
+
+                        if (ev.cancel) {
+                            editor.modal = MODAL_NONE;
+                            ctx.handled = true;
+                        }
+                    }
+
+                    if (imIf(c) && s.error) {
+                        imLayout(c, BLOCK); {
+                            imStr(c, s.error);
+                        } imLayoutEnd(c);
+                    } imIfEnd(c);
+                } imLayoutEnd(c);
+            } imModalEnd(c);
         } imIfEnd(c);
 
         imLayout(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
@@ -373,12 +424,12 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
 
                             imKeyedBegin(c, effect); {
                                 const effectDisabled = !effect.enabled ||
-                                    (rack.debugEffectIdx !== -1 && effectIdx > rack.debugEffectIdx);
+                                    (rack._debugEffectIdx !== -1 && effectIdx > rack._debugEffectIdx);
 
                                 const z = imDragZoneBegin(c, effectsDnd, effectIdx); {
                                     imLayout(c, COL); imFlex(c); {
                                         imLayout(c, ROW); imAlign(c);
-                                        imPadding(c, 5, PX, 5, PX, 5, PX, 5, PX); imGap(c, 10, PX); {
+                                        imPadding(c, 5, PX, 5, PX, 5, PX, 5, PX); imGap(c, 5, PX); {
                                             imFg(c, effectDisabled ? cssVars.mg : "");
 
                                             imDropZoneForPrototyping(c, effectsDnd, effectIdx);
@@ -408,20 +459,20 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                                     }
                                                 } imLayoutEnd(c);
                                                 imLayout(c, ROW); {
-                                                    const isDebugging = effectIdx === rack.debugEffectIdx;
+                                                    const isDebugging = effectIdx === rack._debugEffectIdx;
                                                     const ev = imCheckbox(c, isDebugging);
                                                     if (ev) {
                                                         if (ev.checked) {
-                                                            rack.debugEffectIdx = effectIdx;
+                                                            rack._debugEffectIdx = effectIdx;
                                                         } else {
-                                                            rack.debugEffectIdx = -1;
+                                                            rack._debugEffectIdx = -1;
                                                         }
                                                         editor.edited = true;
                                                     }
                                                 } imLayoutEnd(c);
                                             } imLayoutEnd(c);
 
-                                            imLine(c, LINE_VERTICAL, 5);
+                                            // imLine(c, LINE_VERTICAL, 5);
 
                                             const effectValue = effect.value;
                                             imSwitch(c, effectValue.type); switch (effectValue.type) {
@@ -498,7 +549,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                                                                 imFor(c); for (let coIdx = 0; coIdx < term.coefficients.length; coIdx++) {
                                                                     const co = term.coefficients[coIdx];
                                                                     imLayout(c, ROW); imJustify(c); {
-                                                                        if (imMemo(c, co)) co.valueUI.name = "x" + termIdx.toString() + coIdx.toString();
+                                                                        if (imMemo(c, co)) co.valueUI._name = "x" + termIdx.toString() + coIdx.toString();
                                                                         imValueOrBindingEditor(c, editor, co.valueUI, BINDING_UI_ROW);
 
                                                                         if (imButtonIsClicked(c, "-")) {
@@ -643,7 +694,8 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         //     } imLayoutEnd(c);
                         // } imForEnd(c);
 
-                        if (imButtonIsClicked(c, "+ Add preset")) {
+                        if (imButtonIsClicked(c, "Save as preset")) {
+                            editor.modal = MODAL_NEW_PRESET;
                         }
                     } imLayoutEnd(c);
                 } imLayoutEnd(c);
@@ -724,7 +776,7 @@ function imValueOrBindingEditor(
                 const value = getRegisterIdxForUIValue(editor.effectRack, reg);
                 imStrFmt(c, value, registerValueToString);
 
-                let dragEvent = imParameterSliderInteraction(c, reg.min, reg.max, 0.0001, value, 0, DRAG_TYPE_CIRCULAR);
+                let dragEvent = imParameterSliderInteraction(c, reg._min, reg._max, 0.0001, value, 0, DRAG_TYPE_CIRCULAR);
                 if (dragEvent) {
                     reg.value = dragEvent.val;
                     editor.edited = true;
@@ -746,7 +798,7 @@ function imValueOrBindingEditor(
                 elSetClass(c, "hoverable");
             }
 
-            imStr(c, reg.name);
+            imStr(c, reg._name);
             imStr(c, row ? ":" : "");
 
             const newBindingIdx = imBindingEditorContextMenu(c, editor, reg.bindingIdx, FIELD_READ, reg.bindingIdx);
@@ -1001,7 +1053,7 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
             imEditorContextMenuItemBegin(c); {
                 imStr(c, "Maths");
                 if (elHasMousePress(c)) {
-                    toAdd = newEffectRackItem(newEffectRackMathsItem());
+                    toAdd = newEffectRackItem(newEffectRackMaths());
             }
             } imContextMenuItemEnd(c);
             imEditorContextMenuItemBegin(c); {

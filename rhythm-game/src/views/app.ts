@@ -2,15 +2,12 @@ import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, imZIndex,
 import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { debugFlags, getTestSleepMs } from "src/debug-flags";
 import { getDspInfo, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { DataRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/chart-repository";
+import { DataRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/data-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     startPlaying,
     stopPlayback
 } from "src/state/playing-pausing";
-import {
-    SavedState
-} from "src/state/saved-state";
 import {
     copyTimelineItem,
     FRACTIONAL_UNITS_PER_BEAT,
@@ -35,7 +32,7 @@ import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
-import { runSaveCurrentChartTask } from "./background-tasks";
+import { runSaveCurrentChartTask } from "./saving-chart";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
 import { imSoundLab } from "./sound-lab-view";
 import { imUpdateModal } from "./update-modal";
@@ -73,8 +70,6 @@ export type GlobalContext = {
 
     ui: UIState;
 
-    savedState: SavedState;
-
     repo: DataRepository;
 
     // TODO: input state
@@ -87,7 +82,6 @@ export type GlobalContext = {
 };
 
 export function newGlobalContext(
-    saveState: SavedState,
     repo: DataRepository,
     sequencer: SequencerState,
 ) {
@@ -101,7 +95,6 @@ export function newGlobalContext(
         sequencer: sequencer,
         gameplay: null,
         ui: newUiState(),
-        savedState: saveState,
         repo: repo,
         keyPressState: null,
         keyReleaseState: null,

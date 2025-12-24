@@ -1,4 +1,4 @@
-// IM-DOM 1.40
+// IM-DOM 1.41
 // NOTE: this version may be unstable, as we've updated the DOM diffing algorithm.
 
 import { assert } from "src/utils/assert";
@@ -907,8 +907,16 @@ export const EV_FORMDATA = { val: "formdata" } as const;
 export const EV_GOTPOINTERCAPTURE = { val: "gotpointercapture" } as const;
 export const EV_INPUT = { val: "input" } as const;
 export const EV_INVALID = { val: "invalid" } as const;
+/** 
+ * NOTE: You may want to use {@link getGlobalEventSystem}.keyboard instead of this 
+ * TODO: fix
+ **/
 export const EV_KEYDOWN = { val: "keydown" } as const;
 export const EV_KEYPRESS = { val: "keypress" } as const;
+/** 
+ * NOTE: You may want to use {@link getGlobalEventSystem}.keyboard instead of this 
+ * TODO: fix
+ **/
 export const EV_KEYUP = { val: "keyup" } as const;
 export const EV_LOAD = { val: "load" } as const;
 export const EV_LOADEDDATA = { val: "loadeddata" } as const;

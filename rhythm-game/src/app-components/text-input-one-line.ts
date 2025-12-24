@@ -6,7 +6,7 @@ import {
 } from "src/utils/im-core";
 import {
     EV_INPUT,
-    EV_KEYDOWN,
+    getGlobalEventSystem,
     imOn
 } from "src/utils/im-dom";
 
@@ -29,11 +29,11 @@ export function imTextInputOneLine(c: ImCache, currentName: string, hasFocus = t
             val = { newName: input.root.value };
         }
 
-        const keyDown = imOn(c, EV_KEYDOWN);
-        if (keyDown) {
-            if (keyDown.key === "Enter") {
+        const keyboard = getGlobalEventSystem().keyboard;
+        if (keyboard.keyDown) {
+            if (keyboard.keyDown.key === "Enter") {
                 val = { submit: true }
-            } else if (keyDown.key === "Escape") {
+            } else if (keyboard.keyDown.key === "Escape") {
                 val = { cancel: true }
             }
         }

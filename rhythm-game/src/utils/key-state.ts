@@ -68,7 +68,7 @@ export function resetKey(state: KeyState) {
     state.numReleased = 0;
 
     state.pressed  = false;
-    state.held     =
+    state.held     = false;
     state.released = false;
 }
 

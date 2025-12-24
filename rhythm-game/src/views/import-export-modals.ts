@@ -19,7 +19,6 @@ import { cssVars } from "src/components/core/stylesheets";
 import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
 import {
     ImCache,
-    imGet,
     imGetInline,
     imIf,
     imIfEnd,
@@ -29,7 +28,6 @@ import {
     isFirstishRender
 } from "src/utils/im-core";
 import { EL_B, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
-import { GlobalContext } from "./app";
 import { cssVarsApp } from "./styling";
 
 export type ImportEvent = {
@@ -110,17 +108,15 @@ function newExportModalState(): ExportModalState {
     };
 }
 
-export function imExportModal(c: ImCache, jsonSerializable: unknown): ExportModalState {
+export function imExportModal<T>(c: ImCache, jsonSerializable: T, customSerializer?: (val: T) => string): ExportModalState {
     const s = imState(c, newExportModalState);
+    if (imMemo(c, true)) {
+        s.json = customSerializer ? customSerializer(jsonSerializable) : JSON.stringify(jsonSerializable);
+    }
 
     imModalBegin(c, 200); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
         imLayout(c, COL); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
             imHeading(c, "Paste this JSON somewhere safe!");
-
-            const s = imGet(c, imExportModal) ?? imSet(c, { json: "" });
-            if (imMemo(c, true)) {
-                s.json = JSON.stringify(jsonSerializable);
-            }
 
             imLayout(c, BLOCK); imFlex(c); imScrollOverflow(c); {
                 imStr(c, s.json);
