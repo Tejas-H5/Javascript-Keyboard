@@ -1,6 +1,6 @@
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
-import { BLOCK, COL, imAlign, imFg, imFlex, imLayout, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
-import { deleteChart, getChartAtIndex, } from "src/state/data-repository";
+import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imLayout, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
+import { deleteChart } from "src/state/data-repository";
 import {
     playAll,
     stopPlayback
@@ -10,6 +10,7 @@ import {
     isBundledChartId,
     newChart
 } from "src/state/sequencer-chart";
+import { getCurrentChart } from "src/state/sequencer-state";
 import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME } from "src/state/ui-state";
 import {
     ImCache,
@@ -19,23 +20,20 @@ import {
     imFor,
     imIf,
     imIfElse,
-    imIfEnd,
-    imMemo
+    imIfEnd
 } from "src/utils/im-core";
 import {
-    elSetStyle,
     imStr
 } from "src/utils/im-dom";
+import { newAsyncContext } from "src/utils/promise-utils";
 import {
     GlobalContext,
     openChartUpdateModal,
     setCurrentChartMeta,
     setLoadSaveModalClosed
 } from "./app";
-import { cssVarsApp } from "./styling";
 import { moveChartSelection } from "./chart-select";
-import { getCurrentChart } from "src/state/sequencer-state";
-import { newAsyncContext } from "src/utils/promise-utils";
+import { cssVarsApp } from "./styling";
 
 
 export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
@@ -48,16 +46,11 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
     imLayout(c, COL); imSize(c, 25, PERCENT, 0, NA); imAlign(c, STRETCH); {
         const allAvailableCharts = ctx.repo.charts.allChartMetadata;
         imFor(c); for (let i = 0; i < allAvailableCharts.length; i++) {
-            imLayout(c, ROW); {
-                const chart = allAvailableCharts[i];
-                const isFocused = chart === chartSelect.currentChartMeta;
+            const chart = allAvailableCharts[i];
+            const isFocused = chart === chartSelect.currentChartMeta;
+            const shouldRename = isFocused && s.isRenaming && chart;
 
-                const shouldRename = isFocused && s.isRenaming && chart;
-
-                if (imMemo(c, isFocused)) {
-                    elSetStyle(c, "backgroundColor", isFocused ? cssVarsApp.bg2 : "");
-                }
-
+            imLayout(c, ROW); imBg(c, isFocused ? cssVarsApp.bg2 : ""); {
                 if (imIf(c) && shouldRename) {
                     const ev = imTextInputOneLine(c, chart.name);
                     if (ev) {
@@ -154,7 +147,6 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
             ) {
                 const meta = getCurrentChartMetadata(ctx);
                 if (meta) {
-                    setCurrentChartMeta(ctx, getChartAtIndex(ctx.repo, meta._index));
                     deleteChart(newAsyncContext("Deleting chart"), ctx.repo, currentChart);
                     chartSelect.currentChartMeta
                 }

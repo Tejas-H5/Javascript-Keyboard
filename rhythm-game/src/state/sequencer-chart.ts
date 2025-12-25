@@ -53,7 +53,7 @@ type TimelineMutation = {
 
 export function newChart(name: string = ""): SequencerChart {
     return {
-        id: -1,
+        id: 0,
         name,
         timeline: [],
         cursor: 0,

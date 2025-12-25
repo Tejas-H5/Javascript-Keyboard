@@ -1,9 +1,9 @@
 import { getAllBundledCharts } from "src/assets/bundled-charts";
 import { sleepForAsyncTesting } from "src/debug-flags";
-import { arrayAt, filterInPlace } from "src/utils/array-utils";
+import { EffectRack, serializeEffectRack } from "src/dsp/dsp-loop-effect-rack";
+import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import * as idb from "src/utils/indexed-db";
-import { clamp } from "src/utils/math-utils";
 import { AsyncContext, newAsyncContext, waitFor, waitForOne } from "src/utils/promise-utils";
 import {
     CHART_STATUS_READONLY,
@@ -15,12 +15,22 @@ import {
     SequencerChartCompressed,
     uncompressChart
 } from "./sequencer-chart";
-import { EffectRack } from "src/dsp/dsp-loop-effect-rack";
+
+/////////////////////////////////////
+// Data repository core utils
+
+const TBL_CHART_METADATA      = idb.newTableName<SequencerChartMetadata>("chart_metadata");
+const TBL_CHART_DATA          = idb.newTableName<SequencerChartCompressed>("chart_data");
+const TBL_EFFECT_RACK_PRESETS = idb.newTableName<EffectRackPreset>("effect_rack_presets");
 
 const tables = {
-    chartMetadata: idb.newTable<SequencerChartMetadata>("chart_metadata", "id", idb.KEYGEN_AUTOINCREMENT), 
-    chartData:     idb.newTable<SequencerChartCompressed>("chart_data", "i", idb.KEYGEN_NONE),
+    chartMetadata: idb.newTable(TBL_CHART_METADATA, "id", idb.KEYGEN_AUTOINCREMENT), 
+    chartData:     idb.newTable(TBL_CHART_DATA,     "i",  idb.KEYGEN_NONE),
+
+    effectsRackPresets: idb.newTable(TBL_EFFECT_RACK_PRESETS, "id", idb.KEYGEN_AUTOINCREMENT),
 } as const satisfies idb.AllTables;
+
+const tablesVersion = 3;
 
 // This is actually the central place where we load/save all data. 
 // This design may allow for smarter batching of saving/loading multiple different entities at once.
@@ -31,7 +41,7 @@ export type DataRepository = {
         allChartMetadataLoading: AsyncContext;
     };
     effectRackPresets: {
-        allEffectRackPresets: EffectRack[];
+        allEffectRackPresets: EffectRackPreset[];
         allEffectRackPresetsLoading: AsyncContext;
     };
 };
@@ -39,7 +49,7 @@ export type DataRepository = {
 export function newDataRepository(): Promise<DataRepository> {
     const a = newAsyncContext("Initializing chart repository");
 
-    const idbConnected = idb.openConnection("KeyboardRhythmGameIDB", 1, tables, {
+    const idbConnected = idb.openConnection("KeyboardRhythmGameIDB", tablesVersion, tables, {
         onBlocked(event: IDBVersionChangeEvent) {
             console.error("IDB blocked!", { event });
         },
@@ -70,8 +80,23 @@ export function newDataRepository(): Promise<DataRepository> {
     });
 }
 
+function repositoryReadTx(repo: DataRepository, tables: idb.AnyTable[]) {
+    const tx = idb.newReadTransaction(repo.db, tables);
+    return tx;
+}
+
+function repositoryWriteTx(repo: DataRepository, tables: idb.AnyTable[]) {
+    const tx = idb.newWriteTransaction(repo.db, tables);
+    return tx;
+}
+
+export type SaveResult = 0 | { error: string; }
+
+/////////////////////////////////////
+// Charts
+
 export function loadChartMetadataList(repo: DataRepository) {
-    const tx = repositoryReadTx(repo);
+    const tx = repositoryReadTx(repo, [tables.chartMetadata]);
 
     return waitFor(repo.charts.allChartMetadataLoading.bump(), [
         idb.getAll(tx, tables.chartMetadata),
@@ -83,7 +108,7 @@ export function loadChartMetadataList(repo: DataRepository) {
     });
 }
 
-export function setChartMetadataList(repo: DataRepository, metadata: SequencerChartMetadata[]) {
+function setChartMetadataList(repo: DataRepository, metadata: SequencerChartMetadata[]) {
     metadata.sort((a, b) => a.name.localeCompare(b.name));
 
     // reindex _at the end_
@@ -97,7 +122,7 @@ export function setChartMetadataList(repo: DataRepository, metadata: SequencerCh
 export function cleanupChartRepo(a: AsyncContext, repo: DataRepository) {
     let cleanedUp: any[] = [];
 
-    const tx = chartRepositoryWriteTx(repo);
+    const tx = repositoryWriteTx(repo, [tables.chartMetadata, tables.chartData]);
 
     return waitFor(a, [
         idb.getAll(tx, tables.chartMetadata),
@@ -139,19 +164,6 @@ export function cleanupChartRepo(a: AsyncContext, repo: DataRepository) {
     });
 }
 
-
-// TODO: validate that this is even the right way to use indexed db, or even a good way
-
-function repositoryReadTx(repo: DataRepository) {
-    const tx = idb.newReadTransaction(repo.db, tables);
-    return tx;
-}
-
-function chartRepositoryWriteTx(repo: DataRepository) {
-    const tx = idb.newWriteTransaction(repo.db, tables);
-    return tx;
-}
-
 export type SequencerChartMetadata = Pick<SequencerChart, "id" | "name"> & { _index: number; };
 
 export function queryChart(a: AsyncContext, repo: DataRepository, id: number): Promise<SequencerChart> {
@@ -168,7 +180,7 @@ export function queryChart(a: AsyncContext, repo: DataRepository, id: number): P
 
     // TODO: cache this codepath
 
-    const tx = repositoryReadTx(repo);
+    const tx = repositoryReadTx(repo, [tables.chartData]);
 
     const compresedChartLoaded = waitForOne(a, idb.getOne(tx, tables.chartData, id));
 
@@ -186,8 +198,6 @@ export function queryChart(a: AsyncContext, repo: DataRepository, id: number): P
     });
 }
 
-export type SaveResult = 0 | { error: string; }
-
 export function saveChart(a: AsyncContext, repo: DataRepository, chart: SequencerChart): Promise<SaveResult> {
     if (isBundledChartId(chart.id)) {
         return Promise.resolve({ error: "Can't save a bundled chart. Copy it first" });
@@ -197,7 +207,7 @@ export function saveChart(a: AsyncContext, repo: DataRepository, chart: Sequence
         return Promise.resolve({ error: "Can't save a readonly chart. Copy it first" });
     }
 
-    const tx = chartRepositoryWriteTx(repo);
+    const tx = repositoryWriteTx(repo, [tables.chartData, tables.chartMetadata]);
 
     const existingMetadataLoaded = waitForOne(a, idb.getOne(tx, tables.chartMetadata, chart.id));
     const existingDataLoaded     = waitForOne(a, idb.getOne(tx, tables.chartData, chart.id));
@@ -239,39 +249,39 @@ export function saveChart(a: AsyncContext, repo: DataRepository, chart: Sequence
     });
 }
 
+function asNumericId(id: idb.ValidKey): number {
+    assert(typeof id === "number");
+    return id;
+}
+
 // Creates a chart, returns it's id
 export function createChart(a: AsyncContext, repo: DataRepository, chart: SequencerChart): Promise<number> {
     chart.name = chart.name.trim();
 
-    const tx = chartRepositoryWriteTx(repo);
+    const tx = repositoryWriteTx(repo, [tables.chartMetadata, tables.chartData]);
 
     const data     = compressChart(chart);
     const metadata = toChartMetadata(chart);
 
     const metadataCreated = waitForOne(a, idb.createOne(tx, tables.chartMetadata, metadata));
 
-    const metadataIdCreated = waitFor(a, [metadataCreated], ([metadataKey]) => {
-        const id = metadataKey.valueOf(); assert(typeof id === "number");
-        return id;
-    });
-
-    const dataCreated = waitFor(a, [metadataIdCreated], ([id]) => {
+    const dataCreated = waitFor(a, [metadataCreated], ([]) => {
         // Link the data to the metadata
-        data.i = id;
+        data.i = metadata.id;
         return idb.putOne(tx, tables.chartData, data);
     });
 
-    return waitFor(a, [metadataIdCreated, dataCreated], ([id]) => {
+    return waitFor(a, [metadataCreated, dataCreated], ([]) => {
         // Since we know what happens to the list when we create an item in the database, we can 
         // simply do the same on our side as well, rather than reloading all entries from the database.
 
         const allCharts = repo.charts.allChartMetadata;
-        const idx = allCharts.findIndex(val => val.id === id);
+        const idx = allCharts.findIndex(val => val.id === metadata.id);
         if (idx === -1) {
             allCharts.push(metadata);
         }
 
-        return id;
+        return metadata.id;
     });
 }
 
@@ -284,10 +294,16 @@ export function deleteChart(a: AsyncContext, repo: DataRepository, chartToDelete
         return Promise.resolve();
     }
 
-    const tx = chartRepositoryWriteTx(repo);
+    const tx = repositoryWriteTx(repo, [tables.chartData, tables.chartMetadata]);
+
+    const metadata = repo.charts.allChartMetadata.find(m => m.id === chartToDelete.id);
+    if (!metadata) {
+        console.error("Not present in the metadata list: ", chartToDelete);
+        return Promise.resolve();
+    }
 
     return waitFor(a, [
-        idb.deleteOne(tx, tables.chartMetadata, chartToDelete.id),
+        idb.deleteOne(tx, tables.chartMetadata, metadata.id),
         idb.deleteOne(tx, tables.chartData, chartToDelete.id),
         sleepForAsyncTesting(),
     ], () => {
@@ -310,12 +326,69 @@ export function findChartMetadata(repo: DataRepository, id: number): SequencerCh
     return repo.charts.allChartMetadata.find(chart => chart.id === id);
 }
 
-// You would mainly use this for list navigation, and not to actually find which chart 
-// is actually at a particular index
-export function getChartAtIndex(repo: DataRepository, idx: number): SequencerChartMetadata {
-    idx = clamp(idx, 0, repo.charts.allChartMetadata.length - 1);
-    const result = arrayAt(repo.charts.allChartMetadata, idx);
-    // We can only do this, because our game is pre-bundled with some 'official' charts.
-    assert(!!result);
-    return result;
+/////////////////////////////////////
+// Effects rack presets
+
+export type EffectRackPreset = {
+    id: number;
+    name: string;
+    serialized: string;
+};
+
+export function effectRackToPreset(effectRack: EffectRack): EffectRackPreset {
+    return {
+        id: 0,
+        name: "Unnamed",
+        serialized: serializeEffectRack(effectRack),
+    };
+}
+
+export function loadAllEffectRackPresets(repo: DataRepository): Promise<void> {
+    const a = repo.effectRackPresets.allEffectRackPresetsLoading;
+
+    const tx = repositoryReadTx(repo, [tables.effectsRackPresets])
+
+    a.bump();
+    const effectsLoaded = waitForOne(a, idb.getAll(tx, tables.effectsRackPresets));
+
+    return waitFor(a, [effectsLoaded], ([effects]) => {
+        repo.effectRackPresets.allEffectRackPresets = effects;
+        sortPresetsByName(repo);
+    });
+}
+
+export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset): Promise<void> {
+    repo.effectRackPresets.allEffectRackPresets.push(preset);
+
+    const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
+    const a = newAsyncContext("Creating effects rack preset");
+    return waitFor(a, [idb.createOne(tx, tables.effectsRackPresets, preset)], () => {
+        sortPresetsByName(repo);
+    })
+}
+
+export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset): Promise<void> {
+    assert(preset.id > 0);
+    assert(repo.effectRackPresets.allEffectRackPresets.indexOf(preset) !== -1);
+
+    const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
+    const a = newAsyncContext("Updating effects rack preset");
+    return waitFor(a, [idb.putOne(tx, tables.effectsRackPresets, preset)], () => {
+        sortPresetsByName(repo);
+    })
+}
+
+export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset): Promise<void> {
+    const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
+    const a = newAsyncContext("Deleting effects rack preset");
+    const deleted = waitForOne(a, idb.deleteOne(tx, tables.effectsRackPresets, preset.id));
+    return waitFor(a, [deleted], () => {
+        filterInPlace(repo.effectRackPresets.allEffectRackPresets, p => p !== preset);
+        sortPresetsByName(repo);
+    });
+}
+
+function sortPresetsByName(repo: DataRepository) {
+    const presets = repo.effectRackPresets.allEffectRackPresets;
+    presets.sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -95,6 +95,8 @@ export function imButtonIsClicked(
     c: ImCache, 
     text: string,
     toggled: boolean = false,
+    // Rather than conditionally rendering a button, it is sometimes better to 
+    // set it's visibility instead. This way, our buttons aren't constantly moving about all over the place.
     visible: boolean = true,
 ): boolean {
     let flags = 0;

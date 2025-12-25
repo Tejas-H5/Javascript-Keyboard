@@ -26,15 +26,15 @@ export function getEstimatedDataUsage() {
     return navigator.storage.estimate();
 }
 
-export type Table<_T> = {
-    name:    string;
-    keyPath: string;
+export type Table<T, K extends keyof T & string> = {
+    name:    TableName<T>;
+    keyPath: K;
     keyGen:  KeyGenerator;
 };
 
 // You would typically just put a bunch of schemas into a table, and use that to refer to the various stores.
-export type AllTables = Record<string, Table<any>>;
-
+export type AllTables = Record<string, Table<any, any>>;
+export type AnyTable = Table<any, any>;
 
 export const KEYGEN_NONE = 0;
 export const KEYGEN_AUTOINCREMENT = 1;
@@ -43,24 +43,35 @@ export type KeyGenerator
     = typeof KEYGEN_NONE
     | typeof KEYGEN_AUTOINCREMENT;
 
-export function newTable<T>(
-    name: string,
-    keyPath: string,
+export type TableName<_T> = string & { __TableName: void; };
+
+export function newTableName<T>(name: string): TableName<T> {
+    return name as TableName<T>;
+}
+
+export function newTable<T, K extends keyof T & string>(
+    name: TableName<T>,
+    keyPath: K,
     keyGen: KeyGenerator = KEYGEN_NONE
-): Table<T> {
+): Table<T, K> {
     return {
         name,
-        keyPath,
+        keyPath: keyPath,
         keyGen
     };
 }
 
-export function openConnection(name: string, version: number, tables: AllTables, methods: {
-    // When other tabs have this open: https://developer.mozilla.org/en-US/docs/Web/API/IDBOpenDBRequest/blocked_event
-    onBlocked: (ev: IDBVersionChangeEvent) => void,
-    // https://developer.mozilla.org/en-US/docs/Web/API/IDBDatabase/close_event
-    onUnexpectedlyClosed: (ev: Event) => void,
-}): Promise<IDBDatabase> {
+export function openConnection(
+    name: string, 
+    version: number,  // Dont forget to bump whenever you add tables.
+    tables: AllTables, 
+    methods: {
+        // When other tabs have this open: https://developer.mozilla.org/en-US/docs/Web/API/IDBOpenDBRequest/blocked_event
+        onBlocked: (ev: IDBVersionChangeEvent) => void,
+        // https://developer.mozilla.org/en-US/docs/Web/API/IDBDatabase/close_event
+        onUnexpectedlyClosed: (ev: Event) => void,
+    }
+): Promise<IDBDatabase> {
     return new Promise<IDBDatabase>((resolve, reject) => {
         const openRequest = window.indexedDB.open(name, version);
 
@@ -81,19 +92,28 @@ export function openConnection(name: string, version: number, tables: AllTables,
                     autoIncrement = false;
                 }
 
-                idb.createObjectStore(value.name, {
-                    keyPath: value.keyPath,
-                    autoIncrement: autoIncrement,
-                });
+                try {
+                    idb.createObjectStore(value.name, {
+                        keyPath: value.keyPath,
+                        autoIncrement: autoIncrement,
+                    });
+                } catch (error) {
+                    if (error instanceof DOMException && error.name === "ConstraintError") {
+                        // this error just means the table already exists - it can be ignored
+                    } else {
+                        throw error;
+                    }
+                }
 
                 console.log("Created object store", value);
             }
         };
         openRequest.onsuccess = () => {
+            const idb = openRequest.result;
             openRequest.result.onclose = (ev) => {
                 methods.onUnexpectedlyClosed(ev);
             }
-            resolve(openRequest.result);
+            resolve(idb);
         };
         openRequest.onerror = (err) => {
             reject(err);
@@ -108,15 +128,17 @@ export type TransactionData = { raw: IDBTransaction; };
 export type ReadTransaction  = TransactionData & { __ReadTransaction: void; };
 export type WriteTransaction = ReadTransaction & { __WriteTransaction: void; };
 
-export function newReadTransaction(idb: IDBDatabase, tables: AllTables): ReadTransaction {
-    const tableNames = Object.values(tables).map(t => t.name);
+/** Specify the tables you actually want to read/write */
+export function newReadTransaction(idb: IDBDatabase, tables: Table<any, any>[]): ReadTransaction {
+    const tableNames = tables.map(t => t.name);
     const transaction = idb.transaction(tableNames, "readonly");
     const tx: TransactionData = { raw: transaction, };
     return tx as ReadTransaction;
 }
 
-export function newWriteTransaction(idb: IDBDatabase, tables: AllTables): WriteTransaction {
-    const tableNames = Object.values(tables).map(t => t.name);
+/** Specify the tables you actually want to read/write */
+export function newWriteTransaction(idb: IDBDatabase, tables: AnyTable[]): WriteTransaction {
+    const tableNames = tables.map(t => t.name);
     const transaction = idb.transaction(tableNames, "readwrite", { durability: "strict" });
     const tx: TransactionData = { 
         raw: transaction, 
@@ -130,7 +152,7 @@ export function abortTransaction(tx: ReadTransaction | WriteTransaction) {
 
 export type ValidKey = string | number;
 
-export function getOne<T>(tx: ReadTransaction, table: Table<T>, key: ValidKey): Promise<T | undefined> {
+export function getOne<T>(tx: ReadTransaction, table: Table<T, any>, key: ValidKey): Promise<T | undefined> {
     return new Promise<T | undefined>((resolve, reject) => {
         const store = tx.raw.objectStore(table.name);
         const txGetRequest: IDBRequest<T> = store.get(key);
@@ -139,7 +161,7 @@ export function getOne<T>(tx: ReadTransaction, table: Table<T>, key: ValidKey): 
     });
 }
 
-export function getAll<T>(tx: ReadTransaction, table: Table<T>): Promise<T[]> {
+export function getAll<T>(tx: ReadTransaction, table: Table<T, any>): Promise<T[]> {
     return new Promise<T[]>((resolve, reject) => {
         const store = tx.raw.objectStore(table.name);
         const txGetRequest: IDBRequest<T[]> = store.getAll();
@@ -150,33 +172,52 @@ export function getAll<T>(tx: ReadTransaction, table: Table<T>): Promise<T[]> {
 
 // TODO: use cursors for pagination and range scans
 
-// You can use this to either create something, if you're generating IDs yourself,
-// or to edit an existing thing
-export function putOne<T>(tx: WriteTransaction, table: Table<T>, value: T): Promise<void> {
+/**
+ * You can use this to either create something, if you're generating IDs yourself,
+ * or to edit an existing thing. When you don't know the id of your thing, use {@link createOne} instead;
+ */
+export function putOne<T>(tx: WriteTransaction, table: Table<T, any>, value: T): Promise<void> {
     return new Promise<void>((resolve, reject) => {
         const store = tx.raw.objectStore(table.name);
-        const txGetRequest: IDBRequest = store.put(value);
+        const txGetRequest: IDBRequest = store.put({ ...value });
         txGetRequest.onsuccess = () => resolve(txGetRequest.result);
         txGetRequest.onerror   = (err) => reject(err);
     });
 }
 
-export function deleteOne<T>(tx: WriteTransaction, table: Table<T>, id: ValidKey): Promise<void> {
+/**
+ * Deletes the value from the table, and resets it's id to the zero value.
+ */
+export function deleteOne<T, K extends keyof T & string>(
+    tx: WriteTransaction,
+    table: Table<T, K>,
+    id: T[K],
+): Promise<void> {
     return new Promise<void>((resolve, reject) => {
         const store = tx.raw.objectStore(table.name);
         const txGetRequest: IDBRequest = store.delete(IDBKeyRange.only(id));
-        txGetRequest.onsuccess = () => resolve(txGetRequest.result);
+        txGetRequest.onsuccess = () => resolve();
         txGetRequest.onerror   = (err) => reject(err);
     });
 }
 
-export function createOne<T extends object>(tx: WriteTransaction, table: Table<T>, value: T): Promise<ValidKey> {
-    return new Promise<ValidKey>((resolve, reject) => {
+/**
+ * Creates a _new_ value in the table (regardless of if the id is present or not),
+ * and then assigns this new id to value[table.keyPath].
+ */
+export function createOne<T, K extends keyof T & string>(tx: WriteTransaction, table: Table<T, K>, value: T): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
         const store = tx.raw.objectStore(table.name);
-        const payload: Record<string, any> = { ...value };
+
+        const payload: T = { ...value };
         delete payload[table.keyPath];
+
         const txGetRequest: IDBRequest = store.add(payload);
-        txGetRequest.onsuccess = () => resolve(txGetRequest.result);
+        txGetRequest.onsuccess = () => {
+            const generatedId = txGetRequest.result;
+            value[table.keyPath] = generatedId;
+            resolve();
+        };
         txGetRequest.onerror   = (err) => reject(err);
     });
 }

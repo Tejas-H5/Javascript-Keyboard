@@ -6,12 +6,20 @@
 
 import { bytesToMegabytes, utf16ByteLength } from "./utf8";
 
-
-export type JSONUndoBuffer<_T> = {
-    // JSON is actually smarter than objects here - we can compare if two programs are the same or not, 
+type UndoBufferEntry = {
+    // JSON is actually smarter than objects here - we can compare if two files are the same or not, 
     // estimate undo buffer size easier, and the `string` datatype will enforce immutability for us.
     // NOTE: Highly inefficient - copies entire object.
-    fileVersionsJSON: string[];
+    json: string;
+    // Used to 'batch' multiple actions. 
+    // A non-zero type will replace the last undo entry instead of appending a new one
+    actionType?: number;
+};
+
+
+export type JSONUndoBuffer<_T> = {
+    // NOTE: Unbounded buffer size! Who cares.
+    fileVersionsJSON: UndoBufferEntry[];
     fileVersionsJSONSizeMb: number;
     position: number;
 
@@ -51,28 +59,45 @@ export function writeToUndoBufferDebounced<T>(
     undoBuffer.timer = debounceSeconds;
 }
 
-function writeToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T) {
+export function writeToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T, actionType?: number) {
+    undoBuffer.timer = -1;
+
     const currentProgramJSON = JSON.stringify(file);
+    const entry: UndoBufferEntry = {
+        json: currentProgramJSON,
+        actionType,
+    };
+
     if (undoBuffer.fileVersionsJSON.length > 0) {
         const lastProgram = undoBuffer.fileVersionsJSON[undoBuffer.fileVersionsJSON.length - 1];
-        if (lastProgram === currentProgramJSON) {
+        if (lastProgram.json === currentProgramJSON) {
             // Don't write anything if its literally the same program
             return;
         }
+
+        if (lastProgram.actionType !== undefined && actionType !== undefined) {
+            if (lastProgram.actionType === actionType) {
+                // Overwrite last entry instead of appending new entry
+                undoBuffer.fileVersionsJSON[undoBuffer.fileVersionsJSON.length - 1] = entry;
+                return;
+            }
+        }
     }
 
-    // Truncate undo buffer if needed
-    if (undoBuffer.position !== undoBuffer.fileVersionsJSON.length) {
-        undoBuffer.fileVersionsJSON.length = undoBuffer.position;
-    }
-
-    undoBuffer.fileVersionsJSON.push(currentProgramJSON);
     undoBuffer.position++;
+    if (undoBuffer.position > undoBuffer.fileVersionsJSON.length) {
+        undoBuffer.position = undoBuffer.fileVersionsJSON.length;
+    }
 
-    // for the lolz
+    if (undoBuffer.position + 1 !== undoBuffer.fileVersionsJSON.length) {
+        undoBuffer.fileVersionsJSON.length = undoBuffer.position + 1;
+    }
+    undoBuffer.fileVersionsJSON[undoBuffer.position] = entry;
+
+    // track size for the lolz
     let sizeBytes = 0;
-    for (const program of undoBuffer.fileVersionsJSON) {
-        sizeBytes += utf16ByteLength(program);
+    for (const entry of undoBuffer.fileVersionsJSON) {
+        sizeBytes += utf16ByteLength(entry.json);
     }
     undoBuffer.fileVersionsJSONSizeMb = bytesToMegabytes(sizeBytes);
 }
@@ -80,7 +105,6 @@ function writeToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T) {
 function writePendingUndoToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T) {
     if (undoBuffer.timer > 0) {
         writeToUndoBuffer(undoBuffer, file);
-        undoBuffer.timer = -1;
     }
 }
 
@@ -99,7 +123,7 @@ export function undo<T>(undoBuffer: JSONUndoBuffer<T>, file: T): T {
 }
 
 export function getCurrentFile<T>(undoBuffer: JSONUndoBuffer<T>): T {
-    return JSON.parse(undoBuffer.fileVersionsJSON[undoBuffer.position]);
+    return JSON.parse(undoBuffer.fileVersionsJSON[undoBuffer.position].json);
 }
 
 export function canRedo<T>(undoBuffer: JSONUndoBuffer<T>) {

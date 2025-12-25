@@ -62,7 +62,7 @@ export const debugFlags: DebugFlags = {
     testSoundLabAllEffectRackEffects: OFF,
 
     testAsync: OFF,
-    testAsyncALittle: ON_EVERYWHERE,
+    testAsyncALittle: OFF,
 };
 
 // You're welcome

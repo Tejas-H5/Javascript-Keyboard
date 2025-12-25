@@ -1,4 +1,4 @@
-// IM-CORE 1.052
+// IM-CORE 1.053
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
@@ -71,10 +71,10 @@ export const REMOVE_LEVEL_DESTROYED = 3;
 
 export type RemovedLevel
     = typeof REMOVE_LEVEL_NONE
-    // This is the default remove level. The increase in performance far oughtweighs any memory problems.
-    // The only exception is map entries, which default to being destroyed instead of removed.
-    // This is because keys are usually arbitrary values, and we can have a problem in the case that those values are
-    // constantly recomputed or reloaded - the map will simply keep growing in size forever.
+// This is the default remove level. The increase in performance far oughtweighs any memory problems.
+//
+// The only exception is map entries (created by imKeyedBegin), which default to being destroyed instead of removed.
+// That way, the maps won't grow in size forever - this is very easy when values are immutable, or reloaded frequently enough.
     | typeof REMOVE_LEVEL_DETATCHED   
     | typeof REMOVE_LEVEL_DESTROYED;
 
@@ -333,15 +333,19 @@ export function imGet<T>(
 }
 
 /**
- * NOTE: undefined return type is a lie! Will also return whatever you set with imSet.
+ * Allows you to get/set state inline without using lambdas:
  * ```ts
  * let s; s = imGetInline(c, fn);
  * if (!s) s = imSet(c, { blah });
  * ```ts
+ *
  * Or more concise:
+ *
  * let s; s = imGetInline(c, fn) ?? imSet(c, { blah });
  * ```ts
  * ```
+ * NOTE: undefined return type is a lie! Will also return whatever you set with imSet.
+ * But we want typescript to infer the value of `x = imGet(c) ?? imSet(c, val)` to always be the type of val.
  */
 export function imGetInline(
     c: ImCache,

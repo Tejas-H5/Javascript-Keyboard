@@ -36,9 +36,9 @@ import {
     ROW,
     ROW_REVERSE
 } from "src/components/core/layout";
-import { cssVars } from "src/components/core/stylesheets";
+import { cn, cssVars } from "src/components/core/stylesheets";
 import { imDragAndDrop, imDragHandle, imDragZoneBegin, imDragZoneEnd, imDropZoneForPrototyping } from "src/components/drag-and-drop";
-import { imLine, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
+import { imLine, LINE_HORIZONTAL, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import {
@@ -80,6 +80,7 @@ import {
     SWITCH_OP_LT
 } from "src/dsp/dsp-loop-effect-rack";
 import { getDspInfo } from "src/dsp/dsp-loop-interface";
+import { createEffectRackPreset, deleteEffectRackPreset, EffectRackPreset, effectRackToPreset, loadAllEffectRackPresets, updateEffectRackPreset } from "src/state/data-repository";
 import { arrayMove, filterInPlace, removeItem } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { newCssBuilder } from "src/utils/cssb";
@@ -87,14 +88,12 @@ import {
     ImCache,
     imFor,
     imForEnd,
-    imGetInline,
     imIf,
     imIfElse,
     imIfEnd,
     imKeyedBegin,
     imKeyedEnd,
     imMemo,
-    imSet,
     imState,
     imSwitch,
     imSwitchEnd,
@@ -102,7 +101,8 @@ import {
 } from "src/utils/im-core";
 import { EL_B, EL_I, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, imEl, imElEnd, imStr, imStrFmt } from "src/utils/im-dom";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
-import { canRedo, canUndo, JSONUndoBuffer, newUndoBuffer, redo, stepUndoBufferTimer, undo, writeToUndoBufferDebounced } from "src/utils/undo-buffer";
+import { newAsyncContext, waitFor, waitForOne } from "src/utils/promise-utils";
+import { canRedo, canUndo, JSONUndoBuffer, newUndoBuffer, redo, stepUndoBufferTimer, undo, writeToUndoBuffer, writeToUndoBufferDebounced } from "src/utils/undo-buffer";
 import { GlobalContext } from "./app";
 import { imExportModal, imImportModal } from "./import-export-modals";
 import { drawSamples, newPlotState } from "./plotting";
@@ -176,6 +176,8 @@ export type EffectRackEditorState = {
     modal: number;
 
     edited: boolean;
+    editUndoActionId: number | undefined;
+
     version: number;
 
     highlightedRegister: number;
@@ -194,6 +196,7 @@ export function newEffectRackEditorState(effectRack: EffectRack): EffectRackEdit
         modal: MODAL_NONE,
 
         edited: false,
+        editUndoActionId: undefined,
 
         version: 0,
 
@@ -216,16 +219,21 @@ function imHeading(c: ImCache, text: string) {
 const cssb = newCssBuilder();
 const cnEffectRackEditor = cssb.cn("effectRackEditor", [
     // TODO: better styling xD
-    ` .hoverable:hover { cursor: pointer; outline: 2px solid ${cssVars.fg}; border-radius: 4px; }`
+    ` .hoverable { cursor: pointer; margin: 2px; border-radius: 4px; }`,
+    ` .hoverable:hover { outline: 2px solid ${cssVars.fg}; }`
 ]);
+
+const ACTION_ID_IMPORT = 1;
 
 export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: EffectRackEditorState) {
     const rack = editor.effectRack;
 
     editor.highlightedRegister = editor.highlightedRegisterNext;
     editor.highlightedRegisterNext = -1;
-
     editor.oscilloscopeState.sampleRate = getDspInfo().sampleRate;
+
+    let hasUndoCommand = false;
+    let hasRedoCommand = false;
 
     stepUndoBufferTimer(editor.undoBuffer, ctx.deltaTime, editor.effectRack);
 
@@ -303,27 +311,11 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                     // Try running it
                     try {
                         // TODO: use our custom deserialization utils for proper versioning etc of data.
-                        const effectRack: EffectRack = deserializeEffectRack(importModal.json);
-                        if (!effectRack.effects || !Array.isArray(effectRack.effects)) {
-                            throw new Error("Wrong JSON format");
-                        }
 
-                        // Try computing a sample. Does it work??
-                        compileEffectRack(effectRack);
-                        const registers = newEffectRackRegisters();
-                        const f = getNoteFrequency(getNoteIndex("C", 4));
-                        computeEffectRackIteration(effectRack, registers, f, 1, 1 / 48000, false);
-
-                        // If we reach here, then yeah its probably legit...
-                        const version = editor.effectRack._version;
-                        editor.effectRack = effectRack;
-                        editor.effectRack._version = version;
-                        editor.effectRack._version++;
-                        editor.undoBuffer = newUndoBuffer();
-                        editor.modal = MODAL_NONE;
-                        editor.edited = true;
+                        editorImport(editor, importModal.json);
 
                         importModal.importError = "";
+                        editor.modal = MODAL_NONE;
                     } catch (e) {
                         importModal.importError = "" + e;
                     }
@@ -339,44 +331,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                 }
             }
 
-        } else if (imIfElse(c) && editor.modal ===  MODAL_NEW_PRESET) {
-            imModalBegin(c, 201); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                imLayout(c, COL); imSize(c, 40, PERCENT, 0, NA); imBg(c, cssVars.bg); imAlign(c); {
-                    imLayout(c, BLOCK); {
-                        imStr(c, "Enter preset name: ");
-                    } imLayoutEnd(c);
-
-                    const s = imGetInline(c, imEffectRackEditor) ?? imSet(c, {
-                        newName: "",
-                        error: "",
-                    });
-
-                    const ev = imTextInputOneLine(c, s.newName);
-                    if (ev) {
-                        if (ev.newName) {
-                            s.newName = ev.newName;
-                            ctx.handled = true;
-                        }
-
-                        if (ev.submit) {
-                            
-
-                            ctx.handled = true;
-                        }
-
-                        if (ev.cancel) {
-                            editor.modal = MODAL_NONE;
-                            ctx.handled = true;
-                        }
-                    }
-
-                    if (imIf(c) && s.error) {
-                        imLayout(c, BLOCK); {
-                            imStr(c, s.error);
-                        } imLayoutEnd(c);
-                    } imIfEnd(c);
-                } imLayoutEnd(c);
-            } imModalEnd(c);
         } imIfEnd(c);
 
         imLayout(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
@@ -387,7 +341,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
             imLayout(c, COL); imFlex(c, 3); {
                 imLayout(c, COL); imFlex(c, 2); {
                     imLayout(c, ROW); imAlign(c); {
-                        imLayout(c, ROW); imFlex(c); imGap(c, 10, PX); {
+                        imLayout(c, ROW); imGap(c, 10, PX); {
                             if (imButtonIsClicked(c, "Import")) {
                                 editor.modal = MODAL_IMPORT;
                             }
@@ -397,9 +351,21 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                             }
                         } imLayoutEnd(c);
 
+                        imFlex1(c);
+
                         imHeading(c, "Effects rack");
 
                         imFlex1(c);
+
+                        imLayout(c, ROW); imGap(c, 10, PX); {
+                            if (imButtonIsClicked(c, "Undo", false, canUndo(editor.undoBuffer))) {
+                                hasUndoCommand = true;
+                            }
+
+                            if (imButtonIsClicked(c, "Redo", false, canRedo(editor.undoBuffer))) {
+                                hasRedoCommand = true;
+                            }
+                        } imLayoutEnd(c);
                     } imLayoutEnd(c);
 
                     const sc = imState(c, newScrollContainer);
@@ -685,20 +651,12 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                     imOscilloscope(c, editor);
                 } imLayoutEnd(c);
 
-                imHeading(c, "Presets");
+                imLine(c, LINE_HORIZONTAL, 2);
 
                 imLayout(c, COL); imFlex(c, 2); {
-                    imLayout(c, BLOCK); imScrollOverflow(c); imFlex(c); {
-                        // imFor(c); for () {
-                        //     imLayout(c, BLOCK); {
-                        //     } imLayoutEnd(c);
-                        // } imForEnd(c);
-
-                        if (imButtonIsClicked(c, "Save as preset")) {
-                            editor.modal = MODAL_NEW_PRESET;
-                        }
-                    } imLayoutEnd(c);
+                    imPresetsList(c, ctx, editor);
                 } imLayoutEnd(c);
+
             } imLayoutEnd(c);
 
             imLayout(c, BLOCK); imSize(c, 0, NA, 5, PX); imBg(c, cssVars.bg); imRelative(c); {
@@ -717,41 +675,81 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
         action();
     }
 
-    let wasUndoTraversed = false;
-
     if (!ctx.handled) {
         if (ctx.keyPressState) {
             const { keyUpper, ctrlPressed, shiftPressed } = ctx.keyPressState;
 
             if (keyUpper === "Z" && ctrlPressed && !shiftPressed) {
-                if (canUndo(editor.undoBuffer)) {
-                    editor.effectRack = undo(editor.undoBuffer, editor.effectRack);
-                    editor.edited = true;
-                    wasUndoTraversed = true;
-                }
+                hasUndoCommand = true;
                 ctx.handled = true;
             } else if (
                 (keyUpper === "Z" && ctrlPressed && shiftPressed) ||
                 (keyUpper === "Y" && ctrlPressed && !shiftPressed)
             ) {
-                if (canRedo(editor.undoBuffer)) {
-                    editor.effectRack = redo(editor.undoBuffer);
-                    editor.edited = true;
-                    wasUndoTraversed = true;
-                }
+                hasRedoCommand = true;
                 ctx.handled = true;
             }
         }
+    }
+
+    let wasUndoTraversed = false;
+
+    if (hasUndoCommand) {
+        wasUndoTraversed = editorUndo(editor);
+    } else if (hasRedoCommand) {
+        wasUndoTraversed = editorRedo(editor);
     }
 
     if (editor.edited) {
         editor.edited = false;
         editor.version++;
 
-        if (!wasUndoTraversed) {
-            writeToUndoBufferDebounced(editor.undoBuffer, editor.effectRack, UNDO_DEBOUNCE_SECONDS);
+        if (editor.editUndoActionId !== undefined) {
+            // We actually want to write to the undo buffer immediately
+            writeToUndoBuffer(editor.undoBuffer, editor.effectRack, editor.editUndoActionId);
+            editor.editUndoActionId = undefined;
+        } else {
+            if (!wasUndoTraversed) {
+                writeToUndoBufferDebounced(editor.undoBuffer, editor.effectRack, UNDO_DEBOUNCE_SECONDS);
+            }
         }
     }
+}
+
+function editorUndo(editor: EffectRackEditorState): boolean {
+    if (!canUndo(editor.undoBuffer)) return false;
+
+    editor.effectRack = undo(editor.undoBuffer, editor.effectRack);
+    editor.edited = true;
+    return true;
+}
+
+function editorRedo(editor: EffectRackEditorState): boolean {
+    if (!canRedo(editor.undoBuffer)) return false;
+
+    editor.effectRack = redo(editor.undoBuffer);
+    editor.edited = true;
+    return true;
+}
+
+function editorImport(editor: EffectRackEditorState, json: string) {
+    const effectRack: EffectRack = deserializeEffectRack(json);
+    if (!effectRack.effects || !Array.isArray(effectRack.effects)) {
+        throw new Error("Wrong JSON format");
+    }
+
+    // Try computing a sample. Does it work??
+    compileEffectRack(effectRack);
+    const registers = newEffectRackRegisters();
+    const f = getNoteFrequency(getNoteIndex("C", 4));
+    computeEffectRackIteration(effectRack, registers, f, 1, 1 / 48000, false);
+
+    // If we reach here, then yeah its probably legit...
+    const version = editor.effectRack._version;
+    editor.effectRack = effectRack;
+    editor.effectRack._version = version + 1;
+    editor.edited = true;
+    editor.editUndoActionId = ACTION_ID_IMPORT;
 }
 
 function registerValueToString(num: number) {
@@ -970,7 +968,7 @@ function imOscilloscope(c: ImCache, editor: EffectRackEditorState) {
         imStr(c, "ms, ");
         imStr(c, "Ran in ");
         imStr(c, (s.samples.length / s.computeSamplesTime).toFixed(3))
-        imStr(c, "samples per ms");
+        imStr(c, " samples per ms");
     } imLayoutEnd(c);
     imLayout(c, ROW); imAlign(c); {
         imLayout(c, BLOCK); imSize(c, 150, PX, 0, NA); {
@@ -1075,4 +1073,151 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
     if (imButtonIsClicked(c, "+")) {
         openContextMenuAtMouse(contextMenu);
     }
+}
+
+type PresetsListState = {
+    selectedId: number;
+    renaming: boolean;
+
+    error:         string;
+    newName:       string;
+};
+
+function presetsListState(): PresetsListState {
+    return {
+        selectedId: 0,
+        renaming: false,
+        error: "",
+        newName: "",
+    };
+}
+
+function startRenamingPreset(s: PresetsListState, preset: EffectRackPreset) {
+    assert(preset.id !== 0);
+    s.selectedId = preset.id;
+    s.renaming = true;
+    s.newName = preset.name;
+}
+
+function stopRenaming(s: PresetsListState) {
+    s.renaming = false;
+}
+
+function imPresetsList(
+    c: ImCache,
+    ctx: GlobalContext,
+    editor: EffectRackEditorState
+) {
+    imHeading(c, "Presets");
+
+    if (imMemo(c, true)) {
+        loadAllEffectRackPresets(ctx.repo);
+    }
+
+    const s = imState(c, presetsListState);
+    const presets = ctx.repo.effectRackPresets.allEffectRackPresets;
+    const loading = ctx.repo.effectRackPresets.allEffectRackPresetsLoading.isPending();
+
+    imLayout(c, BLOCK); imScrollOverflow(c); imFlex(c); {
+        if (imIf(c) && loading) {
+            imLayout(c, COL); imFlex(c, 2); {
+                imStr(c, "Loading...");
+            } imLayoutEnd(c);
+        } else {
+            imIfElse(c);
+
+            if (imIf(c) && s.error) {
+                imLayout(c, BLOCK); {
+                    imStr(c, s.error);
+                } imLayoutEnd(c);
+            } imIfEnd(c);
+
+            imLayout(c, ROW); imGap(c, 5, PX); imJustify(c); {
+                if (imButtonIsClicked(c, "Create new preset")) {
+                    const a = newAsyncContext("Saving preset");
+                    const preset = effectRackToPreset(editor.effectRack);
+                    const saved = waitForOne(a, createEffectRackPreset(ctx.repo, preset));
+                    waitFor(a, [saved], () => startRenamingPreset(s, preset));
+                }
+
+                const selectedPreset = presets.find(p => p.id === s.selectedId);
+
+                if (imIf(c) && selectedPreset) {
+                    if (imButtonIsClicked(c, "Rename")) {
+                        startRenamingPreset(s, selectedPreset);
+                    }
+
+                    if (imButtonIsClicked(c, "Delete")) {
+                        deleteEffectRackPreset(ctx.repo, selectedPreset);
+                        s.selectedId = 0;
+                    }
+                } imIfEnd(c);
+            } imLayoutEnd(c);
+
+            imFor(c); for (const preset of presets) {
+                const selected = preset.id === s.selectedId;
+
+                imKeyedBegin(c, preset); {
+                    imLayout(c, BLOCK); imBg(c, selected ? cssVars.bg2 : ""); {
+                        if (isFirstishRender(c)) {
+                            elSetStyle(c, "cursor", "pointer");
+                            elSetClass(c, "hoverable");
+                            elSetClass(c, cn.userSelectNone);
+                        }
+
+                        if (elHasMousePress(c)) {
+                            if (s.selectedId === preset.id) {
+                                s.selectedId = 0;
+                            } else {
+                                try {
+                                    editorImport(editor, preset.serialized);
+                                    s.selectedId = preset.id;
+                                    s.error = "";
+                                } catch (err) {
+                                    s.error = "" + err;
+                                }
+                            }
+                        }
+                        
+                        if (imIf(c) && selected &&  s.renaming) {
+                            const ev = imTextInputOneLine(c, s.newName, "Enter preset name");
+                            if (ev) {
+                                if (ev.newName) {
+                                    s.newName = ev.newName;
+                                    ctx.handled = true;
+                                }
+
+                                if (ev.submit) {
+                                    preset.name = s.newName;
+                                    stopRenaming(s);
+
+                                    const a = newAsyncContext("Renaming preset " + preset.id);
+                                    waitFor(a, [], () => updateEffectRackPreset(ctx.repo, preset));
+
+                                    ctx.handled = true;
+                                }
+
+                                if (ev.cancel) {
+                                    stopRenaming(s);
+                                    editor.modal = MODAL_NONE;
+                                    ctx.handled = true;
+                                }
+                            }
+                        } else {
+                            imIfElse(c);
+
+                            imLayout(c, ROW); {
+                                imStr(c, preset.name);
+
+                                imFlex1(c);
+
+                                imStr(c, preset.serialized.length);
+                            } imLayoutEnd(c);
+                        } imIfEnd(c);
+                    } imLayoutEnd(c);
+
+                } imKeyedEnd(c);
+            } imForEnd(c);
+        } imIfEnd(c);
+    } imLayoutEnd(c);
 }

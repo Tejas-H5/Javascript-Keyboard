@@ -5,17 +5,18 @@ import {
     imMemo
 } from "src/utils/im-core";
 import {
+    EV_BLUR,
     EV_INPUT,
     getGlobalEventSystem,
     imOn
 } from "src/utils/im-dom";
 
-export function imTextInputOneLine(c: ImCache, currentName: string, hasFocus = true) {
+export function imTextInputOneLine(c: ImCache, currentName: string, placeholder: string = "Enter new name", hasFocus = true) {
     let val: { newName?: string; submit?: boolean; cancel?: boolean; } | null = null;
 
     const input = imTextInputBegin(c, {
         value: currentName,
-        placeholder: "enter new name",
+        placeholder: placeholder,
     }); imFlex(c); {
         if (imMemo(c, hasFocus)) {
             setTimeout(() => {
@@ -25,17 +26,15 @@ export function imTextInputOneLine(c: ImCache, currentName: string, hasFocus = t
         }
 
         const inputEvent = imOn(c, EV_INPUT);
+        const blur = imOn(c, EV_BLUR);
+        const keyboard = getGlobalEventSystem().keyboard;
+
         if (inputEvent) {
             val = { newName: input.root.value };
-        }
-
-        const keyboard = getGlobalEventSystem().keyboard;
-        if (keyboard.keyDown) {
-            if (keyboard.keyDown.key === "Enter") {
-                val = { submit: true }
-            } else if (keyboard.keyDown.key === "Escape") {
-                val = { cancel: true }
-            }
+        } else if (keyboard.keyDown?.key === "Enter" || blur) {
+            val = { submit: true, newName: input.root.value }
+        } else if (keyboard.keyDown?.key === "Escape") {
+            val = { cancel: true }
         }
     } imTextInputEnd(c);
 
