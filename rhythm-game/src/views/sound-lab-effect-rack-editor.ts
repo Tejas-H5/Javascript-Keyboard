@@ -1118,7 +1118,8 @@ function imPresetsList(
     const presets = ctx.repo.effectRackPresets.allEffectRackPresets;
     const loading = ctx.repo.effectRackPresets.allEffectRackPresetsLoading.isPending();
 
-    imLayout(c, BLOCK); imScrollOverflow(c); imFlex(c); {
+    // UI could be better but for now I don't care too much.
+    imLayout(c, COL); imFlex(c); {
         if (imIf(c) && loading) {
             imLayout(c, COL); imFlex(c, 2); {
                 imStr(c, "Loading...");
@@ -1142,82 +1143,82 @@ function imPresetsList(
 
                 const selectedPreset = presets.find(p => p.id === s.selectedId);
 
-                if (imIf(c) && selectedPreset) {
-                    if (imButtonIsClicked(c, "Rename")) {
-                        startRenamingPreset(s, selectedPreset);
-                    }
+                if (imButtonIsClicked(c, "Rename", false, !!selectedPreset) && selectedPreset) {
+                    startRenamingPreset(s, selectedPreset);
+                }
 
-                    if (imButtonIsClicked(c, "Delete")) {
-                        deleteEffectRackPreset(ctx.repo, selectedPreset);
-                        s.selectedId = 0;
-                    }
-                } imIfEnd(c);
+                if (imButtonIsClicked(c, "Delete", false, !!selectedPreset) && selectedPreset) {
+                    deleteEffectRackPreset(ctx.repo, selectedPreset);
+                    s.selectedId = 0;
+                }
             } imLayoutEnd(c);
 
-            imFor(c); for (const preset of presets) {
-                const selected = preset.id === s.selectedId;
+            imLayout(c, COL); imFlex(c); imScrollOverflow(c); {
+                imFor(c); for (const preset of presets) {
+                    const selected = preset.id === s.selectedId;
 
-                imKeyedBegin(c, preset); {
-                    imLayout(c, BLOCK); imBg(c, selected ? cssVars.bg2 : ""); {
-                        if (isFirstishRender(c)) {
-                            elSetStyle(c, "cursor", "pointer");
-                            elSetClass(c, "hoverable");
-                            elSetClass(c, cn.userSelectNone);
-                        }
+                    imKeyedBegin(c, preset); {
+                        imLayout(c, BLOCK); imBg(c, selected ? cssVars.bg2 : ""); {
+                            if (isFirstishRender(c)) {
+                                elSetStyle(c, "cursor", "pointer");
+                                elSetClass(c, "hoverable");
+                                elSetClass(c, cn.userSelectNone);
+                            }
 
-                        if (elHasMousePress(c)) {
-                            if (s.selectedId === preset.id) {
-                                s.selectedId = 0;
+                            if (elHasMousePress(c)) {
+                                if (s.selectedId === preset.id) {
+                                    s.selectedId = 0;
+                                } else {
+                                    try {
+                                        editorImport(editor, preset.serialized);
+                                        s.selectedId = preset.id;
+                                        s.error = "";
+                                    } catch (err) {
+                                        s.error = "" + err;
+                                    }
+                                }
+                            }
+
+                            if (imIf(c) && selected && s.renaming) {
+                                const ev = imTextInputOneLine(c, s.newName, "Enter preset name");
+                                if (ev) {
+                                    if (ev.newName) {
+                                        s.newName = ev.newName;
+                                        ctx.handled = true;
+                                    }
+
+                                    if (ev.submit) {
+                                        preset.name = s.newName;
+                                        stopRenaming(s);
+
+                                        const a = newAsyncContext("Renaming preset " + preset.id);
+                                        waitFor(a, [], () => updateEffectRackPreset(ctx.repo, preset));
+
+                                        ctx.handled = true;
+                                    }
+
+                                    if (ev.cancel) {
+                                        stopRenaming(s);
+                                        editor.modal = MODAL_NONE;
+                                        ctx.handled = true;
+                                    }
+                                }
                             } else {
-                                try {
-                                    editorImport(editor, preset.serialized);
-                                    s.selectedId = preset.id;
-                                    s.error = "";
-                                } catch (err) {
-                                    s.error = "" + err;
-                                }
-                            }
-                        }
-                        
-                        if (imIf(c) && selected &&  s.renaming) {
-                            const ev = imTextInputOneLine(c, s.newName, "Enter preset name");
-                            if (ev) {
-                                if (ev.newName) {
-                                    s.newName = ev.newName;
-                                    ctx.handled = true;
-                                }
+                                imIfElse(c);
 
-                                if (ev.submit) {
-                                    preset.name = s.newName;
-                                    stopRenaming(s);
+                                imLayout(c, ROW); {
+                                    imStr(c, preset.name);
 
-                                    const a = newAsyncContext("Renaming preset " + preset.id);
-                                    waitFor(a, [], () => updateEffectRackPreset(ctx.repo, preset));
+                                    imFlex1(c);
 
-                                    ctx.handled = true;
-                                }
+                                    imStr(c, preset.serialized.length);
+                                } imLayoutEnd(c);
+                            } imIfEnd(c);
+                        } imLayoutEnd(c);
 
-                                if (ev.cancel) {
-                                    stopRenaming(s);
-                                    editor.modal = MODAL_NONE;
-                                    ctx.handled = true;
-                                }
-                            }
-                        } else {
-                            imIfElse(c);
-
-                            imLayout(c, ROW); {
-                                imStr(c, preset.name);
-
-                                imFlex1(c);
-
-                                imStr(c, preset.serialized.length);
-                            } imLayoutEnd(c);
-                        } imIfEnd(c);
-                    } imLayoutEnd(c);
-
-                } imKeyedEnd(c);
-            } imForEnd(c);
+                    } imKeyedEnd(c);
+                } imForEnd(c);
+            } imLayoutEnd(c);
         } imIfEnd(c);
     } imLayoutEnd(c);
 }
