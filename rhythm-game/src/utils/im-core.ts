@@ -1,4 +1,4 @@
-// IM-CORE 1.053
+// IM-CORE 1.054
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 
@@ -110,21 +110,26 @@ export function inlineTypeId<T = undefined>(fn: Function) {
 export type ValidKey = string | number | Function | object | boolean | null | unknown;
 
 export const USE_MANUAL_RERENDERING = 1 << 0;
-export const USE_ANIMATION_FRAME = 1 << 1;
+export const USE_REQUEST_ANIMATION_FRAME = 1 << 1;
 
 /**
- * If you want to avoid requestAnimationFrame, then pass in the {@link USE_MANUAL_RERENDERING} flag instead
- * of the default {@link USE_ANIMATION_FRAME} flag.
+ * Pass in {@link USE_REQUEST_ANIMATION_FRAME} to get the intended experience - 
+ * The animatin loop will make the following things significantly easier:
+ *  - Animating that one thing
+ *  - Writing robust javascript interaction logic that doesn't keep getting stuck in a particular bugged 
+ *      state due to callbacks not being fired when you thought they would
+ *  - 'reacting' to any state from anywhere. VanillaJS objects, your own data stores, api responses, you name it
+ *
+ * If you want to avoid the animation loop for whatever reason, pass in the {@link USE_MANUAL_RERENDERING} flag instead.
  *  - You'll need to manually call c[CACHE_RERENDER_FN]() whenever any state anywhere changes.
  *  - Methods that previously reported a deltaTime will report a constant 0.0333_ instead.
- *  - I'm not even sure why you would do this, but I've added it just in case.
  * 
- * NOTE: it is assumed that the rerender function and the `useEventLoop` parameter never changes.
+ * NOTE: the rerender function and the `useEventLoop` parameter are completely ignored after the first render, and this will never change.
  */
 export function imCacheBegin(
     c: ImCache,
     renderFn: (c: ImCache) => void,
-    flags = USE_ANIMATION_FRAME
+    flags: typeof USE_REQUEST_ANIMATION_FRAME | typeof USE_MANUAL_RERENDERING,
 ) {
     if (c.length === 0) {
         for (let i = 0; i < CACHE_ENTRIES_START; i++) {
@@ -163,7 +168,7 @@ export function imCacheBegin(
         if ((flags & USE_MANUAL_RERENDERING) !== 0) {
             c[CACHE_ANIMATE_FN] = noOp;
             c[CACHE_ANIMATION_ID] = null;
-        } else if ((flags & USE_ANIMATION_FRAME) !== 0) {
+        } else if ((flags & USE_REQUEST_ANIMATION_FRAME) !== 0) {
             c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 0;
             c[CACHE_ANIMATE_FN] = (t: number) => {
                 if (c[CACHE_IS_RENDERING] === true) {
@@ -191,7 +196,7 @@ export function imCacheBegin(
     c[CACHE_CURRENT_WAITING_FOR_SET] = false;
     c[CACHE_RENDER_COUNT]++;
 
-    if ((flags & USE_ANIMATION_FRAME) !== 0) {
+    if ((flags & USE_REQUEST_ANIMATION_FRAME) !== 0) {
         c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = (c[CACHE_ANIMATION_TIME] - c[CACHE_ANIMATION_TIME_LAST]) / 1000;
         c[CACHE_ANIMATION_TIME_LAST] = c[CACHE_ANIMATION_TIME];
     } else {
@@ -997,6 +1002,7 @@ export function globalStateStackPush<T>(gss: T[], item: T) {
 
     gss.push(item);
 }
+
 export function globalStateStackGet<T>(gss: T[]): T {
     // No context item was pushed
     assert(gss.length > 0);
