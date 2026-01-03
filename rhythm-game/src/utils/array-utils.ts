@@ -19,6 +19,16 @@ export function filteredCopy<T, U extends T>(src: T[], dst: T[], predicate: (v: 
     }
 }
 
+export function copyArray<T>(dst: T[], src: T[], start: number, len: number) {
+    const remaining = src.length - start;
+    if (len > remaining) len = remaining;
+
+    const end = start + len;
+    for (let srcIdx = start, dstIdx = 0; srcIdx < end; srcIdx++, dstIdx++) {
+        dst[dstIdx] = src[srcIdx];
+    }
+}
+
 export function newArray<T>(n: number, fn: (i: number) => T): T[] {
     const arr = Array(n);
     for (let i = 0; i < arr.length; i++) {

@@ -108,7 +108,7 @@ function imMainInner(c: ImCache) {
         const tryState = imTry(c); try {
             const { err } = tryState;
             if (imIf(c) && !err) {
-                imApp(c, globalContext, fps);
+                imApp(c, globalContext); // imMainInnerInner. xd
             } else {
                 imIfElse(c);
 

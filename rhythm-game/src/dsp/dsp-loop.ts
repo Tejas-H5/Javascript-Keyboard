@@ -53,7 +53,6 @@ import {
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 
 type DspSynthParameters = {
-    instructions: number[];
     rack: EffectRack;
 }
 
@@ -80,7 +79,6 @@ export function newDspPlaySettings(): DSPPlaySettings {
         sustain: 0.5,
         isUserDriven: false,
         parameters: {
-            instructions: [],
             rack: newEffectRack(),
         },
     };
@@ -513,7 +511,7 @@ function stopPlayingScheduledKeys(s: DspState) {
     trackPlayback.scheduledPlaybackCurrentIdx = -1;
 }
 
-export function dspProcess(s: DspState, outputs: Float32Array[][]) {
+export function dspProcess(s: DspState, outputs: (Float32Array[][]) | (number[][][])) {
     const output = outputs[0];
 
     // run oscillators

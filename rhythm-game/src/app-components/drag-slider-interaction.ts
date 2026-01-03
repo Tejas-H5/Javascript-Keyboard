@@ -1,7 +1,7 @@
 import { BLOCK, imAbsolute, imBg, imFg, imFixed, imLayout, imLayoutEnd, imOpacity, imSize, NA, PX } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { ImCache, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
-import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
+import { elHasMousePress, elSetStyle, EV_CONTEXTMENU, getGlobalEventSystem, imOn } from "src/utils/im-dom";
 import { clamp, deltaAngle } from "src/utils/math-utils";
 
 export type CompactLinearDragSlideInteractionState = {
@@ -124,6 +124,7 @@ function newCompactCircularDragSlideInteractionState(): CompactCircularDragSlide
 // Actually a better idea than I thought. Haven't seen it other people do it yet for some reason.
 // As a side-effect of the implementation, you can right-click to reposition the centerpoint in the middle of the interaction.
 // I kinda just dont want to fix this bug for now xD
+// It is no longer a bug but a heavily relied upon feature.
 export function imCompactCircularDragSlideInteraction(
     c: ImCache,
     value: number,
@@ -188,6 +189,14 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
         // Cursor handles
         imLayout(c, BLOCK); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
             if (isFirstishRender(c)) elSetStyle(c, "zIndex", "100000");
+
+            const ctxEv = imOn(c, EV_CONTEXTMENU);
+            if (s.isDragging) {
+                if (ctxEv) {
+                    // used to re-center the rotation in a more comfortable position on the screen.
+                    ctxEv.preventDefault();
+                }
+            }
 
             const sectorSize = 2 * Math.PI / cursorsPerSector.length;
             const sectorStart = -sectorSize / 2;

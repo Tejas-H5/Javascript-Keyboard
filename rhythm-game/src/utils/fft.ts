@@ -23,11 +23,13 @@ function dft( signal: number[], dstX: number[], dstY: number[]) {
 // FFT: https://en.wikipedia.org/wiki/Cooley%E2%80%93Tukey_FFT_algorithm
 // This is derived from the pseudocode. I struggled to figure out the recurrence myself, but
 // in the process of trying, the pseudocode became understandable enough that I could just copy it.
-export function fft(signal: number[], dstFreqRe: number[], dstFreqIm: number[]) {
-    // TODO: assert length is pow of 2
-    
+export function fft(dstFreqRe: number[], dstFreqIm: number[], signal: number[]) {
     resizeNumberArrayPowerOf2(dstFreqRe, signal.length);
     resizeNumberArrayPowerOf2(dstFreqIm, signal.length);
+
+    assert(dstFreqRe.length === dstFreqIm.length);
+    assert(isPowerOfTwo(dstFreqRe.length))
+    assert(isPowerOfTwo(dstFreqIm.length))
 
     fftInternal(
         signal, 0, dstFreqRe.length, 1,
@@ -37,6 +39,21 @@ export function fft(signal: number[], dstFreqRe: number[], dstFreqIm: number[]) 
     // TODO: figure out why the output needs to be reversed xD
     dstFreqRe.reverse();
     dstFreqIm.reverse();
+}
+
+export function fftToReal(
+    rDst: number[],
+    re: number[], im: number[],
+) {
+    assert(re.length === im.length);
+    rDst.length = re.length;
+
+    for (let i = 0; i < re.length; i++) {
+        const rVal = re[i];
+        const imVal = im[i];
+        const mag = Math.sqrt(rVal * rVal + imVal * imVal);
+        rDst[i] = mag;
+    }
 }
 
 function isPowerOfTwo(v: number) {
@@ -52,10 +69,6 @@ function fftInternal(
     signal: number[], signalIdx: number, len: number, stride: number,
     dstFreqRe: number[], dstFreqIm: number[], freqStartIdx: number, 
 ) {
-    assert(dstFreqRe.length === dstFreqIm.length);
-    assert(isPowerOfTwo(dstFreqRe.length))
-    assert(isPowerOfTwo(dstFreqIm.length))
-
     // TODO: write to not literally use recursion (warning: last time I tried, it was HARD! Wasn't able to do it) 
     // (two times I have tried and failed to do this now)
 
@@ -125,8 +138,10 @@ export function resizeNumberArrayPowerOf2(arr: number[], len: number) {
 
     if (len < arr.length) {
         arr.length = len;
-    } else if (len > arr.length) {
-        while(arr.length < len) arr.push(0);
+    } else if (arr.length < len) {
+        while(arr.length < len) {
+            arr.push(0); 
+        }
     }
 }
 
@@ -156,7 +171,7 @@ export function resizeNumberArrayPowerOf2(arr: number[], len: number) {
     const dstImFft: number[] = [];
 
     let t1 = performance.now();
-    fft(signal, dstRFft, dstImFft);
+    fft(dstRFft, dstImFft, signal);
     const totalFft = performance.now() - t1;
 
     try {

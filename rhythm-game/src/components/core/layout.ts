@@ -179,7 +179,7 @@ export function imFlex1(c: ImCache) {
     } imLayoutEnd(c);
 }
 
-export function imLayout(c: ImCache, type: DisplayType) {
+export function imLayoutBegin(c: ImCache, type: DisplayType) {
     const root = imEl(c, EL_DIV);
     if (imMemo(c, type)) {
         elSetClass(c, cn.inlineBlock, type === INLINE_BLOCK);
@@ -195,6 +195,9 @@ export function imLayout(c: ImCache, type: DisplayType) {
 
     return root.root;
 }
+
+/** {@deprecated} use {@link imLayoutBegin} instead */
+export const imLayout = imLayoutBegin;
 
 export function imPre(c: ImCache) {
     if (isFirstishRender(c)) {

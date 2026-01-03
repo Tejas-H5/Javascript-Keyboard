@@ -147,7 +147,9 @@ export function isKeyPressed(keyId: number) {
 
 // we keep forgetting to ignore repeats, so I've made it an argument to this method.
 export function pressKey(keyId: number, noteId: number, isRepeat: boolean) {
-    if (isRepeat) return false;
+    if (isRepeat) {
+        return false;
+    }
 
     resumeAudio();
 

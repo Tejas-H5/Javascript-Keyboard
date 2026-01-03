@@ -34,8 +34,8 @@ import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
 import { runSaveCurrentChartTask } from "./saving-chart";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
-import { imSoundLab } from "./sound-lab-view";
 import { imUpdateModal } from "./update-modal";
+import { imEffectRackEditor } from "./sound-lab-effect-rack-editor";
 
 type AllKeysState = {
     keys: KeyState[];
@@ -418,7 +418,6 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
 export function imApp(
     c: ImCache,
     ctx: GlobalContext,
-    fps: FpsCounterState
 ) {
     const { ui } = ctx;
 
@@ -470,7 +469,6 @@ export function imApp(
         getKeyPressState(keyUp, keyReleaseState);
         if (handleKeyRelased(ctx, keyReleaseState)) {
             keyUp.preventDefault();
-            ctx.handled = true;
         }
     }
 
@@ -495,7 +493,7 @@ export function imApp(
             case APP_VIEW_CHART_SELECT: imChartSelect(c, ctx); break;
             case APP_VIEW_PLAY_CHART:   imPlayView(c, ctx);    break;
             case APP_VIEW_EDIT_CHART:   imEditView(c, ctx);    break;
-            case APP_VIEW_SOUND_LAB:    imSoundLab(c, ctx);    break;
+            case APP_VIEW_SOUND_LAB:    imEffectRackEditor(c, ctx); break;
             default: {
                 imEl(c, EL_H2); imStr(c, `TODO: implement ${ui.currentView} ...`); imElEnd(c, EL_H2);
             } break;
