@@ -638,6 +638,10 @@ export function getDspLoopClassUrl(): string {
     // Every single dependency must be injected here manually, so that the worker url has access to everything it needs.
     // (I want the entire web-app to be a single HTML file that can be easily saved, at any cost)
 
+
+    // BTW: https://codeberg.org/uzu/strudel/src/branch/main/packages/vite-plugin-bundle-audioworklet/vite-plugin-bundle-audioworklet.js
+    // xd. Didnt know you could do that. I cannot be bothered now. Maybe later
+
     lastUrl = newFunctionUrl([
         arrayAt,
         max,

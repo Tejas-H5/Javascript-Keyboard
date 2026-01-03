@@ -7,7 +7,7 @@ import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequen
 import { NAME_OPERATION_COPY } from "./state/ui-state";
 import { assert } from "./utils/assert";
 import { initCssbStyles } from "./utils/cssb";
-import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_ANIMATION_FRAME } from "./utils/im-core";
+import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_REQUEST_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imEl, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
 import { waitForOne, newAsyncContext, waitFor } from "./utils/promise-utils";
 import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app";
@@ -146,7 +146,7 @@ function imMainInner(c: ImCache) {
 }
 
 function imMain(c: ImCache) {
-    imCacheBegin(c, imMain, USE_ANIMATION_FRAME); {
+    imCacheBegin(c, imMain, USE_REQUEST_ANIMATION_FRAME); {
         imDomRootBegin(c, document.body); {
             const ev = imGlobalEventSystemBegin(c); {
                 imMainInner(c);
