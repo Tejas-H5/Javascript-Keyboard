@@ -1,5 +1,5 @@
 import { getDeltaTimeSeconds, ImCache } from "src/utils/im-core";
-import { COL, imFlex, imLayout, imLayoutEnd, imScrollOverflow, ROW } from "./core/layout";
+import { COL, imFlex, imLayout, imLayoutEnd, imRelative, imScrollOverflow, ROW } from "./core/layout";
 import { getScrollVHEx } from "src/utils/dom-utils";
 
 
@@ -60,7 +60,10 @@ export function imScrollContainerBegin(
     sc: ScrollContainer,
     orientation: typeof ROW | typeof COL = COL
 ): HTMLElement {
-    const scrollParent = imLayout(c, orientation); imFlex(c); imScrollOverflow(c, orientation === COL, orientation === ROW);
+    const scrollParent = imLayout(c, orientation); 
+    imFlex(c); 
+    imScrollOverflow(c, orientation === COL, orientation === ROW); 
+    imRelative(c);
     sc.root = scrollParent;
     return scrollParent;
 }

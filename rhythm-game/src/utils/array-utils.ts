@@ -85,3 +85,30 @@ export function arrayMove(arr: unknown[], a: number, b: number) {
     }
 }
 
+/**
+ * Used to create a correspondence between two lists of objects.
+ * For example, a UI that is editing a bunch objects probably doesn't want to directly augment
+ * the state of the things its editing, and instead have seperate 1->1 state per item being edited.
+ */
+export function resizeObjectPool<T>(arr: T[], factory: () => T, wantedLength: number,) {
+    if (arr.length !== wantedLength) {
+        arr.length = wantedLength;
+        for (let i = 0; i < wantedLength; i++) {
+            if (arr[i] == null) arr[i] = factory();
+        }
+    }
+}
+
+// While the API looks inconsistent with resizeObjectPool, it actually isn't.
+// in both cases, the 'pool-related' arguments are first.
+// resizeObjectPool(pool::array, pool::constructor, len)
+// resizeValuePool(pool::array, len, defaultValue).
+
+export function resizeValuePool<T>(arr: T[], wantedLength: number, defaultVal: T) {
+    if (arr.length !== wantedLength) {
+        arr.length = wantedLength;
+        for (let i = 0; i < wantedLength; i++) {
+            if (arr[i] == null) arr[i] = defaultVal;
+        }
+    }
+}

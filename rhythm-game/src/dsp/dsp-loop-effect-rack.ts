@@ -4,7 +4,7 @@
 
 // NOTE: these dependencies and their dependencies need to be manually injected into the DSP loop, so 
 // try to keep them small.
-import { arrayAt } from "src/utils/array-utils";
+import { arrayAt, resizeObjectPool } from "src/utils/array-utils";
 import { assert, mustGetDefined, unreachable } from "src/utils/assert";
 import { moveTowards } from "src/utils/math-utils";
 import { asArray, asNumber, asObject, asString, deserializeObject, extractKey, extractKeyDefined, serializeToJSON } from "src/utils/serialization-utils";
@@ -121,16 +121,20 @@ export type EffectRackOscillator = {
 
     // UI values:
 
-    _phase:     RegisterIdx;
-    _amplitude: RegisterIdx;
-    _frequency: RegisterIdx; 
+    _phase:         RegisterIdx;
+    _amplitude:     RegisterIdx;
+    _frequency:     RegisterIdx; 
+    _frequencyMult: RegisterIdx; 
+    _offset:        RegisterIdx;
 
     // It occurs to me that I cannot animate this ... yet ...
     waveType:    EffectRackOscillatorWaveType;
 
-    phaseUI:     RegisterIdxUiMetadata;
-    amplitudeUI: RegisterIdxUiMetadata;
-    frequencyUI: RegisterIdxUiMetadata;
+    phaseUI:         RegisterIdxUiMetadata;
+    amplitudeUI:     RegisterIdxUiMetadata;
+    frequencyUI:     RegisterIdxUiMetadata;
+    frequencyMultUI: RegisterIdxUiMetadata;
+    offsetUI:        RegisterIdxUiMetadata;
 };
 
 export function newEffectRackOscillator(): EffectRackOscillator {
@@ -139,15 +143,20 @@ export function newEffectRackOscillator(): EffectRackOscillator {
 
         _t: asRegisterIdx(0),
 
-        _amplitude:   asRegisterIdx(1),
-        _phase:       asRegisterIdx(0),
-        _frequency:   asRegisterIdx(REG_IDX_KEY_FREQUENCY),
+        _amplitude:     asRegisterIdx(1),
+        _phase:         asRegisterIdx(0),
+        _frequency:     asRegisterIdx(REG_IDX_KEY_FREQUENCY),
+        _frequencyMult: asRegisterIdx(0),
+        _offset:        asRegisterIdx(0),
 
         waveType:    OSC_WAVE__SIN,
 
-        amplitudeUI: newRegisterValueMetadata("amplitude", 1, 0, 1),
-        phaseUI:     newRegisterValueMetadata("phase", 0, 0, 1),
-        frequencyUI: newRegisterValueMetadata("frequency", 0, 0, 20_000, REG_IDX_KEY_FREQUENCY),
+        // Need to fit all this horizontally, so using shorter UI names...
+        amplitudeUI:     newRegisterValueMetadata("amp", 1, 0, 1),
+        phaseUI:         newRegisterValueMetadata("+t", 0, 0, 1),
+        frequencyUI:     newRegisterValueMetadata("f", 0, 0, 20_000, REG_IDX_KEY_FREQUENCY),
+        frequencyMultUI: newRegisterValueMetadata("fmult", 1, 0, 1),
+        offsetUI:        newRegisterValueMetadata("+y", 0, -2, 2), 
     };
 }
 
@@ -433,9 +442,11 @@ export function compileEffectRack(e: EffectRack) {
                 const wave = effect;
                 wave._t = allocateRegisterIdx(e, 0, true);
 
-                wave._phase     = allocateRegisterIdxIfNeeded(e, wave.phaseUI);
-                wave._amplitude = allocateRegisterIdxIfNeeded(e, wave.amplitudeUI);
-                wave._frequency = allocateRegisterIdxIfNeeded(e, wave.frequencyUI);
+                wave._phase         = allocateRegisterIdxIfNeeded(e, wave.phaseUI);
+                wave._amplitude     = allocateRegisterIdxIfNeeded(e, wave.amplitudeUI);
+                wave._frequency     = allocateRegisterIdxIfNeeded(e, wave.frequencyUI);
+                wave._frequencyMult = allocateRegisterIdxIfNeeded(e, wave.frequencyMultUI);
+                wave._offset        = allocateRegisterIdxIfNeeded(e, wave.offsetUI);
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effect;
@@ -679,6 +690,164 @@ export function computeEffectRackIteration(
 
     return re[REG_IDX_OUTPUT];
 }
+
+type DagNode = {
+    dependencies: number[];
+};
+
+type Dag = {
+    nodes: DagNode[]
+}
+
+function newDagNode(): DagNode {
+    return {
+        dependencies: [],
+    };
+}
+
+/**
+ * Sorts the effect rack such that all outputs occur before inputs.
+ * If nothing outputs to the <Result> register, no sorting can occur.
+ * TBH, the effect rack is always topologically sorted so it should do nothing in theory.
+ * But maybe it will be more organized? we'll find out I guess.
+ */
+export function sortEffectRack(e: EffectRack) {
+    while (topologicllySortEffectRackInternal(e)) {
+        // it turns out that this process can be repeated several times to give a nicer sort!
+    }
+}
+
+function topologicllySortEffectRackInternal(e: EffectRack): boolean {
+    compileEffectRack(e);
+
+    const dag: Dag = { nodes: [], }
+    resizeObjectPool(dag.nodes, newDagNode, e.effects.length);
+
+    let sinkIdx = 0, sinkFound = false;
+    for (let i = e.effects.length - 1; i >= 0; i--) {
+        const effect = e.effects[i];
+        if (effect.dst === REG_IDX_OUTPUT) {
+            sinkFound = true;
+            sinkIdx = i;
+            break;
+        }
+    }
+
+    if (!sinkFound) {
+        // Can't topologically sort without an 'output' to start from.
+        return false;
+    }
+
+    // Dependencies only need to be added for registers that can be assigned via the UI
+    const addDependency = (dag: Dag, idx: number, dep: RegisterIdx) => {
+        if (dep >= e.bindings.length) {
+            // can't depend on a constant.
+            return;
+        }
+
+        let depEffectIdx = 0, found = false;
+        for (let i = idx - 1; i >= 0; i--) {
+            const effect = e.effects[i]; assert(!!effect);
+            if (effect.dst === dep) {
+                depEffectIdx = i;
+                found = true;
+                break;
+            }
+        }
+
+        if (depEffectIdx) {
+            if (!dag.nodes[idx].dependencies.includes(depEffectIdx)) {
+                dag.nodes[idx].dependencies.push(depEffectIdx);
+            }
+        }
+    }
+
+    for (let effectIdx = 0; effectIdx < e.effects.length; effectIdx++) {
+        const effect = e.effects[effectIdx].value;
+        switch (effect.type) {
+            case EFFECT_RACK_ITEM__OSCILLATOR: {
+                const wave = effect;
+                addDependency(dag, effectIdx, wave._phase);
+                addDependency(dag, effectIdx, wave._amplitude);
+                addDependency(dag, effectIdx, wave._frequency);
+                addDependency(dag, effectIdx, wave._frequencyMult);
+                addDependency(dag, effectIdx, wave._offset);
+            } break;
+            case EFFECT_RACK_ITEM__ENVELOPE: {
+                const envelope = effect;
+
+                addDependency(dag, effectIdx, envelope._signal);
+                addDependency(dag, effectIdx, envelope._attack);
+                addDependency(dag, effectIdx, envelope._decay);
+                addDependency(dag, effectIdx, envelope._sustain);
+                addDependency(dag, effectIdx, envelope._release);
+
+                addDependency(dag, effectIdx, envelope.toModulate);
+            } break;
+            case EFFECT_RACK_ITEM__MATHS: {
+                const maths = effect;
+
+                for (let i = 0; i < maths.terms.length; i++) {
+                    const term = maths.terms[i];
+                    for (let i = 0; i < term.coefficients.length; i++) {
+                        const c = term.coefficients[i];
+                        addDependency(dag, effectIdx, c._value);
+                    }
+                }
+            } break;
+            case EFFECT_RACK_ITEM__SWITCH: {
+                const switchEffect = effect;
+
+                for (let i = 0; i < switchEffect.conditions.length; i++) {
+                    const cond = switchEffect.conditions[i];
+
+                    addDependency(dag, effectIdx, cond._a);
+                    addDependency(dag, effectIdx, cond._b);
+                    addDependency(dag, effectIdx, cond._val);
+                }
+
+                addDependency(dag, effectIdx, switchEffect._default);
+            } break;
+            default: unreachable(effect);
+        }
+    }
+
+    const fullyVisited = new Set<number>();
+    const visitedIndices: number[] = [];
+    const unvisitedIndices: number[] = [];
+
+    const dfs = (nodeIdx: number) => {
+        if (!fullyVisited.has(nodeIdx)) {
+            const deps = dag.nodes[nodeIdx].dependencies;
+            for (const dep of deps) {
+                dfs(dep);
+            }
+
+            visitedIndices.push(nodeIdx);
+            fullyVisited.add(nodeIdx);
+        }
+    }
+    dfs(sinkIdx);
+
+    for (let i = 0; i < dag.nodes.length; i++) {
+        if (fullyVisited.has(i)) continue;
+        unvisitedIndices.push(i);
+    }
+
+    const newIndices = [...unvisitedIndices, ...visitedIndices];
+    assert(newIndices.length === e.effects.length);
+    const effectsSnapshot = [...e.effects];
+    let didSomething = false;
+    for (let i = 0; i < newIndices.length; i++) {
+        if (i === newIndices[i]) continue;
+
+        e.effects[i] = effectsSnapshot[newIndices[i]];
+        didSomething = true;
+    }
+
+    return didSomething;
+}
+
 
 
 // Prob not needed for undo buffer, but should be useful for import/export. 

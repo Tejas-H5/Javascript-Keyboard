@@ -249,7 +249,7 @@ function finalizeDomAppender(a: DomAppender<ValidElement>) {
 
 /**
  * NOTE: SVG elements are actually different from normal HTML elements, and 
- * will need to be created wtih {@link imElSvgBegin}
+ * will need to be created wtih {@link imElBeginSvg}
  */
 export function imElBegin<K extends keyof HTMLElementTagNameMap>(
     c: ImCache,
@@ -281,35 +281,35 @@ function imBeginDomAppender(c: ImCache, appender: DomAppender<ValidElement>, chi
 }
 
 export type SvgContext = {
+    root: DomAppender<SVGSVGElement>;
     svg: SVGSVGElement;
+    x0: number;
+    y0: number;
     width: number; 
     height: number;
     resized: boolean;
 }
 
 /**
- * An alternative to {@link EL_SVG} for larger svg-based components.
+ * An alternative to {@link EL_SVG} for larger svg-based components/scenes.
+ * Use this with {@link imElBeginExisting/imElEndExisting}
+ *
  * For one off icons, this is probably not as ideal.
  *
  * NOTE: large svg-based scenes are very hard and cumbersone to code. 
  * This could very well be because this SvgContext isnt fully formed.
- * TODO: we need to make SVG as simple as canvas. Some way to render elements to an SVG
- * layer from within this component. 
  */
 export function imSvgContext(c: ImCache): SvgContext {
-    const { size, resized } = imTrackSize(c);
+    const elRect = elGet(c).getBoundingClientRect();
 
-    const svgRoot = imElSvgBegin(c, EL_SVG); {
-        if (isFirstishRender(c)) elSetStyle(c, "position", "relative")
-        if (isFirstishRender(c)) elSetStyle(c, "width", "100%")
-        if (isFirstishRender(c)) elSetStyle(c, "height", "100%")
-        if (resized) elSetAttr(c, "viewBox", `0 0 ${size.width} ${size.height}`);
-    } // imElSvgEnd
-
+    const svgRoot = imElBeginSvg(c, EL_SVG); imFinalizeDeferred(c); 
     let ctx = imGet(c, imSvgContext);
     if (ctx === undefined) {
         ctx = { 
+            root: svgRoot,
             svg: svgRoot.root,
+            x0: 0,
+            y0: 0,
             width: 0,
             height: 0,
             resized: false,
@@ -317,18 +317,41 @@ export function imSvgContext(c: ImCache): SvgContext {
         imSet(c, ctx);
     }
 
-    ctx.width = size.width;
-    ctx.height = size.height;
-    ctx.resized = resized;
+    {
+        if (isFirstishRender(c)) {
+            elSetStyle(c, "position", "absolute");
+            elSetStyle(c, "width", "100%");
+            elSetStyle(c, "height", "100%");
+        }
+
+        ctx.x0 = elRect.left;
+        ctx.width = elRect.width;
+        ctx.y0 = elRect.top;
+        ctx.height = elRect.height;
+
+        const x0Changed = imMemo(c, ctx.x0);
+        const widthChanged = imMemo(c, ctx.width);
+        const y0Changed = imMemo(c, ctx.y0);
+        const heightChanged = imMemo(c, ctx.height);
+
+        // Allows us to render our SVGs using screen coordinates, which 
+        // is usually what we want when we're drawing lines between two divs or whatever.
+        if (x0Changed || widthChanged || y0Changed || heightChanged) {
+            elSetAttr(c, "viewBox", `${ctx.x0} ${ctx.y0} ${ctx.width}, ${ctx.height}`);
+        }
+
+        // users to render their stuff here.
+    
+    } imElEndSvg(c, EL_SVG);
+
 
     return ctx;
 }
 
-export function imSvgContextEnd(c: ImCache) {
-    imElSvgEnd(c, EL_SVG);
-}
-
-export function imElSvgBegin<K extends keyof SVGElementTagNameMap>(
+/**
+ * Svg nodes are different from normal DOM nodes, so you'll need to use this function to create them instead.
+ */
+export function imElBeginSvg<K extends keyof SVGElementTagNameMap>(
     c: ImCache,
     r: KeyRef<K>
 ): DomAppender<SVGElementTagNameMap[K]> {
@@ -361,7 +384,7 @@ export function imElEnd(c: ImCache, r: KeyRef<keyof HTMLElementTagNameMap | keyo
     imBlockEnd(c);
 }
 
-export const imElSvgEnd = imElEnd;
+export const imElEndSvg = imElEnd;
 
 
 /**
@@ -399,15 +422,16 @@ export function addDebugLabelToAppender(c: ImCache, str: string | undefined) {
     appender.label = str;
 }
 
-export function imDomRootExistingBegin(c: ImCache, existing: DomAppender<any>) {
-    // If you want to re-push this DOM node to the immediate mode stack, use imFinalizeDeferred(c).
-    // I.e imElBegin(c, EL_BLAH); imFinalizeDeferred(c); {
+export function imElBeginExisting(c: ImCache, existing: DomAppender<any>) {
+    // If you want to re-push this DOM node to the immediate mode stack, with imElBeginExisting, 
+    // the dom node needs to be finalized at the very end. You can set this by calling imFinalizeDeferred(c).
+    // I.e imElBegin(c, EL_BLAH); imFinalizeDeferred(c); { ... }
     assert(existing.finalizeType === FINALIZE_DEFERRED);
 
     imBlockBegin(c, newDomAppender, existing);
 }
 
-export function imDomRootExistingEnd(c: ImCache, existing: DomAppender<any>) {
+export function imElEndExisting(c: ImCache, existing: DomAppender<any>) {
     let appender = getEntriesParent(c, newDomAppender);
     assert(appender === existing);
     imBlockEnd(c);

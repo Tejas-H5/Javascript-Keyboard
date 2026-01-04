@@ -1,4 +1,4 @@
-import { arrayMax, arrayMin, inverseLerp, lerp, max, min } from "src/utils/math-utils";
+import { inverseLerp, lerp, max, min } from "src/utils/math-utils";
 
 // TODO: consider moving to components.ts
 
@@ -149,6 +149,8 @@ export type PlotState = {
 
 export function drawSamples(
     samples: number[] | Float32Array,
+    min: number, 
+    max: number,
     plotState: PlotState,
     ctx: CanvasRenderingContext2D,
     startIdx?: number,
@@ -167,11 +169,6 @@ export function drawSamples(
     if (endIdx >= samples.length) endIdx = samples.length - 1;
     if (startIdx < 0) startIdx = 0;
     numSamples = endIdx - startIdx + 1;
-
-    let max = arrayMax(samples);
-    let min = arrayMin(samples);
-    if (max < 1) max = 1;
-    if (min > -1) min = -1;
 
     plotState.posX = startIdx + numSamples / 2;
     plotState.posY = (min + max) / 2;

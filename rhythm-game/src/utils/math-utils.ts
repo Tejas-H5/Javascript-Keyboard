@@ -92,8 +92,8 @@ export function normalizeNegativeOneOneF32(output: Float32Array) {
 }
 
 export function arrayMax(output: number[] | Float32Array) {
-    let maxSample = -Infinity;
-    for (let i = 0; i < output.length; i++) {
+    let maxSample = output[0];
+    for (let i = 1; i < output.length; i++) {
         maxSample = max(maxSample, output[i]);
     }
 
@@ -101,8 +101,8 @@ export function arrayMax(output: number[] | Float32Array) {
 }
 
 export function arrayMin(output: number[] | Float32Array) {
-    let minSample = Infinity;
-    for (let i = 0; i < output.length; i++) {
+    let minSample = output[0];
+    for (let i = 1; i < output.length; i++) {
         minSample = min(minSample, output[i]);
     }
 
