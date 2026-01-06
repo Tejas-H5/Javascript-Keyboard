@@ -9,6 +9,8 @@
 // even know or care about javascript internals. Because what's the point of using plain objects for your state
 // if the engine just de-optimizes all of them as soon as you load them?
 
+import { assert } from "./assert";
+
 export function asNull(val: unknown): null | undefined {
     return val === null ? null : undefined;
 }
@@ -33,7 +35,7 @@ export function asFalse(val: unknown): false | undefined {
     return val === false ? false : undefined;
 }
 
-export function asObject(val: unknown, reinterpretEntriesAsObject = true): Record<string, unknown> | undefined {
+export function asObjectOrUndefined(val: unknown, reinterpretEntriesAsObject = true): Record<string, unknown> | undefined {
     if (val != null && val.constructor === Object) {
         return val as Record<string, unknown>;
     }
@@ -48,7 +50,13 @@ export function asObject(val: unknown, reinterpretEntriesAsObject = true): Recor
     return undefined;
 }
 
-export function asArray<T>(val: unknown, castFn?: (u: unknown) => u is T): T[] | undefined {
+export function asObject(val: unknown): JSONRecord {
+    const obj = asObjectOrUndefined(val);
+    assert(!!obj);
+    return obj;
+}
+
+export function asArrayOrUndefined<T>(val: unknown, castFn?: (u: unknown) => u is T): T[] | undefined {
     if (!Array.isArray(val)) return undefined;
     if (!castFn) return val;
     if (!val.every(castFn)) return undefined;
@@ -79,10 +87,10 @@ export function asNumberMap<T>(val: unknown, mapFn: (u: unknown) => T | undefine
 function asStringOrNumberEntriesList<T>(val: unknown, stringKeys: false, mapFn: (u: unknown) => T | undefined): [number, T][] | undefined;
 function asStringOrNumberEntriesList<T>(val: unknown, stringKeys: true, mapFn: (u: unknown) => T | undefined): [string, T][] | undefined; 
 function asStringOrNumberEntriesList<T>(val: unknown, stringKeys: boolean, mapFn: (u: unknown) => T | undefined): [number, T][] | [string, T][] | undefined {
-    let arr = asArray(val);
+    let arr = asArrayOrUndefined(val);
     if (!arr) {
         // Objects may also be re-interpreted as maps
-        const obj = asObject(val, false);
+        const obj = asObjectOrUndefined(val, false);
         if (obj) {
             arr = Object.entries(obj);
         }
@@ -94,7 +102,7 @@ function asStringOrNumberEntriesList<T>(val: unknown, stringKeys: boolean, mapFn
         const entries: [string, T][] = [];
 
         for (let i = 0; i < arr.length; i++) {
-            const entry = asArray(arr[i]);
+            const entry = asArrayOrUndefined(arr[i]);
 
             // every map entry must be valid.
             if (!entry) return undefined;
@@ -113,7 +121,7 @@ function asStringOrNumberEntriesList<T>(val: unknown, stringKeys: boolean, mapFn
         const entries: [number, T][] = [];
 
         for (let i = 0; i < arr.length; i++) {
-            const entry = asArray(arr[i]);
+            const entry = asArrayOrUndefined(arr[i]);
 
             // every map entry must be valid.
             if (!entry) return undefined;
@@ -132,7 +140,7 @@ function asStringOrNumberEntriesList<T>(val: unknown, stringKeys: boolean, mapFn
 }
 
 export function asStringSet(val: unknown): Set<string> | undefined {
-    const arr = asArray(val);
+    const arr = asArrayOrUndefined(val);
     if (!arr) return undefined;
     
     for (let i = 0; i < arr.length; i++) {
@@ -144,7 +152,7 @@ export function asStringSet(val: unknown): Set<string> | undefined {
 }
 
 export function asNumberSet(val: unknown): Set<number> | undefined {
-    const arr = asArray(val);
+    const arr = asArrayOrUndefined(val);
     if (!arr) return undefined;
     
     for (let i = 0; i < arr.length; i++) {
@@ -196,7 +204,7 @@ export function deserializeObjectKey<T extends JSONRecord, K extends string & ke
             throw new Error(`Error deserializing field ${rootName + "." + key}: Didn't expect null here`)
         }
     } else if (defaultValue.constructor === Object) {
-        const reinterpreted = asObject(recordValue);
+        const reinterpreted = asObjectOrUndefined(recordValue);
         if (reinterpreted === undefined) {
             throw new Error(`Error deserializing field ${rootName + "." + key}: Expected a plain object here`)
         }
@@ -233,6 +241,8 @@ export function deserializeObjectKey<T extends JSONRecord, K extends string & ke
     src[key] = undefined;
 }
 
+// Infers how to deserialize `T` via the types of the default values of each field. 
+// If a defaut value is null/undefined or a collection, it will need additional work on your end...
 export function deserializeObject<T extends JSONRecord>(dst: T, src: JSONRecord, rootName = "") {
     for (const k in dst) {
         deserializeObjectKey(dst, src, k, 0, rootName);
@@ -264,7 +274,7 @@ export function extractKeyDefined<T>(src: JSONRecord, key: string & keyof T) {
 
 export function extractArray<T>(src: JSONRecord, key: string  & keyof T): JSONRecord | undefined {
     const val = extractKey(src, key);
-    return asObject(val);
+    return asObjectOrUndefined(val);
 }
 
 
@@ -337,3 +347,100 @@ function getJSONSerializable(val: unknown): unknown {
 
     return val;
 }
+
+export function asArray(u: unknown): unknown[] {
+    const val = asArrayOrUndefined(u);
+    assert(!!val);
+    return val;
+}
+
+type ValueOf<T extends readonly unknown[]> = T[number];
+export function asEnum<const T extends readonly unknown[]>(u: unknown, values: T): ValueOf<T> {
+    if (!values.includes(u as ValueOf<T>)) {
+        throw new Error(u + " was not one of " + values.join(", "));
+    }
+    return u as ValueOf<T>;
+}
+
+// Makes more sense at the usage site than it does here
+export function asIs<T>(u: unknown, defaultT: T): T {
+    return defaultT;
+}
+
+
+// unmarshalling conventions:
+// - when unmarshalling new arrays/maps/sets/collections, return new values with stuff copied accros
+// - when unmarshalling objects, unmarshal in place. may as well return the value, to help the methods that unmarshal collections
+
+export function unmarshalArray<T>(u: unknown, unmarshalT: (dst: T, val: unknown) => T, newT: () => T): T[] {
+    const val = asArrayOrUndefined(u);
+    assert(val !== undefined);
+    return val.map(u => {
+        const defaultT = newT();
+        return unmarshalT(defaultT, u);
+    });
+}
+
+type Unmarshaller<T> = (val: unknown, defaultVal: T) => T;
+
+
+// https://stackoverflow.com/questions/53501721/typescript-exclude-property-key-when-starts-with-target-string
+// Don't like that it breaks GoTo reference, but it turns our runtimea assertion into a compiler error, which is worth it imo.
+type FilterNotStartingWith<Set, Needle extends string> = Set extends `${Needle}${infer _X}` ? never : Set;
+
+export function unmarshalObject<T extends JSONRecord>(
+    u: unknown,
+    defaultT: T,
+    unmarshallers: { [P in FilterNotStartingWith<keyof T, "_">]: Unmarshaller<T[P]>; },
+): T {
+    const o = asObject(u);
+
+    for (const key in defaultT) {
+        if (key.startsWith("_")) {
+            if (key in unmarshallers) {
+                throw new Error("Shouldn't bother deserializing '" + key + "'");
+            }
+
+            continue;
+        }
+
+        // All default fields must be unmarshalled. don't forget any!
+        // @ts-expect-error this is fine
+        const um = unmarshallers[key];
+        if (!um) {
+            throw new Error("Missing unmarshaller for '" + key + "'");
+        }
+    }
+
+    // There may be extra fields that aren't in defaultT by default. We'd like to deserialize them too.
+    for (const key in unmarshallers) {
+        const um = unmarshallers[key];
+        assert(!!um);
+        // @ts-expect-error this is also fine
+        defaultT[key] = um(
+            o[key],
+            // @ts-expect-error this is also also fine
+            defaultT[key]
+        );
+    }
+
+    return defaultT;
+}
+
+export function getArray(obj: JSONRecord, key: string): unknown[] {
+    const arr = asArrayOrUndefined(obj);
+    if (!arr) {
+        throw new Error("Failed to get array from object '" + key + "'");
+    }
+    return arr;
+}
+
+
+
+
+
+
+
+
+
+

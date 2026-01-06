@@ -92,8 +92,9 @@ export function arrayMove(arr: unknown[], a: number, b: number) {
  */
 export function resizeObjectPool<T>(arr: T[], factory: () => T, wantedLength: number,) {
     if (arr.length !== wantedLength) {
+        let prevLength = arr.length;
         arr.length = wantedLength;
-        for (let i = 0; i < wantedLength; i++) {
+        for (let i = prevLength; i < wantedLength; i++) {
             if (arr[i] == null) arr[i] = factory();
         }
     }
@@ -106,8 +107,9 @@ export function resizeObjectPool<T>(arr: T[], factory: () => T, wantedLength: nu
 
 export function resizeValuePool<T>(arr: T[], wantedLength: number, defaultVal: T) {
     if (arr.length !== wantedLength) {
+        let prevLength = arr.length;
         arr.length = wantedLength;
-        for (let i = 0; i < wantedLength; i++) {
+        for (let i = prevLength; i < wantedLength; i++) {
             if (arr[i] == null) arr[i] = defaultVal;
         }
     }

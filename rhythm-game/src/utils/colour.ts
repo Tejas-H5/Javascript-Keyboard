@@ -4,12 +4,16 @@ export type CssColor = {
     toString(): string;
 }
 
+export function rgbaToCssString(r: number, g: number, b: number, a: number) {
+    return `rgba(${Math.floor(r * 255)}, ${Math.floor(g * 255)}, ${Math.floor(b * 255)}, ${a})`;
+}
+
 export function newColor(r: number, g: number, b: number, a: number): CssColor {
     return {
         r, g, b, a,
         toCssString(aOverride?: number) {
             const { r, g, b, a } = this;
-            return `rgba(${Math.floor(r * 255)}, ${Math.floor(g * 255)}, ${Math.floor(b * 255)}, ${aOverride ?? a})`;
+            return rgbaToCssString(r, g, b, aOverride ?? a);
         },
         toString() {
             return this.toCssString();

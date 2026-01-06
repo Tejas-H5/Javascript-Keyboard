@@ -1,4 +1,4 @@
-// IM-CORE 1.063
+// IM-CORE 1.064
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 // Majority of the last changes have just been updates to the documentation though
@@ -931,7 +931,7 @@ export type ImMemoResult
  * For now, you can handle it.
  *
  * NOTE: you can use the bitwise-or operator if you just want to check if multiple values have changed
- * without extracint value1Changed, value2Changed, etc. variables since this is not short-circuiting like the || operator.
+ * without extracing value1Changed, value2Changed, etc. variables since this is not short-circuiting like the || operator.
  * 
  * ```ts
  * if (

@@ -210,12 +210,12 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
         // Spinning square thing
         imLayout(c, BLOCK); imSize(c, s.distance / 2, PX, s.distance / 2, PX);
         imOpacity(c, 0.3); imFg(c, cssVars.bg); imBg(c, cssVars.fg);
-        imAbsolute(c, s.startMouseY, PX, 0, NA, 0, NA, s.startMouseX, PX); {
+        imFixed(c, s.startMouseY, PX, 0, NA, 0, NA, s.startMouseX, PX); {
             if (imMemo(c, s.angle)) {
                 elSetStyle(c, "transform", `translate(-50%, -50%) rotateZ(${s.angle}rad)`);
             }
         } imLayoutEnd(c);
-        imLayout(c, BLOCK); imAbsolute(c, s.startMouseY, PX, 0, NA, 0, NA, s.startMouseX, PX); {
+        imLayout(c, BLOCK); imFixed(c, s.startMouseY, PX, 0, NA, 0, NA, s.startMouseX, PX); {
             if (isFirstishRender(c)) elSetStyle(c, "transform", `translate(-50%, -50%)`);
         } imLayoutEnd(c);
     } imIfEnd(c);

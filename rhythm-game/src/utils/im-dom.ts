@@ -28,6 +28,7 @@ import {
     isFirstishRender,
     recursivelyEnumerateEntries
 } from "./im-core";
+import { imFixed, imSize, NA, PX } from "src/components/core/layout";
 
 export type ValidElement = HTMLElement | SVGElement;
 export type AppendableElement = (ValidElement | Text);
@@ -300,7 +301,8 @@ export type SvgContext = {
  * This could very well be because this SvgContext isnt fully formed.
  */
 export function imSvgContext(c: ImCache): SvgContext {
-    const elRect = elGet(c).getBoundingClientRect();
+    const el = elGet(c);
+    const elRect = el.getBoundingClientRect();
 
     const svgRoot = imElBeginSvg(c, EL_SVG); imFinalizeDeferred(c); 
     let ctx = imGet(c, imSvgContext);
@@ -317,17 +319,15 @@ export function imSvgContext(c: ImCache): SvgContext {
         imSet(c, ctx);
     }
 
-    {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "position", "absolute");
-            elSetStyle(c, "width", "100%");
-            elSetStyle(c, "height", "100%");
-        }
 
+    {
         ctx.x0 = elRect.left;
         ctx.width = elRect.width;
         ctx.y0 = elRect.top;
         ctx.height = elRect.height;
+
+        imFixed(c, ctx.y0, PX, 0, NA, 0, NA, ctx.x0, PX);
+        imSize(c, ctx.width, PX, ctx.height, PX);
 
         const x0Changed = imMemo(c, ctx.x0);
         const widthChanged = imMemo(c, ctx.width);

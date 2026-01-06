@@ -4,10 +4,11 @@
 
 // NOTE: these dependencies and their dependencies need to be manually injected into the DSP loop, so 
 // try to keep them small.
-import { arrayAt, resizeObjectPool } from "src/utils/array-utils";
+import { arrayAt, filterInPlace, resizeObjectPool, resizeValuePool } from "src/utils/array-utils";
 import { assert, mustGetDefined, unreachable } from "src/utils/assert";
 import { moveTowards } from "src/utils/math-utils";
-import { asArray, asNumber, asObject, asString, deserializeObject, extractKey, extractKeyDefined, serializeToJSON } from "src/utils/serialization-utils";
+import { asArrayOrUndefined, asNumber, asObjectOrUndefined, asString, deserializeObject, extractKey, extractKeyDefined, serializeToJSON, asArray, unmarshalArray, asEnum, asObject, unmarshalObject, asIs } from "src/utils/serialization-utils";
+import { deepEquals } from "src/utils/testing";
 import { sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
 
 // TODO: _VALUE__
@@ -29,6 +30,12 @@ export type EffectRackItemType
 // -1 -> No register assigned.
 export type RegisterIdx = number & { __RegisterIdx: void } ;
 
+// The id of an effect. Not stable - when deleted, ids get remapped
+// such that they're always between 0..<effects.lengt (TODO: implement)
+// However, when moved around, ids stay the same. 
+// Allows using arrays isntead of hashmaps to store adjacent state.
+export type EffectId = number & { __EffectId: void } ;
+
 export function asRegisterIdx(val: number) {
     return val as RegisterIdx;
 }
@@ -36,55 +43,44 @@ export function registerIdxAsNumber(val: RegisterIdx) {
     return val as number;
 }
 
+// No longer creatable by the user. These are basically just RTTI for our bindings now.
 export type RegisterBinding = {
     name: string;
-    // TODO: should these really be serializable??
-    r: boolean; w: boolean;
+};
 
-    // Populated after a compile step.
-    // Cleaning up unused bindings is a hard problem with the current setup. 
-    // I need to rebind various bindingIdx to something else - possibly do 2 passes with our compilation code. 
-    // For now, let's leave it unsolved - it is ok that some bindings are unused.
-    _used: boolean;
+export type ValueRef = {
+    value?: number;           // Raw value
+    regIdx?: RegisterIdx;     // Builtin variable
+    effectId?: EffectId;      // Output of another effect. Gets translated to a register index anyway, but intent 
 };
 
 export type RegisterIdxUiMetadata = {
-    // UI can read/write to this
-    value: number; 
-
-    // JSON serialization - can't use a reference here.
-    // Also, can index into registers if not -1 to get the real value.
-    bindingIdx: RegisterIdx; 
+    // ui can read/write to this.
+    valueRef: ValueRef;
 
     // These are more like recommendations that UI can use to make itself more useable.
     // The UI could also choose to ignore these values.
-    _max: number; _min: number; _name: string;
+    _defaultValue: number; _max: number; _min: number; _name: string;
 };
-
-export function getRegisterIdxForUIValue(e: EffectRack, reg: RegisterIdxUiMetadata) {
-    if (reg.bindingIdx === -1) return reg.value;
-
-    const binding = e.bindings[reg.bindingIdx]; assert(!!binding);
-    // now, this method will never fail
-    while (reg.bindingIdx >= e._registersTemplate.values.length) {
-        allocateRegisterIdx(e, 0);
-    }
-    return e._registersTemplate.values[reg.bindingIdx];
-}
 
 export function newRegisterValueMetadata(
     name: string,
-    val: number,
+    bindingRef: ValueRef,
     min = -1_000_000,
     max = 1_000_000,
-    regIdx: RegisterIdx = REG_IDX_NONE
 ): RegisterIdxUiMetadata {
     return {
-        value: val,
+        valueRef: {
+            // needed for deserialization
+            value: undefined,
+            regIdx: undefined,
+            effectId: undefined,
+            ...bindingRef,
+        },
+        _defaultValue: bindingRef.value ?? 0,
         _min: min, 
         _max: max,
         _name: name,
-        bindingIdx: regIdx,
     };
 }
 
@@ -152,11 +148,11 @@ export function newEffectRackOscillator(): EffectRackOscillator {
         waveType:    OSC_WAVE__SIN,
 
         // Need to fit all this horizontally, so using shorter UI names...
-        amplitudeUI:     newRegisterValueMetadata("amp", 1, 0, 1),
-        phaseUI:         newRegisterValueMetadata("+t", 0, 0, 1),
-        frequencyUI:     newRegisterValueMetadata("f", 0, 0, 20_000, REG_IDX_KEY_FREQUENCY),
-        frequencyMultUI: newRegisterValueMetadata("fmult", 1, 0, 1),
-        offsetUI:        newRegisterValueMetadata("+y", 0, -2, 2), 
+        amplitudeUI:     newRegisterValueMetadata("amp",   { value: 1 }, 0, 1),
+        phaseUI:         newRegisterValueMetadata("+t",    { value: 0 }, 0, 1),
+        frequencyUI:     newRegisterValueMetadata("f",     { regIdx: REG_IDX_KEY_FREQUENCY }, 0, 20_000),
+        frequencyMultUI: newRegisterValueMetadata("fmult", { value: 1 }, 0, 1_000_000),
+        offsetUI:        newRegisterValueMetadata("+y",    { value: 0 }, -2, 2), 
     };
 }
 
@@ -184,7 +180,8 @@ export type EffectRackEnvelope = {
     releaseUI:    RegisterIdxUiMetadata;
 
     // extra inputs
-    toModulate:  RegisterIdx; // This is the signal we're supposed to modulate. Always some register.
+    _toModulate:    RegisterIdx; // This is the signal we're supposed to modulate. Always some register.
+    toModulateUI: RegisterIdxUiMetadata;
 };
 
 export function newEffectRackEnvelope(): EffectRackEnvelope {
@@ -200,13 +197,14 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
         _sustain: asRegisterIdx(0),
         _release: asRegisterIdx(0),
 
-        toModulate: asRegisterIdx(REG_IDX_OUTPUT),
+        _toModulate: asRegisterIdx(0),
+        toModulateUI: newRegisterValueMetadata("to modulate", { value: 0 }),
 
-        signalUI:  newRegisterValueMetadata("signal", 0, 0, 1, REG_IDX_KEY_SIGNAL),
-        attackUI:  newRegisterValueMetadata("attack", 0.02, 0, 0.5),
-        decayUI:   newRegisterValueMetadata("decay", 0.1, 0, 4),
-        sustainUI: newRegisterValueMetadata("sustain", 0.2, 0, 1),
-        releaseUI: newRegisterValueMetadata("release", 0.2, 0, 1),
+        signalUI:  newRegisterValueMetadata("signal",  { regIdx: REG_IDX_KEY_SIGNAL }, 0, 1),
+        attackUI:  newRegisterValueMetadata("attack",  { value: 0.02 } , 0, 0.5),
+        decayUI:   newRegisterValueMetadata("decay",   { value: 0.1 } , 0, 4),
+        sustainUI: newRegisterValueMetadata("sustain", { value: 0.2 } , 0, 1),
+        releaseUI: newRegisterValueMetadata("release", { value: 0.2 } , 0, 1),
     };
 }
 
@@ -236,7 +234,7 @@ export function newEffectRackMathsItemCoefficient(): EffectRackMathsItemTermCoef
     return {
         _value: asRegisterIdx(0),
         // NOTE: UI will need to set this dynamically
-        valueUI: newRegisterValueMetadata("", 1, -1_000_000, 1_000_000),
+        valueUI: newRegisterValueMetadata("", { value: 1 }, -1_000_000, 1_000_000),
     };
 }
 
@@ -262,7 +260,7 @@ export function newEffectRackSwitch(): EffectRackSwitch {
             newEffectRackSwitchCondition(),
         ],
         _default: asRegisterIdx(0),
-        defaultUi: newRegisterValueMetadata("default", 0, -1_000_000, 1_000_000, REG_IDX_OUTPUT),
+        defaultUi: newRegisterValueMetadata("default", { value: 0, }, -1_000_000, 1_000_000),
     };
 }
 
@@ -290,25 +288,29 @@ export type EffectRackSwitchCondition = {
 export function newEffectRackSwitchCondition(): EffectRackSwitchCondition {
     return {
         _a: asRegisterIdx(0),
-        aUi:   newRegisterValueMetadata("a", 0),
+        aUi:   newRegisterValueMetadata("a", { value: 0 }),
 
         operator: SWITCH_OP_LT,
 
-        valUi: newRegisterValueMetadata("then", 0),
+        valUi: newRegisterValueMetadata("then", { value: 0 }),
         _val: asRegisterIdx(0),
 
         _b: asRegisterIdx(0),
-        bUi:   newRegisterValueMetadata("b", 0),
+        bUi:   newRegisterValueMetadata("b", { value: 0 }),
     };
 }
 
 export type EffectRackItem = {
+    id: EffectId;
+    _toDelete: boolean;
+
     // All items have an output register
-    dst: RegisterIdx; 
+    _dst: RegisterIdx; 
+
     value: EffectRackItemValue;
 
     enabled: boolean;
-}
+};
 
 type EffectRackItemValue
     = EffectRackOscillator
@@ -317,14 +319,15 @@ type EffectRackItemValue
     | EffectRackSwitch;
 
 export type EffectRack = {
-    effects:   EffectRackItem[];
-    bindings:  RegisterBinding[]; // Can also be indexed with  RegisterIdx (I think)
+    effects: EffectRackItem[];
+
+    _effectIdToEffectPos: number[];
 
     // Gets cloned as needed - the same effect rack can be reused with several keys,
     // each of which will have it's own registers array.
     _registersTemplate: EffectRackRegisters; 
 
-    _debugEffectIdx: number;
+    _debugEffectPos: number;
 
     // We use this to automagically re-clone the registers from the template array.
     _version: number;
@@ -333,7 +336,13 @@ export type EffectRack = {
 
 export function newEffectRackItem(value: EffectRackItemValue): EffectRackItem {
     return {
-        dst: asRegisterIdx(0),
+        // -1 ids will get assigned i the compilation step. Does need to be serialized tho.
+        id: -1 as EffectId,
+        // TODO: deletion in the compile step.
+        _toDelete: false,
+
+        _dst: asRegisterIdx(0),
+
         enabled: true,
         value: value,
     };
@@ -342,8 +351,6 @@ export function newEffectRackItem(value: EffectRackItemValue): EffectRackItem {
 export function newEffectRackBinding(name: string, r: boolean, w: boolean): RegisterBinding {
     return {
         name: name,
-        r, w,
-        _used: false,
     };
 }
 
@@ -353,28 +360,26 @@ export function newEffectRack(): EffectRack {
         _lastEffectTypes: [],
 
         effects: [],
-        // Needs to always be one output binding
-        bindings: [
-            newEffectRackBinding("Result", true, true),
-            newEffectRackBinding("Key frequency", true, false),
-            newEffectRackBinding("Signal", true, false),
-            newEffectRackBinding("Raw signal", true, false),
-        ],
-        _debugEffectIdx: -1,
+        _effectIdToEffectPos: [],
+        _debugEffectPos: -1,
         _registersTemplate: newEffectRackRegisters(),
     };
 }
 
-/** Prevent the user from deleting these - nothing works if they do */
-export const EFFECT_RACK_MINIMUM_SIZE = newEffectRack().bindings.length;
 export const REG_IDX_NONE = asRegisterIdx(-1);
-export const REG_IDX_OUTPUT = asRegisterIdx(0);
-export const REG_IDX_KEY_FREQUENCY = asRegisterIdx(1);
-export const REG_IDX_KEY_SIGNAL = asRegisterIdx(2);
+export const REG_IDX_KEY_FREQUENCY = asRegisterIdx(0);
+export const REG_IDX_KEY_SIGNAL = asRegisterIdx(1);
 // NOTE: right now, the 'raw' signal is identical to the regular signal.
 // If I ever want to have a variable signal between 0 and 1 somehow, that is where SIGNAL_RAW will still be 0 or 1. 
 // I suppose in that case it is technically not the raw signal then xD. This name must have been influenced Unity's Input.GetAxisRaw method., I may change it later.
-export const REG_IDX_KEY_SIGNAL_RAW = asRegisterIdx(3);
+export const REG_IDX_KEY_SIGNAL_RAW = asRegisterIdx(2);
+export const REG_IDX_EFFECT_BINDINGS_START = asRegisterIdx(3);
+
+export const defaultBindings = [
+    newEffectRackBinding("Key frequency", true, false),
+    newEffectRackBinding("Signal", true, false),
+    newEffectRackBinding("Raw signal", true, false),
+];
 
 // Read a value out of a register
 export function r(registers: number[], idx: RegisterIdx) {
@@ -402,17 +407,53 @@ export function allocateRegisterIdx(
     return asRegisterIdx(idx);
 }
 
-export function allocateRegisterIdxIfNeeded(e: EffectRack, regUi: RegisterIdxUiMetadata): RegisterIdx {
-    if (regUi.bindingIdx === -1) {
-        return allocateRegisterIdx(e, regUi.value);
+
+export function allocateRegisterIdxIfNeeded(
+    e: EffectRack,
+    regUi: RegisterIdxUiMetadata,
+    remap: (EffectId | undefined)[] | undefined,
+    effectPos: number,
+): RegisterIdx {
+    const v = regUi.valueRef;
+
+    if (v.effectId !== undefined) {
+        const vEffectIdPos = e._effectIdToEffectPos[v.effectId];
+
+        if (vEffectIdPos >= effectPos) {
+            // don't depend on effects that are set after this one.
+            v.effectId = undefined;
+        }
+
+        if (remap && v.effectId !== undefined) {
+            v.effectId = remap[v.effectId];
+        }
+
+        if (v.effectId === undefined) {
+            v.value = regUi._defaultValue;
+        }
     }
 
-    const binding = e.bindings[regUi.bindingIdx]; assert(!!binding);
-    if (!binding._used) {
-        binding._used = true;
+    assert(v.effectId !== undefined || v.value !== undefined || v.regIdx !== undefined);
+
+    if (v.value !== undefined) {
+        return allocateRegisterIdx(e, v.value);
     }
 
-    return regUi.bindingIdx;
+    if (v.regIdx !== undefined) {
+        if (v.regIdx >= 0 && v.regIdx < defaultBindings.length) {
+            return v.regIdx;
+        }
+
+        console.warn("Invalid regIdx: ", v.regIdx);
+        return allocateRegisterIdx(e, 0);
+    }
+
+    if (v.effectId !== undefined) {
+        const effectPos = e._effectIdToEffectPos[v.effectId];
+        return asRegisterIdx(REG_IDX_EFFECT_BINDINGS_START + effectPos);
+    }
+
+    assert(false); // unreachable
 }
 
 /**
@@ -421,70 +462,154 @@ export function allocateRegisterIdxIfNeeded(e: EffectRack, regUi: RegisterIdxUiM
 export function compileEffectRack(e: EffectRack) {
     e._version++;
 
-    // Need output binding. If it was not present, all other indices in the effect rack are off by 1
-    assert(e.bindings.length > 0);
+    // generate new ids as needed. also generate effectId->effectPos lookup
+    {
+        resizeValuePool(e._effectIdToEffectPos, e.effects.length, 0);
+        for (let effectPos = 0; effectPos < e.effects.length; effectPos++) {
+            const effect = e.effects[effectPos];
 
-    // First 0-n registers are for the bindings. bindingIdx is also a register idx.
-    e._registersTemplate.values.length = 0;
-    e._registersTemplate.isPersistedBetweenFrames.length = 0;
-    for (let i = 0; i < e.bindings.length; i++) {
-        e.bindings[i]._used = false;
-        allocateRegisterIdx(e, 0);
+            if (effect.id === -1) {
+                // needs a new id
+                // btw. the effect rack array can't be that long. because if it were, the dsp loop wouldn't be able to run it right now xD
+                let foundId = false;
+                for (let id = 0; id < e.effects.length; id++) {
+                    let taken = false;
+                    for (const effect of e.effects) {
+                        if (effect.id === id) {
+                            taken = true;
+                            break
+                        }
+                    }
+                    if (taken) continue;
+
+                    effect.id = id as EffectId;
+                    foundId = true;
+                    break;
+                }
+                assert(foundId);
+            }
+
+            assert(effect.id >= 0 && effect.id < e.effects.length);
+            e._effectIdToEffectPos[effect.id] = effectPos;
+        }
+
+        const allIds: boolean[] = Array(e.effects.length).fill(false);
+        for (const effect of e.effects) {
+            allIds[effect.id] = true;
+        }
+        for (const val of allIds) {
+            assert(val);
+        }
     }
 
-    if (e._debugEffectIdx < -1) e._debugEffectIdx = -1;
-    if (e._debugEffectIdx >= e.effects.length) e._debugEffectIdx = -1;
+    // delete effects that need deletion.
+    // they'll get remapped later.
+    // All this effort to keep the ids between 0..<effects.length, so that we never need to use Map. xd
+    let remap: (EffectId | undefined)[] | undefined;
+    {
+        let anyNeedDeletion = false;
+        for (const effect of e.effects) {
+            if (effect._toDelete) {
+                anyNeedDeletion = true;
+                break
+            }
+        }
 
+        if (anyNeedDeletion) {
+            remap = [];
+            resizeValuePool(remap, e.effects.length, 0 as EffectId);
+            let i2 = 0 as EffectId;
+            for (let i = 0; i < e.effects.length; i++) {
+                const effect = e.effects[i];
+                if (!effect._toDelete) {
+                    remap[effect.id] = i2;
+                    effect.id = i2;
+                    i2++;
+                } else {
+                    remap[effect.id] = undefined;
+                }
+            }
+
+            filterInPlace(e.effects, e => !e._toDelete);
+        }
+    }
+
+    // First registers are for builtin buindings
+    e._registersTemplate.values.length = 0;
+    e._registersTemplate.isPersistedBetweenFrames.length = 0;
+    assert(defaultBindings.length === REG_IDX_EFFECT_BINDINGS_START);
+    for (let i = 0; i < defaultBindings.length; i++) {
+        allocateRegisterIdx(e, 0);
+    }
+    // Next bindings are for effect outputs
     for (let i = 0; i < e.effects.length; i++) {
-        const effect = e.effects[i].value;
-        switch (effect.type) {
+        const effect = e.effects[i];
+        effect._dst = allocateRegisterIdx(e, 0);
+    }
+
+    // ensure _debugEffectIdx is correct
+    if (e._debugEffectPos < -1) e._debugEffectPos = -1;
+    if (e._debugEffectPos >= e.effects.length) e._debugEffectPos = -1;
+
+    // Walk the effects, allocate registers for all constants and bindings as needed
+    for (let effectPos = 0; effectPos < e.effects.length; effectPos++) {
+        const effectValue = e.effects[effectPos].value;
+
+        // NOTE: effect._dst already allocated above
+
+        // NOTE: you'll need multicursor to have success editing stuff here
+
+        switch (effectValue.type) {
             case EFFECT_RACK_ITEM__OSCILLATOR: {
-                const wave = effect;
+                const wave = effectValue;
                 wave._t = allocateRegisterIdx(e, 0, true);
 
-                wave._phase         = allocateRegisterIdxIfNeeded(e, wave.phaseUI);
-                wave._amplitude     = allocateRegisterIdxIfNeeded(e, wave.amplitudeUI);
-                wave._frequency     = allocateRegisterIdxIfNeeded(e, wave.frequencyUI);
-                wave._frequencyMult = allocateRegisterIdxIfNeeded(e, wave.frequencyMultUI);
-                wave._offset        = allocateRegisterIdxIfNeeded(e, wave.offsetUI);
+
+                wave._phase         = allocateRegisterIdxIfNeeded(e, wave.phaseUI, remap, effectPos);
+                wave._amplitude     = allocateRegisterIdxIfNeeded(e, wave.amplitudeUI, remap, effectPos);
+                wave._frequency     = allocateRegisterIdxIfNeeded(e, wave.frequencyUI, remap, effectPos);
+                wave._frequencyMult = allocateRegisterIdxIfNeeded(e, wave.frequencyMultUI, remap, effectPos);
+                wave._offset        = allocateRegisterIdxIfNeeded(e, wave.offsetUI, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
-                const envelope = effect;
+                const envelope = effectValue;
 
                 envelope._stage = allocateRegisterIdx(e, 0, true);
                 envelope._value = allocateRegisterIdx(e, 0, true);
 
-                envelope._signal  = allocateRegisterIdxIfNeeded(e, envelope.signalUI);
-                envelope._attack  = allocateRegisterIdxIfNeeded(e, envelope.attackUI);
-                envelope._decay   = allocateRegisterIdxIfNeeded(e, envelope.decayUI);
-                envelope._sustain = allocateRegisterIdxIfNeeded(e, envelope.sustainUI);
-                envelope._release = allocateRegisterIdxIfNeeded(e, envelope.releaseUI);
+                envelope._toModulate  = allocateRegisterIdxIfNeeded(e, envelope.toModulateUI, remap, effectPos);
+
+                envelope._signal  = allocateRegisterIdxIfNeeded(e, envelope.signalUI, remap, effectPos);
+                envelope._attack  = allocateRegisterIdxIfNeeded(e, envelope.attackUI, remap, effectPos);
+                envelope._decay   = allocateRegisterIdxIfNeeded(e, envelope.decayUI, remap, effectPos);
+                envelope._sustain = allocateRegisterIdxIfNeeded(e, envelope.sustainUI, remap, effectPos);
+                envelope._release = allocateRegisterIdxIfNeeded(e, envelope.releaseUI, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__MATHS: {
-                const maths = effect;
+                const maths = effectValue;
 
                 for (let i = 0; i < maths.terms.length; i++) {
                     const term = maths.terms[i];
                     for (let i = 0; i < term.coefficients.length; i++) {
                         const c = term.coefficients[i];
-                        c._value = allocateRegisterIdxIfNeeded(e, c.valueUI);
+                        c._value = allocateRegisterIdxIfNeeded(e, c.valueUI, remap, effectPos);
                     }
                 }
             } break;
             case EFFECT_RACK_ITEM__SWITCH: {
-                const switchEffect = effect;
+                const switchEffect = effectValue;
 
                 for (let i = 0; i < switchEffect.conditions.length; i++) {
                     const cond = switchEffect.conditions[i];
 
-                    cond._a = allocateRegisterIdxIfNeeded(e, cond.aUi);
-                    cond._b = allocateRegisterIdxIfNeeded(e, cond.bUi);
-                    cond._val = allocateRegisterIdxIfNeeded(e, cond.valUi);
+                    cond._a = allocateRegisterIdxIfNeeded(e, cond.aUi, remap, effectPos);
+                    cond._b = allocateRegisterIdxIfNeeded(e, cond.bUi, remap, effectPos);
+                    cond._val = allocateRegisterIdxIfNeeded(e, cond.valUi, remap, effectPos);
                 }
 
-                switchEffect._default = allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi);
+                switchEffect._default = allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi, remap, effectPos);
             } break;
-            default: unreachable(effect);
+            default: unreachable(effectValue);
         }
     }
 }
@@ -508,7 +633,9 @@ export function newEffectRackRegisters(): EffectRackRegisters {
 }
 
 export function copyEffectRackItem(item: EffectRackItem): EffectRackItem {
-    return JSON.parse(JSON.stringify(item));
+    const val = JSON.parse(JSON.stringify(item)) as EffectRackItem;
+    val.id = -1 as EffectId;
+    return val;
 }
 
 export function computeEffectRackIteration(
@@ -557,7 +684,12 @@ export function computeEffectRackIteration(
     re[REG_IDX_KEY_SIGNAL]     = signal;
     re[REG_IDX_KEY_SIGNAL_RAW] = signal > 0.0000001 ? 1 : 0;
 
-    for (let effectIdx = 0; effectIdx < e.effects.length; effectIdx++) {
+    let lastEffect = e.effects.length - 1;
+    if (e._debugEffectPos !== -1) {
+        lastEffect = e._debugEffectPos;
+    }
+
+    for (let effectIdx = 0; effectIdx <= lastEffect; effectIdx++) {
         const effect = e.effects[effectIdx];
         if (!effect.enabled) continue;
 
@@ -632,7 +764,7 @@ export function computeEffectRackIteration(
                 w(re, envelope._value, value);
                 w(re, envelope._stage, stage);
 
-                const target = r(re, envelope.toModulate);
+                const target = r(re, envelope._toModulate);
                 value *= target;
             } break;
             case EFFECT_RACK_ITEM__MATHS: {
@@ -681,20 +813,17 @@ export function computeEffectRackIteration(
             default: unreachable(effectValue);
         }
 
-        w(re, effect.dst, value);
-
-        if (e._debugEffectIdx === effectIdx) {
-            break;
-        }
+        w(re, effect._dst, value);
     }
 
-    return re[REG_IDX_OUTPUT];
+    return re[REG_IDX_EFFECT_BINDINGS_START + lastEffect];
 }
 
 type DagNode = {
     dependencies: number[];
 };
 
+// TODO: move to a util.
 type Dag = {
     nodes: DagNode[]
 }
@@ -707,9 +836,8 @@ function newDagNode(): DagNode {
 
 /**
  * Sorts the effect rack such that all outputs occur before inputs.
- * If nothing outputs to the <Result> register, no sorting can occur.
  * TBH, the effect rack is always topologically sorted so it should do nothing in theory.
- * But maybe it will be more organized? we'll find out I guess.
+ * But it doesn seem to rearrange the things! Very cool.
  */
 export function sortEffectRack(e: EffectRack) {
     while (topologicllySortEffectRackInternal(e)) {
@@ -718,47 +846,28 @@ export function sortEffectRack(e: EffectRack) {
 }
 
 function topologicllySortEffectRackInternal(e: EffectRack): boolean {
+    if (e.effects.length === 0) return false;
+
+    const sinkIdx = e.effects.length - 1;
+
     compileEffectRack(e);
 
     const dag: Dag = { nodes: [], }
     resizeObjectPool(dag.nodes, newDagNode, e.effects.length);
 
-    let sinkIdx = 0, sinkFound = false;
-    for (let i = e.effects.length - 1; i >= 0; i--) {
-        const effect = e.effects[i];
-        if (effect.dst === REG_IDX_OUTPUT) {
-            sinkFound = true;
-            sinkIdx = i;
-            break;
-        }
-    }
-
-    if (!sinkFound) {
-        // Can't topologically sort without an 'output' to start from.
-        return false;
-    }
-
     // Dependencies only need to be added for registers that can be assigned via the UI
-    const addDependency = (dag: Dag, idx: number, dep: RegisterIdx) => {
-        if (dep >= e.bindings.length) {
-            // can't depend on a constant.
+    // TODO: effect i can't depend on effect j when j <= i
+    const addDependency = (dag: Dag, idx: number, dep: RegisterIdxUiMetadata) => {
+        // TODO: id -> idx
+        const effectIdx = dep.valueRef.effectId;
+        if (effectIdx === undefined) {
             return;
         }
 
-        let depEffectIdx = 0, found = false;
-        for (let i = idx - 1; i >= 0; i--) {
-            const effect = e.effects[i]; assert(!!effect);
-            if (effect.dst === dep) {
-                depEffectIdx = i;
-                found = true;
-                break;
-            }
-        }
+        const dstEffectIdxDeps = dag.nodes[idx].dependencies;
 
-        if (depEffectIdx) {
-            if (!dag.nodes[idx].dependencies.includes(depEffectIdx)) {
-                dag.nodes[idx].dependencies.push(depEffectIdx);
-            }
+        if (dstEffectIdxDeps.includes(effectIdx)) {
+            dstEffectIdxDeps.push(effectIdx);
         }
     }
 
@@ -767,22 +876,22 @@ function topologicllySortEffectRackInternal(e: EffectRack): boolean {
         switch (effect.type) {
             case EFFECT_RACK_ITEM__OSCILLATOR: {
                 const wave = effect;
-                addDependency(dag, effectIdx, wave._phase);
-                addDependency(dag, effectIdx, wave._amplitude);
-                addDependency(dag, effectIdx, wave._frequency);
-                addDependency(dag, effectIdx, wave._frequencyMult);
-                addDependency(dag, effectIdx, wave._offset);
+                addDependency(dag, effectIdx, wave.phaseUI);
+                addDependency(dag, effectIdx, wave.amplitudeUI);
+                addDependency(dag, effectIdx, wave.frequencyUI);
+                addDependency(dag, effectIdx, wave.frequencyMultUI);
+                addDependency(dag, effectIdx, wave.offsetUI);
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effect;
 
-                addDependency(dag, effectIdx, envelope._signal);
-                addDependency(dag, effectIdx, envelope._attack);
-                addDependency(dag, effectIdx, envelope._decay);
-                addDependency(dag, effectIdx, envelope._sustain);
-                addDependency(dag, effectIdx, envelope._release);
+                addDependency(dag, effectIdx, envelope.signalUI);
+                addDependency(dag, effectIdx, envelope.attackUI);
+                addDependency(dag, effectIdx, envelope.decayUI);
+                addDependency(dag, effectIdx, envelope.sustainUI);
+                addDependency(dag, effectIdx, envelope.releaseUI);
 
-                addDependency(dag, effectIdx, envelope.toModulate);
+                addDependency(dag, effectIdx, envelope.toModulateUI);
             } break;
             case EFFECT_RACK_ITEM__MATHS: {
                 const maths = effect;
@@ -791,7 +900,7 @@ function topologicllySortEffectRackInternal(e: EffectRack): boolean {
                     const term = maths.terms[i];
                     for (let i = 0; i < term.coefficients.length; i++) {
                         const c = term.coefficients[i];
-                        addDependency(dag, effectIdx, c._value);
+                        addDependency(dag, effectIdx, c.valueUI);
                     }
                 }
             } break;
@@ -801,12 +910,12 @@ function topologicllySortEffectRackInternal(e: EffectRack): boolean {
                 for (let i = 0; i < switchEffect.conditions.length; i++) {
                     const cond = switchEffect.conditions[i];
 
-                    addDependency(dag, effectIdx, cond._a);
-                    addDependency(dag, effectIdx, cond._b);
-                    addDependency(dag, effectIdx, cond._val);
+                    addDependency(dag, effectIdx, cond.aUi);
+                    addDependency(dag, effectIdx, cond.bUi);
+                    addDependency(dag, effectIdx, cond.valUi);
                 }
 
-                addDependency(dag, effectIdx, switchEffect._default);
+                addDependency(dag, effectIdx, switchEffect.defaultUi);
             } break;
             default: unreachable(effect);
         }
@@ -852,106 +961,99 @@ function topologicllySortEffectRackInternal(e: EffectRack): boolean {
 
 // Prob not needed for undo buffer, but should be useful for import/export. 
 export function serializeEffectRack(effectRack: EffectRack): string {
+    compileEffectRack(effectRack);
     return serializeToJSON(effectRack);
 }
 
-function deserializeRegisterIdxUiMetadata(dst: RegisterIdxUiMetadata, objUnknown: unknown) {
-    const obj = mustGetDefined(asObject(objUnknown));
-    dst.value = mustGetDefined(asNumber(extractKey<RegisterIdxUiMetadata>(obj, "value")));
-    dst.bindingIdx = asRegisterIdx(mustGetDefined(asNumber(extractKey<RegisterIdxUiMetadata>(obj, "bindingIdx"))));
+export function deserializeEffectRack(json: string): EffectRack {
+    const jsonObject = JSON.parse(json);
+    return unmarshallEffectRack(jsonObject);
 }
 
-export function deserializeEffectRack(json: string): EffectRack {
-    const jsonVal = JSON.parse(json);
+// Literally serializing the fields 1 by 1. The shit I do for hidden classes. literal astrology. Im a believer, however.
+function unmarshallEffectRack(jsonObj: unknown) {
+    return unmarshalObject(jsonObj, newEffectRack(), {
+        effects: u => asArray(u).map((u) => {
+            const oItem = asObject(u);
+            const o = asObject(oItem["value"]);
+            const type = asEnum(o["type"], [
+                EFFECT_RACK_ITEM__OSCILLATOR,
+                EFFECT_RACK_ITEM__ENVELOPE,
+                EFFECT_RACK_ITEM__MATHS,
+                EFFECT_RACK_ITEM__SWITCH,
+            ]);
 
-    const result = newEffectRack();
+            let value: EffectRackItemValue | undefined;
+            switch (type) {
+                case EFFECT_RACK_ITEM__OSCILLATOR: {
+                    value = unmarshalObject(o, newEffectRackOscillator(), {
+                        type: asIs,
 
-    const obj = mustGetDefined(asObject(jsonVal));
+                        waveType: u => asEnum(u, [OSC_WAVE__SIN, OSC_WAVE__SQUARE, OSC_WAVE__SAWTOOTH, OSC_WAVE__TRIANGLE, OSC_WAVE__SAWTOOTH2]),
 
-    const bindingsArr = mustGetDefined(asArray(extractKeyDefined<EffectRack>(obj, "bindings"))); 
-    result.bindings = bindingsArr.map((binding, i) => {
-        const existing = arrayAt(result.bindings, i);
-        const bindingObj = mustGetDefined(asObject(binding));
-        const name = mustGetDefined(asString(extractKeyDefined<RegisterBinding>(bindingObj, "name")))
-        const val = newEffectRackBinding(name, existing?.r ?? true, existing?.w ?? true);
-        deserializeObject(val, bindingObj);
-        return val;
-    });
+                        amplitudeUI:     unmarshalRegisterIdxUiMetadata,
+                        phaseUI:         unmarshalRegisterIdxUiMetadata,
+                        frequencyUI:     unmarshalRegisterIdxUiMetadata,
+                        frequencyMultUI: unmarshalRegisterIdxUiMetadata,
+                        offsetUI:        unmarshalRegisterIdxUiMetadata,
+                    });
+                } break;
+                case EFFECT_RACK_ITEM__ENVELOPE: {
+                    value = unmarshalObject(o, newEffectRackEnvelope(), {
+                        type: asIs,
 
-    const effectsArr = mustGetDefined(asArray<EffectRackItem>(extractKeyDefined<EffectRack>(obj, "effects"))); 
-    result.effects = effectsArr.map(effect => {
-        const valueObj = mustGetDefined(asObject(extractKeyDefined<EffectRackItem>(effect, "value")));
-        let value: EffectRackItemValue | undefined;
-        const type = mustGetDefined((valueObj as EffectRackItemValue)["type"]);
-        switch (type) {
-            case EFFECT_RACK_ITEM__OSCILLATOR: {
-                value = newEffectRackOscillator();
+                        signalUI:     unmarshalRegisterIdxUiMetadata,
+                        attackUI:     unmarshalRegisterIdxUiMetadata,
+                        decayUI:      unmarshalRegisterIdxUiMetadata,
+                        sustainUI:    unmarshalRegisterIdxUiMetadata,
+                        releaseUI:    unmarshalRegisterIdxUiMetadata,
+                        toModulateUI: unmarshalRegisterIdxUiMetadata,
+                    });
+                } break;
+                case EFFECT_RACK_ITEM__MATHS: {
+                    value = unmarshalObject(o, newEffectRackMaths(), {
+                        type: asIs,
 
-                value.waveType = mustGetDefined(asNumber(extractKeyDefined<EffectRackOscillator>(valueObj, "waveType"))) as EffectRackOscillatorWaveType;
-                assert(getEffectRackOscillatorWaveTypeName(value.waveType) !== "?");
-
-                deserializeRegisterIdxUiMetadata(value.phaseUI, extractKeyDefined<EffectRackOscillator>(valueObj, "phaseUI"));
-                deserializeRegisterIdxUiMetadata(value.amplitudeUI, extractKeyDefined<EffectRackOscillator>(valueObj, "amplitudeUI"));
-                deserializeRegisterIdxUiMetadata(value.frequencyUI, extractKeyDefined<EffectRackOscillator>(valueObj, "frequencyUI"));
-            } break;
-            case EFFECT_RACK_ITEM__ENVELOPE: {
-                value = newEffectRackEnvelope();
-
-                deserializeRegisterIdxUiMetadata(value.attackUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "attackUI"));
-                deserializeRegisterIdxUiMetadata(value.sustainUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "sustainUI"));
-                deserializeRegisterIdxUiMetadata(value.decayUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "decayUI"));
-                deserializeRegisterIdxUiMetadata(value.releaseUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "releaseUI"));
-                deserializeRegisterIdxUiMetadata(value.signalUI, extractKeyDefined<EffectRackEnvelope>(valueObj, "signalUI"));
-
-                value.toModulate = asRegisterIdx(mustGetDefined(asNumber(extractKeyDefined<EffectRackEnvelope>(valueObj, "toModulate"))));
-            } break;
-            case EFFECT_RACK_ITEM__MATHS: {
-                value = newEffectRackMaths();
-                const termsArr = mustGetDefined(asArray(extractKeyDefined<EffectRackMaths>(valueObj, "terms")));
-                value.terms = termsArr.map(termUnknown => {
-                    let termObj = mustGetDefined(asObject(termUnknown));
-                    const term = newEffectRackMathsItemTerm();
-                    const coefficientsArr = mustGetDefined(asArray(extractKeyDefined<EffectRackMathsItemTerm>(termObj, "coefficients")));
-
-                    term.coefficients = coefficientsArr.map(coefficientUnknown => {
-                        const coefficientObj = mustGetDefined(asObject(coefficientUnknown));
-                        const coefficient = newEffectRackMathsItemCoefficient();
-                        deserializeRegisterIdxUiMetadata(coefficient.valueUI, extractKeyDefined<EffectRackMathsItemTermCoefficient>(coefficientObj, "valueUI"));
-                        deserializeObject(coefficient, coefficientObj);
-                        return coefficient;
+                        terms: u => asArray(u).map(u => unmarshalObject(u, newEffectRackMathsItemTerm(), {
+                            coefficients: u => asArray(u).map(u => unmarshalObject(u, newEffectRackMathsItemCoefficient(), {
+                                valueUI: unmarshalRegisterIdxUiMetadata,
+                            })),
+                        })),
                     });
 
-                    return term;
-                });
-            } break;
-            case EFFECT_RACK_ITEM__SWITCH: {
-                value = newEffectRackSwitch();
-                const conditionsArr = mustGetDefined(asArray(extractKeyDefined<EffectRackSwitch>(valueObj, "conditions")));
-                value.conditions = conditionsArr.map(uk => {
-                    const valueObj = mustGetDefined(asObject(uk));
-                    const value = newEffectRackSwitchCondition();
-                    deserializeRegisterIdxUiMetadata(value.aUi, extractKeyDefined<EffectRackSwitchCondition>(valueObj, "aUi"));
-                    deserializeRegisterIdxUiMetadata(value.bUi, extractKeyDefined<EffectRackSwitchCondition>(valueObj, "bUi"));
-                    deserializeRegisterIdxUiMetadata(value.valUi, extractKeyDefined<EffectRackSwitchCondition>(valueObj, "valUi"));
-                    value.operator = mustGetDefined(asNumber(extractKeyDefined<EffectRackSwitchCondition>(valueObj, "operator"))) as EffectRackSwitchOperator;
-                    assert(value.operator === SWITCH_OP_GT || value.operator === SWITCH_OP_LT);
-                    deserializeObject(value, obj);
-                    return value;
-                });
-                deserializeRegisterIdxUiMetadata(value.defaultUi, extractKeyDefined<EffectRackSwitch>(valueObj, "defaultUi"));
-            } break;
-        }
+                } break;
+                case EFFECT_RACK_ITEM__SWITCH: {
+                    value = unmarshalObject(o, newEffectRackSwitch(), {
+                        type: asIs,
+                        conditions: u => asArray(u).map(u => unmarshalObject(u, newEffectRackSwitchCondition(), {
+                            operator: u => asEnum(u, [SWITCH_OP_LT, SWITCH_OP_GT]),
+                            aUi:   unmarshalRegisterIdxUiMetadata,
+                            valUi: unmarshalRegisterIdxUiMetadata,
+                            bUi:   unmarshalRegisterIdxUiMetadata,
+                        })),
+                        defaultUi: unmarshalRegisterIdxUiMetadata,
+                    });
 
-        value = mustGetDefined(value);
-        deserializeObject(value, valueObj);
+                } break;
+            }
+            assert(!!value);
 
-        const item = newEffectRackItem(value);
-        deserializeObject(item, effect);
-
-        return item;
+            return newEffectRackItem(value);
+        }),
     });
+}
 
-    deserializeObject(result, obj, "effectRack");
+assert(deepEquals(
+    newEffectRack(), 
+    deserializeEffectRack(serializeEffectRack(newEffectRack()))
+).mismatches.length === 0);
 
-    return result;
+function unmarshalRegisterIdxUiMetadata(arg: unknown, defaultVal: RegisterIdxUiMetadata) {
+    return unmarshalObject(arg, defaultVal, {
+        valueRef: (u, valueRef) => unmarshalObject<ValueRef>(u, valueRef, {
+            value: u => asNumber(u),
+            regIdx: u => asNumber(u) as RegisterIdx,
+            effectId: u => asNumber(u) as EffectId,
+        }),
+    });
 }
