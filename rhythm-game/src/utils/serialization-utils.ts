@@ -362,7 +362,7 @@ export function asEnum<const T extends readonly unknown[]>(u: unknown, values: T
     return u as ValueOf<T>;
 }
 
-// Makes more sense at the usage site than it does here
+// An unmarshaller that leaves the default value "as-is".
 export function asIs<T>(u: unknown, defaultT: T): T {
     return defaultT;
 }

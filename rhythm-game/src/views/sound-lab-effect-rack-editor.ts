@@ -51,6 +51,7 @@ import {
     deserializeEffectRack,
     EFFECT_RACK_ITEM__ENVELOPE,
     EFFECT_RACK_ITEM__MATHS,
+    EFFECT_RACK_ITEM__NOISE,
     EFFECT_RACK_ITEM__OSCILLATOR,
     EFFECT_RACK_ITEM__SWITCH,
     EffectId,
@@ -64,6 +65,7 @@ import {
     newEffectRackMaths,
     newEffectRackMathsItemCoefficient,
     newEffectRackMathsItemTerm,
+    newEffectRackNoise,
     newEffectRackOscillator,
     newEffectRackRegisters,
     newEffectRackSwitch,
@@ -77,7 +79,6 @@ import {
     RegisterIdx,
     RegisterIdxUiMetadata,
     serializeEffectRack,
-    sortEffectRack,
     SWITCH_OP_GT,
     SWITCH_OP_LT,
     ValueRef
@@ -647,13 +648,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                     imFlex1(c);
 
                     imLayout(c, ROW); imGap(c, 10, PX); {
-                        if (imButtonIsClicked(c, "Sort", false)) {
-                            editor.deferredAction = () => {
-                                sortEffectRack(rack);
-                                onEdited(editor);
-                            }
-                        }
-
                         if (imButtonIsClicked(c, "Undo", false, canUndo(editor.undoBuffer))) {
                             editor.deferredAction = () => editorUndo(editor);
                         }
@@ -758,6 +752,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                                 case EFFECT_RACK_ITEM__ENVELOPE:   name = "ENV";    break;
                                                 case EFFECT_RACK_ITEM__MATHS:      name = "MATHS";  break;
                                                 case EFFECT_RACK_ITEM__SWITCH:     name = "SWITCH"; break;
+                                                case EFFECT_RACK_ITEM__NOISE:      name = "NOISE";  break;
                                                 default: unreachable(effect.value);
                                             }
 
@@ -931,6 +926,11 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
                                                             imValueOrBindingEditor(c, editor, effectPos, switchEffect.defaultUi, BINDING_UI_ROW);
                                                         } imLayoutEnd(c);
+                                                    } break;
+                                                    case EFFECT_RACK_ITEM__NOISE: {
+                                                        const noise = effectValue;
+
+                                                        imValueOrBindingEditor(c, editor, effectPos, noise.amplitudeUi);
                                                     } break;
                                                     default: unreachable(effectValue);
                                                 } imSwitchEnd(c);
@@ -1388,9 +1388,7 @@ function imWireDragEndpoint(
     effect: EffectRackItem,
     reg: RegisterIdxUiMetadata | null, // if null, it's an output
 ) {
-    const rack = editor.effectRack;
     const wires = editor.ui.wires;
-    const thisPos  = rack._effectIdToEffectPos[effect.id];
 
     let isEligibleDropZone = false;
     if (wires.drag.registerInput !== undefined && !wires.drag.toRegisterInput) {
@@ -1399,19 +1397,11 @@ function imWireDragEndpoint(
         assert(wires.drag.registerInputEffectId !== undefined);
 
         if (reg === null) {
-            const inputPos = rack._effectIdToEffectPos[wires.drag.registerInputEffectId];
-
-            if (thisPos < inputPos) {
-                isEligibleDropZone = true;
-            }
+            isEligibleDropZone = true;
         }
     } else if (wires.drag.outputEffectId !== undefined && wires.drag.toRegisterInput) {
-        const outputPos = rack._effectIdToEffectPos[wires.drag.outputEffectId];
-
-        if (outputPos < thisPos) {
-            if (reg) {
-                isEligibleDropZone = true;
-            }
+        if (reg) {
+            isEligibleDropZone = true;
         }
     }
 
@@ -1691,6 +1681,12 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
                 imStr(c, "Switch");
                 if (elHasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackSwitch());
+                }
+            } imContextMenuItemEnd(c);
+            imEditorContextMenuItemBegin(c); {
+                imStr(c, "Noise");
+                if (elHasMousePress(c)) {
+                    toAdd = newEffectRackItem(newEffectRackNoise());
                 }
             } imContextMenuItemEnd(c);
         } imContextMenuEnd(c, contextMenu);

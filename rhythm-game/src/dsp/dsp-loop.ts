@@ -19,6 +19,7 @@ import {
     computeEffectRackIteration,
     EFFECT_RACK_ITEM__ENVELOPE,
     EFFECT_RACK_ITEM__MATHS,
+    EFFECT_RACK_ITEM__NOISE,
     EFFECT_RACK_ITEM__OSCILLATOR,
     EFFECT_RACK_ITEM__SWITCH,
     EffectRack,
@@ -28,6 +29,7 @@ import {
     newEffectRackMaths,
     newEffectRackMathsItemCoefficient,
     newEffectRackMathsItemTerm,
+    newEffectRackNoise,
     newEffectRackRegisters,
     newEffectRackSwitch,
     newEffectRackSwitchCondition,
@@ -43,6 +45,7 @@ import {
     REG_IDX_KEY_SIGNAL,
     REG_IDX_KEY_SIGNAL_RAW,
     REG_IDX_NONE,
+    REG_IDX_SAMPLE_RATE_DT,
     registerIdxAsNumber,
     SWITCH_OP_GT,
     SWITCH_OP_LT,
@@ -258,7 +261,7 @@ function getSampleFileValue(oscs: PlayingSampleFile) {
 
 export function newDspState(sampleRate: number): DspState {
     const s: DspState = {
-        sampleRate: 1,
+        sampleRate: sampleRate,
         playSettings: newDspPlaySettings(),
         playingOscillators: [],
         trackPlayback: {
@@ -688,6 +691,7 @@ export function getDspLoopClassUrl(): string {
         { value: EFFECT_RACK_ITEM__ENVELOPE, name: "EFFECT_RACK_ITEM__ENVELOPE" },
         { value: EFFECT_RACK_ITEM__MATHS, name: "EFFECT_RACK_ITEM__MATHS" },
         { value: EFFECT_RACK_ITEM__SWITCH, name: "EFFECT_RACK_ITEM__SWITCH" },
+        { value: EFFECT_RACK_ITEM__NOISE, name: "EFFECT_RACK_ITEM__NOISE" },
         { value: SWITCH_OP_LT, name: "SWITCH_OP_LT" },
         { value: SWITCH_OP_GT, name: "SWITCH_OP_GT" },
         asRegisterIdx,
@@ -695,9 +699,11 @@ export function getDspLoopClassUrl(): string {
         newRegisterValueMetadata,
         newEffectRackBinding,
         newEffectRack,
+        newEffectRackNoise,
         { value: REG_IDX_NONE, name: "REG_IDX_NONE" },
         { value: REG_IDX_KEY_FREQUENCY, name: "REG_IDX_KEY_FREQUENCY" },
         { value: REG_IDX_KEY_SIGNAL, name: "REG_IDX_KEY_SIGNAL" },
+        { value: REG_IDX_SAMPLE_RATE_DT, name: "REG_IDX_SAMPLE_RATE_DT" },
         { value: REG_IDX_KEY_SIGNAL_RAW, name: "REG_IDX_KEY_SIGNAL_RAW" },
         { value: REG_IDX_EFFECT_BINDINGS_START, name: "REG_IDX_EFFECT_BINDINGS_START" },
         compileEffectRack,

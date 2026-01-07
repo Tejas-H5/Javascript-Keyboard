@@ -16,14 +16,17 @@ export const EFFECT_RACK_ITEM__OSCILLATOR = 0;
 export const EFFECT_RACK_ITEM__ENVELOPE = 1;
 export const EFFECT_RACK_ITEM__MATHS = 2;
 export const EFFECT_RACK_ITEM__SWITCH = 3;
+export const EFFECT_RACK_ITEM__NOISE = 4;
 
 // export const EFFECT_RACK_DSP_INSTRUCTION_SET; this would be quite funny wouldnt it.
 
+// Don't forget to update unmarshallEffectRack! TODO: make typescript remind us
 export type EffectRackItemType
     = typeof EFFECT_RACK_ITEM__OSCILLATOR
     | typeof EFFECT_RACK_ITEM__ENVELOPE
     | typeof EFFECT_RACK_ITEM__MATHS
     | typeof EFFECT_RACK_ITEM__SWITCH
+    | typeof EFFECT_RACK_ITEM__NOISE
     ;
 
 // If we're using a RegisterIndex without reading from or writing to a register, then we're using it wrong.
@@ -264,6 +267,20 @@ export function newEffectRackSwitch(): EffectRackSwitch {
     };
 }
 
+export type EffectRackNoise = {
+    type: typeof EFFECT_RACK_ITEM__NOISE;
+    _amplitude:  RegisterIdx;
+    amplitudeUi: RegisterIdxUiMetadata;
+}
+
+export function newEffectRackNoise(): EffectRackNoise {
+    return {
+        type: EFFECT_RACK_ITEM__NOISE,
+        _amplitude: asRegisterIdx(0),
+        amplitudeUi: newRegisterValueMetadata("amplitude", { value: 1 }, 0, 1),
+    };
+}
+
 export const SWITCH_OP_LT = 1;
 export const SWITCH_OP_GT = 2;
 
@@ -316,7 +333,8 @@ type EffectRackItemValue
     = EffectRackOscillator
     | EffectRackEnvelope
     | EffectRackMaths
-    | EffectRackSwitch;
+    | EffectRackSwitch
+    | EffectRackNoise;
 
 export type EffectRack = {
     effects: EffectRackItem[];
@@ -366,15 +384,17 @@ export function newEffectRack(): EffectRack {
 export const REG_IDX_NONE = asRegisterIdx(-1);
 export const REG_IDX_KEY_FREQUENCY = asRegisterIdx(0);
 export const REG_IDX_KEY_SIGNAL = asRegisterIdx(1);
+export const REG_IDX_SAMPLE_RATE_DT = asRegisterIdx(2);
 // NOTE: right now, the 'raw' signal is identical to the regular signal.
 // If I ever want to have a variable signal between 0 and 1 somehow, that is where SIGNAL_RAW will still be 0 or 1. 
 // I suppose in that case it is technically not the raw signal then xD. This name must have been influenced Unity's Input.GetAxisRaw method., I may change it later.
-export const REG_IDX_KEY_SIGNAL_RAW = asRegisterIdx(2);
-export const REG_IDX_EFFECT_BINDINGS_START = asRegisterIdx(3);
+export const REG_IDX_KEY_SIGNAL_RAW = asRegisterIdx(3);
+export const REG_IDX_EFFECT_BINDINGS_START = asRegisterIdx(4);
 
 export const defaultBindings = [
     newEffectRackBinding("Key frequency", true, false),
     newEffectRackBinding("Signal", true, false),
+    newEffectRackBinding("1/Sample Rate", true, false),
     newEffectRackBinding("Raw signal", true, false),
 ];
 
@@ -414,12 +434,12 @@ export function allocateRegisterIdxIfNeeded(
     const v = regUi.valueRef;
 
     if (v.effectId !== undefined) {
-        const vEffectIdPos = e._effectIdToEffectPos[v.effectId];
-
-        if (vEffectIdPos >= effectPos) {
-            // don't depend on effects that are set after this one.
-            v.effectId = undefined;
-        }
+        // As it turns out - it is totally valid for effect inputs to depend on outputs that came later. 
+        // This is a form of 'feedback' that appears to be a very common technique in the DSP world: https://www.youtube.com/watch?v=BgL5w0ckX-k&list=PL7w4cOVVxL6FB_mmJ77C6fdV8G6L4zDut
+        // if (vEffectIdPos >= effectPos) {
+        //     // don't depend on effects that are set after this one.
+        //     v.effectId = undefined;
+        // }
 
         if (remap && v.effectId !== undefined) {
             v.effectId = remap[v.effectId];
@@ -536,10 +556,15 @@ export function compileEffectRack(e: EffectRack) {
     for (let i = 0; i < defaultBindings.length; i++) {
         allocateRegisterIdx(e, 0);
     }
-    // Next bindings are for effect outputs
+    // Next bindings are for effect outputs. 
     for (let i = 0; i < e.effects.length; i++) {
         const effect = e.effects[i];
-        effect._dst = allocateRegisterIdx(e, 0);
+        effect._dst = allocateRegisterIdx(
+            e,
+            0,
+            // they can persist between frames!
+            true
+        );
     }
 
     // ensure _debugEffectIdx is correct
@@ -603,6 +628,11 @@ export function compileEffectRack(e: EffectRack) {
                 }
 
                 switchEffect._default = allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi, remap, effectPos);
+            } break;
+            case EFFECT_RACK_ITEM__NOISE: {
+                const noise = effectValue;
+
+                noise._amplitude = allocateRegisterIdxIfNeeded(e, noise.amplitudeUi, remap, effectPos);
             } break;
             default: unreachable(effectValue);
         }
@@ -673,6 +703,7 @@ export function computeEffectRackIteration(
 
     re[REG_IDX_KEY_FREQUENCY]  = keyFreqeuency;
     re[REG_IDX_KEY_SIGNAL]     = signal;
+    re[REG_IDX_SAMPLE_RATE_DT] = dt;
     re[REG_IDX_KEY_SIGNAL_RAW] = signal > 0.0000001 ? 1 : 0;
 
     let lastEffect = e.effects.length - 1;
@@ -806,6 +837,14 @@ export function computeEffectRackIteration(
                     value = r(re, switchEffect._default);
                 }
             } break;
+            case EFFECT_RACK_ITEM__NOISE: {
+                const noise = effectValue;
+
+                value = r(re, noise._amplitude)
+                if (Math.abs(value) > 0) {
+                    value = Math.random();
+                }
+            } break;
             default: unreachable(effectValue);
         }
 
@@ -814,146 +853,6 @@ export function computeEffectRackIteration(
 
     return re[REG_IDX_EFFECT_BINDINGS_START + lastEffect];
 }
-
-type DagNode = {
-    dependencies: number[];
-};
-
-// TODO: move to a util.
-type Dag = {
-    nodes: DagNode[]
-}
-
-function newDagNode(): DagNode {
-    return {
-        dependencies: [],
-    };
-}
-
-/**
- * Sorts the effect rack such that all outputs occur before inputs.
- * TBH, the effect rack is always topologically sorted so it should do nothing in theory.
- * But it doesn seem to rearrange the things! Very cool.
- */
-export function sortEffectRack(e: EffectRack) {
-    while (topologicllySortEffectRackInternal(e)) {
-        // it turns out that this process can be repeated several times to give a nicer sort!
-    }
-}
-
-function topologicllySortEffectRackInternal(e: EffectRack): boolean {
-    if (e.effects.length === 0) return false;
-
-    const sinkIdx = e.effects.length - 1;
-
-    compileEffectRack(e);
-
-    const dag: Dag = { nodes: [], }
-    resizeObjectPool(dag.nodes, newDagNode, e.effects.length);
-
-    // Dependencies only need to be added for registers that can be assigned via the UI
-    // TODO: effect i can't depend on effect j when j <= i
-    const addDependency = (dag: Dag, idx: number, dep: RegisterIdxUiMetadata) => {
-        // TODO: id -> idx
-        const effectIdx = dep.valueRef.effectId;
-        if (effectIdx === undefined) {
-            return;
-        }
-
-        const dstEffectIdxDeps = dag.nodes[idx].dependencies;
-
-        if (dstEffectIdxDeps.includes(effectIdx)) {
-            dstEffectIdxDeps.push(effectIdx);
-        }
-    }
-
-    for (let effectIdx = 0; effectIdx < e.effects.length; effectIdx++) {
-        const effect = e.effects[effectIdx].value;
-        switch (effect.type) {
-            case EFFECT_RACK_ITEM__OSCILLATOR: {
-                const wave = effect;
-                addDependency(dag, effectIdx, wave.phaseUI);
-                addDependency(dag, effectIdx, wave.amplitudeUI);
-                addDependency(dag, effectIdx, wave.frequencyUI);
-                addDependency(dag, effectIdx, wave.frequencyMultUI);
-                addDependency(dag, effectIdx, wave.offsetUI);
-            } break;
-            case EFFECT_RACK_ITEM__ENVELOPE: {
-                const envelope = effect;
-
-                addDependency(dag, effectIdx, envelope.signalUI);
-                addDependency(dag, effectIdx, envelope.attackUI);
-                addDependency(dag, effectIdx, envelope.decayUI);
-                addDependency(dag, effectIdx, envelope.sustainUI);
-                addDependency(dag, effectIdx, envelope.releaseUI);
-
-                addDependency(dag, effectIdx, envelope.toModulateUI);
-            } break;
-            case EFFECT_RACK_ITEM__MATHS: {
-                const maths = effect;
-
-                for (let i = 0; i < maths.terms.length; i++) {
-                    const term = maths.terms[i];
-                    for (let i = 0; i < term.coefficients.length; i++) {
-                        const c = term.coefficients[i];
-                        addDependency(dag, effectIdx, c.valueUI);
-                    }
-                }
-            } break;
-            case EFFECT_RACK_ITEM__SWITCH: {
-                const switchEffect = effect;
-
-                for (let i = 0; i < switchEffect.conditions.length; i++) {
-                    const cond = switchEffect.conditions[i];
-
-                    addDependency(dag, effectIdx, cond.aUi);
-                    addDependency(dag, effectIdx, cond.bUi);
-                    addDependency(dag, effectIdx, cond.valUi);
-                }
-
-                addDependency(dag, effectIdx, switchEffect.defaultUi);
-            } break;
-            default: unreachable(effect);
-        }
-    }
-
-    const fullyVisited = new Set<number>();
-    const visitedIndices: number[] = [];
-    const unvisitedIndices: number[] = [];
-
-    const dfs = (nodeIdx: number) => {
-        if (!fullyVisited.has(nodeIdx)) {
-            const deps = dag.nodes[nodeIdx].dependencies;
-            for (const dep of deps) {
-                dfs(dep);
-            }
-
-            visitedIndices.push(nodeIdx);
-            fullyVisited.add(nodeIdx);
-        }
-    }
-    dfs(sinkIdx);
-
-    for (let i = 0; i < dag.nodes.length; i++) {
-        if (fullyVisited.has(i)) continue;
-        unvisitedIndices.push(i);
-    }
-
-    const newIndices = [...unvisitedIndices, ...visitedIndices];
-    assert(newIndices.length === e.effects.length);
-    const effectsSnapshot = [...e.effects];
-    let didSomething = false;
-    for (let i = 0; i < newIndices.length; i++) {
-        if (i === newIndices[i]) continue;
-
-        e.effects[i] = effectsSnapshot[newIndices[i]];
-        didSomething = true;
-    }
-
-    return didSomething;
-}
-
-
 
 // Prob not needed for undo buffer, but should be useful for import/export. 
 export function serializeEffectRack(effectRack: EffectRack): string {
@@ -977,6 +876,7 @@ function unmarshallEffectRack(jsonObj: unknown) {
                 EFFECT_RACK_ITEM__ENVELOPE,
                 EFFECT_RACK_ITEM__MATHS,
                 EFFECT_RACK_ITEM__SWITCH,
+                EFFECT_RACK_ITEM__NOISE,
             ]);
 
             let value: EffectRackItemValue | undefined;
@@ -1030,6 +930,12 @@ function unmarshallEffectRack(jsonObj: unknown) {
                         defaultUi: unmarshalRegisterIdxUiMetadata,
                     });
 
+                } break;
+                case EFFECT_RACK_ITEM__NOISE: {
+                    value = unmarshalObject(o, newEffectRackNoise(), {
+                        type: asIs,
+                        amplitudeUi: unmarshalRegisterIdxUiMetadata,
+                    });
                 } break;
             }
             assert(!!value);
