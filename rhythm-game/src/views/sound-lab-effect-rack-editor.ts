@@ -457,9 +457,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
     editor.highlightedValueRefNext.effectId = undefined;
     editor.theoreticalSignalOscilloscopeState.sampleRate = dspInfo.sampleRate;
 
-    let hasUndoCommand = false;
-    let hasRedoCommand = false;
-
     stepUndoBufferTimer(editor.undoBuffer, ctx.deltaTime, editor.effectRack);
 
     // Recompute oscilloscope as neeed, just once instead of per oscilloscope.
@@ -658,11 +655,11 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                         }
 
                         if (imButtonIsClicked(c, "Undo", false, canUndo(editor.undoBuffer))) {
-                            hasUndoCommand = true;
+                            editor.deferredAction = () => editorUndo(editor);
                         }
 
                         if (imButtonIsClicked(c, "Redo", false, canRedo(editor.undoBuffer))) {
-                            hasRedoCommand = true;
+                            editor.deferredAction = () => editorRedo(editor);
                         }
                     } imLayoutEnd(c);
                 } imLayoutEnd(c);
@@ -1087,13 +1084,13 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
             const { keyUpper, ctrlPressed, shiftPressed, key } = ctx.keyPressState;
 
             if (keyUpper === "Z" && ctrlPressed && !shiftPressed) {
-                hasUndoCommand = true;
+                editor.deferredAction = () => editorUndo(editor);
                 ctx.handled = true;
             } else if (
                 (keyUpper === "Z" && ctrlPressed && shiftPressed) ||
                 (keyUpper === "Y" && ctrlPressed && !shiftPressed)
             ) {
-                hasRedoCommand = true;
+                editor.deferredAction = () => editorRedo(editor);
                 ctx.handled = true;
             } else if (key === "Escape") {
                 setViewChartSelect(ctx);
@@ -1150,9 +1147,7 @@ function editorImport(editor: EffectRackEditorState, json: string) {
     computeEffectRackIteration(effectRack, registers, f, 1, 1 / 48000, false);
 
     // If we reach here, then yeah its probably legit...
-    const version = editor.effectRack._version;
     editor.effectRack = effectRack;
-    editor.effectRack._version = version + 1;
     onEdited(editor, false, ACTION_ID_IMPORT);
 }
 
@@ -1195,10 +1190,11 @@ function imValueOrBindingEditor(
         // Much easier to connect things.
         elDropWireToRegisterInput(c, editor, reg);
 
+        imRegisterHighlightBg(c, editor, undefined, reg.valueRef.effectId);
+
         if (imIf(c) && !isOutput) {
             const effect = rack.effects[effectPos]; assert(!!effect);
             imWireDragEndpoint(c, editor, effect, reg);
-            imRegisterHighlightBg(c, editor, undefined, reg.valueRef.effectId);
 
             imLayout(c, BLOCK); imSize(c, 4, PX, 10, NA); imLayoutEnd(c);
         } imIfEnd(c);
@@ -1214,17 +1210,17 @@ function imValueOrBindingEditor(
                         onEdited(editor);
                     }
                 } else if (imIfElse(c) && reg.valueRef.regIdx !== undefined && !isOutput) {
-                    imRegisterHighlightBg(c, editor, reg.valueRef.regIdx, reg.valueRef.effectId);
-
                     imLayout(c, ROW); {
+                        imRegisterHighlightBg(c, editor, reg.valueRef.regIdx, reg.valueRef.effectId);
+
                         imStr(c, "<var=");
                         imStr(c, defaultBindings[reg.valueRef.regIdx].name);
                         imStr(c, ">");
                     } imLayoutEnd(c);
                 } else if (imIfElse(c) && reg.valueRef.effectId !== undefined) {
-                    imRegisterHighlightBg(c, editor, reg.valueRef.regIdx, reg.valueRef.effectId);
-
                     imLayout(c, ROW); {
+                        imRegisterHighlightBg(c, editor, reg.valueRef.regIdx, reg.valueRef.effectId);
+
                         imStr(c, "result[");
                         const pos = editor.effectRack._effectIdToEffectPos[reg.valueRef.effectId];
                         imStr(c, pos);
@@ -1291,18 +1287,18 @@ function imBindingEditorContextMenu(
     const contextMenu = imContextMenu(c);
     if (imIf(c) && contextMenu.open) {
         imContextMenuBegin(c, contextMenu); {
-            if (imIf(c) && value != null) {
-                imEditorContextMenuItemBegin(c); {
-                    imStr(c, "value: ");
-                    imStrFmt(c, value, registerValueToString);
+            imEditorContextMenuItemBegin(c); {
+                imStr(c, "default value");
+                imStr(c, " (");
+                imStr(c, reg._defaultValue);
+                imStr(c, ")");
 
-                    if (elHasMousePress(c)) {
-                        reg.valueRef = { value: reg._defaultValue };
-                        onEdited(editor);
-                        contextMenu.open = false;
-                    }
-                } imEditorContextMenuItemEnd(c);
-            } imIfEnd(c);
+                if (elHasMousePress(c)) {
+                    reg.valueRef = { value: reg._defaultValue };
+                    onEdited(editor);
+                    contextMenu.open = false;
+                }
+            } imEditorContextMenuItemEnd(c);
 
             imFor(c); for (
                 let bindingIdx = 0 as RegisterIdx;

@@ -4,10 +4,10 @@
 
 // NOTE: these dependencies and their dependencies need to be manually injected into the DSP loop, so 
 // try to keep them small.
-import { arrayAt, filterInPlace, resizeObjectPool, resizeValuePool } from "src/utils/array-utils";
-import { assert, mustGetDefined, unreachable } from "src/utils/assert";
+import { filterInPlace, resizeObjectPool, resizeValuePool } from "src/utils/array-utils";
+import { assert, unreachable } from "src/utils/assert";
 import { moveTowards } from "src/utils/math-utils";
-import { asArrayOrUndefined, asNumber, asObjectOrUndefined, asString, deserializeObject, extractKey, extractKeyDefined, serializeToJSON, asArray, unmarshalArray, asEnum, asObject, unmarshalObject, asIs } from "src/utils/serialization-utils";
+import { asArray, asEnum, asIs, asNumber, asObject, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
 import { deepEquals } from "src/utils/testing";
 import { sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
 
@@ -329,8 +329,6 @@ export type EffectRack = {
 
     _debugEffectPos: number;
 
-    // We use this to automagically re-clone the registers from the template array.
-    _version: number;
     _lastEffectTypes: EffectRackItemValue["type"][];
 };
 
@@ -356,7 +354,6 @@ export function newEffectRackBinding(name: string, r: boolean, w: boolean): Regi
 
 export function newEffectRack(): EffectRack {
     return {
-        _version: 0,
         _lastEffectTypes: [],
 
         effects: [],
@@ -460,8 +457,6 @@ export function allocateRegisterIdxIfNeeded(
  * Resets all effects, and allocates the register indices based on bindings and constants. 
  */
 export function compileEffectRack(e: EffectRack) {
-    e._version++;
-
     // generate new ids as needed. also generate effectId->effectPos lookup
     {
         resizeValuePool(e._effectIdToEffectPos, e.effects.length, 0);
@@ -648,35 +643,31 @@ export function computeEffectRackIteration(
 ): number {
     const re = registers.values;
 
-    if (e._version !== registers.version) {
-        registers.version = e._version;
-
-        let shapeChanged = false;
-        e._lastEffectTypes.length = e.effects.length;
-        for (let i = 0; i < e.effects.length; i++) {
-            const type = e.effects[i].value.type;
-            if (type !== e._lastEffectTypes[i]) {
-                shapeChanged = true;
-                e._lastEffectTypes[i] = type;
-            }
-        }
-        if (re.length !== e._registersTemplate.values.length) {
+    let shapeChanged = false;
+    e._lastEffectTypes.length = e.effects.length;
+    for (let i = 0; i < e.effects.length; i++) {
+        const type = e.effects[i].value.type;
+        if (type !== e._lastEffectTypes[i]) {
             shapeChanged = true;
-            re.length = e._registersTemplate.values.length;
+            e._lastEffectTypes[i] = type;
         }
+    }
+    if (re.length !== e._registersTemplate.values.length) {
+        shapeChanged = true;
+        re.length = e._registersTemplate.values.length;
+    }
 
-        if (shapeChanged || dynamic === false) {
-            // full copy
-            for (let i = 0; i < e._registersTemplate.values.length; i++) {
-                re[i] = e._registersTemplate.values[i];
-            }
-        } else {
-            // only copy the parts not persisted between frames.
-            for (let i = 0; i < e._registersTemplate.values.length; i++) {
-                // could prob store these in two separate buffers, but I couldnt be botherd for now.
-                if (e._registersTemplate.isPersistedBetweenFrames[i] === true) continue;
-                re[i] = e._registersTemplate.values[i];
-            }
+    if (shapeChanged || dynamic === false) {
+        // full copy
+        for (let i = 0; i < e._registersTemplate.values.length; i++) {
+            re[i] = e._registersTemplate.values[i];
+        }
+    } else {
+        // only copy the parts not persisted between frames.
+        for (let i = 0; i < e._registersTemplate.values.length; i++) {
+            // could prob store these in two separate buffers, but I couldnt be botherd for now.
+            if (e._registersTemplate.isPersistedBetweenFrames[i] === true) continue;
+            re[i] = e._registersTemplate.values[i];
         }
     }
 
@@ -714,8 +705,13 @@ export function computeEffectRackIteration(
                         case OSC_WAVE__SAWTOOTH2: value -= sawtooth(t2); break;
                     }
 
-                    w(re, wave._t, t + dt * r(re, wave._frequency));
+                    w(
+                        re,
+                        wave._t,
+                        t + dt * r(re, wave._frequency) * r(re, wave._frequencyMult)
+                    );
                     value *= a;
+                    value += r(re, wave._offset);
                 }
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
