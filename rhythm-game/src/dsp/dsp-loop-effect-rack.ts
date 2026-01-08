@@ -7,7 +7,7 @@
 import { filterInPlace, resizeObjectPool, resizeValuePool } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { moveTowards } from "src/utils/math-utils";
-import { asArray, asEnum, asIs, asNumber, asObject, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
+import { asArray, asBoolean, asBooleanOrUndefined, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
 import { deepEquals } from "src/utils/testing";
 import { sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
 
@@ -152,10 +152,10 @@ export function newEffectRackOscillator(): EffectRackOscillator {
 
         // Need to fit all this horizontally, so using shorter UI names...
         amplitudeUI:     newRegisterValueMetadata("amp",   { value: 1 }, 0, 1),
-        phaseUI:         newRegisterValueMetadata("+t",    { value: 0 }, 0, 1),
+        phaseUI:         newRegisterValueMetadata("phase",    { value: 0 }, 0, 1),
         frequencyUI:     newRegisterValueMetadata("f",     { regIdx: REG_IDX_KEY_FREQUENCY }, 0, 20_000),
         frequencyMultUI: newRegisterValueMetadata("fmult", { value: 1 }, 0, 1_000_000),
-        offsetUI:        newRegisterValueMetadata("+y",    { value: 0 }, -2, 2), 
+        offsetUI:        newRegisterValueMetadata("offset",    { value: 0 }, -2, 2), 
     };
 }
 
@@ -207,7 +207,7 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
         attackUI:  newRegisterValueMetadata("attack",  { value: 0.02 } , 0, 0.5),
         decayUI:   newRegisterValueMetadata("decay",   { value: 0.1 } , 0, 4),
         sustainUI: newRegisterValueMetadata("sustain", { value: 0.2 } , 0, 1),
-        releaseUI: newRegisterValueMetadata("release", { value: 0.2 } , 0, 1),
+        releaseUI: newRegisterValueMetadata("release", { value: 0.2 } , 0, 10),
     };
 }
 
@@ -842,7 +842,7 @@ export function computeEffectRackIteration(
 
                 value = r(re, noise._amplitude)
                 if (Math.abs(value) > 0) {
-                    value = Math.random();
+                    value = 2 * Math.random() - 1;
                 }
             } break;
             default: unreachable(effectValue);
@@ -940,7 +940,11 @@ function unmarshallEffectRack(jsonObj: unknown) {
             }
             assert(!!value);
 
-            return newEffectRackItem(value);
+            return unmarshalObject(oItem, newEffectRackItem(value), {
+                value: asIs,
+                id: u => asNumber(u) as EffectId,
+                enabled: u => asBoolean(u),
+            });
         }),
     });
 }
@@ -953,9 +957,9 @@ assert(deepEquals(
 function unmarshalRegisterIdxUiMetadata(arg: unknown, defaultVal: RegisterIdxUiMetadata) {
     return unmarshalObject(arg, defaultVal, {
         valueRef: (u, valueRef) => unmarshalObject<ValueRef>(u, valueRef, {
-            value: u => asNumber(u),
-            regIdx: u => asNumber(u) as RegisterIdx,
-            effectId: u => asNumber(u) as EffectId,
+            value: u => asNumberOrUndefined(u),
+            regIdx: u => asNumberOrUndefined(u) as RegisterIdx,
+            effectId: u => asNumberOrUndefined(u) as EffectId,
         }),
     });
 }

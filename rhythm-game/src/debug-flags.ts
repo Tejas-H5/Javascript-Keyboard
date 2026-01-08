@@ -34,6 +34,7 @@ export type DebugFlags = {
     testSoundLab: Flag;
     testSoundLabWaveEditor: Flag;
     testSoundLabAllEffectRackEffects: Flag;
+    testSoundLabLoadPreset: string;
 
     testAsync: Flag;
     testAsyncALittle: Flag;
@@ -59,7 +60,8 @@ export const debugFlags: DebugFlags = {
 
     testSoundLab: ON,
     testSoundLabWaveEditor: ON,
-    testSoundLabAllEffectRackEffects: OFF,
+    testSoundLabAllEffectRackEffects: ON,
+    testSoundLabLoadPreset: "design",
 
     testAsync: OFF,
     testAsyncALittle: OFF,

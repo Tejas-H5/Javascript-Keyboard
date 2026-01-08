@@ -1,6 +1,6 @@
 import { debugFlags } from "src/debug-flags";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
-import { compileEffectRack, newEffectRackEnvelope, newEffectRackItem, newEffectRackMaths, newEffectRackOscillator, newEffectRackSwitch } from "./dsp-loop-effect-rack";
+import { compileEffectRack, newEffectRackEnvelope, newEffectRackItem, newEffectRackMaths, newEffectRackMathsItemCoefficient, newEffectRackMathsItemTerm, newEffectRackNoise, newEffectRackOscillator, newEffectRackSwitch } from "./dsp-loop-effect-rack";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
@@ -31,11 +31,23 @@ const playSettings = newDspPlaySettings();
         debugFlags.testSoundLab &&
         debugFlags.testSoundLabAllEffectRackEffects
     ) {
-        const math = newEffectRackMaths();
-        rack.effects.push(newEffectRackItem(math));
+        const maths = newEffectRackMaths();
+        rack.effects.push(newEffectRackItem(maths));
+        {
+            const term = newEffectRackMathsItemTerm();
+            maths.terms.push(term);
+            term.coefficients.push(newEffectRackMathsItemCoefficient());
+            term.coefficients.push(newEffectRackMathsItemCoefficient());
+        }
+        {
+            const term = newEffectRackMathsItemTerm();
+            maths.terms.push(term);
+            term.coefficients.push(newEffectRackMathsItemCoefficient());
+            term.coefficients.push(newEffectRackMathsItemCoefficient());
+        }
 
-        const switchEffect = newEffectRackSwitch();
-        rack.effects.push(newEffectRackItem(switchEffect));
+        rack.effects.push(newEffectRackItem(newEffectRackSwitch()));
+        rack.effects.push(newEffectRackItem(newEffectRackNoise()));
     }
 
     compileEffectRack(rack);

@@ -19,12 +19,24 @@ export function asString(val: unknown): string | undefined {
     return typeof val === "string" ? val : undefined;
 }
 
-export function asNumber(val: unknown): number | undefined {
+export function asNumberOrUndefined(val: unknown): number | undefined {
     return typeof val === "number" ? val : undefined;
 }
 
-export function asBoolean(val: unknown): boolean | undefined {
+export function asNumber(val: unknown): number {
+    const num = asNumberOrUndefined(val);
+    assert(num != null);
+    return num;
+}
+
+export function asBooleanOrUndefined(val: unknown): boolean | undefined {
     return typeof val === "boolean" ? val : undefined;
+}
+
+export function asBoolean(u: unknown): boolean {
+    const val = asBooleanOrUndefined(u);
+    assert(val != null);
+    return val;
 }
 
 export function asTrue(val: unknown): true | undefined {
@@ -130,7 +142,7 @@ function asStringOrNumberEntriesList<T>(val: unknown, stringKeys: boolean, mapFn
             const val = mapFn(entry[1]);
             if (val === undefined) continue;
 
-            const k = asNumber(entry[0]);
+            const k = asNumberOrUndefined(entry[0]);
             if (k === undefined) return undefined;
             entries.push([k, val]);
         }
@@ -156,7 +168,7 @@ export function asNumberSet(val: unknown): Set<number> | undefined {
     if (!arr) return undefined;
     
     for (let i = 0; i < arr.length; i++) {
-        const val = asNumber(arr[i]);
+        const val = asNumberOrUndefined(arr[i]);
         if (val === undefined) return undefined;
     }
 
@@ -225,9 +237,9 @@ export function deserializeObjectKey<T extends JSONRecord, K extends string & ke
         } else if (defaultValue instanceof Date) {
             result = asDate(recordValue);
         } else if (defaultValue === true || defaultValue === false) {
-            result = asBoolean(recordValue);
+            result = asBooleanOrUndefined(recordValue);
         } else if (typeof defaultValue === "number") {
-            result = asNumber(recordValue);
+            result = asNumberOrUndefined(recordValue);
         } else if (typeof defaultValue === "string") {
             result = asString(recordValue);
         }
@@ -310,7 +322,7 @@ function getJSONSerializable(val: unknown): unknown {
 
         for (const [k, v] of val) {
             if (v === undefined) continue;
-            if (asString(k) === undefined && asNumber(k) === undefined) {
+            if (asString(k) === undefined && asNumberOrUndefined(k) === undefined) {
                 throw new Error("Only maps with string or number keys can be serialized");
             }
 

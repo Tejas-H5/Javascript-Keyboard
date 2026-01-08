@@ -8,7 +8,7 @@ import {
 } from "src/app-components/context-menu";
 import { imVerticalText } from "src/app-components/misc";
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
-import { imButtonIsClicked } from "src/components/button";
+import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
 import { imCheckbox } from "src/components/checkbox";
 import {
@@ -372,6 +372,8 @@ function createConnection(editor: EffectRackEditorState, src: EffectId, dst: Reg
     onEdited(editor);
 }
 
+const dragColour = newColor(0, 0, 0, 1);
+
 export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
     const settings = getCurrentPlaySettings();
 
@@ -490,7 +492,14 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                     signal = 1;
                 }
 
-                s.samples[i] = computeEffectRackIteration(rack, s.registers, keyFrequency, signal, dt, false);
+                s.samples[i] = computeEffectRackIteration(
+                    rack,
+                    s.registers,
+                    keyFrequency,
+                    signal,
+                    dt,
+                    i !== 0
+                );
             }
 
             editor.compileStats.computeSamplesTime = performance.now() - t1;
@@ -679,22 +688,19 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                 const mouse = getGlobalEventSystem().mouse;
                                 let srcX = mouse.X, srcY = mouse.Y;
                                 let dstX = mouse.X, dstY = mouse.Y;
-                                let color;
 
                                 if (wires.drag.toRegisterInput && wires.drag.outputEffectId !== undefined) {
                                     srcX = wires.outputPositions.x[wires.drag.outputEffectId];
                                     srcY = wires.outputPositions.y[wires.drag.outputEffectId];
-                                    color = wires.outputPositions.colours[wires.drag.outputEffectId];
                                 } else {
                                     dstX = wires.drag.registerInputClientX;
                                     dstY = wires.drag.registerInputClientY;
-                                    color = wires.outputPositions.colours[0];
                                 }
 
                                 imWire(
                                     c,
                                     srcX, srcY, dstX, dstY,
-                                    color.r, color.g, color.b, 1,
+                                    dragColour.r, dragColour.g, dragColour.b, 1,
                                 );
                             } imElEndExisting(c, editor.svgCtx.root);
                         } imIfEnd(c);
@@ -719,7 +725,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                 const z = imDragZoneBegin(c, effectsDnd, effectPos); {
                                     imLayout(c, COL); imFlex(c); {
                                         imLayout(c, ROW); imAlign(c);
-                                        imPadding(c, 5, PX, 5, PX, 5, PX, 5, PX); imGap(c, 5, PX); {
+                                        imPadding(c, 5, PX, 5, PX, 0, PX, 5, PX); imGap(c, 5, PX); {
                                             imFg(c, effectDisabled ? cssVars.mg : "");
 
                                             imDropZoneForPrototyping(c, effectsDnd, effectPos);
@@ -774,7 +780,9 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
                                                         imValueOrBindingEditor(c, editor, effectPos, osc.amplitudeUI, BINDING_UI_ROW);
 
-                                                        imStr(c, "*");
+                                                        imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
+                                                            imStr(c, "*");
+                                                        } imLayoutEnd(c);
 
                                                         const contextMenu = imContextMenu(c);
                                                         if (imIf(c) && contextMenu.open) {
@@ -791,19 +799,23 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                                             } imContextMenuEnd(c, contextMenu);
                                                         } imIfEnd(c);
 
+                                                        if (imButtonIsClicked(c, getEffectRackOscillatorWaveTypeName(osc.waveType))) {
+                                                            openContextMenuAtMouse(contextMenu);
+                                                        }
+
                                                         imDspVisualGroupBegin(c, ROW); {
                                                             imDspVisualGroupBegin(c, ROW); {
-                                                                if (imButtonIsClicked(c, getEffectRackOscillatorWaveTypeName(osc.waveType))) {
-                                                                    openContextMenuAtMouse(contextMenu);
-                                                                }
-
                                                                 imValueOrBindingEditor(c, editor, effectPos, osc.frequencyUI, BINDING_UI_ROW);
                                                                 imValueOrBindingEditor(c, editor, effectPos, osc.frequencyMultUI, BINDING_UI_ROW);
-                                                                imValueOrBindingEditor(c, editor, effectPos, osc.phaseUI, BINDING_UI_ROW);
                                                             } imDspVisualGroupEnd(c);
-
-                                                            imValueOrBindingEditor(c, editor, effectPos, osc.offsetUI, BINDING_UI_ROW);
+                                                            imValueOrBindingEditor(c, editor, effectPos, osc.phaseUI, BINDING_UI_ROW);
                                                         } imDspVisualGroupEnd(c);
+
+                                                        imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
+                                                            imStr(c, "+");
+                                                        } imLayoutEnd(c);
+
+                                                        imValueOrBindingEditor(c, editor, effectPos, osc.offsetUI, BINDING_UI_ROW);
                                                     } break;
                                                     case EFFECT_RACK_ITEM__ENVELOPE: {
                                                         const envelope = effectValue;
@@ -826,7 +838,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                                         imLayout(c, COL); imAlign(c); imGap(c, 10, PX); {
                                                             imFor(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
                                                                 const term = math.terms[termIdx];
-                                                                imLayout(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                                                                imDspVisualGroupBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
                                                                     if (isFirstishRender(c)) {
                                                                         elSetStyle(c, "flexFlow", "wrap");
                                                                     }
@@ -868,7 +880,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                                                         term.coefficients.push(co);
                                                                         onEdited(editor);
                                                                     }
-                                                                } imLayoutEnd(c);
+                                                                } imDspVisualGroupEnd(c);
 
                                                                 if (imIf(c) && termIdx < math.terms.length - 1) {
                                                                     imStr(c, " + ");
@@ -892,7 +904,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                                             imFor(c); for (let i = 0; i < switchEffect.conditions.length; i++) {
                                                                 const cond = switchEffect.conditions[i];
 
-                                                                imLayout(c, ROW); {
+                                                                imDspVisualGroupBegin(c, ROW); {
                                                                     imValueOrBindingEditor(c, editor, effectPos, cond.aUi, BINDING_UI_ROW);
 
                                                                     if (imButtonIsClicked(c, cond.operator === SWITCH_OP_LT ? "<" : ">")) {
@@ -915,7 +927,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                                                             onEdited(editor);
                                                                         };
                                                                     }
-                                                                } imLayoutEnd(c);
+                                                                } imDspVisualGroupEnd(c);
                                                             } imForEnd(c);
 
                                                             if (imButtonIsClicked(c, "+")) {
@@ -924,7 +936,9 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                                                 onEdited(editor);
                                                             }
 
-                                                            imValueOrBindingEditor(c, editor, effectPos, switchEffect.defaultUi, BINDING_UI_ROW);
+                                                            imDspVisualGroupBegin(c, BLOCK); {
+                                                                imValueOrBindingEditor(c, editor, effectPos, switchEffect.defaultUi, BINDING_UI_ROW);
+                                                            } imDspVisualGroupEnd(c);
                                                         } imLayoutEnd(c);
                                                     } break;
                                                     case EFFECT_RACK_ITEM__NOISE: {
@@ -944,7 +958,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
                                                     imRegisterHighlightBg(c, editor, undefined, effect.id);
 
-                                                    imStr(c, "result["); imStr(c, effectPos); imStr(c, "]");
+                                                    imResultName(c, editor, effectPos, effectPos + 1);
 
                                                     imLayout(c, BLOCK); imSize(c, 4, PX, 10, NA); imLayoutEnd(c);
 
@@ -1158,13 +1172,14 @@ function registerValueToString(num: number) {
 const BINDING_UI_ROW = 1 << 0;
 const BINDING_IS_OUTPUT = 1 << 1;
 
-function imDspVisualGroupBegin(c: ImCache, type: DisplayType) {
+function imDspVisualGroupBegin(c: ImCache, type: DisplayType, enabled: boolean = true) {
     imLayout(c, type); imAlign(c); imJustify(c); imNoWrap(c); imGap(c, 5, PX); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "border", "1px solid " + cssVars.fg);
-            elSetStyle(c, "padding", "5px");
-            elSetStyle(c, "borderRadius", "5px");
+        if (imMemo(c, enabled)) {
+            elSetStyle(c, "border", !enabled ? "" : "1px solid " + cssVars.fg);
+            elSetStyle(c, "padding", !enabled ? "" :"5px");
+            elSetStyle(c, "borderRadius", !enabled ? "" : "5px");
         }
+
     } // imLayoutEnd
 }
 
@@ -1183,10 +1198,14 @@ function imValueOrBindingEditor(
 ) {
     const rack = editor.effectRack;
 
-    const row = false; ///!!(flags & BINDING_UI_ROW);
+    const row = !!(flags & BINDING_UI_ROW);
     const isOutput = !!(flags & BINDING_IS_OUTPUT);
 
-    imDspVisualGroupBegin(c, ROW); imNoWrap(c); imGap(c, 10, row ? PX : NA); {
+    imDspVisualGroupBegin(c, ROW, false); imNoWrap(c); imGap(c, 4, row ? PX : NA); {
+        if (isFirstishRender(c)) {
+            elSetStyle(c, "fontSize", "1.25rem");
+        }
+
         // Much easier to connect things.
         elDropWireToRegisterInput(c, editor, reg);
 
@@ -1195,11 +1214,9 @@ function imValueOrBindingEditor(
         if (imIf(c) && !isOutput) {
             const effect = rack.effects[effectPos]; assert(!!effect);
             imWireDragEndpoint(c, editor, effect, reg);
-
-            imLayout(c, BLOCK); imSize(c, 4, PX, 10, NA); imLayoutEnd(c);
         } imIfEnd(c);
 
-        imLayout(c, row ? ROW_REVERSE : COL); imAlign(c); imJustify(c); imGap(c, 10, row ? PX : NA); {
+        imLayout(c, row ? ROW_REVERSE : COL); imAlign(c); imJustify(c); imGap(c, 4, row ? PX : NA); {
             imLayout(c, BLOCK); {
                 if (imIf(c) && reg.valueRef.value !== undefined && !isOutput) {
                     imStrFmt(c, reg.valueRef.value, registerValueToString);
@@ -1221,10 +1238,7 @@ function imValueOrBindingEditor(
                     imLayout(c, ROW); {
                         imRegisterHighlightBg(c, editor, reg.valueRef.regIdx, reg.valueRef.effectId);
 
-                        imStr(c, "result[");
-                        const pos = editor.effectRack._effectIdToEffectPos[reg.valueRef.effectId];
-                        imStr(c, pos);
-                        imStr(c, "]");
+                        imResultName(c, editor, editor.effectRack._effectIdToEffectPos[reg.valueRef.effectId], effectPos);
                     } imLayoutEnd(c);
                     imIfElse(c);
                 } else {
@@ -1234,10 +1248,9 @@ function imValueOrBindingEditor(
                 } imIfEnd(c);
             } imLayoutEnd(c);
 
-            // imLine(c, LINE_HORIZONTAL);
-
             imLayout(c, BLOCK); {
                 if (isFirstishRender(c)) {
+                    elSetStyle(c, "fontSize", "1rem");
                     elSetStyle(c, "userSelect", "none");
                     elSetStyle(c, "fontWeight", "bold");
                     elSetClass(c, "hoverable");
@@ -1331,7 +1344,7 @@ function imBindingEditorContextMenu(
                 imEditorContextMenuItemBegin(c); {
                     imRegisterHighlightBg(c, editor, undefined, effect.id);
 
-                    imStr(c, "result["); imStr(c, effectPos); imStr(c, "]");
+                    imResultName(c, editor, effectPos, currentEffectPos);
 
                     if (elHasMousePress(c)) {
                         reg.valueRef = { effectId: effect.id };
@@ -1346,6 +1359,20 @@ function imBindingEditorContextMenu(
     if (elHasMousePress(c)) {
         openContextMenuAtMouse(contextMenu);
     }
+}
+
+function imResultName(
+    c: ImCache,
+    editor: EffectRackEditorState,
+    effectPos: number,
+    thisEffectPos: number,
+) {
+    imStr(c, "r");
+    imStr(c, effectPos);
+
+    if (imIf(c) && thisEffectPos <= effectPos) {
+        imStr(c, "(!)");
+    } imIfEnd(c);
 }
 
 function getSrcEffectIdx(rack: EffectRack, dstEffectIdx: number, regIdx: RegisterIdx) {
@@ -1526,7 +1553,8 @@ function imWire(
         if (imMemo(c, srcX) | imMemo(c, srcY) | imMemo(c, dstX) | imMemo(c, dstY)) {
             const mY = srcY + (dstY - srcY) / 2;
             const mX = srcX + (dstX - srcX) / 2;
-            const bowing = 200;
+            const bowing = 100;
+            const bowingVertical = 100;
 
             //  bezier z curve:
             //                          src
@@ -1541,7 +1569,7 @@ function imWire(
             // https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorials/SVG_from_scratch/Paths
             // HINT: prefil this with a preset curve, and then just edit the coordinates. Way easier.
             const newPath
-                = `M ${srcX} ${srcY} Q ${srcX + bowing} ${srcY}, ${mX} ${mY} T ${dstX} ${dstY}`
+                = `M ${srcX} ${srcY} Q ${srcX + bowing} ${srcY + bowingVertical}, ${mX} ${mY} T ${dstX} ${dstY}`
 
             elSetAttr(c, "d", newPath);
         }
