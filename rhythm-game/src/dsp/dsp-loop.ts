@@ -12,11 +12,15 @@ import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed
 import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils/turn-based-waves";
 import { newFunctionUrl } from "src/utils/web-workers";
 import {
+    allocateBufferIdx,
     allocateRegisterIdx,
     allocateRegisterIdxIfNeeded,
     asRegisterIdx,
     compileEffectRack,
     computeEffectRackIteration,
+    EFFECT_RACK_DELAY_MAX_DURATION,
+    EFFECT_RACK_ITEM__DELAY,
+    EFFECT_RACK_ITEM__BIQUAD_FILTER,
     EFFECT_RACK_ITEM__ENVELOPE,
     EFFECT_RACK_ITEM__MATHS,
     EFFECT_RACK_ITEM__NOISE,
@@ -26,6 +30,8 @@ import {
     EffectRackRegisters,
     newEffectRack,
     newEffectRackBinding,
+    newEffectRackDelay,
+    newEffectRackBiquadFilter,
     newEffectRackMaths,
     newEffectRackMathsItemCoefficient,
     newEffectRackMathsItemTerm,
@@ -33,7 +39,7 @@ import {
     newEffectRackRegisters,
     newEffectRackSwitch,
     newEffectRackSwitchCondition,
-    newRegisterValueMetadata,
+    newRegisterIdxUi,
     OSC_WAVE__SAWTOOTH,
     OSC_WAVE__SAWTOOTH2,
     OSC_WAVE__SIN,
@@ -49,7 +55,8 @@ import {
     registerIdxAsNumber,
     SWITCH_OP_GT,
     SWITCH_OP_LT,
-    w
+    w,
+    updateRegisters
 } from "./dsp-loop-effect-rack";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
 
@@ -98,11 +105,6 @@ export type PlayingOscillator = {
         volume: number;
         manuallyPressed: boolean;
         value: number;
-
-        idx1: number;
-        acc1: number;
-        acc2: number;
-        acc3: number;
     };
     inputs: {
         noteId: number;
@@ -173,6 +175,8 @@ export function updateOscillator(
         state._frequency = getNoteFrequency(inputs.noteId);
     }
 
+    const startedPressing = state.pressedTime === state.time;
+
     const dt = 1 / sampleRate;
     if (inputs.signal || Math.abs(state.value) > OSC_GAIN_AWAKE_THRESHOLD) {
         state.time += dt;
@@ -200,8 +204,8 @@ export function updateOscillator(
         osc.state._effectRackRegisters,
         f,
         osc.inputs.signal,
-        1 / sampleRate,
-        true,
+        sampleRate,
+        startedPressing,
     );
 
     state.value = sampleValue;
@@ -471,10 +475,6 @@ export function newPlayingOscilator(): PlayingOscillator {
             volume: 0,
             manuallyPressed: false,
             value: 0,
-            idx1: 0,
-            acc1: 0,
-            acc2: 0,
-            acc3: 0,
         },
         inputs: { noteId: 0, signal: 0 },
     };
@@ -692,14 +692,19 @@ export function getDspLoopClassUrl(): string {
         { value: EFFECT_RACK_ITEM__MATHS, name: "EFFECT_RACK_ITEM__MATHS" },
         { value: EFFECT_RACK_ITEM__SWITCH, name: "EFFECT_RACK_ITEM__SWITCH" },
         { value: EFFECT_RACK_ITEM__NOISE, name: "EFFECT_RACK_ITEM__NOISE" },
+        { value: EFFECT_RACK_ITEM__DELAY, name: "EFFECT_RACK_ITEM__DELAY" },
+        { value: EFFECT_RACK_ITEM__BIQUAD_FILTER, name: "EFFECT_RACK_ITEM__BIQUAD_FILTER" },
+        { value: EFFECT_RACK_DELAY_MAX_DURATION, name: "EFFECT_RACK_DELAY_MAX_DURATION" },
         { value: SWITCH_OP_LT, name: "SWITCH_OP_LT" },
         { value: SWITCH_OP_GT, name: "SWITCH_OP_GT" },
         asRegisterIdx,
         registerIdxAsNumber,
-        newRegisterValueMetadata,
+        newRegisterIdxUi,
         newEffectRackBinding,
         newEffectRack,
         newEffectRackNoise,
+        newEffectRackDelay,
+        newEffectRackBiquadFilter,
         { value: REG_IDX_NONE, name: "REG_IDX_NONE" },
         { value: REG_IDX_KEY_FREQUENCY, name: "REG_IDX_KEY_FREQUENCY" },
         { value: REG_IDX_KEY_SIGNAL, name: "REG_IDX_KEY_SIGNAL" },
@@ -707,11 +712,13 @@ export function getDspLoopClassUrl(): string {
         { value: REG_IDX_KEY_SIGNAL_RAW, name: "REG_IDX_KEY_SIGNAL_RAW" },
         { value: REG_IDX_EFFECT_BINDINGS_START, name: "REG_IDX_EFFECT_BINDINGS_START" },
         compileEffectRack,
+        updateRegisters,
         computeEffectRackIteration,
         newEffectRackRegisters,
         r, 
         w,
         allocateRegisterIdx,
+        allocateBufferIdx,
         allocateRegisterIdxIfNeeded,
         newEffectRackMaths,
         newEffectRackMathsItemTerm,

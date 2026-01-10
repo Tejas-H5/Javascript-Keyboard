@@ -367,11 +367,11 @@ export function asArray(u: unknown): unknown[] {
 }
 
 type ValueOf<T extends readonly unknown[]> = T[number];
-export function asEnum<const T extends readonly unknown[]>(u: unknown, values: T): ValueOf<T> {
-    if (!values.includes(u as ValueOf<T>)) {
+export function asEnum<const T extends unknown>(u: unknown, values: T[]): T {
+    if (!values.includes(u as T)) {
         throw new Error(u + " was not one of " + values.join(", "));
     }
-    return u as ValueOf<T>;
+    return u as T;
 }
 
 // An unmarshaller that leaves the default value "as-is".

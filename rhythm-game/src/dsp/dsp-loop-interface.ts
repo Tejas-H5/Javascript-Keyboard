@@ -1,6 +1,6 @@
 import { debugFlags } from "src/debug-flags";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
-import { compileEffectRack, newEffectRackEnvelope, newEffectRackItem, newEffectRackMaths, newEffectRackMathsItemCoefficient, newEffectRackMathsItemTerm, newEffectRackNoise, newEffectRackOscillator, newEffectRackSwitch } from "./dsp-loop-effect-rack";
+import { compileEffectRack, newEffectRackBiquadFilter, newEffectRackDelay, newEffectRackEnvelope, newEffectRackItem, newEffectRackMaths, newEffectRackMathsItemCoefficient, newEffectRackMathsItemTerm, newEffectRackNoise, newEffectRackOscillator, newEffectRackSwitch } from "./dsp-loop-effect-rack";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
@@ -33,21 +33,25 @@ const playSettings = newDspPlaySettings();
     ) {
         const maths = newEffectRackMaths();
         rack.effects.push(newEffectRackItem(maths));
-        {
-            const term = newEffectRackMathsItemTerm();
-            maths.terms.push(term);
-            term.coefficients.push(newEffectRackMathsItemCoefficient());
-            term.coefficients.push(newEffectRackMathsItemCoefficient());
-        }
-        {
-            const term = newEffectRackMathsItemTerm();
-            maths.terms.push(term);
-            term.coefficients.push(newEffectRackMathsItemCoefficient());
-            term.coefficients.push(newEffectRackMathsItemCoefficient());
-        }
 
-        rack.effects.push(newEffectRackItem(newEffectRackSwitch()));
-        rack.effects.push(newEffectRackItem(newEffectRackNoise()));
+        rack.effects.push(newEffectRackItem(newEffectRackBiquadFilter()));
+
+        // {
+        //     const term = newEffectRackMathsItemTerm();
+        //     maths.terms.push(term);
+        //     term.coefficients.push(newEffectRackMathsItemCoefficient());
+        //     term.coefficients.push(newEffectRackMathsItemCoefficient());
+        // }
+        // {
+        //     const term = newEffectRackMathsItemTerm();
+        //     maths.terms.push(term);
+        //     term.coefficients.push(newEffectRackMathsItemCoefficient());
+        //     term.coefficients.push(newEffectRackMathsItemCoefficient());
+        // }
+
+        // rack.effects.push(newEffectRackItem(newEffectRackSwitch()));
+        // rack.effects.push(newEffectRackItem(newEffectRackNoise()));
+        // rack.effects.push(newEffectRackItem(newEffectRackDelay()));
     }
 
     compileEffectRack(rack);

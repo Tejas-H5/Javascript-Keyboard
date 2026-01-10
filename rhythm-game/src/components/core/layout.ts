@@ -7,12 +7,12 @@ import { cn } from "./stylesheets";
 
 export type SizeUnitInstance = number & { __sizeUnit: void; };
 
-export const PX = 10001 as SizeUnitInstance;
-export const EM = 20001 as SizeUnitInstance;
+export const PX      = 10001 as SizeUnitInstance;
+export const EM      = 20001 as SizeUnitInstance;
 export const PERCENT = 30001 as SizeUnitInstance;
-export const REM = 40001 as SizeUnitInstance;
-export const CH = 50001 as SizeUnitInstance;
-export const NA = 60001 as SizeUnitInstance; // Not applicable. Nahh. 
+export const REM     = 40001 as SizeUnitInstance;
+export const CH      = 50001 as SizeUnitInstance;
+export const NA      = 60001 as SizeUnitInstance; // Not applicable. Nahh. 
 
 export const NOT_SET = NA;
 
@@ -217,10 +217,10 @@ export function imLayoutEnd(c: ImCache) {
 
 export function imFlex(c: ImCache, ratio = 1) {
     if (imMemo(c, ratio)) {
-        elSetStyle(c, "flex", "" + ratio);
+        elSetStyle(c, "flex", ratio > 0 ? "" + ratio : "");
         // required to make flex work the way I had thought it already worked
-        elSetStyle(c, "minWidth", "0");
-        elSetStyle(c, "minHeight", "0");
+        elSetStyle(c, "minWidth", ratio > 0 ? "0" : "");
+        elSetStyle(c, "minHeight", ratio > 0 ? "0" : "");
     }
 }
 

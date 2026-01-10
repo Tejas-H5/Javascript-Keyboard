@@ -1,3 +1,5 @@
+import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
+import { getRenderCount, ImCache, imMemo, imState } from "src/utils/im-core";
 import { inverseLerp, lerp, max, min } from "src/utils/math-utils";
 
 // TODO: consider moving to components.ts
@@ -18,6 +20,9 @@ export function newPlotState(): PlotState {
         maximized: false,
         isPanning: false,
         canZoom: false,
+
+        isNewFrame: false,
+        ctx: null,
     };
 }
 
@@ -144,6 +149,44 @@ export type PlotState = {
     isPanning: boolean;
     canZoom: boolean;
     scrollY: number;
+
+    isNewFrame: boolean;
+    ctx: CanvasRenderingContext2D | null;
+}
+
+
+export function imPlotBegin(c: ImCache): PlotState {
+    const plotState = imState(c, newPlotState);
+    plotState.isNewFrame = false;
+
+    let isNewFrame = imMemo(c, getRenderCount(c));
+    if (isNewFrame) {
+        plotState.isNewFrame = true;
+    }
+
+    const [_, ctx, width, height, dpi] = imBeginCanvasRenderingContext2D(c); {
+        plotState.ctx = ctx;
+
+
+        const widthChanged  = imMemo(c, width);
+        const heightChanged = imMemo(c, height);
+        const dpiChanged    = imMemo(c, dpi);
+
+        const resize = widthChanged || heightChanged || dpiChanged;
+        if (resize) {
+            plotState.width = width;
+            plotState.height = height;
+            plotState.dpi = dpi;
+
+            plotState.isNewFrame = true;
+        }
+    }
+
+    return plotState;
+}
+
+export function imPlotEnd(c: ImCache) {
+    imEndCanvasRenderingContext2D(c);
 }
 
 

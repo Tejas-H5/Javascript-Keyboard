@@ -1,4 +1,5 @@
-// IM-DOM 1.56
+// IM-DOM 1.57
+// NOTE: the parent of a dom node is no longer a constant, like a lot of the code here may assume. TODO: we should fix this code
 // NOTE: this version may be unstable, as we've updated the DOM diffing algorithm yet again:
 // - Multiple dom appenders may append to the same node out of order
 // - Multiple dom appenders may append the same nodes to different dom nodes
@@ -7,6 +8,7 @@
 //      - for now, we can't do the optimization where we only finalize when something has changed, because any dom node may be appended to at any time
 //      - it does allow for DOM node reuse, and appending to different places in the DOM tree via different places in the immediate mode tree.
 
+import { imFixed, imSize, NA, PX } from "src/components/core/layout";
 import { assert } from "src/utils/assert";
 import {
     __GetEntries,
@@ -25,10 +27,8 @@ import {
     imMemo,
     imSet,
     inlineTypeId,
-    isFirstishRender,
     recursivelyEnumerateEntries
 } from "./im-core";
-import { imFixed, imSize, NA, PX } from "src/components/core/layout";
 
 export type ValidElement = HTMLElement | SVGElement;
 export type AppendableElement = (ValidElement | Text);
@@ -919,6 +919,7 @@ export function imGlobalEventSystemEnd(_c: ImCache, eventSystem: ImGlobalEventSy
 export function imTrackSize(c: ImCache) {
     let state; state = imGet(c, inlineTypeId(imTrackSize));
     if (state === undefined) {
+        // NOTE: the parent of a dom node is no longer a constant. TODO: we should fix this code
         const root = elGet(c);
 
         const self = {
