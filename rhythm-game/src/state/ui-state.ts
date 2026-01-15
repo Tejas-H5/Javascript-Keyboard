@@ -3,7 +3,8 @@ import { AsyncContext, newAsyncContext } from "src/utils/promise-utils";
 import { GlobalContext } from "src/views/app";
 import { GameplayState } from "src/views/gameplay";
 import { SequencerChartMetadata } from "./data-repository";
-import { UnitTestsState } from "./unit-tests";
+import { newUnitTestsState, UnitTestsState } from "./unit-tests";
+import { debugFlags } from "src/debug-flags";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;
@@ -132,6 +133,10 @@ export function newUiState(): UIState {
             isTesting: false,
         }
     };
+
+    if (debugFlags.testUnitTests) {
+        s.unitTestModal = newUnitTestsState();
+    }
 
     return s;
 }

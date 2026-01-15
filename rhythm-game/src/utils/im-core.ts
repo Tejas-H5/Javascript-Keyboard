@@ -1,4 +1,4 @@
-// IM-CORE 1.064
+// IM-CORE 1.065
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 // Majority of the last changes have just been updates to the documentation though
@@ -367,7 +367,11 @@ export function imGet<T>(
     }
 
     if (idx < entries.length) {
-        assert(entries[idx] === typeId);
+        if (entries[idx] !== typeId) {
+            const errorMessage = "Expected to populate this cache entry with a different type. Your begin/end pairs probably aren't lining up right";
+            console.error(errorMessage, entries[idx], typeId);
+            throw new Error(errorMessage);
+        }
     } else if (idx === entries.length) {
         entries.push(typeId);
         entries.push(initialValue);

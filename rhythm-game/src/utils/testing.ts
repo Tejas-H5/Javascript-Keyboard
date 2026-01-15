@@ -1,186 +1,254 @@
 import { assert } from "./assert";
 
-export type TestSuite<T> = {
+export type Fork = {
     name: string;
-    tests: Test<T>[];
-    // T allows us to compose multiple tests of the same type one after the other, in varying orders, etc.
-    ctxFn: () => T;
+    value: boolean;
 };
 
-export type Test<T> = {
-    code: (test: Test<T>, ctx: T) => void | Promise<void>;
-    name: string;
-    status: TestStatus;
-    suite?: TestSuite<T>;
+export type TestFn = (t: TestingHarness) => void;
 
-    error: any;
-    results: TestRequirementResult[];
+export type Test = {
+    name: string;
+    fn: TestFn;
+};
+
+export type TestExpectation = {
+    desc: string;
+    failure?: null | {
+        permutation: Fork[];
+    };
+};
+
+export type TestResult = {
+    expectationsPerFork: TestExpectation[][];
     passed: boolean;
+    totalExpectations: number;
 };
 
-export type TestRequirementResult = {
-    title: string;
-    expectations: {
-        ok: boolean;
-        message: string;
-    }[];
-};
-
-
-export const TEST_STATUS_NOT_RAN = 0;
-export const TEST_STATUS_RUNNING = 1;
-export const TEST_STATUS_RAN = 2;
-
-export type TestStatus = 
-    typeof TEST_STATUS_NOT_RAN |
-    typeof TEST_STATUS_RUNNING |
-    typeof TEST_STATUS_RAN;
-
-export function testSuite<T>(name: string, ctxFn: () => T, tests: Test<T>[]): TestSuite<T> {
-    const suite: TestSuite<T> = {
-        name,
-        ctxFn,
-        tests
-    };
-
-    for (const test of tests) {
-        assert(!test.suite);
-        test.suite = suite;
-    }
-
-    return suite;
-}
-
-export function newTest<T>(name: string, code: (test: Test<T>, ctx: T) => void): Test<T> {
+export function newTestResult(): TestResult {
     return {
-        name,
-        code,
-        status: TEST_STATUS_NOT_RAN,
-        error: null,
-        results: [],
+        expectationsPerFork: [],
         passed: false,
+        totalExpectations: 0,
     };
 }
 
-export function runTest<T>(test: Test<T>, debug = false) {
-    assert(!!test.suite);
+const tests: Test[] = [];
 
-    if (test.status === TEST_STATUS_RUNNING) {
-        // TODO: terminate this test, and rerun it. I don't know how to terminate a test that has a while (true) {} in it though.
-        console.warn("This test is already running");
-        return;
-    }
+export function test(name: string, test: TestFn) {
+    tests.push({
+        name, 
+        fn: test,
+    });
+}
 
-    let isPromise = false;
-    test.status = TEST_STATUS_RUNNING;
-    test.error = null;
-    test.results.length = 0;
-    test.passed = false;
+export function getAllTests() {
+    return tests;
+}
+
+export class TestingHarness {
+    forksStack: Fork[] = [];
+    currentFork = -1;
+    result = newTestResult();
+}
+
+export function runTestWrapped(t: TestingHarness, test: TestFn) {
+    t.result.expectationsPerFork.push([]);
 
     try {
-        const ctx = test.suite.ctxFn();
+        t.currentFork = -1;
 
-        if (debug) {
-            debugger;
-        }
-
-        // Step into this function call to debug your test
-        const res = test.code(test, ctx);
-
-        if (res instanceof Promise) {
-            isPromise = true;
-            res.catch(e => test.error = e)
-               .finally(() => test.status = TEST_STATUS_RAN);
-        }
-    } catch (e) {
-        if (!isPromise) {
-            test.error = e;
+        test(t);
+    } catch(e) {
+        if (e instanceof TestHarnessError) {
         } else {
-            throw e;
-        }
-    } finally {
-        if (!isPromise) {
-            test.status = TEST_STATUS_RAN;
-        }
-
-        if (test.results.length === 0) {
-            test.passed = false;
-        } else {
-            test.passed = true;
-            for (const req of test.results) {
-                for (const ex of req.expectations) {
-                    if (!ex.ok) {
-                        test.passed = false;
-                        break;
-                    }
-                }
+            try {
+                expect(t, "Expected test to not throw: " + e, false);
+            } catch {
             }
         }
     }
 }
 
-export function expectEqual<T>(
-    test: Test<any>,
-    requirement: string,
-    a: T,
-    b: T,
-    opts?: DeepEqualsOptions
-) {
+export function runTest(t: TestingHarness, test: TestFn): TestResult {
+    t.result = newTestResult();
+    t.forksStack.length = 0;
+    t.result.passed = true;
+
+    runTestWrapped(t, test);
+
+    // Keep rerunning the test till we've exhausted every fork.
+    // while forks:
+    //      if forks is like [... some permutation ... true]:
+    //          we should try [... some permutation ... false];
+    //          Assuming the test is deterministic, the exact same codepath should run in subsequent runs, 
+    //          but the final call to fork() will be false.
+    //          This may uncover more fork() calls. eventually, one of those calls will not generate any further calls to fork().
+    //          This will be false. But there may have been several other `false` items in the path beforehand. We can remove those,
+    //          and set the top of the stack to `false` and try again.
+
+    while (t.forksStack.length > 0) {
+        while (t.forksStack.length > 0) {
+            const lastFork = t.forksStack[t.forksStack.length - 1];
+            if (lastFork.value === false) {
+                t.forksStack.pop();
+            } else {
+                break;
+            }
+        }
+
+        if (t.forksStack.length > 0) {
+            const lastFork = t.forksStack[t.forksStack.length - 1];
+            assert(lastFork.value === true);
+            lastFork.value = false;
+
+            runTestWrapped(t, test);
+        }
+    }
+
+    return t.result;
+}
+
+/**
+ * This method is the main reason why I bothered rewriting this test framework. 
+ * It allows a single test function to specify a 'branching point' or a 'fork in the path' within a test, 
+ * effectively signalling to the test runner that the same test method should be reran, once with 
+ * the call to fork returning true, and again where it returns false.
+ *
+ * It allows a single test to fork into several different tests, which has several benefits:
+ * - More tests and scenarios can be tested with less code
+ * - More tests that reuse the same data or test edge-cases with various scenarios, that were 
+ *      previously painful to add, can now be easily tested.
+ * - The same testing data, as well as outecomes from previous tests, can be reused far more easily.
+ *      It becomes far easier to understand new testing pathways, since you can just build it
+ *      on top of the understanding of previous testsing pathways.
+ *
+ * For normal `expect fn(input) == output` style tests, it isn't as useful, but it 
+ * is VERY useful for testing anything that holds state and can do different things based
+ * on a sequence of method calls (this is quite a lot of things).
+ *
+ * This structure also doesn't require that the 'testing state' is serializeable - since the 
+ * method is being reran from the top-down for every fork, the testing state just gets recreated.
+ *
+ * ```ts
+ * registerTest(t => {
+ *      const { blah } = setupTheTest();
+ *      
+ *      if (t.fork("Initial state")) {
+ *          t.expect("calling foo should work", blah.foo());
+ *          t.expect("Calling bar should return 0", blah.bar() === 0);
+ *          return;
+ *      }
+ *
+ *      blah.lock();
+ *
+ *      if (t.fork("Locking twice")) {
+ *          blah.lock();
+ *          // We want to run ever single after this twice - once where we only locked once, and once where we locked twice
+ *      }
+ *
+ *      t.expect("calling foo not work if locked", !blah.foo());
+ *      t.expectThrows("Calling bar", () => blah.bar());
+ *
+ *      blah.unlock();
+ *
+ *      t.expect("calling foo to work if unlocked", blah.foo());
+ *      t.expectThrows("Calling bar works after unlocked", blah.bar() === 0);
+ *
+ * });
+ * ```
+ */
+export function fork(t: TestingHarness, scenario: string): boolean {
+    t.currentFork += 1;
+    assert(t.currentFork <= t.forksStack.length);
+
+    if (t.currentFork === t.forksStack.length) {
+        t.forksStack.push({ name: scenario, value: true });
+    }
+
+    return t.forksStack[t.currentFork].value;
+}
+
+// Also used for type narrowing
+export function expectNotNullish<T>(t: TestingHarness, val: T | null | undefined): asserts val is T {
+    expect(t, "Value should not be null or undefined", val != null);
+}
+
+export function expectEqual<T>(t: TestingHarness, a: T, b: T, opts?: DeepEqualsOptions) {
     // expectEqual(blah, value, === expected) is what we're thinking when we are writing this method.
     // but deepEqual's argument order were decided in terms of the output message, `expected a, but got b`.
     // That is the opposite. Let's just flip them here
     const result = deepEquals(b, a, opts);
-
-    if (result.mismatches.length === 0) {
-        addResult(test, requirement, `All deep-equality checks passed`, true);
+    if (result.mismatches.length > 0) {
+        expect(
+            t,
+            "Expected objects to be deep === equal:\n\n" +
+            result.mismatches.map(m => `${m.path} - expected ${JSON.stringify(m.expected)}, got ${JSON.stringify(m.got)}\n`).join(""),
+            false,
+        );
     } else {
-        if (result.numMatches > 0) {
-            addResult(test, requirement, `${result.numMatches} deep-equality checks passed, but...`, true);
-        }
-        for (const m of result.mismatches) {
-            const resultMessage = `${m.path} - Expected ${m.expected}, got ${m.got}`;
-            addResult(test, requirement, resultMessage, false);
-        }
+        expect(t, "Expected objects to be deep === equal (and they were)", true);
     }
 }
 
-export function powerSetTests<T>(firstTests: Test<T>[], secondTests: Test<T>[]): Test<T>[] {
-    const powerSet: Test<T>[] = [];
 
-    for (const tj of secondTests) {
-        for (const ti of firstTests) {
-            powerSet.push(newTest(`(${ti.name}) x (${tj.name})`, (test, ctx) => {
-                ti.code(test, ctx);
-                tj.code(test, ctx);
-            }));
-        }
+// NOTE: I would have preferred t.expect, but then I can't have `test(t =>` and must have `test((t: TestingHarness) => ` instead
+// due to some typescript thing.
+export function expect(
+    t: TestingHarness,
+    expectation: string,
+    result: boolean
+): asserts result {
+    const ex: TestExpectation = {
+        desc: expectation,
+    };
+    assert(t.result.expectationsPerFork.length > 0);
+    const expectations = t.result.expectationsPerFork[t.result.expectationsPerFork.length - 1];
+    expectations.push(ex);
+
+    t.result.totalExpectations += 1;
+
+    if (result === false) {
+        t.result.passed = false;
+        ex.failure = {
+            permutation: t.forksStack.map(f => ({ ...f })),
+        };
+        ex.desc = "Expectation not met - " + ex.desc;
+        throw new TestHarnessError(ex.desc);
     }
-
-    return powerSet;
 }
 
-export function forEachRange(n: number, len: number, fn: (pos: number, len: number) => void) {
-    assert(len <= n);
-    for (let l = 1; l <= len; l++) {
-        for (let i = 0; i < n - l + 1; i++) {
-            fn(i, l);
-        }
+export function tryFn(fn: () => void) {
+    let err: unknown | null;
+    try {
+        fn();
+    } catch (e) {
+        err = e;
+    }
+    return err;
+}
+
+
+class TestHarnessError extends Error {
+    constructor(message: string) {
+        super(message);
     }
 }
 
-type DeepEqualsResult = {
+
+export type DeepEqualsResult = {
     currentPath: string[];
     mismatches: DeepEqualsMismatch[];
     numMatches: number;
 };
 
-type DeepEqualsMismatch = {
+export type DeepEqualsMismatch = {
     path:     string;
     expected: unknown;
     got:      unknown;
 };
 
-type DeepEqualsOptions = {
+export type DeepEqualsOptions = {
     failFast?: boolean;
     floatingPointTolerance?: number;
 };
@@ -316,37 +384,4 @@ function deepCompareArraysAnyOrder<T>(a: T[], b: T[]) {
         if (!anyEqual) return false;
     }
     return true;
-}
-
-// Also used for type narrowing
-export function expectNotNull<T>(
-    test: Test<unknown>, 
-    val: T | null | undefined,
-    requirement: string,
-    name: string = "Result"
-): asserts val is T {
-    const valIsNotNull = val != null;
-    if (!valIsNotNull) {
-        addResult(test, requirement, name + " was unexpectedly " + val, false);
-    } else {
-        addResult(test, requirement, name + " was null" + val, true);
-    }
-}
-
-function addResult(
-    test: Test<unknown>,
-    requirement: string,
-    message: string,
-    ok: boolean
-) {
-    let result = test.results.find(r => r.title === requirement);
-    if (!result) {
-        result = { title: requirement, expectations: [] };
-        test.results.push(result);
-    }
-
-    result.expectations.push({
-        message,
-        ok
-    });
 }

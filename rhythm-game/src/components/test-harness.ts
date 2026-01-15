@@ -1,65 +1,13 @@
-import {
-    imButton,
-    imButtonIsClicked
-} from "src/components/button";
-import {
-    BLOCK,
-    COL,
-    imAlign,
-    imBg,
-    imFg,
-    imFixed,
-    imGap,
-    imLayout,
-    imLayoutEnd,
-    imPadding,
-    imPre,
-    imSize,
-    NA,
-    PERCENT,
-    PX,
-    ROW
-} from "src/components/core/layout";
-import {
-    imScrollContainerBegin,
-    imScrollContainerEnd,
-    newScrollContainer
-} from "src/components/scroll-container";
-import {
-    cssVars
-} from "src/components/core/stylesheets";
-import {
-    ImCache,
-    imFor,
-    imForEnd,
-    imIf,
-    imIfElse,
-    imIfEnd,
-    imMemo,
-    imState,
-    imTry,
-    imTryCatch,
-    imTryEnd,
-    isFirstishRender
-} from "src/utils/im-core";
-import {
-    EL_H3,
-    elHasMousePress,
-    elSetStyle,
-    imEl,
-    imElEnd,
-    imStr,
-    Stringifyable
-} from "src/utils/im-dom";
-import {
-    runTest,
-    Test,
-    TEST_STATUS_NOT_RAN,
-    TEST_STATUS_RAN,
-    TEST_STATUS_RUNNING,
-    TestSuite,
-} from "src/utils/testing";
-import { imGameplay } from "src/views/gameplay";
+import { imButton, imButtonIsClicked } from "src/components/button";
+import { BLOCK, COL, imAlign, imBg, imFixed, imGap, imLayout, imLayoutBegin, imLayoutEnd, imNoWrap, imPadding, imPre, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
+import { cssVars } from "src/components/core/stylesheets";
+import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
+import { resizeObjectPool } from "src/utils/array-utils";
+import { assert } from "src/utils/assert";
+import { imBlockBegin, imBlockEnd, ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, imTry, imTryCatch, imTryEnd, isFirstishRender } from "src/utils/im-core";
+import { EL_H3, EL_H4, elHasMousePress, elSetStyle, imEl, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
+import { getAllTests, runTest, Test, TestingHarness, TestResult } from "src/utils/testing";
+import { imLine, LINE_HORIZONTAL } from "./im-line";
 
 function imCode(c: ImCache) {
     if (isFirstishRender(c)) {
@@ -68,193 +16,195 @@ function imCode(c: ImCache) {
     }
 }
 
-function newTestHarnessState(): {
-    suites: TestSuite<unknown>[];
-    tests: Test<unknown>[];
-    runAllStaggered: {
-        running: boolean;
-        idx: number;
-    }
-} {
+type TestUi = {
+    result: TestResult | null;
+    viewingExpectations: boolean;
+};
+
+function newTestUiState(): TestUi {
     return {
-        suites: [],
-        tests: [],
-        runAllStaggered: {
-            running: false,
-            idx: 0,
-        }
+        result: null,
+        viewingExpectations: false,
     };
 }
 
-export function imTestHarness(
-    c: ImCache,
-    testSuites: TestSuite<any>[],
-) {
+type TestHarnessUiState = {
+    testUi: TestUi[];
+    runAllStaggered: {
+        running: boolean;
+        idx: number;
+    },
+    harness: TestingHarness,
+};
+
+function newTestHarnessState(): TestHarnessUiState {
+    return {
+        testUi: [],
+        runAllStaggered: {
+            running: false,
+            idx: 0,
+        },
+        harness: new TestingHarness(),
+    };
+}
+
+function runTestHarnessTest(s: TestHarnessUiState, test: Test, testUi: TestUi) {
+    testUi.result = runTest(s.harness, test.fn);
+    testUi.viewingExpectations = false;
+}
+
+
+export function imTestHarness(c: ImCache) {
     const s = imState(c, newTestHarnessState);
 
-    const tryState = imTry(c); try {
-        if  (imMemo(c, testSuites)) {
-            s.suites = testSuites;
-            s.tests = s.suites.flatMap(s => s.tests);
-            for (const suite of s.suites) {
-                for (const test of suite.tests) {
-                    if (test.status === TEST_STATUS_NOT_RAN) {
-                        runTest(test);
-                    }
-                }
-            }
-        }
+    const tests = getAllTests();
+    if (imMemo(c, tests.length)) {
+        resizeObjectPool(s.testUi, newTestUiState, tests.length);
+        runAll(s, tests);
+    }
 
+    const tryState = imTry(c); try {
         if (imIf(c) && !tryState.err) {
             if (s.runAllStaggered.running) {
-                if (s.runAllStaggered.idx >= s.tests.length) {
+                if (s.runAllStaggered.idx >= tests.length) {
                     s.runAllStaggered.running = false;
                 } else {
                     // Running tests one by one makes it easier to spot which test is causing an infinite loop.
-                    const test = s.tests[s.runAllStaggered.idx];
+                    const test = tests[s.runAllStaggered.idx];
+                    const testUi = s.testUi[s.runAllStaggered.idx];
                     s.runAllStaggered.idx++;
-                    runTest(test);
+                    runTestHarnessTest(s, test, testUi);
                 }
             }
 
-            imLayout(c, BLOCK); imBg(c, cssVars.bg); 
-            imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-                imLayout(c, ROW); imGap(c, 5, PX); {
-                    imEl(c, EL_H3); imStr(c, "Tests"); imElEnd(c, EL_H3);
+            const sc = imState(c, newScrollContainer);
+            imScrollContainerBegin(c, sc); {
+                imLayout(c, BLOCK); imBg(c, cssVars.bg); {
+                    imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
+                        imLayout(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
 
-                    if (imButtonIsClicked(c, "Run failed")) {
-                        for (const test of s.tests) {
-                            if (test.error !== null) runTest(test);
+                        imEl(c, EL_H3); imStr(c, "Tests"); imElEnd(c, EL_H3);
+
+                        if (imButtonIsClicked(c, "Run failed")) {
+                            assert(false) // TODO: IMPLEMENT
                         }
-                    }
 
-                    if (imButtonIsClicked(c, "Run all staggered")) {
-                        s.runAllStaggered.running = true;
-                        s.runAllStaggered.idx = 0;
-                    }
-
-                    if (imButtonIsClicked(c, "Run all")) {
-                        for (const test of s.tests) {
-                            runTest(test);
+                        // Identical to 'Run all', but completes slower, and is more error prone. It does look cooler tho
+                        if (imButtonIsClicked(c, "Run all staggered")) {
+                            s.runAllStaggered.running = true;
+                            s.runAllStaggered.idx = 0;
                         }
-                    }
-                } imLayoutEnd(c);
 
+                        if (imButtonIsClicked(c, "Run all")) {
+                            runAll(s, tests);
+                        }
+                    } imLayoutEnd(c);
 
-                const sc = imState(c, newScrollContainer);
-                imScrollContainerBegin(c, sc); {
-                    imFor(c); for (const suite of s.suites) {
-                        const tests = suite.tests;
+                    imFor(c); for (let testIdx = 0; testIdx < tests.length; testIdx++) {
+                        const test = tests[testIdx]; assert(!!test);
+                        const testUi = s.testUi[testIdx]; assert(!!testUi);
 
-                        imEl(c, EL_H3); imStr(c, suite.name); imElEnd(c, EL_H3); 
+                        imLayout(c, COL); imGap(c, 10, PX); {
+                            imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
+                                imLayout(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
 
-                        imLayout(c, COL); imGap(c, 10, PX);  {
-                            imFor(c); for (let i = 0; i < tests.length; i++) {
-                                const test = tests[i];
+                                imEl(c, EL_H4); imStr(c, test.name); imElEnd(c, EL_H4);
 
-                                imLayout(c, COL);  {
-                                    imLayout(c, ROW);  imGap(c, 5, PX); imAlign(c); {
-                                        imLayout(c, BLOCK); imSize(c, 0, NA, 100, PERCENT); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imCode(c); {
-                                            let bg = "";
-                                            let text: Stringifyable = "";
-                                            let textCol = "";
+                                imLayout(c, BLOCK); imSize(c, 0, NA, 100, PERCENT); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imCode(c); {
+                                    let bg = "";
+                                    let text: Stringifyable = "";
+                                    let textCol = "";
 
-                                            if (s.runAllStaggered.running && i > s.runAllStaggered.idx) {
-                                                text = "Queued";
-                                            } else if (s.runAllStaggered.running && s.runAllStaggered.idx === i) {
-                                                text = "Runnin";
-                                            } else if (test.status !== TEST_STATUS_RAN) {
-                                                text = test.status === TEST_STATUS_NOT_RAN ? "Not ran" :
-                                                    test.status === TEST_STATUS_RUNNING ? "Running" :
-                                                        "";
-                                            } else {
-                                                let passed = test.passed;
-                                                if (test.error !== null) {
-                                                    passed = false;
-                                                    text = test.error;
-                                                }
+                                    if (s.runAllStaggered.running && testIdx > s.runAllStaggered.idx) {
+                                        text = "Queued";
+                                    } else if (s.runAllStaggered.running && s.runAllStaggered.idx === testIdx) {
+                                        text = "Running";
+                                    } else if (testUi.result === null) {
+                                        text = "Not ran";
+                                    } else {
+                                        let passed = testUi.result.passed;
 
-                                                if (passed) {
-                                                    text = "PASSED";
-                                                    bg = "#00FF00";
-                                                    textCol = "#000000";
-                                                } else {
-                                                    text = "FAILED";
-                                                    bg = "#FF0000";
-                                                    textCol = "#FFFFFF";
-                                                }
-                                            }
-
-                                            if (imMemo(c, bg)) {
-                                                elSetStyle(c, "backgroundColor", bg);
-                                            }
-
-                                            if (imMemo(c,textCol)) {
-                                                elSetStyle(c, "color", textCol);
-                                            }
-
-                                            imStr(c, text);
-                                        } imLayoutEnd(c);
-
-                                        if (imButtonIsClicked(c, "Debug")) {
-                                            runTest(test, true);
+                                        if (passed) {
+                                            text = "PASSED";
+                                            bg = "#00FF00";
+                                            textCol = "#000000";
+                                        } else {
+                                            text = "FAILED";
+                                            bg = "#FF0000";
+                                            textCol = "#FFFFFF";
                                         }
+                                    }
 
-                                        if (imButtonIsClicked(c, "Rerun")) {
-                                            runTest(test);
-                                        }
+                                    if (imMemo(c, bg)) {
+                                        elSetStyle(c, "backgroundColor", bg);
+                                    }
 
-                                        imStr(c, test.name);
+                                    if (imMemo(c, textCol)) {
+                                        elSetStyle(c, "color", textCol);
+                                    }
 
-                                        if (imIf(c) && test.error) {
-                                            imLayout(c, BLOCK); imPre(c); imFg(c, "#F00"); {
-                                                imStr(c, test.error);
-                                            } imLayoutEnd(c);
+                                    imStr(c, text);
+                                } imLayoutEnd(c);
+
+                                if (imIf(c) && testUi.result) {
+                                    const text = `forks=${testUi.result.expectationsPerFork.length}, expectations=${testUi.result.totalExpectations}`;
+                                    if (imButtonIsClicked(c, text, testUi.viewingExpectations)) {
+                                        testUi.viewingExpectations = !testUi.viewingExpectations;
+                                    }
+                                } imIfEnd(c);
+
+                                if (imButtonIsClicked(c, "Rerun")) {
+                                    runTestHarnessTest(s, test, testUi);
+                                }
+                            } imLayoutEnd(c);
+                            imLayout(c, COL); imPadding(c, 0, NA, 0, NA, 0, NA, 10, PX); imGap(c, 5, PX); {
+                                if (imIf(c) && testUi.result && testUi.result.expectationsPerFork.length > 0) {
+                                    imFor(c); for (const expectations of testUi.result.expectationsPerFork) {
+                                        const anyFailed = expectations.some(ex => ex.failure);
+                                        if (imIf(c) && anyFailed || testUi.viewingExpectations) {
+                                            imLine(c, LINE_HORIZONTAL);
                                         } imIfEnd(c);
-                                    } imLayoutEnd(c);
-                                    imLayout(c, COL); imPadding(c, 0, NA, 0, NA, 0, NA, 10, PX); imGap(c, 5, PX); {
-                                        if (imIf(c) && test.results.length > 0) {
-                                            imFor(c); for (const req of test.results) {
+
+                                        imFor(c); for (const ex of expectations) {
+                                            if (imIf(c) && (ex.failure || testUi.viewingExpectations)) {
                                                 imLayout(c, ROW); {
-                                                    imLayout(c, BLOCK); {
-                                                        imStr(c, req.title);
+                                                    imLayout(c, BLOCK); imPre(c); {
+                                                        imStr(c, ex.desc);
                                                     } imLayoutEnd(c);
 
                                                     imLayout(c, BLOCK); imSize(c, 20, PX, 0, NA); imLayoutEnd(c);
 
-                                                    imLayout(c, BLOCK); {
-                                                        imFor(c); for (const ex of req.expectations) {
-                                                            imLayout(c, ROW); {
-                                                                imLayout(c, BLOCK); imCode(c); imPre(c); {
-                                                                    imBg(c, ex.ok ? "#0F0" : "#F00");
-                                                                    imFg(c, ex.ok ? "#000" : "#FFF");
-                                                                    imStr(c, ex.ok ? "pass" : "fail");
-                                                                } imLayoutEnd(c);
+                                                    imLayout(c, BLOCK); imGap(c, 10, PX); {
+                                                        let first = true;
+                                                        imFor(c); ex.failure?.permutation.forEach(f => {
+                                                            imLayoutBegin(c, BLOCK); imNoWrap(c); {
+                                                                if (imIf(c) && !first) {
+                                                                    imStr(c, " -> ");
+                                                                } imIfEnd(c);
+                                                                first = false;
 
-                                                                imLayout(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
-
-                                                                imLayout(c, BLOCK); imPre(c); {
-                                                                    imStr(c, ex.message);
-                                                                } imLayoutEnd(c);
+                                                                imStr(c, f.name);
+                                                                imStr(c, ": ");
+                                                                imStr(c, f.value ? "true" : "false");
                                                             } imLayoutEnd(c);
-                                                        } imForEnd(c);
+                                                        }); imForEnd(c);
                                                     } imLayoutEnd(c);
                                                 } imLayoutEnd(c);
-                                            } imForEnd(c);
-                                        } else {
-                                            imIfElse(c);
-
-                                            imLayout(c, BLOCK); imCode(c); imPre(c); {
-                                                imStr(c, "Test had no requirements");
-                                            } imLayoutEnd(c);
-                                        } imIfEnd(c);
+                                            } imIfEnd(c);
+                                        } imForEnd(c);
+                                    } imForEnd(c);
+                                } else if (imIfElse(c) && testUi.result && testUi.result.expectationsPerFork.length === 0) {
+                                    imLayout(c, BLOCK); imCode(c); imPre(c); {
+                                        imStr(c, "Test had no expectations");
                                     } imLayoutEnd(c);
-                                } imLayoutEnd(c);
-                            } imForEnd(c);
+                                } else if (imIfElse(c) && !testUi.result) {
+                                    imStr(c, "Test not ran");
+                                } imIfEnd(c);
+                            } imLayoutEnd(c);
                         } imLayoutEnd(c);
                     } imForEnd(c);
-                } imScrollContainerEnd(c);
-            } imLayoutEnd(c);
+                } imLayoutEnd(c);
+            } imScrollContainerEnd(c);
         } else {
             imIfElse(c);
 
@@ -262,16 +212,22 @@ export function imTestHarness(
                 imStr(c, tryState.err);
             } imLayoutEnd(c);
 
-            imLayout(c, BLOCK); imButton(c); {
-                imStr(c, "Ok");
-
+            if (imButtonIsClicked(c, "OK")) {
                 if (elHasMousePress(c)) {
                     tryState.recover();
                 }
-            } imLayoutEnd(c);
+            }
         } imIfEnd(c);
     } catch (e) {
         imTryCatch(c, tryState, e);
         console.error("An error occured while rendering: ", e);
     } imTryEnd(c, tryState);
+}
+
+function runAll(s: TestHarnessUiState, tests: Test[]) {
+    for (let testIdx = 0; testIdx < tests.length; testIdx++) {
+        const test = tests[testIdx]; assert(!!test);
+        const testUi = s.testUi[testIdx]; assert(!!testUi);
+        runTestHarnessTest(s, test, testUi);
+    }
 }

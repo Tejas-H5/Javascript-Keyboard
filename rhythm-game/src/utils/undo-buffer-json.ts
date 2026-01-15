@@ -4,6 +4,11 @@
 // computing diffs between the JSONs themselves).
 // There are no plans on optimizing it.
 
+// NOTE: you are expected to write the initial version of the file as soon as you load it,
+// so that the size of the buffer is never 0, and you can actually undo back to the
+// first version of your file.
+
+import { assert } from "./assert";
 import { bytesToMegabytes, utf16ByteLength } from "./utf8";
 
 type UndoBufferEntry = {
@@ -18,9 +23,10 @@ type UndoBufferEntry = {
 
 
 export type JSONUndoBuffer<_T> = {
-    // NOTE: Unbounded buffer size! Who cares.
     fileVersionsJSON: UndoBufferEntry[];
     fileVersionsJSONSizeMb: number;
+    maxVersions: number;
+
     position: number;
 
     // NOTE: still some race conditions in here, but it's all good. xD
@@ -28,10 +34,14 @@ export type JSONUndoBuffer<_T> = {
 };
 
 
-export function newUndoBuffer<T>(): JSONUndoBuffer<T> {
+export function newJSONUndoBuffer<T>(maxVersions: number): JSONUndoBuffer<T> {
+    // 1 slot to store the initial version, 1 more to store the current version
+    assert(maxVersions > 1);
+
     return {
         fileVersionsJSON: [],
         fileVersionsJSONSizeMb: 0,
+        maxVersions: maxVersions,
         position: 0,
         timer: -1,
     };
@@ -44,15 +54,12 @@ export function stepUndoBufferTimer<T>(undoBuffer: JSONUndoBuffer<T>, dt: number
         if (undoBuffer.timer <= 0) {
             writeToUndoBuffer(undoBuffer, file);
         }
-    } else if (undoBuffer.fileVersionsJSON.length === 0) {
-        // We need to write the very first version ourselves, and then let the debounce handle successive writes.
-        writeToUndoBuffer(undoBuffer, file);
     }
 }
 
 export function writeToUndoBufferDebounced<T>(
     undoBuffer: JSONUndoBuffer<T>,
-    // Might need later if we want to use setTimeout instead.
+    // Might need later if we want to use setTimeout instead of the current polling approach
     _file: T,
     debounceSeconds: number
 ) {
@@ -84,14 +91,19 @@ export function writeToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T, act
         }
     }
 
-    undoBuffer.position++;
-    if (undoBuffer.position > undoBuffer.fileVersionsJSON.length) {
-        undoBuffer.position = undoBuffer.fileVersionsJSON.length;
+    if (undoBuffer.position < undoBuffer.maxVersions - 1) {
+        undoBuffer.position++;
+        if (undoBuffer.position > undoBuffer.fileVersionsJSON.length) {
+            undoBuffer.position = undoBuffer.fileVersionsJSON.length;
+        }
+
+        if (undoBuffer.position + 1 !== undoBuffer.fileVersionsJSON.length) {
+            undoBuffer.fileVersionsJSON.length = undoBuffer.position + 1;
+        }
+    } else {
+        undoBuffer.fileVersionsJSON.shift();
     }
 
-    if (undoBuffer.position + 1 !== undoBuffer.fileVersionsJSON.length) {
-        undoBuffer.fileVersionsJSON.length = undoBuffer.position + 1;
-    }
     undoBuffer.fileVersionsJSON[undoBuffer.position] = entry;
 
     // track size for the lolz
@@ -123,7 +135,12 @@ export function undo<T>(undoBuffer: JSONUndoBuffer<T>, file: T): T {
 }
 
 export function getCurrentFile<T>(undoBuffer: JSONUndoBuffer<T>): T {
+    assert(!undoBufferIsEmpty(undoBuffer));
     return JSON.parse(undoBuffer.fileVersionsJSON[undoBuffer.position].json);
+}
+
+export function undoBufferIsEmpty(undoBuffer: JSONUndoBuffer<unknown>): boolean {
+    return undoBuffer.fileVersionsJSON.length === 0;
 }
 
 export function canRedo<T>(undoBuffer: JSONUndoBuffer<T>) {

@@ -38,6 +38,8 @@ export type DebugFlags = {
 
     testAsync: Flag;
     testAsyncALittle: Flag;
+
+    testUnitTests: Flag;
 };
 
 export const debugFlags: DebugFlags = {
@@ -65,6 +67,8 @@ export const debugFlags: DebugFlags = {
 
     testAsync: OFF,
     testAsyncALittle: OFF,
+
+    testUnitTests: ON,
 };
 
 // You're welcome

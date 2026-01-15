@@ -238,6 +238,9 @@ export const CENTER = 1;
 export const START = 2;
 export const END = 3;
 export const STRETCH = 4;
+export const SPACE_BETWEEN = 5;
+export const SPACE_AROUND = 6;
+export const SPACE_EVENLY = 7;
 
 function getAlignment(alignment: number) {
     switch(alignment) {
@@ -246,6 +249,9 @@ function getAlignment(alignment: number) {
         case START:   return "start";
         case END:     return "end";
         case STRETCH: return "stretch";
+        case SPACE_BETWEEN: return "space-between";
+        case SPACE_AROUND:  return "space-around";
+        case SPACE_EVENLY:  return "space-evenly";
     }
     return "";
 }
