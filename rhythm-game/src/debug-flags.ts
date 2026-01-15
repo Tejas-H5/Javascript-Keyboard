@@ -68,7 +68,7 @@ export const debugFlags: DebugFlags = {
     testAsync: OFF,
     testAsyncALittle: OFF,
 
-    testUnitTests: ON,
+    testUnitTests: OFF,
 };
 
 // You're welcome
