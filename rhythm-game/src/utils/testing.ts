@@ -174,7 +174,7 @@ export function expectNotNullish<T>(t: TestingHarness, val: T | null | undefined
     expect(t, "Value should not be null or undefined", val != null);
 }
 
-export function expectEqual<T>(t: TestingHarness, a: T, b: T, opts?: DeepEqualsOptions) {
+export function expectEqual<T>(t: TestingHarness, expectation: string, a: T, b: T, opts?: DeepEqualsOptions) {
     // expectEqual(blah, value, === expected) is what we're thinking when we are writing this method.
     // but deepEqual's argument order were decided in terms of the output message, `expected a, but got b`.
     // That is the opposite. Let's just flip them here
@@ -182,12 +182,12 @@ export function expectEqual<T>(t: TestingHarness, a: T, b: T, opts?: DeepEqualsO
     if (result.mismatches.length > 0) {
         expect(
             t,
-            "Expected objects to be deep === equal:\n\n" +
+            expectation + " - objects to be deep equal:\n\n" +
             result.mismatches.map(m => `${m.path} - expected ${JSON.stringify(m.expected)}, got ${JSON.stringify(m.got)}\n`).join(""),
             false,
         );
     } else {
-        expect(t, "Expected objects to be deep === equal (and they were)", true);
+        expect(t, expectation + " - objects to be deep === equal (and they were)", true);
     }
 }
 

@@ -31,7 +31,7 @@ test("TestingHarness - forking", t => {
         return { desc: str };
     }
 
-    expectEqual(t, result.expectationsPerFork, [
+    expectEqual(t, "Should rerun the test along these paths", result.expectationsPerFork, [
         [ex("a"), ex("b"), ex("c")],
         [ex("a"), ex("b")],
         [ex("a"), ex("d"), ex("e")],
@@ -61,7 +61,7 @@ test("TestingHarness - more forking", t => {
     }
 
     // This passes, but is this necessarily what we would want? hmm.
-    expectEqual(t, result.expectationsPerFork, [
+    expectEqual(t, "Should rerun the test along these paths", result.expectationsPerFork, [
         [ex("a"), ex("b"), ex("c")],
         [ex("a"), ex("b")],
         [ex("a"), ex("c")],

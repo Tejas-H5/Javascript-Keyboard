@@ -11,12 +11,33 @@
 
 import { assert } from "./assert";
 
-export function asNull(val: unknown): null | undefined {
+export function asNonNullish<T>(x: T | null | undefined): T {
+    assert(x != null);
+    return x;
+}
+
+export function asNonNull<T>(x: T | null): T {
+    assert(x !== null);
+    return x;
+}
+
+export function asDefined<T>(x: T | undefined): T {
+    assert(x !== undefined);
+    return x;
+}
+
+export function asNullOrUndefined(val: unknown): null | undefined {
     return val === null ? null : undefined;
 }
 
-export function asString(val: unknown): string | undefined {
+export function asStringOrUndefined(val: unknown): string | undefined {
     return typeof val === "string" ? val : undefined;
+}
+
+export function asString(val: unknown): string {
+    const str = asStringOrUndefined(val);
+    assert(str !== undefined);
+    return str;
 }
 
 export function asNumberOrUndefined(val: unknown): number | undefined {
@@ -39,11 +60,11 @@ export function asBoolean(u: unknown): boolean {
     return val;
 }
 
-export function asTrue(val: unknown): true | undefined {
+export function asTrueOrUndefined(val: unknown): true | undefined {
     return val === true ? true : undefined;
 }
 
-export function asFalse(val: unknown): false | undefined {
+export function asFalseOrUndefined(val: unknown): false | undefined {
     return val === false ? false : undefined;
 }
 
@@ -88,7 +109,7 @@ export function asDate(val: unknown): Date | undefined {
     return undefined;
 }
 
-export function asStringMap<T>(val: unknown, mapFn: (u: unknown) => T | undefined): Map<string, T> | undefined {
+export function asStringMapOrUndefined<T>(val: unknown, mapFn: (u: unknown) => T | undefined): Map<string, T> | undefined {
     return new Map(asStringOrNumberEntriesList(val, true, mapFn));
 }
 
@@ -123,7 +144,7 @@ function asStringOrNumberEntriesList<T>(val: unknown, stringKeys: boolean, mapFn
             const val = mapFn(entry[1]);
             if (val === undefined) continue;
 
-            const k = asString(entry[0]);
+            const k = asStringOrUndefined(entry[0]);
             if (k === undefined) return undefined;
             entries.push([k, val]);
         }
@@ -156,7 +177,7 @@ export function asStringSet(val: unknown): Set<string> | undefined {
     if (!arr) return undefined;
     
     for (let i = 0; i < arr.length; i++) {
-        const val = asString(arr[i]);
+        const val = asStringOrUndefined(arr[i]);
         if (val === undefined) return undefined;
     }
 
@@ -241,7 +262,7 @@ export function deserializeObjectKey<T extends JSONRecord, K extends string & ke
         } else if (typeof defaultValue === "number") {
             result = asNumberOrUndefined(recordValue);
         } else if (typeof defaultValue === "string") {
-            result = asString(recordValue);
+            result = asStringOrUndefined(recordValue);
         }
     }
 
@@ -322,7 +343,7 @@ function getJSONSerializable(val: unknown): unknown {
 
         for (const [k, v] of val) {
             if (v === undefined) continue;
-            if (asString(k) === undefined && asNumberOrUndefined(k) === undefined) {
+            if (asStringOrUndefined(k) === undefined && asNumberOrUndefined(k) === undefined) {
                 throw new Error("Only maps with string or number keys can be serialized");
             }
 
@@ -374,7 +395,8 @@ export function asEnum<const T extends unknown>(u: unknown, values: T[]): T {
     return u as T;
 }
 
-// An unmarshaller that leaves the default value "as-is".
+// An unmarshaller that discards the incoming value in favour of the default value,
+// leaving it  "as-is". You would only use it if you manually set that value already.
 export function asIs<T>(u: unknown, defaultT: T): T {
     return defaultT;
 }
@@ -384,12 +406,12 @@ export function asIs<T>(u: unknown, defaultT: T): T {
 // - when unmarshalling new arrays/maps/sets/collections, return new values with stuff copied accros
 // - when unmarshalling objects, unmarshal in place. may as well return the value, to help the methods that unmarshal collections
 
-export function unmarshalArray<T>(u: unknown, unmarshalT: (dst: T, val: unknown) => T, newT: () => T): T[] {
+export function unmarshalArray<T>(u: unknown, unmarshalT: (val: unknown, dst: T) => T, newT: () => T): T[] {
     const val = asArrayOrUndefined(u);
     assert(val !== undefined);
     return val.map(u => {
         const defaultT = newT();
-        return unmarshalT(defaultT, u);
+        return unmarshalT(u, defaultT);
     });
 }
 
@@ -400,7 +422,7 @@ type Unmarshaller<T> = (val: unknown, defaultVal: T) => T;
 // Don't like that it breaks GoTo reference, but it turns our runtimea assertion into a compiler error, which is worth it imo.
 type FilterNotStartingWith<Set, Needle extends string> = Set extends `${Needle}${infer _X}` ? never : Set;
 
-export function unmarshalObject<T extends JSONRecord>(
+export function unmarshalObject<T extends object>(
     u: unknown,
     defaultT: T,
     unmarshallers: { [P in FilterNotStartingWith<keyof T, "_">]: Unmarshaller<T[P]>; },
@@ -426,7 +448,9 @@ export function unmarshalObject<T extends JSONRecord>(
 
     // There may be extra fields that aren't in defaultT by default. We'd like to deserialize them too.
     for (const key in unmarshallers) {
+        // @ts-expect-error this is fine
         const um = unmarshallers[key];
+
         assert(!!um);
         // @ts-expect-error this is also fine
         defaultT[key] = um(
@@ -446,13 +470,5 @@ export function getArray(obj: JSONRecord, key: string): unknown[] {
     }
     return arr;
 }
-
-
-
-
-
-
-
-
 
 

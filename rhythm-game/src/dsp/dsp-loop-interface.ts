@@ -1,6 +1,7 @@
 import { debugFlags } from "src/debug-flags";
-import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings, getDspLoopClassUrl } from "./dsp-loop";
+import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings  } from "./dsp-loop";
 import { compileEffectRack, newEffectRackBiquadFilter, newEffectRackDelay, newEffectRackEnvelope, newEffectRackItem, newEffectRackMaths, newEffectRackMathsItemCoefficient, newEffectRackMathsItemTerm, newEffectRackNoise, newEffectRackOscillator, newEffectRackSwitch } from "./dsp-loop-effect-rack";
+import { getDspLoopClassUrl } from "./dsp-loop-class-url";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
@@ -20,11 +21,15 @@ const playSettings = newDspPlaySettings();
 
     // Good default
     const osc = newEffectRackOscillator();
-    rack.effects.push(newEffectRackItem(osc));
+    const oscItem = newEffectRackItem(osc);
+    rack.effects.push(oscItem);
 
     const env = newEffectRackEnvelope();
-    rack.effects.push(newEffectRackItem(env));
+    const envItem = newEffectRackItem(env);
+    rack.effects.push(envItem);
 
+    compileEffectRack(rack); // To get ids
+    env.toModulateUI.valueRef = { effectId: oscItem.id };
 
     // Rest are for testing purposes
     if (
@@ -33,7 +38,6 @@ const playSettings = newDspPlaySettings();
     ) {
         const maths = newEffectRackMaths();
         rack.effects.push(newEffectRackItem(maths));
-
         rack.effects.push(newEffectRackItem(newEffectRackBiquadFilter()));
 
         // {

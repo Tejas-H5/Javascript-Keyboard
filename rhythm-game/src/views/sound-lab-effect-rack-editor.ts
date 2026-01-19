@@ -49,6 +49,10 @@ import {
     asRegisterIdx,
     compileEffectRack,
     computeEffectRackIteration,
+    CONVOLUTION_SINC_WINDOW__BLACKMAN,
+    CONVOLUTION_SINC_WINDOW__HAMMING,
+    CONVOLUTION_SINC_WINDOW__RECTANGLE,
+    ConvolutionSincWindowType,
     copyEffectRackItem,
     defaultBindings,
     deserializeEffectRack,
@@ -58,15 +62,18 @@ import {
     EFFECT_RACK_ITEM__MATHS,
     EFFECT_RACK_ITEM__NOISE,
     EFFECT_RACK_ITEM__OSCILLATOR,
+    EFFECT_RACK_ITEM__SINC_FILTER,
     EFFECT_RACK_ITEM__SWITCH,
     EffectId,
     EffectRack,
     EffectRackItem,
     EffectRackOscillatorWaveType,
     EffectRackRegisters,
+    getConvolutionSincWindowTypeName,
     getEffectRackOscillatorWaveTypeName,
     newEffectRack,
     newEffectRackBiquadFilter,
+    newEffectRackConvolutionFilter,
     newEffectRackDelay,
     newEffectRackEnvelope,
     newEffectRackItem,
@@ -190,6 +197,12 @@ const allWaveTypes: EffectRackOscillatorWaveType[] = [
     OSC_WAVE__SAWTOOTH,
     OSC_WAVE__SAWTOOTH2,
     OSC_WAVE__TRIANGLE,
+];
+
+const allWindowTypes: ConvolutionSincWindowType[] = [
+    CONVOLUTION_SINC_WINDOW__RECTANGLE,
+    CONVOLUTION_SINC_WINDOW__HAMMING,
+    CONVOLUTION_SINC_WINDOW__BLACKMAN,
 ];
 
 const MODAL_NONE = 0;
@@ -907,7 +920,8 @@ function imEffectRackEditorEffect(
                     case EFFECT_RACK_ITEM__SWITCH: name = "SWITCH"; break;
                     case EFFECT_RACK_ITEM__NOISE: name = "NOISE"; break;
                     case EFFECT_RACK_ITEM__DELAY: name = "DELAY"; break;
-                    case EFFECT_RACK_ITEM__BIQUAD_FILTER: name = "FILTER"; break;
+                    case EFFECT_RACK_ITEM__BIQUAD_FILTER: name = "FIL2ER"; break;
+                    case EFFECT_RACK_ITEM__SINC_FILTER: name = "SINC"; break;
                     default: unreachable(effect.value);
                 }
 
@@ -951,23 +965,10 @@ function imEffectRackEditorEffect(
 
                                 imSpacingSymbol(c, " * ", true);
 
-                                const contextMenu = imContextMenu(c);
-                                if (imIf(c) && contextMenu.open) {
-                                    imContextMenuBegin(c, contextMenu); {
-                                        imFor(c); for (const type of allWaveTypes) {
-                                            imEditorContextMenuItemBegin(c); {
-                                                if (elHasMousePress(c)) {
-                                                    osc.waveType = type;
-                                                    onEdited(editor);
-                                                }
-                                                imStrFmt(c, type, getEffectRackOscillatorWaveTypeName);
-                                            } imEditorContextMenuItemEnd(c);
-                                        } imForEnd(c);
-                                    } imContextMenuEnd(c, contextMenu);
-                                } imIfEnd(c);
-
-                                if (imButtonIsClicked(c, getEffectRackOscillatorWaveTypeName(osc.waveType))) {
-                                    openContextMenuAtMouse(contextMenu);
+                                const ev = imSelectChoice(c, osc.waveType, allWaveTypes, getEffectRackOscillatorWaveTypeName);
+                                if (ev) {
+                                    osc.waveType = ev.choice;
+                                    onEdited(editor);
                                 }
 
                                 imSpacingSymbol(c, "");
@@ -1139,7 +1140,7 @@ function imEffectRackEditorEffect(
                                     analyzing: false,
                                     compact: false,
                                 });
-                                if (imMemo(c, filterUi)) filterUi.compact = true;
+                                if (imMemo(c, effect)) filterUi.compact = true;
 
                                 imLayoutBegin(c, COL); imFlex(c); {
                                     imLayoutBegin(c, ROW); {
@@ -1263,89 +1264,65 @@ function imEffectRackEditorEffect(
                                             filter.b1Ui.valueRef.value !== undefined &&
                                             filter.b2Ui.valueRef.value !== undefined;
 
-                                        if (imIf(c) && !hasAllManualInputs) {
-                                            imLayoutBegin(c, ROW); imJustify(c); {
-                                                imStr(c, "Analysis will only work as expected when all value inputs are manual");
-                                            } imLayoutEnd(c);
-                                        } imIfEnd(c);
+                                        imFilterAnalyzer(c, editor, hasAllManualInputs, effect);
+                                    } imIfEnd(c);
+                                } imLayoutEnd(c);
+                            } break;
+                            case EFFECT_RACK_ITEM__SINC_FILTER: {
+                                const conv = effectValue;
 
-                                        const effectChanged = imMemo(c, effect);
-                                        let s; s = imGet(c, imEffectRackEditor);
-                                        if (!s || effectChanged) {
-                                            const numSamples = MAX_NUM_FREQUENCIES;
+                                const filterUi = imGet(c, imEffectRackEditor) ?? imSet(c, {
+                                    analyzing: false,
+                                });
 
-                                            s = imSet(c, {
-                                                osc: newOscilloscopeState(),
-                                                impulseResponse: Array(numSamples),
+                                imLayoutBegin(c, COL); imFlex(c); {
+                                    imLayoutBegin(c, ROW); imAlign(c); {
+                                        imLayoutBegin(c, COL); imJustify(c); imGap(c, 20, PX); {
+                                            imValueOrBindingEditor(c, editor, effectPos, conv.signalUi);
 
-                                                impulseResponseFft: {
-                                                    osc: newOscilloscopeState(),
-                                                    r: Array(numSamples),
-                                                    im: Array(numSamples),
-                                                    frequencies: Array(numSamples / 2),
-                                                    frequenciesMin: 0,
-                                                    frequenciesMax: 0,
-                                                }
-                                            });
-                                        }
-
-                                        if (imMemo(c, editor.version) || effectChanged) {
-
-                                            const rack = newEffectRack();
-
-                                            const effectCopy = copyEffectRackItem(effect, true);
-                                            rack.effects.push(effectCopy);
-                                            const filter = effectCopy.value;
-
-                                            assert(filter.type === EFFECT_RACK_ITEM__BIQUAD_FILTER);
-                                            const registers = newEffectRackRegisters();
-
-                                            compileEffectRack(rack);
-                                            const keyFrequency = getNoteIndex("A", 3);
-
-                                            rack._registersTemplate.values[filter._signal] = 1;
-                                            s.impulseResponse[0] = computeEffectRackIteration(
-                                                rack,
-                                                registers,
-                                                keyFrequency,
-                                                1,
-                                                MOCK_SAMPLE_RATE,
-                                                true
-                                            );
-
-                                            rack._registersTemplate.values[filter._signal] = 0;
-                                            for (let i = 1; i < s.impulseResponse.length; i++) {
-                                                s.impulseResponse[i] = computeEffectRackIteration(
-                                                    rack,
-                                                    registers,
-                                                    keyFrequency,
-                                                    1,
-                                                    MOCK_SAMPLE_RATE,
-                                                    false
-                                                );
+                                            if (imButtonIsClicked(c, filterUi.analyzing ? "Analyzing" : "Analyze", filterUi.analyzing)) {
+                                                filterUi.analyzing = !filterUi.analyzing;
                                             }
-
-                                            fft(s.impulseResponseFft.r, s.impulseResponseFft.im, s.impulseResponse);
-                                            fftToReal(s.impulseResponseFft.frequencies, s.impulseResponseFft.r, s.impulseResponseFft.im);
-                                            s.impulseResponseFft.frequenciesMax = arrayMax(s.impulseResponseFft.frequencies);
-                                            s.impulseResponseFft.frequenciesMin = arrayMin(s.impulseResponseFft.frequencies);
-                                        }
-
-                                        imLayout(c, BLOCK); imStr(c, "Impulse response (time)"); imLayoutEnd(c);
-                                        imLayoutBegin(c, COL); imSize(c, 0, NA, 200, PX); {
-                                            imOscilloscope(c, s.osc, s.impulseResponse, "blue");
                                         } imLayoutEnd(c);
-                                        imLayout(c, BLOCK); imStr(c, "Impulse response (frequency)"); imLayoutEnd(c);
-                                        imLayoutBegin(c, COL); imSize(c, 0, NA, 200, PX); {
-                                            imOscilloscope(
-                                                c,
-                                                s.impulseResponseFft.osc,
-                                                s.impulseResponseFft.frequencies,
-                                                "red",
-                                                s.impulseResponseFft.frequenciesMin,
-                                                s.impulseResponseFft.frequenciesMax
-                                            );
-                                        } imLayoutEnd(c);
+
+                                        imSpacingSymbol(c, " -> ");
+
+                                        imDspVisualGroupBegin(c, ROW); imFlex(c); {
+                                            imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+
+                                                imDspVisualGroupBegin(c, ROW); imFlex(c); {
+                                                    imValueOrBindingEditor(c, editor, effectPos, conv.cutoffFrequencyUi);
+                                                    imValueOrBindingEditor(c, editor, effectPos, conv.cutoffFrequencyMultUi);
+                                                } imDspVisualGroupEnd(c);
+
+                                                imValueOrBindingEditor(c, editor, effectPos, conv.stopbandUi);
+
+                                                const windowTypeChanged = imSelectChoice(c, conv.windowType, allWindowTypes, getConvolutionSincWindowTypeName);
+                                                if (windowTypeChanged) {
+                                                    conv.windowType = windowTypeChanged.choice;
+                                                    onEdited(editor);
+                                                }
+
+                                                imLayoutBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                                                    const ev = imCheckbox(c, conv.highpass);
+                                                    if (ev) {
+                                                        conv.highpass = ev.checked
+                                                        onEdited(editor);
+                                                    }
+
+                                                    imStr(c, "Highpass");effect
+                                                } imLayoutEnd(c);
+                                            } imLayoutEnd(c);
+                                        } imDspVisualGroupEnd(c);
+                                    } imLayoutEnd(c);
+
+                                    if (imIf(c) && filterUi.analyzing) {
+                                        let hasAllManualInputs = 
+                                            conv.cutoffFrequencyMultUi.valueRef !== undefined &&
+                                            conv.cutoffFrequencyUi.valueRef !== undefined &&
+                                            conv.stopbandUi.valueRef !== undefined;
+
+                                        imFilterAnalyzer(c, editor, hasAllManualInputs, effect);
                                     } imIfEnd(c);
                                 } imLayoutEnd(c);
                             } break;
@@ -1390,6 +1367,126 @@ function imEffectRackEditorEffect(
             } imLayoutEnd(c);
         } imLayoutEnd(c);
     } imDragZoneEnd(c, z, effectPos);
+}
+
+function imSelectChoice<T>(c: ImCache, currentChoice: T, choices: T[], fmt: (val: T) => string): { choice: T } | null {
+    let result: { choice: T } | null = null;
+
+    const contextMenu = imContextMenu(c);
+    if (imIf(c) && contextMenu.open) {
+        imContextMenuBegin(c, contextMenu); {
+            imFor(c); for (const type of choices) {
+                imEditorContextMenuItemBegin(c); {
+                    if (elHasMousePress(c)) {
+                        result = { choice: type };
+                        // Let's keep it open, so we can make multiple choices without having
+                        // to keep re-opening it
+                    }
+                    imStrFmt(c, type, fmt);
+                } imEditorContextMenuItemEnd(c);
+            } imForEnd(c);
+        } imContextMenuEnd(c, contextMenu);
+    } imIfEnd(c);
+
+    if (imButtonIsClicked(c, fmt(currentChoice))) {
+        openContextMenuAtMouse(contextMenu);
+    }
+
+    return result;
+}
+
+function imFilterAnalyzer(
+    c: ImCache,
+    editor: EffectRackEditorState,
+    hasAllManualInputs: boolean,
+    effect: EffectRackItem,
+) {
+    if (imIf(c) && !hasAllManualInputs) {
+        imLayoutBegin(c, ROW); imJustify(c); {
+            imStr(c, "Analysis will only work as expected when all value inputs are manual");
+        } imLayoutEnd(c);
+    } imIfEnd(c);
+
+    const effectChanged = imMemo(c, effect);
+    let s; s = imGet(c, imEffectRackEditor);
+    if (!s || effectChanged) {
+        const numSamples = MAX_NUM_FREQUENCIES;
+
+        s = imSet(c, {
+            osc: newOscilloscopeState(),
+            impulseResponse: Array(numSamples),
+
+            impulseResponseFft: {
+                osc: newOscilloscopeState(),
+                r: Array(numSamples),
+                im: Array(numSamples),
+                frequencies: Array(numSamples / 2),
+                frequenciesMin: 0,
+                frequenciesMax: 0,
+            }
+        });
+    }
+
+    if (imMemo(c, editor.version) || effectChanged) {
+
+        const rack = newEffectRack();
+
+        const effectCopy = copyEffectRackItem(effect, true);
+        rack.effects.push(effectCopy);
+        const filter = effectCopy.value;
+
+        assert(
+            filter.type === EFFECT_RACK_ITEM__BIQUAD_FILTER ||
+            filter.type === EFFECT_RACK_ITEM__SINC_FILTER
+        );
+        const registers = newEffectRackRegisters();
+
+        compileEffectRack(rack);
+        const keyFrequency = getNoteIndex("A", 3);
+
+        rack._registersTemplate.values[filter.signalUi._regIdx] = 1;
+        s.impulseResponse[0] = computeEffectRackIteration(
+            rack,
+            registers,
+            keyFrequency,
+            1,
+            MOCK_SAMPLE_RATE,
+            true
+        );
+
+        rack._registersTemplate.values[filter.signalUi._regIdx] = 0;
+        for (let i = 1; i < s.impulseResponse.length; i++) {
+            s.impulseResponse[i] = computeEffectRackIteration(
+                rack,
+                registers,
+                keyFrequency,
+                1,
+                MOCK_SAMPLE_RATE,
+                false
+            );
+        }
+
+        fft(s.impulseResponseFft.r, s.impulseResponseFft.im, s.impulseResponse);
+        fftToReal(s.impulseResponseFft.frequencies, s.impulseResponseFft.r, s.impulseResponseFft.im);
+        s.impulseResponseFft.frequenciesMax = arrayMax(s.impulseResponseFft.frequencies);
+        s.impulseResponseFft.frequenciesMin = arrayMin(s.impulseResponseFft.frequencies);
+    }
+
+    imLayout(c, BLOCK); imStr(c, "Impulse response (time)"); imLayoutEnd(c);
+    imLayoutBegin(c, COL); imSize(c, 0, NA, 200, PX); {
+        imOscilloscope(c, s.osc, s.impulseResponse, "blue");
+    } imLayoutEnd(c);
+    imLayout(c, BLOCK); imStr(c, "Impulse response (frequency)"); imLayoutEnd(c);
+    imLayoutBegin(c, COL); imSize(c, 0, NA, 200, PX); {
+        imOscilloscope(
+            c,
+            s.impulseResponseFft.osc,
+            s.impulseResponseFft.frequencies,
+            "red",
+            s.impulseResponseFft.frequenciesMin,
+            s.impulseResponseFft.frequenciesMax
+        );
+    } imLayoutEnd(c);
 }
 
 
@@ -1980,9 +2077,15 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
                 }
             } imContextMenuItemEnd(c);
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "Filter");
+                imStr(c, "Biquad Filter");
                 if (elHasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackBiquadFilter());
+                }
+            } imContextMenuItemEnd(c);
+            imEditorContextMenuItemBegin(c); {
+                imStr(c, "Sinc Filter");
+                if (elHasMousePress(c)) {
+                    toAdd = newEffectRackItem(newEffectRackConvolutionFilter());
                 }
             } imContextMenuItemEnd(c);
         } imContextMenuEnd(c, contextMenu);

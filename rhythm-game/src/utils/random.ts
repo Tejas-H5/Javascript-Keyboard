@@ -19,9 +19,9 @@ export type RandomNumberGenerator = {
     d: number;
 };
 
-export function newRandomNumberGenerator(): RandomNumberGenerator {
+export function newRandomNumberGenerator(seed = 0): RandomNumberGenerator {
     const val : RandomNumberGenerator = { a: 0, b: 0, c: 0, d: 0 };
-    setRngSeed(val, 0);
+    setRngSeed(val, seed);
     return val;
 }
 

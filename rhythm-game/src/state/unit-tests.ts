@@ -8,6 +8,7 @@ import { GlobalContext } from "src/views/app";
 import "src/utils/testing.test";
 import "src/utils/undo-buffer-json.test";
 import "src/utils/fft.test";
+import "src/utils/serialization-utils.test";
 
 export type UnitTestsState = {
 };
@@ -16,7 +17,6 @@ export function newUnitTestsState(): UnitTestsState {
     return {
     };
 }
-
 
 export function imUnitTestsModal(c: ImCache, ctx: GlobalContext, s: UnitTestsState) {
     imModalBegin(c, 200); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {

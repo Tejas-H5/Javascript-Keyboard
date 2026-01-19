@@ -3,62 +3,13 @@
 // put it in dsp-loop-interface.ts instead.
 // It seems like it's OK to import types though.
 
-import { BASE_NOTE, getSampleIdx } from "src/state/keyboard-state";
-import { arrayAt, filterInPlace } from "src/utils/array-utils";
+import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
-import { clamp, derivative, inverseLerp, lerp, max, min, moveTowards } from "src/utils/math-utils";
-import { C_0, getNoteFrequency, getNoteLetter, NOTE_LETTERS, TWELVTH_ROOT_OF_TWO } from "src/utils/music-theory-utils";
+import { lerp, max } from "src/utils/math-utils";
+import { getNoteFrequency } from "src/utils/music-theory-utils";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
-import { absMax, absMin, sawtooth, sin, square, step, triangle } from "src/utils/turn-based-waves";
-import { newFunctionUrl } from "src/utils/web-workers";
-import {
-    allocateBufferIdx,
-    allocateRegisterIdx,
-    allocateRegisterIdxIfNeeded,
-    asRegisterIdx,
-    compileEffectRack,
-    computeEffectRackIteration,
-    EFFECT_RACK_DELAY_MAX_DURATION,
-    EFFECT_RACK_ITEM__DELAY,
-    EFFECT_RACK_ITEM__BIQUAD_FILTER,
-    EFFECT_RACK_ITEM__ENVELOPE,
-    EFFECT_RACK_ITEM__MATHS,
-    EFFECT_RACK_ITEM__NOISE,
-    EFFECT_RACK_ITEM__OSCILLATOR,
-    EFFECT_RACK_ITEM__SWITCH,
-    EffectRack,
-    EffectRackRegisters,
-    newEffectRack,
-    newEffectRackBinding,
-    newEffectRackDelay,
-    newEffectRackBiquadFilter,
-    newEffectRackMaths,
-    newEffectRackMathsItemCoefficient,
-    newEffectRackMathsItemTerm,
-    newEffectRackNoise,
-    newEffectRackRegisters,
-    newEffectRackSwitch,
-    newEffectRackSwitchCondition,
-    newRegisterIdxUi,
-    OSC_WAVE__SAWTOOTH,
-    OSC_WAVE__SAWTOOTH2,
-    OSC_WAVE__SIN,
-    OSC_WAVE__SQUARE,
-    OSC_WAVE__TRIANGLE,
-    r,
-    REG_IDX_EFFECT_BINDINGS_START,
-    REG_IDX_KEY_FREQUENCY,
-    REG_IDX_KEY_SIGNAL,
-    REG_IDX_KEY_SIGNAL_RAW,
-    REG_IDX_NONE,
-    REG_IDX_SAMPLE_RATE_DT,
-    registerIdxAsNumber,
-    SWITCH_OP_GT,
-    SWITCH_OP_LT,
-    w,
-    updateRegisters
-} from "./dsp-loop-effect-rack";
 import { ScheduledKeyPress } from "./dsp-loop-interface";
+import { newEffectRack, EffectRack, newEffectRackRegisters, EffectRackRegisters, computeEffectRackIteration }  from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
     rack: EffectRack;
@@ -148,9 +99,9 @@ export type DspInfo = {
     sampleRate: number;
 }
 
-const OSC_GAIN_AWAKE_THRESHOLD = 0.00001;
+export const OSC_GAIN_AWAKE_THRESHOLD = 0.00001;
 
-function sampleSamples(samples: number[], sampleDuration: number, time: number) {
+export function sampleSamples(samples: number[], sampleDuration: number, time: number) {
     let idxFloating = ((time / sampleDuration) * samples.length) % (samples.length - 1);
 
     const low = Math.floor(idxFloating);
@@ -182,18 +133,6 @@ export function updateOscillator(
         state.time += dt;
     }
 
-    if (rng === null) {
-        rng = newRandomNumberGenerator();
-        setRngSeed(rng, 0);
-    }
-
-    // GOAT website: https://www.dspforaudioprogramming.com
-    // Simplified my oscillator code so much damn.
-    // And now I know more than just sine wave. Very epic.
-    // NOTE: the current effects rack is no longer capable of 
-    // generating the triangle wave from hundreds of tiny sine waves.
-    // Not sure if I care though.
-
     const f = state._frequency;
     let sampleValue = 0;
 
@@ -212,7 +151,7 @@ export function updateOscillator(
 }
 
 
-function updateSample(osc: PlayingSampleFile, allSamples: Record<string, number[]>) {
+export function updateSample(osc: PlayingSampleFile, allSamples: Record<string, number[]>) {
     const { inputs, state } = osc;
 
     if (inputs.sample !== state.prevSampleFile) {
@@ -226,7 +165,7 @@ function updateSample(osc: PlayingSampleFile, allSamples: Record<string, number[
     }
 }
 
-function getMessageForMainThread(s: DspState, signals = true) {
+export function getMessageForMainThread(s: DspState, signals = true) {
     const payload: Partial<DspInfo> = { sampleRate: s.sampleRate };
 
     if (signals) {
@@ -250,9 +189,7 @@ function getMessageForMainThread(s: DspState, signals = true) {
     return payload;
 }
 
-let rng: RandomNumberGenerator | null = null;
-
-function getSampleFileValue(oscs: PlayingSampleFile) {
+export function getSampleFileValue(oscs: PlayingSampleFile) {
     const { state } = oscs;
 
     if (state.sampleIdx >= state.sampleArray.length) {
@@ -265,6 +202,7 @@ function getSampleFileValue(oscs: PlayingSampleFile) {
 
 export function newDspState(sampleRate: number): DspState {
     const s: DspState = {
+        rng: newRandomNumberGenerator(),
         sampleRate: sampleRate,
         playSettings: newDspPlaySettings(),
         playingOscillators: [],
@@ -297,6 +235,7 @@ export function newDspState(sampleRate: number): DspState {
 
 
 export type DspState = {
+    rng: RandomNumberGenerator;
     sampleRate: number;
     playSettings: DSPPlaySettings;
     playingOscillators: [number, PlayingOscillator][];
@@ -313,7 +252,7 @@ export type DspState = {
     randomSamples: number[]
 };
 
-function getPlayingOscillator(s: DspState, id: number): PlayingOscillator | undefined {
+export function getPlayingOscillator(s: DspState, id: number): PlayingOscillator | undefined {
     for (let i = 0; i < s.playingOscillators.length; i++) {
         if (s.playingOscillators[i][0] === id) {
             return s.playingOscillators[i][1];
@@ -323,7 +262,7 @@ function getPlayingOscillator(s: DspState, id: number): PlayingOscillator | unde
 }
 
 // Runs a whole lot, so it needs to be highly optimized
-function processSample(s: DspState, idx: number) {
+export function processSample(s: DspState, idx: number) {
     let sample = 0;
     let count = 0;
     const sampleRate = s.sampleRate;
@@ -480,13 +419,15 @@ export function newPlayingOscilator(): PlayingOscillator {
     };
 }
 
-function getOrCreatePlayingOscillator(s: DspState, id: number): PlayingOscillator {
+export function getOrCreatePlayingOscillator(s: DspState, id: number): PlayingOscillator {
     const osc = getPlayingOscillator(s, id);
     if (osc) {
         return osc;
     }
 
     // TODO: consider pooling?
+    // TODO: yes we should, now that each oscilator retains far more state than before. 
+    // or even just caching by key id.
     const newOsc = newPlayingOscilator();
     s.playingOscillators.push([id, newOsc]);
     newOsc.state.time = 0;
@@ -498,7 +439,7 @@ function getOrCreatePlayingOscillator(s: DspState, id: number): PlayingOscillato
     return newOsc;
 }
 
-function stopPlayingScheduledKeys(s: DspState) {
+export function stopPlayingScheduledKeys(s: DspState) {
     const trackPlayback = s.trackPlayback;
 
     for (const currentlyPlaying of trackPlayback.scheduedKeysCurrentlyPlaying) {
@@ -620,177 +561,10 @@ export function normalizeIfGreaterThanOne(output: Float32Array) {
     }
 }
 
-
 // If a particular note or sample was scheduled, we can give a user ownership of that note as soon as they 
 // send a signal to it manually
-function giveUserOwnership(n: PlayingOscillator | PlayingSampleFile) {
+export function giveUserOwnership(n: PlayingOscillator | PlayingSampleFile) {
     n.state.manuallyPressed = true;
     n.state.volume = 1;
 }
 
-let lastUrl: string = "";
-export function getDspLoopClassUrl(): string {
-    if (lastUrl) {
-        return lastUrl;
-    }
-
-    // Every single dependency must be injected here manually, so that the worker url has access to everything it needs.
-    // (I want the entire web-app to be a single HTML file that can be easily saved, at any cost)
-
-
-    // BTW: https://codeberg.org/uzu/strudel/src/branch/main/packages/vite-plugin-bundle-audioworklet/vite-plugin-bundle-audioworklet.js
-    // xd. Didnt know you could do that. I cannot be bothered now. Maybe later
-
-    lastUrl = newFunctionUrl([
-        arrayAt,
-        max,
-        min,
-        updateOscillator,
-        getNoteFrequency,
-        moveTowards,
-        newRandomNumberGenerator,
-        getNextRng,
-        setRngSeed,
-        step,
-        sin,
-        absMin,
-        absMax,
-        sawtooth,
-        triangle,
-        square,
-        getPlayingOscillator,
-        giveUserOwnership,
-        dspProcess,
-        normalizeIfGreaterThanOne,
-        derivative,
-        processSample,
-        getOrCreatePlayingOscillator,
-        newPlayingOscilator,
-        filterInPlace,
-        newDspState,
-        newDspPlaySettings,
-        getMessageForMainThread,
-        dspReceiveMessage,
-        assert,
-        stopPlayingScheduledKeys,
-        updateSample,
-        getSampleFileValue,
-        lerp,
-        inverseLerp,
-        clamp,
-        getNoteLetter,
-        sampleSamples,
-        getSampleIdx,
-        { value: BASE_NOTE, name: "BASE_NOTE" },
-        { value: NOTE_LETTERS, name: "NOTE_LETTERS" },
-        { value: null, name: "rng", },
-        { value: C_0, name: "C_0", },
-        { value: TWELVTH_ROOT_OF_TWO, name: "TWELVTH_ROOT_OF_TWO",  },
-        { value: OSC_GAIN_AWAKE_THRESHOLD, name: "OSC_GAIN_AWAKE_THRESHOLD",  },
-        { value: EFFECT_RACK_ITEM__OSCILLATOR, name: "EFFECT_RACK_ITEM__OSCILLATOR" },
-        { value: EFFECT_RACK_ITEM__ENVELOPE, name: "EFFECT_RACK_ITEM__ENVELOPE" },
-        { value: EFFECT_RACK_ITEM__MATHS, name: "EFFECT_RACK_ITEM__MATHS" },
-        { value: EFFECT_RACK_ITEM__SWITCH, name: "EFFECT_RACK_ITEM__SWITCH" },
-        { value: EFFECT_RACK_ITEM__NOISE, name: "EFFECT_RACK_ITEM__NOISE" },
-        { value: EFFECT_RACK_ITEM__DELAY, name: "EFFECT_RACK_ITEM__DELAY" },
-        { value: EFFECT_RACK_ITEM__BIQUAD_FILTER, name: "EFFECT_RACK_ITEM__BIQUAD_FILTER" },
-        { value: EFFECT_RACK_DELAY_MAX_DURATION, name: "EFFECT_RACK_DELAY_MAX_DURATION" },
-        { value: SWITCH_OP_LT, name: "SWITCH_OP_LT" },
-        { value: SWITCH_OP_GT, name: "SWITCH_OP_GT" },
-        asRegisterIdx,
-        registerIdxAsNumber,
-        newRegisterIdxUi,
-        newEffectRackBinding,
-        newEffectRack,
-        newEffectRackNoise,
-        newEffectRackDelay,
-        newEffectRackBiquadFilter,
-        { value: REG_IDX_NONE, name: "REG_IDX_NONE" },
-        { value: REG_IDX_KEY_FREQUENCY, name: "REG_IDX_KEY_FREQUENCY" },
-        { value: REG_IDX_KEY_SIGNAL, name: "REG_IDX_KEY_SIGNAL" },
-        { value: REG_IDX_SAMPLE_RATE_DT, name: "REG_IDX_SAMPLE_RATE_DT" },
-        { value: REG_IDX_KEY_SIGNAL_RAW, name: "REG_IDX_KEY_SIGNAL_RAW" },
-        { value: REG_IDX_EFFECT_BINDINGS_START, name: "REG_IDX_EFFECT_BINDINGS_START" },
-        compileEffectRack,
-        updateRegisters,
-        computeEffectRackIteration,
-        newEffectRackRegisters,
-        r, 
-        w,
-        allocateRegisterIdx,
-        allocateBufferIdx,
-        allocateRegisterIdxIfNeeded,
-        newEffectRackMaths,
-        newEffectRackMathsItemTerm,
-        newEffectRackMathsItemCoefficient,
-        newEffectRackSwitch,
-        newEffectRackSwitchCondition,
-        { value: OSC_WAVE__SIN, name: "OSC_WAVE__SIN" },
-        { value: OSC_WAVE__SQUARE, name: "OSC_WAVE__SQUARE" },
-        { value: OSC_WAVE__SAWTOOTH, name: "OSC_WAVE__SAWTOOTH" },
-        { value: OSC_WAVE__TRIANGLE, name: "OSC_WAVE__TRIANGLE" },
-        { value: OSC_WAVE__SAWTOOTH2, name: "OSC_WAVE__SAWTOOTH2" },
-    ], [
-    ], function register() {
-
-        // @ts-expect-error sampleRate is in audio-worklet global sclop
-        let _sampleRate = sampleRate;
-
-        // @ts-expect-error - AudioWorkletProcessor
-        class DSPLoop extends AudioWorkletProcessor {
-            s: DspState = newDspState(_sampleRate);
-
-            constructor() {
-                super();
-                this.s.sampleRate = _sampleRate;
-
-                // @ts-expect-error this.port is valid on AudioWorkletProcessor
-                this.port.onmessage = (e) => {
-                    this.onMessage(e.data);
-                };
-            }
-
-            process(
-                _inputs: Float32Array[][],
-                outputs: Float32Array[][],
-                _parameters: Record<string, Float32Array>
-            ) {
-                const s = this.s;
-
-                const result = dspProcess(s, outputs);
-
-                // if we pressed keys, we should send a message about s back to the main thread,
-                // so that the UI will update accordingly. It's not so important for when we release things though.
-                if (s.trackPlayback.shouldSendUiUpdateSignals) {
-                    s.trackPlayback.shouldSendUiUpdateSignals = false;
-                    this.sendCurrentPlayingMessageBack(s.trackPlayback.shouldSendUiUpdateSignals);
-                }
-
-                return result;
-            }
-
-            // This is expensive, so don't call too often
-            sendCurrentPlayingMessageBack(signals = true) {
-                const payload = getMessageForMainThread(this.s, signals);
-                // @ts-expect-error this.port is valid on AudioWorkletProcessor
-                this.port.postMessage(payload);
-            }
-
-            onMessage(e: DspLoopMessage) {
-                if (e === 1337) {
-                    this.sendCurrentPlayingMessageBack();
-                    return;
-                }
-
-                dspReceiveMessage(this.s, e);
-            }
-        }
-
-        // @ts-expect-error registerProcessor is in audio-worklet global sclop
-        registerProcessor("dsp-loop", DSPLoop);
-    }, {
-        includeEsBuildPolyfills: true
-    });
-
-    return lastUrl;
-}

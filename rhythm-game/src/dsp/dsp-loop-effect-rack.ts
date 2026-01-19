@@ -7,9 +7,9 @@
 import { filterInPlace, resizeValuePool } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { moveTowards } from "src/utils/math-utils";
-import { asArray, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
+import { asArray, asBooleanOrUndefined, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
 import { deepEquals } from "src/utils/testing";
-import { sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
+import { cos, sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
 
 // TODO: _VALUE__
 export const EFFECT_RACK_ITEM__OSCILLATOR = 0;
@@ -18,11 +18,13 @@ export const EFFECT_RACK_ITEM__MATHS = 2;
 export const EFFECT_RACK_ITEM__SWITCH = 3;
 export const EFFECT_RACK_ITEM__NOISE = 4;
 export const EFFECT_RACK_ITEM__DELAY = 5;
-export const EFFECT_RACK_ITEM__BIQUAD_FILTER = 6; 
+export const EFFECT_RACK_ITEM__BIQUAD_FILTER = 6;  // TODO: consider removing
+export const EFFECT_RACK_ITEM__SINC_FILTER = 7; 
 
 // Delay effect uses a crap tonne of memmory, so we're limiting how long it can be.
 // While simple, it is suprisingly OP - you can use it to double waveforms repeatedly.
 export const EFFECT_RACK_DELAY_MAX_DURATION = 1;
+export const EFFECT_RACK_ITEM__CONVOLUTION_FILTER_MAX_KERNEL_LENGTH = 1024; 
 
 // export const EFFECT_RACK_DSP_INSTRUCTION_SET; this would be quite funny wouldnt it.
 
@@ -35,6 +37,7 @@ export type EffectRackItemType
     | typeof EFFECT_RACK_ITEM__NOISE
     | typeof EFFECT_RACK_ITEM__DELAY
     | typeof EFFECT_RACK_ITEM__BIQUAD_FILTER
+    | typeof EFFECT_RACK_ITEM__SINC_FILTER
     ;
 
 // If we're using a RegisterIndex without reading from or writing to a register, then we're using it wrong.
@@ -71,6 +74,8 @@ export type RegisterIdxUi = {
     // ui can read/write to this.
     valueRef: ValueRef;
 
+    _regIdx: RegisterIdx;
+
     // These are more like recommendations that UI can use to make itself more useable.
     // The UI could also choose to ignore these values.
     _defaultValue: number; _max: number; _min: number; _name: string;
@@ -83,13 +88,8 @@ export function newRegisterIdxUi(
     max = 1_000_000,
 ): RegisterIdxUi {
     return {
-        valueRef: {
-            // needed for deserialization
-            value: undefined,
-            regIdx: undefined,
-            effectId: undefined,
-            ...bindingRef,
-        },
+        valueRef: { ...bindingRef, },
+        _regIdx: asRegisterIdx(0),
         _defaultValue: bindingRef.value ?? 0,
         _min: min, 
         _max: max,
@@ -128,14 +128,6 @@ export type EffectRackOscillator = {
     // state:
     _t: RegisterIdx;
 
-    // UI values:
-
-    _phase:         RegisterIdx;
-    _amplitude:     RegisterIdx;
-    _frequency:     RegisterIdx; 
-    _frequencyMult: RegisterIdx; 
-    _offset:        RegisterIdx;
-
     // It occurs to me that I cannot animate this ... yet ...
     waveType:    EffectRackOscillatorWaveType;
 
@@ -151,12 +143,6 @@ export function newEffectRackOscillator(): EffectRackOscillator {
         type: EFFECT_RACK_ITEM__OSCILLATOR,
 
         _t: asRegisterIdx(0),
-
-        _amplitude:     asRegisterIdx(1),
-        _phase:         asRegisterIdx(0),
-        _frequency:     asRegisterIdx(REG_IDX_KEY_FREQUENCY),
-        _frequencyMult: asRegisterIdx(0),
-        _offset:        asRegisterIdx(0),
 
         waveType:    OSC_WAVE__SIN,
 
@@ -180,20 +166,13 @@ export type EffectRackEnvelope = {
 
     // UI
 
-    _signal:  RegisterIdx; // Used to know when to pump the envelope
-    _attack:  RegisterIdx; // time from 0 -> 1
-    _decay:   RegisterIdx; // time from 1 -> sustain
-    _sustain: RegisterIdx; // sustain amplitude
-    _release: RegisterIdx; // time from sustain -> 0
-
-    signalUI:     RegisterIdxUi;
-    attackUI:     RegisterIdxUi;
-    decayUI:      RegisterIdxUi;
-    sustainUI:    RegisterIdxUi;
-    releaseUI:    RegisterIdxUi;
+    signalUI:     RegisterIdxUi; // Used to know when to pump the envelope
+    attackUI:     RegisterIdxUi; // time from 0 -> 1
+    decayUI:      RegisterIdxUi; // time from 1 -> sustain
+    sustainUI:    RegisterIdxUi; // sustain amplitude
+    releaseUI:    RegisterIdxUi; // time from sustain -> 0
 
     // extra inputs
-    _toModulate:    RegisterIdx; // This is the signal we're supposed to modulate. Always some register.
     toModulateUI: RegisterIdxUi;
 };
 
@@ -204,13 +183,6 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
         _stage: asRegisterIdx(0),
         _value: asRegisterIdx(0),
 
-        _signal:  asRegisterIdx(0),
-        _attack:  asRegisterIdx(0),
-        _decay:   asRegisterIdx(0),
-        _sustain: asRegisterIdx(0),
-        _release: asRegisterIdx(0),
-
-        _toModulate: asRegisterIdx(0),
         toModulateUI: newRegisterIdxUi("to modulate", { value: 0 }),
 
         signalUI:  newRegisterIdxUi("signal",  { regIdx: REG_IDX_KEY_SIGNAL }, 0, 1),
@@ -239,13 +211,11 @@ export function newEffectRackMathsItemTerm(): EffectRackMathsItemTerm {
 }
 
 export type EffectRackMathsItemTermCoefficient = {
-    _value: RegisterIdx;
     valueUI: RegisterIdxUi;
 };
 
 export function newEffectRackMathsItemCoefficient(): EffectRackMathsItemTermCoefficient {
     return {
-        _value: asRegisterIdx(0),
         // NOTE: UI will need to set this dynamically
         valueUI: newRegisterIdxUi("", { value: 1 }, -1_000_000, 1_000_000),
     };
@@ -262,7 +232,6 @@ export type EffectRackSwitch = {
     type: typeof EFFECT_RACK_ITEM__SWITCH;
     conditions: EffectRackSwitchCondition[];
 
-    _default: RegisterIdx;
     defaultUi: RegisterIdxUi;
 }
 
@@ -272,21 +241,18 @@ export function newEffectRackSwitch(): EffectRackSwitch {
         conditions: [
             newEffectRackSwitchCondition(),
         ],
-        _default: asRegisterIdx(0),
         defaultUi: newRegisterIdxUi("default", { value: 0, }, -1_000_000, 1_000_000),
     };
 }
 
 export type EffectRackNoise = {
     type: typeof EFFECT_RACK_ITEM__NOISE;
-    _amplitude:  RegisterIdx;
     amplitudeUi: RegisterIdxUi;
 }
 
 export function newEffectRackNoise(): EffectRackNoise {
     return {
         type: EFFECT_RACK_ITEM__NOISE,
-        _amplitude: asRegisterIdx(0),
         amplitudeUi: newRegisterIdxUi("amplitude", { value: 1 }, 0, 1),
     };
 }
@@ -297,10 +263,7 @@ export type EffectRackDelay = {
     _sampleBuffer: BufferIdx;
     _idx: RegisterIdx;
 
-    _signal:  RegisterIdx;
     signalUi: RegisterIdxUi;
-
-    _seconds:  RegisterIdx;
     secondsUi: RegisterIdxUi;
 }
 
@@ -311,10 +274,7 @@ export function newEffectRackDelay(): EffectRackDelay {
         _sampleBuffer: -1 as BufferIdx,
         _idx: asRegisterIdx(0),
 
-        _signal:  asRegisterIdx(0),
         signalUi: newRegisterIdxUi("signal", { value: 0 }),
-
-        _seconds:  asRegisterIdx(0),
         secondsUi: newRegisterIdxUi("seconds", { value: 0.1 }, 0, 1),
     };
 }
@@ -322,27 +282,22 @@ export function newEffectRackDelay(): EffectRackDelay {
 export type EffectRackBiquadFilter = {
     type: typeof EFFECT_RACK_ITEM__BIQUAD_FILTER;
 
+    signalUi: RegisterIdxUi;
+
     // just a standard biquad filter (direct form 2)
     // https://www.youtube.com/watch?v=ap1qXBTKU8g
     // https://en.wikipedia.org/wiki/Digital_biquad_filter
-    
+
     _z1: RegisterIdx;
     _z2: RegisterIdx;
 
-    _signal: RegisterIdx;
-    signalUi: RegisterIdxUi;
 
     // TODO: figure out what these actually do
-    _a1: RegisterIdx;
     a1Ui: RegisterIdxUi;
-    _a2: RegisterIdx;
     a2Ui: RegisterIdxUi;
 
-    _b0: RegisterIdx;
     b0Ui: RegisterIdxUi;
-    _b1: RegisterIdx;
     b1Ui: RegisterIdxUi;
-    _b2: RegisterIdx;
     b2Ui: RegisterIdxUi;
 };
 
@@ -353,21 +308,99 @@ export function newEffectRackBiquadFilter(): EffectRackBiquadFilter {
         _z1: asRegisterIdx(0),
         _z2: asRegisterIdx(0),
 
-        _signal: asRegisterIdx(0),
         signalUi: newRegisterIdxUi("signal", { value: 0 }, -1, 1),
 
         // TODO: figure out what these actually do
-        _a1: asRegisterIdx(0),
         a1Ui: newRegisterIdxUi("a1", { value: 0.5 }, -1, 1),
-        _a2: asRegisterIdx(0),
         a2Ui: newRegisterIdxUi("a2", { value: 0.5 }, -1, 1),
 
-        _b0: asRegisterIdx(0),
         b0Ui: newRegisterIdxUi("b0", { value: 1 }, -1, 1),
-        _b1: asRegisterIdx(0),
         b1Ui: newRegisterIdxUi("b1", { value: 0.5 }, -1, 1),
-        _b2: asRegisterIdx(0),
         b2Ui: newRegisterIdxUi("b2", { value: 0.5 }, -1, 1),
+    };
+}
+
+//
+// A better interface for the Convolve filter UI would be liek
+//
+// Response:  Actually, I reckon I only want to use sinc. 
+//
+// frequency. fc = frequency_ui / SAMPLE_RATE;
+//
+// Impulse response window:
+//     Rectangular
+//     Hamming
+//     Blackman
+//
+// Stopband
+//
+// How would a high-pass and band pass filter work?
+//         // delta function minus sinc function
+//         let inverseSinc = x == 0 ? 1 - sinc : -1 * sinc
+//
+// also btw.   let sinc = x != 0 ? sin(PI * fc * x) / (PI * x) : fc
+//
+// We can do something similar to make a band-pass filter. In fact, the kernel 
+// Let's try coding this interface. 
+export type EffectRackSincFilter = {
+    type: typeof EFFECT_RACK_ITEM__SINC_FILTER;
+
+    // ring buffer.
+    _kernel: BufferIdx;
+    _kernelIdx: RegisterIdx;
+
+    signalUi: RegisterIdxUi;
+
+    // NOTE: this parameter can't handle automation very well. 
+    // the behaviour can change between implementations.
+    stopbandUi: RegisterIdxUi;
+    cutoffFrequencyUi: RegisterIdxUi;
+    cutoffFrequencyMultUi: RegisterIdxUi;
+
+    windowType: ConvolutionSincWindowType;
+    highpass: boolean;
+}
+
+export type ConvolutionSincWindowType
+    = typeof CONVOLUTION_SINC_WINDOW__RECTANGLE
+    | typeof CONVOLUTION_SINC_WINDOW__HAMMING
+    | typeof CONVOLUTION_SINC_WINDOW__BLACKMAN
+
+export function getConvolutionSincWindowTypeName(e: ConvolutionSincWindowType) {
+    switch (e) {
+        case CONVOLUTION_SINC_WINDOW__RECTANGLE: return "Rectangle";
+        case CONVOLUTION_SINC_WINDOW__HAMMING:   return "Hamming";
+        case CONVOLUTION_SINC_WINDOW__BLACKMAN:  return "Blackman";
+    }
+    return "?";
+}
+
+export const CONVOLUTION_SINC_WINDOW__RECTANGLE = 0;
+export const CONVOLUTION_SINC_WINDOW__HAMMING   = 1;
+export const CONVOLUTION_SINC_WINDOW__BLACKMAN  = 2;
+
+export function newEffectRackConvolutionFilter(): EffectRackSincFilter {
+    return {
+        type: EFFECT_RACK_ITEM__SINC_FILTER,
+
+        signalUi: newRegisterIdxUi("signal", { value: 0 }, -1, 1),
+
+        windowType: CONVOLUTION_SINC_WINDOW__RECTANGLE, 
+        // Automating this parameter may not be so wise...
+        // Also should only be an integer...
+        stopbandUi: newRegisterIdxUi(
+            "stopband",
+            { value: 20 },
+            2, // needs to be 2 to account for the Hamming window code
+            EFFECT_RACK_ITEM__CONVOLUTION_FILTER_MAX_KERNEL_LENGTH
+        ),
+        highpass:   false,
+
+        cutoffFrequencyUi:     newRegisterIdxUi("f cutoff", { regIdx: REG_IDX_KEY_FREQUENCY }),
+        cutoffFrequencyMultUi: newRegisterIdxUi("fmult", { value: 1 }),
+
+        _kernel: -1 as BufferIdx,
+        _kernelIdx: asRegisterIdx(0),
     };
 }
 
@@ -380,29 +413,22 @@ export type EffectRackSwitchOperator
     ;
 
 export type EffectRackSwitchCondition = {
-    _a: RegisterIdx;
     aUi: RegisterIdxUi;
 
     operator: EffectRackSwitchOperator;
 
-    _b: RegisterIdx;
     bUi: RegisterIdxUi;
-
-    _val: RegisterIdx;
     valUi: RegisterIdxUi;
 };
 
 export function newEffectRackSwitchCondition(): EffectRackSwitchCondition {
     return {
-        _a: asRegisterIdx(0),
         aUi:   newRegisterIdxUi("a", { value: 0 }),
 
         operator: SWITCH_OP_LT,
 
         valUi: newRegisterIdxUi("then", { value: 0 }),
-        _val: asRegisterIdx(0),
 
-        _b: asRegisterIdx(0),
         bUi:   newRegisterIdxUi("b", { value: 0 }),
     };
 }
@@ -425,6 +451,7 @@ type EffectRackItemValue
     | EffectRackNoise
     | EffectRackDelay
     | EffectRackBiquadFilter
+    | EffectRackSincFilter
     ;
 
 export type EffectRack = {
@@ -513,9 +540,13 @@ export function allocateRegisterIdx(
     return asRegisterIdx(idx);
 }
 
-export function allocateBufferIdx(e: EffectRack, maxDurationSeconds: number): BufferIdx {
+export function allocateBufferIdx(e: EffectRack, maxDurationSeconds: number, samples: number): BufferIdx {
+    if (maxDurationSeconds > 2) {
+        throw new Error("You may have put in #samples instead of seconds");
+    }
+
     const idx = e._registersTemplate.buffers.length;
-    e._registersTemplate.buffers.push({ val: new Float32Array(0), seconds: maxDurationSeconds });
+    e._registersTemplate.buffers.push({ val: new Float32Array(0), seconds: maxDurationSeconds, samples, });
     return idx as BufferIdx;
 }
 
@@ -524,8 +555,10 @@ export function allocateRegisterIdxIfNeeded(
     regUi: RegisterIdxUi,
     remap: (EffectId | undefined)[] | undefined,
     effectPos: number,
-): RegisterIdx {
+): void {
     const v = regUi.valueRef;
+
+    let regIdx: RegisterIdx | undefined;
 
     if (v.effectId !== undefined) {
         // As it turns out - it is totally valid for effect inputs to depend on outputs that came later. 
@@ -549,26 +582,25 @@ export function allocateRegisterIdxIfNeeded(
         v.value = regUi._defaultValue;
     }
 
-
     if (v.value !== undefined) {
-        return allocateRegisterIdx(e, v.value, false);
-    }
-
-    if (v.regIdx !== undefined) {
+        regIdx = allocateRegisterIdx(e, v.value, false);
+    } else if (v.regIdx !== undefined) {
         if (v.regIdx >= 0 && v.regIdx < defaultBindings.length) {
-            return v.regIdx;
+            regIdx = v.regIdx;
+        } else {
+            console.warn("Invalid regIdx, falling back to a value", v.regIdx);
+            regIdx = allocateRegisterIdx(e, 0, false);
         }
-
-        console.warn("Invalid regIdx: ", v.regIdx);
-        return allocateRegisterIdx(e, 0, false);
-    }
-
-    if (v.effectId !== undefined) {
+    } else if (v.effectId !== undefined) {
         const effectPos = e._effectIdToEffectPos[v.effectId];
-        return asRegisterIdx(REG_IDX_EFFECT_BINDINGS_START + effectPos);
+        regIdx = asRegisterIdx(REG_IDX_EFFECT_BINDINGS_START + effectPos);
+    } 
+
+    if (regIdx === undefined) {
+        throw new Error("We couldn't allocate this register!");
     }
 
-    assert(false); // unreachable
+    regUi._regIdx = regIdx;
 }
 
 /**
@@ -675,7 +707,6 @@ export function compileEffectRack(e: EffectRack) {
         const effectValue = e.effects[effectPos].value;
 
         // NOTE: effect._dst already allocated above
-
         // NOTE: you'll need multicursor to have success editing stuff here
 
         switch (effectValue.type) {
@@ -684,11 +715,11 @@ export function compileEffectRack(e: EffectRack) {
                 wave._t = allocateRegisterIdx(e, 0, true);
 
 
-                wave._phase         = allocateRegisterIdxIfNeeded(e, wave.phaseUI, remap, effectPos);
-                wave._amplitude     = allocateRegisterIdxIfNeeded(e, wave.amplitudeUI, remap, effectPos);
-                wave._frequency     = allocateRegisterIdxIfNeeded(e, wave.frequencyUI, remap, effectPos);
-                wave._frequencyMult = allocateRegisterIdxIfNeeded(e, wave.frequencyMultUI, remap, effectPos);
-                wave._offset        = allocateRegisterIdxIfNeeded(e, wave.offsetUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, wave.phaseUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, wave.amplitudeUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, wave.frequencyUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, wave.frequencyMultUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, wave.offsetUI, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effectValue;
@@ -696,13 +727,13 @@ export function compileEffectRack(e: EffectRack) {
                 envelope._stage = allocateRegisterIdx(e, 0, true);
                 envelope._value = allocateRegisterIdx(e, 0, true);
 
-                envelope._toModulate  = allocateRegisterIdxIfNeeded(e, envelope.toModulateUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, envelope.toModulateUI, remap, effectPos);
 
-                envelope._signal  = allocateRegisterIdxIfNeeded(e, envelope.signalUI, remap, effectPos);
-                envelope._attack  = allocateRegisterIdxIfNeeded(e, envelope.attackUI, remap, effectPos);
-                envelope._decay   = allocateRegisterIdxIfNeeded(e, envelope.decayUI, remap, effectPos);
-                envelope._sustain = allocateRegisterIdxIfNeeded(e, envelope.sustainUI, remap, effectPos);
-                envelope._release = allocateRegisterIdxIfNeeded(e, envelope.releaseUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, envelope.signalUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, envelope.attackUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, envelope.decayUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, envelope.sustainUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, envelope.releaseUI, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__MATHS: {
                 const maths = effectValue;
@@ -711,7 +742,7 @@ export function compileEffectRack(e: EffectRack) {
                     const term = maths.terms[i];
                     for (let i = 0; i < term.coefficients.length; i++) {
                         const c = term.coefficients[i];
-                        c._value = allocateRegisterIdxIfNeeded(e, c.valueUI, remap, effectPos);
+                        allocateRegisterIdxIfNeeded(e, c.valueUI, remap, effectPos);
                     }
                 }
             } break;
@@ -721,26 +752,26 @@ export function compileEffectRack(e: EffectRack) {
                 for (let i = 0; i < switchEffect.conditions.length; i++) {
                     const cond = switchEffect.conditions[i];
 
-                    cond._a = allocateRegisterIdxIfNeeded(e, cond.aUi, remap, effectPos);
-                    cond._b = allocateRegisterIdxIfNeeded(e, cond.bUi, remap, effectPos);
-                    cond._val = allocateRegisterIdxIfNeeded(e, cond.valUi, remap, effectPos);
+                    allocateRegisterIdxIfNeeded(e, cond.aUi, remap, effectPos);
+                    allocateRegisterIdxIfNeeded(e, cond.bUi, remap, effectPos);
+                    allocateRegisterIdxIfNeeded(e, cond.valUi, remap, effectPos);
                 }
 
-                switchEffect._default = allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__NOISE: {
                 const noise = effectValue;
 
-                noise._amplitude = allocateRegisterIdxIfNeeded(e, noise.amplitudeUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, noise.amplitudeUi, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__DELAY: {
                 const delay = effectValue;
 
                 delay._idx = allocateRegisterIdx(e, 0, true);
-                delay._sampleBuffer = allocateBufferIdx(e, 1);
+                delay._sampleBuffer = allocateBufferIdx(e, 1, 0);
 
-                delay._signal  = allocateRegisterIdxIfNeeded(e, delay.signalUi, remap, effectPos);
-                delay._seconds = allocateRegisterIdxIfNeeded(e, delay.secondsUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, delay.signalUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, delay.secondsUi, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__BIQUAD_FILTER: {
                 const filter = effectValue;
@@ -748,13 +779,24 @@ export function compileEffectRack(e: EffectRack) {
                 filter._z1 = allocateRegisterIdx(e, 0, true);
                 filter._z2 = allocateRegisterIdx(e, 0, true);
 
-                filter._signal = allocateRegisterIdxIfNeeded(e, filter.signalUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.signalUi, remap, effectPos);
 
-                filter._a1 = allocateRegisterIdxIfNeeded(e, filter.a1Ui, remap, effectPos);
-                filter._a2 = allocateRegisterIdxIfNeeded(e, filter.a2Ui, remap, effectPos);
-                filter._b0 = allocateRegisterIdxIfNeeded(e, filter.b0Ui, remap, effectPos);
-                filter._b1 = allocateRegisterIdxIfNeeded(e, filter.b1Ui, remap, effectPos);
-                filter._b2 = allocateRegisterIdxIfNeeded(e, filter.b2Ui, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.a1Ui, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.a2Ui, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.b0Ui, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.b1Ui, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.b2Ui, remap, effectPos);
+            } break;
+            case EFFECT_RACK_ITEM__SINC_FILTER: {
+                const conv = effectValue;
+
+                conv._kernel    = allocateBufferIdx(e, 0, EFFECT_RACK_ITEM__CONVOLUTION_FILTER_MAX_KERNEL_LENGTH); 
+                conv._kernelIdx = allocateRegisterIdx(e, 0, true);
+
+                allocateRegisterIdxIfNeeded(e, conv.signalUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, conv.stopbandUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyMultUi, remap, effectPos);
             } break;
             default: unreachable(effectValue);
         }
@@ -765,7 +807,7 @@ export type EffectRackRegisters = {
     values: number[];
     isPersistedBetweenFrames: boolean[];
 
-    buffers: { val: Float32Array; seconds: number }[];
+    buffers: { val: Float32Array; seconds: number; samples: number; }[];
     sampleRate: number;
     // Dynamic state persists between recompilation. It's assumed that UI can't control this state.
 };
@@ -833,30 +875,51 @@ export function updateRegisters(
     if (sampleRateChanged || invalidateBuffersAsWell) {
         registers.sampleRate = sampleRate;
 
-        console.log("buffers being re-allocated: ", registers.buffers.length, sampleRateChanged, invalidateBuffersAsWell);
+        let reallocated = false;
 
         for (let i = 0; i < e._registersTemplate.buffers.length; i++) {
             const template = e._registersTemplate.buffers[i];
 
             assert(i <= registers.buffers.length);
             if (i === registers.buffers.length) {
-                const wantedLength = Math.floor(sampleRate * template.seconds);
+                const wantedLength = Math.floor(sampleRate * template.seconds) + template.samples;
                 registers.buffers.push({
                     seconds: template.seconds,
+                    samples: template.samples,
                     val: new Float32Array(wantedLength),
                 });
+
+                reallocated = true;
             } else {
                 const buff = registers.buffers[i];
-                const wantedLength = Math.floor(sampleRate * buff.seconds);
+                const wantedLength = Math.floor(sampleRate * buff.seconds) + buff.samples;
                 if (buff.val.length !== wantedLength) {
                     buff.val = new Float32Array();
+                    reallocated = true;
                 }
             }
+        }
+
+        if (reallocated) {
+            console.log("reallocated buffers");
         }
     }
 
 }
 
+
+// GOAT website: https://www.dspforaudioprogramming.com
+// Simplified my oscillator code so much damn.
+// And now I know more than just sine wave. Very epic.
+// NOTE: the current effects rack is no longer capable of 
+// generating the triangle wave from hundreds of tiny sine waves.
+// Not sure if I care though.
+// NOTE: Another goat source: https://www.soundonsound.com/techniques/whats-sound
+// Our effects rack is heavily influenced by this.
+// NOTE: if you want any hope understanding any of the filters,
+// you'll need to understand the significance of the 'Impulse signal'.
+// The best explanation I've seen so far is https://youtu.be/vsj7wUaTYdY ("Impulse Signal and its Response" - Akash Murthy).
+// Once you see this, you may be able to more-easily understand the other articles, as was the case with myself
 export function computeEffectRackIteration(
     e: EffectRack,
     registers: EffectRackRegisters,
@@ -881,7 +944,7 @@ export function computeEffectRackIteration(
     }
 
     const dt = 1 / sampleRate;
-
+ 
     for (let effectIdx = 0; effectIdx <= lastEffect; effectIdx++) {
         const effect = e.effects[effectIdx];
         const effectValue = effect.value;
@@ -892,10 +955,10 @@ export function computeEffectRackIteration(
             case EFFECT_RACK_ITEM__OSCILLATOR: {
                 const wave = effectValue;
 
-                const a = r(re, wave._amplitude);
+                const a = r(re, wave.amplitudeUI._regIdx);
                 if (Math.abs(a) > 0) {
                     const t = r(re, wave._t);
-                    const t2 = t + r(re, wave._phase);
+                    const t2 = t + r(re, wave.phaseUI._regIdx);
 
                     switch (wave.waveType) {
                         case OSC_WAVE__SIN:      value += sin(t2);      break;
@@ -908,48 +971,66 @@ export function computeEffectRackIteration(
                     w(
                         re,
                         wave._t,
-                        t + dt * r(re, wave._frequency) * r(re, wave._frequencyMult)
+                        t + dt * r(re, wave.frequencyUI._regIdx) * r(re, wave.frequencyMultUI._regIdx)
                     );
                     value *= a;
-                    value += r(re, wave._offset);
+                    value += r(re, wave.offsetUI._regIdx);
                 }
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effectValue;
 
+                const signal = r(re, envelope.signalUI._regIdx);
+
                 value = r(re, envelope._value);
                 let stage = r(re, envelope._stage);
 
-                // TODO: handle signal between 0 and 1 when we envetually get there. Right now signal can only ever be 0 or 1
-                // so it's not that important.
+                let velocity = 0;
+                let targetValue = 0;
+                switch(stage) {
+                    case 0: { // attack -> decay
+                    } break;
+                    case 1: { // decay -> sustain
+                    } break;
+                    case 2: { // sustain -> release
+                        velocity = 0;
+                        targetValue = 0;
+                    } break;
+                }
 
-                const signal = r(re, envelope._signal);
+                // TODO: handle signal between 0 and 1 when we envetually get there. Right now signal can only ever be 0 or 1
+                // so it's not that important. Also not clear what the correct approach is.
+                // Does velocity slow down? does the amlitude decrease? not sure.
                 if (signal > 0) {
                     if (stage === 0) {
-                        value += dt * (1 / r(re, envelope._attack));
+                        velocity = 1 / r(re, envelope.attackUI._regIdx);
+                        targetValue = 1;
+                    } else {
+                        const sustainLevel = r(re, envelope.sustainUI._regIdx)
+                        const amountToDrop = 1 - sustainLevel;
+                        velocity = amountToDrop / r(re, envelope.decayUI._regIdx);
+                        targetValue = sustainLevel;
+                    }
+                } else if (value > 0) {
+                    const amountToDrop = r(re, envelope.sustainUI._regIdx) - 0;
+                    velocity = amountToDrop / r(re, envelope.decayUI._regIdx);
+                    targetValue = 0;
+                }
+
+                // NOTE: we can smooth the velocit here if we wanted to.
+
+                if (signal > 0) {
+                    if (stage === 0) {
+                        value += dt * velocity;
                         if (value > 1) {
                             value = 1;
                             stage = 1;
                         }
-                    } else if (stage === 1) {
-                        const sustainLevel = r(re, envelope._sustain);
-                        const amountToDrop = 1 - sustainLevel;
-                        value -= dt * (1 / r(re, envelope._decay)) * amountToDrop;
-                        if (value < sustainLevel) {
-                            value = sustainLevel;
-                            stage = 2;
-                        }
                     } else {
-                        // This code probably should never hti. 
-                        // May as well just track the sustain level
-
-                        const sustainLevel = r(re, envelope._sustain);
-                        const decaySpeed = 1 / r(re, envelope._decay);
-
-                        value = moveTowards(value, sustainLevel, decaySpeed);
+                        value = moveTowards(value, targetValue, dt * velocity);
                     }
                 } else if (value > 0) {
-                    value -= dt * (1 / r(re, envelope._release))
+                    value -= dt * velocity;
                     if (value < 0) {
                         value = 0;
                     }
@@ -960,7 +1041,7 @@ export function computeEffectRackIteration(
                 w(re, envelope._value, value);
                 w(re, envelope._stage, stage);
 
-                const target = r(re, envelope._toModulate);
+                const target = r(re, envelope.toModulateUI._regIdx);
                 value *= target;
             } break;
             case EFFECT_RACK_ITEM__MATHS: {
@@ -972,7 +1053,7 @@ export function computeEffectRackIteration(
                     let termValue = 1;
                     for (let i = 0; i < term.coefficients.length; i++) {
                         const c = term.coefficients[i];
-                        termValue *= r(re, c._value);
+                        termValue *= r(re, c.valueUI._regIdx);
                     }
 
                     value += termValue;
@@ -986,8 +1067,8 @@ export function computeEffectRackIteration(
                 for (let i = 0; i < switchEffect.conditions.length; i++) {
                     const cond = switchEffect.conditions[i];
 
-                    const a = r(re, cond._a);
-                    const b = r(re, cond._b);
+                    const a = r(re, cond.aUi._regIdx);
+                    const b = r(re, cond.bUi._regIdx);
 
                     let result;
                     if (cond.operator === SWITCH_OP_LT) {
@@ -997,19 +1078,19 @@ export function computeEffectRackIteration(
                     }
 
                     if (result) {
-                        value = r(re, cond._val);
+                        value = r(re, cond.valUi._regIdx);
                         broke = true;
                         break;
                     }
                 }
                 if (!broke) {
-                    value = r(re, switchEffect._default);
+                    value = r(re, switchEffect.defaultUi._regIdx);
                 }
             } break;
             case EFFECT_RACK_ITEM__NOISE: {
                 const noise = effectValue;
 
-                value = r(re, noise._amplitude)
+                value = r(re, noise.amplitudeUi._regIdx)
                 if (Math.abs(value) > 0) {
                     value = 2 * Math.random() - 1;
                 }
@@ -1018,8 +1099,8 @@ export function computeEffectRackIteration(
                 const delay = effectValue;
 
                 if (delay._sampleBuffer !== null) {
-                    const signal  = r(re, delay._signal);
-                    const seconds = r(re, delay._seconds);
+                    const signal  = r(re, delay.signalUi._regIdx);
+                    const seconds = r(re, delay.secondsUi._regIdx);
 
                     let idx = r(re, delay._idx);
 
@@ -1052,13 +1133,13 @@ export function computeEffectRackIteration(
                 // https://en.wikipedia.org/wiki/Digital_biquad_filter
                 // (direct form 2)
 
-                const signal = r(re, filter._signal);
+                const signal = r(re, filter.signalUi._regIdx);
 
-                const a1 = r(re, filter._a1);
-                const a2 = r(re, filter._a2);
-                const b0 = r(re, filter._b0);
-                const b1 = r(re, filter._b1);
-                const b2 = r(re, filter._b2);
+                const a1 = r(re, filter.a1Ui._regIdx);
+                const a2 = r(re, filter.a2Ui._regIdx);
+                const b0 = r(re, filter.b0Ui._regIdx);
+                const b1 = r(re, filter.b1Ui._regIdx);
+                const b2 = r(re, filter.b2Ui._regIdx);
 
                 let z1 = r(re, filter._z1);
                 let z2 = r(re, filter._z2);
@@ -1071,6 +1152,67 @@ export function computeEffectRackIteration(
 
                 w(re, filter._z1, z1);
                 w(re, filter._z2, z2);
+            } break;
+            case EFFECT_RACK_ITEM__SINC_FILTER: {
+                // > putting a signal through an LTI filter is an equivalent operation 
+                //   to convolving the signal with the filter's impulse response
+                // https://www.dspforaudioprogramming.com
+
+                const conv = effectValue;
+
+                const signal = r(re, conv.signalUi._regIdx);
+
+                let idx = r(re, conv._kernelIdx);
+                const signalPrev = buff[conv._kernel];
+                signalPrev.val[idx] = signal;
+
+                // fc => cutoff frequency as a fraction of the sample rate
+                const f = r(re, conv.cutoffFrequencyUi._regIdx);
+                const fmult = r(re, conv.cutoffFrequencyMultUi._regIdx);
+                const fc = f * fmult / sampleRate;
+
+                let stopband = r(re, conv.stopbandUi._regIdx);
+                stopband = Math.round(stopband);
+                if (stopband <= 0) stopband = 1;
+                if (stopband >= signalPrev.val.length) {
+                    // For performance reasons. TODO: bring it down further tbh
+                    stopband = signalPrev.val.length;
+                }
+
+                const windowType = conv.windowType;
+                const isHighpass = conv.highpass;
+
+                for (let i = 0 ; i < stopband; i++) {
+                    // since idx is decrementing, we seek ahead to get the previous sample
+                    const signalPrevVal = signalPrev.val[(idx + i) % stopband];
+
+                    let sinc = i === 0 ? fc : sin(fc * i / 2) / (i * Math.PI);
+                    if (isHighpass === true) {
+                        sinc = i === 0 ? 1 - sinc : -sinc;
+                    }
+
+                    switch(windowType) {
+                        case CONVOLUTION_SINC_WINDOW__RECTANGLE: {
+                            // Our job here is done
+                        } break;
+                        case CONVOLUTION_SINC_WINDOW__HAMMING: {
+                            const hamming = 0.54 - 0.46 * cos(i / (stopband - 1));
+                            sinc *= hamming;
+                        } break;
+                        case CONVOLUTION_SINC_WINDOW__BLACKMAN: {
+                            const blackman = 0.42 - 0.5 * cos(i / stopband) + 0.08 * cos(i / stopband);
+                            sinc *= blackman;
+                        } break;
+                    }
+
+                    value += signalPrevVal * sinc;
+                }
+
+                idx -= 1;
+                if (idx < 0) {
+                    idx = stopband - 1;
+                }
+                w(re, conv._kernelIdx, idx);
             } break;
             default: unreachable(effectValue);
         }
@@ -1112,6 +1254,7 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
         EFFECT_RACK_ITEM__NOISE,
         EFFECT_RACK_ITEM__DELAY,
         EFFECT_RACK_ITEM__BIQUAD_FILTER,
+        EFFECT_RACK_ITEM__SINC_FILTER,
     ]);
 
     let value: EffectRackItemValue | undefined;
@@ -1198,6 +1341,24 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                 b0Ui: regUiUnmarshaller,
                 b1Ui: regUiUnmarshaller,
                 b2Ui: regUiUnmarshaller,
+            });
+        } break;
+        case EFFECT_RACK_ITEM__SINC_FILTER: {
+            value = unmarshalObject(o, newEffectRackConvolutionFilter(), {
+                type: asIs,
+
+                windowType: u => asEnum<ConvolutionSincWindowType>(u, [
+                    CONVOLUTION_SINC_WINDOW__RECTANGLE,
+                    CONVOLUTION_SINC_WINDOW__HAMMING,
+                    CONVOLUTION_SINC_WINDOW__BLACKMAN,
+                ]),
+
+                highpass: (u, def) => asBooleanOrUndefined(u) ?? def,
+
+                signalUi: regUiUnmarshaller,
+                stopbandUi: regUiUnmarshaller,
+                cutoffFrequencyUi: regUiUnmarshaller,
+                cutoffFrequencyMultUi: regUiUnmarshaller,
             });
         } break;
         default: unreachable(type);

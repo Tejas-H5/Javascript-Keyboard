@@ -22,11 +22,16 @@ export type UrlFnDependency = Function | {
     value: any; // this gets stringified
 };
 
+function stringify(val: any) {
+    if (typeof val === "function") return val.toString();
+    return JSON.stringify(val);
+}
+
 // This is a hack that allows usage of web-workers in a single-file-app that can be downloaded and ran locally.
 // This is otherwise not possible with Vite web worker imports.
 export function newFunctionUrl(
     /** functions get stringified directly. Be sure that they are named the same in {@link fn} as they are here */
-    dependencies: UrlFnDependency[], 
+    modules: Record<string, any>[],
     args: any[], 
     fn: Function, 
     options? : NewFunctionUrlOptions
@@ -39,9 +44,10 @@ export function newFunctionUrl(
 
 function main() {
 // These dependencies were passed on externally, and stringified in an automated manner
-${dependencies.map(a => {
-    if(typeof a === "function") return a.toString();
-    return `var ${a.name} = ${JSON.stringify(a.value)};`
+${modules.map(m => {
+    return Object.entries(m)
+        .map(([name, value]) => `const ${name} = ${stringify(value)};`)
+        .join("\n\n");
 }).join("\n\n")}
 
 // This is the actual code we want to run. It too was staringified in an automated manner

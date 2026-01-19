@@ -5,6 +5,10 @@ export function sin(t: number) {
     return Math.sin(t * Math.PI * 2);
 }
 
+export function cos(t: number) {
+    return Math.cos(t * Math.PI * 2);
+}
+
 export function sawtooth(t: number) {
     return 2 * (t % 1) - 1;
 }

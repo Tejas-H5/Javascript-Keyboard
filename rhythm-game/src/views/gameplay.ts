@@ -673,7 +673,11 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                     else if (progress < 0.95) letterColor = theme.mediumHit;
                                     else letterColor = theme.fullyHit;
                                 } else {
-                                    letterColor = null;
+                                    if (keyState.keyHeld) {
+                                        letterColor = theme.unhit;
+                                    } else {
+                                        letterColor = null;
+                                    }
                                 }
 
                                 imLetter(c, gameplayState, instrumentKey, thread, keyGain, letterColor, letterWidth);
