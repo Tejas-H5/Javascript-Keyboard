@@ -10,7 +10,7 @@ import {
     imFlex,
     imGap,
     imJustify,
-    imLayout,
+    imLayoutBegin,
     imLayoutEnd,
     imPadding,
     imRelative,
@@ -18,7 +18,6 @@ import {
     imSize,
     INLINE_BLOCK,
     NA,
-    NOT_SET,
     PERCENT,
     PX,
     REM,
@@ -325,20 +324,20 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         ctx.handled = true;
     } imIfEnd(c);
 
-    imLayout(c, COL); imFlex(c); imRelative(c); {
-        imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
-            imLayout(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
+    imLayoutBegin(c, COL); imFlex(c); imRelative(c); {
+        imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
+            imLayoutBegin(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
 
             if (imIf(c) && !loadSaveModal._open) {
                 if (imIf(c) && sequencer.isPlaying) {
-                    imLayout(c, ROW); imGap(c, 20, PX); {
-                        imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
+                    imLayoutBegin(c, ROW); imGap(c, 20, PX); {
+                        imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
                             const speed = getPlaybackSpeed();
                             imStr(c, "Speed: ");
                             imStr(c, speed.toFixed(2));
                             imStr(c, "x");
 
-                            imLayout(c, COL); imSize(c, 500, PX, 1.5, REM); {
+                            imLayoutBegin(c, COL); imSize(c, 500, PX, 1.5, REM); {
                                 const newSpeed = imSliderInput(c, 0.0, 3, 0.0001, speed);
                                 if (imMemo(c, newSpeed)) {
                                     setGlobalPlaybackSpeed(ctx, newSpeed);
@@ -352,14 +351,14 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             } imIfEnd(c);
                         } imLayoutEnd(c);
 
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
                             imStr(c, (sequencer._time / 1000).toFixed(3)); imStr(c, "s");
                         } imLayoutEnd(c);
                     } imLayoutEnd(c);
                 } else {
                     imIfElse(c);
 
-                    imLayout(c, ROW); imGap(c, 20, PX); {
+                    imLayoutBegin(c, ROW); imGap(c, 20, PX); {
                         // bpm input
                         // TODO: clean this up.
                         {
@@ -385,7 +384,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     } imLayoutEnd(c);
                 } imIfEnd(c);
 
-                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
                 if (imButtonIsClicked(c, "Test", s.importModalOpen)) {
                     const time = getTimeForBeats(chart, sequencer.cursor);
@@ -414,14 +413,14 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
             } imIfEnd(c);
 
-            imLayout(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
+            imLayoutBegin(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
         } imLayoutEnd(c);
 
         imLine(c, LINE_HORIZONTAL, 1);
 
-        imLayout(c, COL); imFlex(c); {
+        imLayoutBegin(c, COL); imFlex(c); {
             if (imIf(c) && isRangeSelecting) {
-                imLayout(c, BLOCK); imRelative(c); {
+                imLayoutBegin(c, BLOCK); imRelative(c); {
                     const [start, end] = getSelectionStartEndIndexes(sequencer);
                     let str;
                     if (start === -1 || end === -1) {
@@ -436,11 +435,11 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
             if (!!debugFlags.debuUndoBuffer) {
                 // Debug visualizer for the undo buffer
-                imLayout(c, BLOCK); {
+                imLayoutBegin(c, BLOCK); {
                     let i = 0;
                     const chart = sequencer._currentChart;
                     imFor(c); for (const item of chart._undoBuffer.items) {
-                        imLayout(c, INLINE_BLOCK); imPadding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
+                        imLayoutBegin(c, INLINE_BLOCK); imPadding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
                             imStr(c, chart._undoBuffer.idx === i ? "->" : "");
                             imStr(c, "Entry " + (i++) + ": ");
                             imFor(c); for (const tlItem of item.items) {
@@ -451,7 +450,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 } imLayoutEnd(c);
             }
 
-            imLayout(c, BLOCK); imFlex(c); imRelative(c); {
+            imLayoutBegin(c, BLOCK); imFlex(c); imRelative(c); {
                 if (isFirstishRender(c)) {
                     elSetStyle(c, "overflowY", "auto");
                     elSetStyle(c, "overflowX", "hidden");
@@ -476,7 +475,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         s.leftExtentBeatsAnimated,
                     ) * 100;
 
-                    imLayout(c, BLOCK);
+                    imLayoutBegin(c, BLOCK);
                     imAbsolute(
                         c,
                         0, PX, rightAbsolutePercent, PERCENT,
@@ -521,7 +520,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
                 let hasFilter = sequencer.notesFilter.size > 0;
 
-                imLayout(c, COL); imJustify(c); imSize(c, 0, NA, 100, PERCENT); {
+                imLayoutBegin(c, COL); imJustify(c); imSize(c, 0, NA, 100, PERCENT); {
                     imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s, false);
                     imSequencerNotesUI(c, "measures", s.measures, null, ctx, s, false);
 
@@ -577,7 +576,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 const lastItem = chart.timeline[chart.timeline.length - 1]
                 const totalBeats = itemEnd(lastItem);
 
-                imLayout(c, BLOCK); imSize(c, 0, NA, 50, PX); imRelative(c); {
+                imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 50, PX); imRelative(c); {
                     const leftAbsolutePercent = 100.0 * s.leftExtentBeatsAnimated / totalBeats;
                     const rightAbsolutePercent = 100.0 * s.rightExtentBeatsAnimated / totalBeats;
                     const color = `rgba(0, 0, 0, 0.25)`;
@@ -597,8 +596,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             case TIMELINE_ITEM_NOTE: {
                                 const absoluteTop = 100 * (1 - item.noteId / (ctx.keyboard.maxNoteIdx + 1));
 
-                                imLayout(c, BLOCK); 
-                                imAbsolute(c, absoluteTop, PERCENT, 0, NOT_SET, 0, NA, absoluteLeftStart, PERCENT);
+                                imLayoutBegin(c, BLOCK); 
+                                imAbsolute(c, absoluteTop, PERCENT, 0, NA, 0, NA, absoluteLeftStart, PERCENT);
                                 imSize(c, width, PERCENT, 2, PX); {
                                     imBg(c, cssVars.fg);
                                 } imLayoutEnd(c);
@@ -610,13 +609,13 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
                     // the currently viewed sliding window
                     {
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
                             imAbsolute(c, 0, PX, 0, NA, 0, PX, 0, PX);
                             imSize(c, leftAbsolutePercent, PERCENT, 0, NA);
                             imBg(c, color);
                         } imLayoutEnd(c);
 
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
                             imAbsolute(c, 0, PX, 0, PX, 0, PX, rightAbsolutePercent, PERCENT);
                             imBg(c, color);
                         } imLayoutEnd(c);
@@ -626,12 +625,12 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
             imLine(c, LINE_HORIZONTAL, 1);
 
-            imLayout(c, ROW); imJustify(c); imGap(c, 10, PX); {
+            imLayoutBegin(c, ROW); imJustify(c); imGap(c, 10, PX); {
                 imEl(c, EL_B); { 
                     imStr(c, sequencer._currentChart.name); 
                 } imElEnd(c, EL_B);
 
-                imLayout(c, BLOCK); imFlex(c); {
+                imLayoutBegin(c, BLOCK); imFlex(c); {
                     let isSaving = isSavingAnyChart();
 
                     // We never want our '|' sperator to:
@@ -685,7 +684,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 imStr(c, "(integer_beats="); imStr(c, sequencer.cursor); imStr(c, ")");
                 imStr(c, ", time="); imStr(c, (sequencer._time / 1000).toFixed(3)); imStr(c, "s");
 
-                imLayout(c, ROW); imFlex(c); imJustify(c, END); {
+                imLayoutBegin(c, ROW); imFlex(c); imJustify(c, END); {
                     if (imIf(c) && sequencer.notesToPreview.length > 0) {
                         imStr(c, "TAB -> place, DEL or ~ -> delete");
                     } imIfEnd(c);
@@ -749,9 +748,9 @@ function imAbsoluteVerticalLine(
     thickness: number,
 ) {
     if (imIf(c) && absolutePercent >= 0 && absolutePercent <= 100) {
-        imLayout(c, BLOCK); imAbsolute(
+        imLayoutBegin(c, BLOCK); imAbsolute(
             c,
-            0, PX, 0, NOT_SET,
+            0, PX, 0, NA,
             0, PX, absolutePercent, PERCENT,
         ); {
             if (imMemo(c, thickness)) elSetStyle(c,"width", thickness + "px");
@@ -774,7 +773,7 @@ function imSequencerNotesUI(
 
     const compact = !!s.allNotesVisible;
 
-    imLayout(c, BLOCK); imRelative(c); imPadding(
+    imLayoutBegin(c, BLOCK); imRelative(c); imPadding(
         c,
         compact ? 0 : 10, PX, 3, PX, 
         compact ? 0 : 10, PX, 3, PX, 
@@ -838,9 +837,9 @@ function imSequencerTrackTimelineItem(
         isBeingPlayed = isItemBeingPlayed(sequencer, item);
     }
 
-    imLayout(c, BLOCK); imAbsolute(
+    imLayoutBegin(c, BLOCK); imAbsolute(
         c,
-        0, NOT_SET, 0, NOT_SET,
+        0, NA, 0, NA,
         0, PX, leftPercent, PERCENT,
     ); {
         if (isFirstishRender(c)) {
@@ -916,7 +915,7 @@ function getNextDivisor(val: number) {
 function imCursorDivisor(c: ImCache, val: number): number | null {
     let result: number | null = null;
 
-    imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
+    imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
         if (imButtonIsClicked(c, "<-")) {
             result =  getPrevDivisor(val);
         }
@@ -924,12 +923,12 @@ function imCursorDivisor(c: ImCache, val: number): number | null {
             result = clamp(val - 1, 1, 16);
         }
 
-        imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
         imStr(c, "Divisor: ");
         imStr(c, "1 / " + val);
 
-        imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
         if (imButtonIsClicked(c, "+")) {
             result = clamp(val + 1, 1, 16);
@@ -946,7 +945,7 @@ function imCursorDivisor(c: ImCache, val: number): number | null {
 function imBpmInput(c: ImCache, value: number): number | null {
     let result: number | null = null;
 
-    imLayout(c, ROW); imAlign(c); imGap(c, 5, PX); {
+    imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
         if (imButtonIsClicked(c, "<-")) {
             result = value - 10;
         }
@@ -954,12 +953,12 @@ function imBpmInput(c: ImCache, value: number): number | null {
             result = value -=1;
         }
 
-        imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
         imStr(c, "Last BPM: ");
         imStr(c, value.toFixed(1) + "");
 
-        imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
         if (imButtonIsClicked(c, "+")) {
             result = value + 1;
@@ -984,17 +983,17 @@ function imFilterModal(
         sequencer.keyEditFilterRangeIdx0 = -1;
     }
 
-    imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
         if (isFirstishRender(c)) {
             elSetStyle(c, "zIndex", "100");
         }
 
-        imLayout(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
-            imLayout(c, ROW); imAlign(c); imJustify(c); {
+        imLayoutBegin(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
+            imLayoutBegin(c, ROW); imAlign(c); imJustify(c); {
                 imStr(c, "Edit filter - shift to range-select");
             } imLayoutEnd(c);
 
-            const root = imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
+            const root = imLayoutBegin(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
                 if (isFirstishRender(c)) {
                     elSetStyle(c, "lineHeight", "1");
                 }
@@ -1004,10 +1003,10 @@ function imFilterModal(
                     elSetStyle(c, "fontSize", (root.clientHeight / ctx.keyboard.flatKeys.length) + "px");
                 }
 
-                imLayout(c, COL); imAlign(c, END); {
+                imLayoutBegin(c, COL); imAlign(c, END); {
                     imFor(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
                             let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
 
                             imBg(c, hasPress ? cssVars.fg : "");
@@ -1018,10 +1017,10 @@ function imFilterModal(
                     } imForEnd(c);
                 } imLayoutEnd(c);
 
-                imLayout(c, COL); {
+                imLayoutBegin(c, COL); {
                     imFor(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
 
                             let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
 
@@ -1035,13 +1034,13 @@ function imFilterModal(
                     } imForEnd(c);
                 } imLayoutEnd(c);
 
-                imLayout(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
 
-                imLayout(c, COL); imFlex(c); {
+                imLayoutBegin(c, COL); imFlex(c); {
                     imFor(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
                         const normalized = 1;
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
                             if (isFirstishRender(c)) {
                                 elSetStyle(c, "color", cssVars.bg);
                             }
@@ -1155,11 +1154,11 @@ function imExportModal(
     ctx: GlobalContext,
     chart: SequencerChart
 ) {
-    imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
         if (isFirstishRender(c)) {
             elSetStyle(c, "zIndex", "10");
         }
-        imLayout(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
+        imLayoutBegin(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
             let s; s = imGetInline(c, imExportModal) ?? imSet(c, {
                 buttonText: "Copy to clipboard",
                 serializedJson: "",
@@ -1174,13 +1173,13 @@ function imExportModal(
                 s.sizeMb = bytesToMegabytes(sizeInBytes);
             }
 
-            imLayout(c, COL); imFlex(c); imScrollOverflow(c, true); {
-                imLayout(c, BLOCK); {
+            imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c, true); {
+                imLayoutBegin(c, BLOCK); {
                     elSetStyle(c, "userSelect", "none");
                     imStr(c, s.sizeMb.toPrecision(3));
                     imStr(c, "mb");
                 } imLayoutEnd(c);
-                imLayout(c, BLOCK); imFlex(c); {
+                imLayoutBegin(c, BLOCK); imFlex(c); {
                     elSetStyle(c, "wordBreak", "break-all");
                     imStr(c, s.serializedJson);
                 } imLayoutEnd(c);
@@ -1201,8 +1200,8 @@ function imImportModal(
     c: ImCache,
     ctx: GlobalContext,
 ) {
-    imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
-        imLayout(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
+    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+        imLayoutBegin(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
             let s; s = imGetInline(c, imExportModal) ?? imSet(c, {
                 importJson: "",
                 nameOverride: "",
@@ -1212,10 +1211,10 @@ function imImportModal(
                 s.importJson = "";
             }
 
-            imLayout(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+            imLayoutBegin(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 imStr(c, "Data to import:");
             } imLayoutEnd(c);
-            imLayout(c, COL); imFlex(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+            imLayoutBegin(c, COL); imFlex(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 const [, textArea] = imTextAreaBegin(c, {
                     value: s.importJson,
                     placeholder: "Paste in the JSON you exported"
@@ -1226,10 +1225,10 @@ function imImportModal(
                     }
                 } imTextAreaEnd(c);
             } imLayoutEnd(c);
-            imLayout(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+            imLayoutBegin(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 imStr(c, "New name (optional):");
             } imLayoutEnd(c);
-            imLayout(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+            imLayoutBegin(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 const input = imTextInputBegin(c, {
                     value: s.nameOverride,
                     placeholder: "Provide a new name here"

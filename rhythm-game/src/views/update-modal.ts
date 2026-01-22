@@ -2,7 +2,7 @@ import { imInfiniteProgress } from "src/app-components/infinite-progress";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imPadding, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { createChart, loadChartMetadataList, saveChart } from "src/state/data-repository";
 import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
@@ -33,18 +33,18 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
             elSetStyle(c, "zIndex", "100");
         }
 
-        imLayout(c, COL); imBg(c, cssVars.bg); imSize(c, 70, PERCENT, 0, NA); imPadding(c,10, PX, 10, PX, 10, PX, 10, PX); {
+        imLayoutBegin(c, COL); imBg(c, cssVars.bg); imSize(c, 70, PERCENT, 0, NA); imPadding(c,10, PX, 10, PX, 10, PX, 10, PX); {
             if (imIf(c) && !s.updateCtx.isPending()) {
-                imLayout(c, ROW); imJustify(c); {
+                imLayoutBegin(c, ROW); imJustify(c); {
                     imStr(c, s.message);
                 } imLayoutEnd(c);
 
-                imLayout(c, ROW); imAlign(c); imGap(c, 10, PX); {
-                    imLayout(c, BLOCK); {
+                imLayoutBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                    imLayoutBegin(c, BLOCK); {
                         imStr(c, "Enter new name: ");
                     } imLayoutEnd(c);
 
-                    imLayout(c, BLOCK); imFlex(c); {
+                    imLayoutBegin(c, BLOCK); imFlex(c); {
                         const ev = imTextInputOneLine(c, s.newName ?? "")
                         if (ev) {
                             if (ev.newName !== undefined) {
@@ -53,7 +53,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
                         }
 
                         if (imIf(c) && s.error) {
-                            imLayout(c, ROW); imFg(c, cssVarsApp.error); {
+                            imLayoutBegin(c, ROW); imFg(c, cssVarsApp.error); {
                                 imStr(c, s.error);
                             } imLayoutEnd(c);
                         } imIfEnd(c);
@@ -70,7 +70,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
             } else {
                 imIfElse(c);
 
-                imLayout(c, ROW); imJustify(c); {
+                imLayoutBegin(c, ROW); imJustify(c); {
                     imStr(c, s.message);
                 } imLayoutEnd(c);
 

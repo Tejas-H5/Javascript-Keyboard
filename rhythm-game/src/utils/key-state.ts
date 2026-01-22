@@ -1,122 +1,244 @@
-export type KeyState = {
-    stringRepresentation: string;
-    key:  string;
-    key2: string | undefined;
+import { assert } from "./assert";
 
-    pressed:  boolean;
-    repeat:   boolean;
-    held:     boolean;
-    released: boolean;
-
-    numPressed:  number;
-    numHeld:     number;
-    numReleased: number;
+type PressedSymbols<T extends string> = {
+    pressed: T[];
+    held: T[];
+    repeated: T[];
+    released: T[];
 };
 
-export function newKeyState(
-    stringRepresentation: string,
-    key: string,
-    key2?: string
-): KeyState {
+export type KeysState = {
+    keys:    PressedSymbols<Key>;
+    letters: PressedSymbols<string>;
+};
+
+export function newKeysState(): KeysState {
     return {
-        stringRepresentation,
-        key, 
-        key2,
-
-        pressed:  false,
-        held:     false,
-        released: false,
-        repeat:   false,
-
-        numPressed:  0,
-        numHeld:     0,
-        numReleased: 0,
+        keys: {
+            pressed:  [],
+            held:     [],
+            released: [],
+            repeated: [],
+        },
+        letters: {
+            pressed:  [],
+            held:     [],
+            released: [],
+            repeated: [],
+        }
     };
 }
 
-export function pressKey(state: KeyState, repeat: boolean) {
-    if (!repeat) {
-        state.numPressed++;
-        state.numHeld++;
-    }
+const EV_NOTHING  = 0;
+const EV_PRESSED  = 1;
+const EV_RELEASED = 2;
+const EV_REPEATED = 3;
+const EV_BLUR     = 4;
 
-    state.pressed = true;
-    state.repeat = repeat;
-    state.held = true;
-}
 
-export function releaseKey(state: KeyState) {
-    state.numHeld--;
-    state.numReleased++;
+// https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values
+// There are a LOT of them. So I won't bother holding state for every possible key like usual
+// TODO: try using keyCode if available, then fall back on key
+export type Key = string & { __Key: void };
 
-    state.held     = state.numHeld > 0;
-    state.released = true;
-}
+export function getNormalizedKey(key: string): Key {
+    if (key.length === 1) {
+        key = key.toUpperCase();
 
-export function stepKey(state: KeyState) {
-    state.numPressed  = 0;
-    state.numReleased = 0;
-
-    state.pressed  = false;
-    state.repeat = false;
-    state.released = false;
-}
-
-export function resetKey(state: KeyState) {
-    state.numPressed  = 0;
-    state.numHeld     = 0;
-    state.numReleased = 0;
-
-    state.pressed  = false;
-    state.held     = false;
-    state.released = false;
-}
-
-export function handleKeyDown(keys: KeyState[], e: KeyboardEvent) {
-    for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        if (e.key === key.key || e.key === key.key2) {
-            pressKey(key, e.repeat);
+        switch (key) {
+            case "!": key = "1"; break;
+            case "@": key = "2"; break;
+            case "#": key = "3"; break;
+            case "$": key = "4"; break;
+            case "%": key = "5"; break;
+            case "^": key = "6"; break;
+            case "&": key = "7"; break;
+            case "*": key = "8"; break;
+            case "(": key = "9"; break;
+            case ")": key = "0"; break;
+            case "_": key = "-"; break;
+            case "+": key = "+"; break;
+            case "{": key = "["; break;
+            case "}": key = "]"; break;
+            case "|": key = "\\"; break;
+            case ":": key = ";"; break;
+            case "\"": key = "'"; break;
+            case "<": key = ","; break;
+            case ">": key = "."; break;
+            case "?": key = "/"; break;
+            case "~": key = "`"; break;
         }
     }
+
+    return key as Key;
 }
 
-export function handleKeyUp(keys: KeyState[], e: KeyboardEvent) {
-    for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        if (e.key === key.key || e.key === key.key2) {
-            releaseKey(key);
-        }
+function updatePressedSymbols<T extends string>(
+    s: PressedSymbols<T>,
+    ev: number,
+    key: T,
+) {
+    for (let i = 0; i < s.pressed.length; i++) {
+        s.held.push(s.pressed[i]);
+    }
+    s.pressed.length = 0;
+    s.repeated.length = 0;
+    s.released.length = 0;
+
+    switch (ev) {
+        case EV_PRESSED: {
+            // It is assumed that the number of press events for a particular
+            // key type will equal the number of release events, so no deduplication
+            // is requried here. If this is not the case, then there's not much we can 
+            // do about it really.
+            assert(s.pressed.length < 1000);
+            s.pressed.push(key);
+        } break;
+        case EV_REPEATED: {
+            if (s.repeated.indexOf(key) === -1) {
+                s.repeated.push(key);
+            }
+        } break;
+        case EV_RELEASED: {
+            // Ensure only one of that key is removed
+            for (let i = 0; i < s.held.length; i++) {
+                if (s.held[i] === key) {
+                    s.held[i] = s.held[s.held.length - 1];
+                    s.held.pop();
+                    break;
+                }
+            }
+
+            s.released.push(key);
+        } break;
+        case EV_BLUR: {
+            s.pressed.length = 0;
+            s.released.length = 0;
+            s.repeated.length = 0;
+            s.held.length = 0;
+        } break;
+        case EV_NOTHING: {
+        } break;
     }
 }
 
-export function stepKeyboardState(keys: KeyState[]) {
-    for (let i = 0; i < keys.length; i++) {
-        stepKey(keys[i]);
-    }
+function updateKeysStateInternal(
+    keysState: KeysState,
+    ev: number,
+    key: string,
+) {
+    updatePressedSymbols(keysState.keys, ev, getNormalizedKey(key));
+    updatePressedSymbols(keysState.letters, ev, key);
 }
 
-export function resetKeyboardState(keys: KeyState[]) {
-    for (let i = 0; i < keys.length; i++) {
-        resetKey(keys[i]);
-    }
-}
-
-export function handleKeysLifecycle(
-    keys: KeyState[],
+export function updateKeysState(
+    keysState: KeysState,
     keyDown: KeyboardEvent | null,
     keyUp: KeyboardEvent | null,
     blur: boolean,
 ) {
-    stepKeyboardState(keys);
-    if (keyDown) {
-        handleKeyDown(keys, keyDown);
+    let key = "";
+    let ev  = EV_NOTHING
+    if (keyDown !== null) {
+        key = keyDown.key;
+        if (keyDown.repeat === true) {
+            ev = EV_REPEATED;
+        } else {
+            ev = EV_PRESSED;
+        }
+    } else if (keyUp !== null) {
+        key = keyUp.key;
+        ev = EV_RELEASED;
+    } else if (blur === true) {
+        ev = EV_BLUR;
+        key = "";
+    } else {
+        ev = EV_NOTHING;
+        key = "";
     }
-    if (keyUp) {
-        handleKeyUp(keys, keyUp);
-    }
-    if (blur) {
-        resetKeyboardState(keys);
+
+    updateKeysStateInternal(keysState, ev, key);
+
+    if (key === "Control" || key === "Meta") {
+        updateKeysStateInternal(keysState, ev, "Modifier");
     }
 }
+
+export function isKeyPressed(keysState: KeysState, key: Key): boolean {
+    const keys = keysState.keys;
+    for (let i = 0; i < keys.pressed.length; i++) {
+        if (keys.pressed[i] === key) return true;
+    }
+    return false;
+}
+
+export function isKeyRepeated(keysState: KeysState, key: Key): boolean {
+    const keys = keysState.keys;
+    for (let i = 0; i < keys.repeated.length; i++) {
+        if (keys.repeated[i] === key) return true;
+    }
+    return false;
+}
+
+export function isKeyPressedOrRepeated(keysState: KeysState, key: Key): boolean {
+    if (isKeyPressed(keysState, key)) return true;
+    if (isKeyRepeated(keysState, key)) return true;
+    return false;
+}
+
+export function isKeyReleased(keysState: KeysState, key: Key): boolean {
+    const keys = keysState.keys;
+    for (let i = 0; i < keys.released.length; i++) {
+        if (keys.released[i] === key) return true;
+    }
+    return false;
+}
+
+export function isKeyHeld(keysState: KeysState, key: Key): boolean {
+    const keys = keysState.keys;
+    for (let i = 0; i < keys.held.length; i++) {
+        if (keys.held[i] === key) return true;
+    }
+    return false;
+}
+
+
+export function isLetterPressed(keysState: KeysState, letter: string): boolean {
+    const letters = keysState.letters;
+    for (let i = 0; i < letters.pressed.length; i++) {
+        if (letters.pressed[i] === letter) return true;
+    }
+    return false;
+}
+
+export function isLetterRepeated(keysState: KeysState, letter: string): boolean {
+    const letters = keysState.letters;
+    for (let i = 0; i < letters.repeated.length; i++) {
+        if (letters.repeated[i] === letter) return true;
+    }
+    return false;
+}
+
+export function isLetterPressedOrRepeated(keysState: KeysState, letter: string): boolean {
+    if (isLetterPressed(keysState, letter)) return true;
+    if (isLetterRepeated(keysState, letter)) return true;
+    return false;
+}
+
+export function isLetterReleased(keysState: KeysState, letter: string): boolean {
+    const letters = keysState.letters;
+    for (let i = 0; i < letters.released.length; i++) {
+        if (letters.released[i] === letter) return true;
+    }
+    return false;
+}
+
+export function isLetterHeld(keysState: KeysState, letter: string): boolean {
+    const letters = keysState.letters;
+    for (let i = 0; i < letters.held.length; i++) {
+        if (letters.held[i] === letter) return true;
+    }
+    return false;
+}
+
 

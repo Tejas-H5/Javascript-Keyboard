@@ -1,6 +1,6 @@
 import { ImCache, imGet, imMemo, imSet } from "src/utils/im-core";
 import { EL_CANVAS, elSetStyle, imEl, imElEnd, imTrackSize } from "src/utils/im-dom";
-import { BLOCK, imFlex, imLayout, imLayoutEnd, imRelative, imSize, PERCENT } from "./core/layout";
+import { BLOCK, imFlex, imLayoutBegin, imLayoutEnd, imRelative, imSize, PERCENT } from "./core/layout";
 
 type ImCanvasRenderingContext = [
     canvas: HTMLCanvasElement,
@@ -15,7 +15,7 @@ export function imBeginCanvasRenderingContext2D(c: ImCache): ImCanvasRenderingCo
     // causes the parent to get larger, which causes the canvas to get larger, and so on.
     // This relative -> absolute pattern is being used here to fix this.
 
-    imLayout(c, BLOCK); imRelative(c); imFlex(c);
+    imLayoutBegin(c, BLOCK); imRelative(c); imFlex(c);
     const { size } = imTrackSize(c);
 
     const canvas = imEl(c, EL_CANVAS).root;

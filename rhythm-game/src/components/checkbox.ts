@@ -1,6 +1,6 @@
 import { newCssBuilder } from "src/utils/cssb";
 import { ImCache, isFirstishRender } from "src/utils/im-core";
-import { BLOCK, EM, imAlign, imBg, imLayout, imLayoutEnd, imSize, INLINE, INLINE_BLOCK, PERCENT, ROW } from "./core/layout";
+import { BLOCK, EM, imAlign, imBg, imLayoutBegin, imLayoutEnd, imSize, INLINE, INLINE_BLOCK, PERCENT, ROW } from "./core/layout";
 import { elHasMousePress, elSetClass, elSetStyle } from "src/utils/im-dom";
 import { cssVars } from "./core/stylesheets";
 
@@ -42,7 +42,7 @@ export function imCheckbox(c: ImCache, checked: boolean): { checked: boolean } |
 }
 
 export function imCheckboxBegin(c: ImCache) {
-    imLayout(c, INLINE_BLOCK); imAlign(c); {
+    imLayoutBegin(c, INLINE_BLOCK); imAlign(c); {
         if (isFirstishRender(c)) {
             elSetClass(c, root);
             elSetStyle(c, "cursor", "pointer");
@@ -57,13 +57,13 @@ export function imCheckboxEnd(c: ImCache) {
 }
 
 export function imCheckboxCheckBegin(c: ImCache, checked: boolean) {
-    imLayout(c, BLOCK); imSize(c, 0.65, EM, 0.65, EM); {
+    imLayoutBegin(c, BLOCK); imSize(c, 0.65, EM, 0.65, EM); {
         if (isFirstishRender(c)) {
             elSetClass(c, cnL.solidBorderSmRounded);
             elSetStyle(c, "padding", "4px");
         }
 
-        imLayout(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT);
+        imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT);
         imBg(c, checked ? cssVars.fg : ""); {
             if (isFirstishRender(c)) {
                 elSetClass(c, cnL.checkboxButton);

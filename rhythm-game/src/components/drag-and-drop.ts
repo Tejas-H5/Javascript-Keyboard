@@ -1,6 +1,6 @@
 import { ImCache, imGet, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { elGet, elHasMouseOver, elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
-import { COL, imBg, imFlex, imLayout, imLayoutEnd } from "./core/layout";
+import { COL, imBg, imFlex, imLayoutBegin, imLayoutEnd } from "./core/layout";
 import { cssVars } from "./core/stylesheets";
 
 export type DragAndDropState =  {
@@ -125,7 +125,7 @@ export function imDragZoneBegin(c: ImCache, dnd: DragAndDropState, idx: number):
         isDragging = true;
     }
 
-    const outer = imLayout(c, COL); {
+    const outer = imLayoutBegin(c, COL); {
         const isDraggingChanged = imMemo(c, isDragging);
         if (isDraggingChanged) {
             if (isDragging) {
@@ -134,7 +134,7 @@ export function imDragZoneBegin(c: ImCache, dnd: DragAndDropState, idx: number):
             }
         }
 
-        imLayout(c, COL); imFlex(c); {
+        imLayoutBegin(c, COL); imFlex(c); {
             imBg(c, cssVars.bg);
 
             const dXChanged = imMemo(c, dX);

@@ -1,20 +1,21 @@
+import { newCssBuilder } from 'src/utils/cssb';
 import { ImCache, imGet, imMemo, imSet, inlineTypeId, isFirstishRender } from 'src/utils/im-core';
-import { EL_DIV, elSetClass, elSetStyle, imEl, imElEnd } from 'src/utils/im-dom';
-import { cn } from "./stylesheets";
+import { EL_DIV, elSetClass, elSetStyle, imElBegin, imElEnd } from 'src/utils/im-dom';
+import { cn, cssVars } from "./stylesheets";
+
+const cssb = newCssBuilder();
 
 // It occurs to me that I can actually just make my own fully custom layout system that significantly minimizes
 // number of DOM nodes required to get things done.
 
 export type SizeUnitInstance = number & { __sizeUnit: void; };
 
-export const PX      = 10001 as SizeUnitInstance;
-export const EM      = 20001 as SizeUnitInstance;
+export const PX = 10001 as SizeUnitInstance;
+export const EM = 20001 as SizeUnitInstance;
 export const PERCENT = 30001 as SizeUnitInstance;
-export const REM     = 40001 as SizeUnitInstance;
-export const CH      = 50001 as SizeUnitInstance;
-export const NA      = 60001 as SizeUnitInstance; // Not applicable. Nahh. 
-
-export const NOT_SET = NA;
+export const REM = 40001 as SizeUnitInstance;
+export const CH = 50001 as SizeUnitInstance;
+export const NA = 60001 as SizeUnitInstance; // Not applicable. Nahh. 
 
 export type SizeUnits = typeof PX |
     typeof EM |
@@ -53,16 +54,24 @@ export function imSize(
         size = imSet(c, { width: 0, wType: NA, height: 0, hType: NA });
     }
 
+    // TODO: Cross browser testing. Seems a bit sus here
+
     if (size.width !== width || size.wType !== wType) {
         size.width = width;
         size.wType = wType;
-        elSetStyle(c, "width", getSize(width, wType));
+        const sizeCss = getSize(width, wType);
+        elSetStyle(c, "width",    sizeCss); 
+        elSetStyle(c, "minWidth", sizeCss);
+        elSetStyle(c, "maxWidth", sizeCss);
     }
 
     if (size.height !== height || size.hType !== hType) {
         size.height = height;
         size.hType = hType;
-        elSetStyle(c, "height", getSize(height, hType));
+        const sizeCss = getSize(height, hType);
+        elSetStyle(c, "height",    sizeCss); 
+        elSetStyle(c, "minHeight", sizeCss);
+        elSetStyle(c, "maxHeight", sizeCss);
     }
 
     return size;
@@ -151,6 +160,17 @@ export function imFontSize(c: ImCache, size: number, units: SizeUnits) {
 
 export type DisplayTypeInstance = number & { __displayType: void; };
 
+/**
+ * Whitespace " " can permeate 'through' display: block DOM nodes, so it's useful for text.
+ * ```ts
+ * imLayout(c, BLOCK); { 
+ *      imLayout(c, INLINE); {
+ *          if (isFirstishRender(c)) elSetStyle(c, "fontWeight", "bold");
+ *          imStr(c, "Hello, "); // imLayout(c, ROW) would ignore this whitespace.
+ *      } imLayoutEnd(c);
+ *      imStr(c, "World"); 
+ *  } imLayoutEnd(c);
+ */
 export const BLOCK = 1 as DisplayTypeInstance;
 export const INLINE_BLOCK = 2 as DisplayTypeInstance;
 export const INLINE = 3 as DisplayTypeInstance;
@@ -162,42 +182,66 @@ export const TABLE = 8 as DisplayTypeInstance;
 export const TABLE_ROW = 9 as DisplayTypeInstance;
 export const TABLE_CELL = 10 as DisplayTypeInstance;
 
-export type DisplayType = 
-    typeof BLOCK |
-    typeof INLINE_BLOCK |
-    typeof ROW |
-    typeof ROW_REVERSE |
-    typeof COL |
-    typeof COL_REVERSE |
-    typeof TABLE |
-    typeof TABLE_ROW |
-    typeof TABLE_CELL;
+export type DisplayType 
+    = typeof BLOCK 
+    | typeof INLINE_BLOCK 
+    | typeof ROW 
+    | typeof ROW_REVERSE 
+    | typeof COL 
+    | typeof COL_REVERSE 
+    | typeof TABLE 
+    | typeof TABLE_ROW  
+    | typeof TABLE_CELL;
 
+/**
+ * A dummy element with flex: 1. Super useful for flexbox.
+ */
 export function imFlex1(c: ImCache) {
-    imLayout(c, BLOCK); {
+    imLayoutBegin(c, BLOCK); {
         if (isFirstishRender(c)) elSetStyle(c, "flex", "1");
     } imLayoutEnd(c);
 }
 
 export function imLayoutBegin(c: ImCache, type: DisplayType) {
-    const root = imEl(c, EL_DIV);
-    if (imMemo(c, type)) {
-        elSetClass(c, cn.inlineBlock, type === INLINE_BLOCK);
-        elSetClass(c, cn.inline, type === INLINE);
-        elSetClass(c, cn.row, type === ROW);
-        elSetClass(c, cn.rowReverse, type === ROW_REVERSE);
-        elSetClass(c, cn.col, type === COL);
-        elSetClass(c, cn.colReverse, type === COL_REVERSE);
-        elSetClass(c, cn.table, type === TABLE);
-        elSetClass(c, cn.tableRow, type === TABLE_ROW);
-        elSetClass(c, cn.tableCell, type === TABLE_CELL);
-    }
-
-    return root.root;
+    return imLayoutBeginInternal(c, type).root;
 }
 
-/** {@deprecated} use {@link imLayoutBegin} instead */
-export const imLayout = imLayoutBegin;
+export function imLayoutBeginInternal(c: ImCache, type: DisplayType) {
+    const root = imElBegin(c, EL_DIV);
+
+    const last = imGet(c, inlineTypeId(imLayoutBegin), -1);
+    if (last !== type) {
+        imSet(c, type);
+
+        switch(last) {
+            case BLOCK:        /* Do nothing - this is the default style */ break;
+            case INLINE_BLOCK: elSetClass(c, cn.inlineBlock, false);        break;
+            case INLINE:       elSetClass(c, cn.inline, false);             break;
+            case ROW:          elSetClass(c, cn.row, false);                break;
+            case ROW_REVERSE:  elSetClass(c, cn.rowReverse, false);         break;
+            case COL:          elSetClass(c, cn.col, false);                break;
+            case COL_REVERSE:  elSetClass(c, cn.colReverse, false);         break;
+            case TABLE:        elSetClass(c, cn.table, false);              break;
+            case TABLE_ROW:    elSetClass(c, cn.tableRow, false);           break;
+            case TABLE_CELL:   elSetClass(c, cn.tableCell, false);          break;
+        }
+
+        switch(type) {
+            case BLOCK:        /* Do nothing - this is the default style */ break;
+            case INLINE_BLOCK: elSetClass(c, cn.inlineBlock, true);         break;
+            case INLINE:       elSetClass(c, cn.inline, true);              break;
+            case ROW:          elSetClass(c, cn.row, true);                 break;
+            case ROW_REVERSE:  elSetClass(c, cn.rowReverse, true);          break;
+            case COL:          elSetClass(c, cn.col, true);                 break;
+            case COL_REVERSE:  elSetClass(c, cn.colReverse, true);          break;
+            case TABLE:        elSetClass(c, cn.table, true);               break;
+            case TABLE_ROW:    elSetClass(c, cn.tableRow, true);            break;
+            case TABLE_CELL:   elSetClass(c, cn.tableCell, true);           break;
+        }
+    }
+
+    return root;
+}
 
 export function imPre(c: ImCache) {
     if (isFirstishRender(c)) {
@@ -217,10 +261,10 @@ export function imLayoutEnd(c: ImCache) {
 
 export function imFlex(c: ImCache, ratio = 1) {
     if (imMemo(c, ratio)) {
-        elSetStyle(c, "flex", ratio > 0 ? "" + ratio : "");
+        elSetStyle(c, "flex", "" + ratio);
         // required to make flex work the way I had thought it already worked
-        elSetStyle(c, "minWidth", ratio > 0 ? "0" : "");
-        elSetStyle(c, "minHeight", ratio > 0 ? "0" : "");
+        elSetStyle(c, "minWidth", "0");
+        elSetStyle(c, "minHeight", "0");
     }
 }
 
@@ -235,6 +279,8 @@ export function imGap(c: ImCache, val = 0, units: SizeUnits) {
 // Add more as needed
 export const NONE = 0;
 export const CENTER = 1;
+export const LEFT = 2;
+export const RIGHT = 3;
 export const START = 2;
 export const END = 3;
 export const STRETCH = 4;
@@ -246,6 +292,8 @@ function getAlignment(alignment: number) {
     switch(alignment) {
         case NONE:    return "";
         case CENTER:  return "center";
+        case LEFT:    return "left";
+        case RIGHT:   return "right";
         case START:   return "start";
         case END:     return "end";
         case STRETCH: return "stretch";
@@ -299,6 +347,20 @@ export function imFixed(
     );
 }
 
+export function imFixedXY(c: ImCache, x: number, xType: SizeUnits, y: number, yUnits: SizeUnits) {
+    if (isFirstishRender(c)) {
+        elSetClass(c, cn.fixed);
+    }
+
+    imOffsets(
+        c,
+        y, yUnits,
+        0, NA,
+        0, NA, 
+        x, xType
+    );
+}
+
 function imOffsets(
     c: ImCache,
     top: number, topType: SizeUnits,
@@ -331,10 +393,13 @@ function imOffsets(
 }
 
 
-// 'Trouble' acronymn. Top Right Bottom Left. This is what we have resorted to
+/**
+ * 'Trouble' acronymn. Top Right Bottom Left. This is what we have resorted to.
+ * Silly order. But it's the css standard convention.
+ * I would have preferred (left, top), (right, bottom). You know, (x=0, y=0) -> (x=width, y=height) in HTML coordinates. xD
+ */
 export function imAbsolute(
     c: ImCache,
-    // Silly order. But it's the css standard convention
     top: number, topType: SizeUnits,
     right: number, rightType: SizeUnits, 
     bottom: number, bottomType: SizeUnits, 
@@ -353,8 +418,22 @@ export function imAbsolute(
     );
 }
 
+export function imAbsoluteXY(c: ImCache, x: number, xType: SizeUnits, y: number, yUnits: SizeUnits) {
+    if (isFirstishRender(c)) {
+        elSetClass(c, cn.absolute);
+    }
+
+    imOffsets(
+        c,
+        y, yUnits,
+        0, NA,
+        0, NA, 
+        x, xType
+    );
+}
+
 export function imOverflowContainer(c: ImCache, noScroll: boolean = false) {
-    const root = imLayout(c, BLOCK);
+    const root = imLayoutBegin(c, BLOCK);
 
     if (imMemo(c, noScroll)) {
         if (noScroll) {

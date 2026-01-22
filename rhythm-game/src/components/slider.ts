@@ -1,7 +1,7 @@
 import { ImCache, imFor, imForEnd, imMemo, imState, isFirstishRender } from 'src/utils/im-core';
 import { elHasMouseOver, elSetStyle, getGlobalEventSystem, imTrackSize } from 'src/utils/im-dom';
 import { clamp, inverseLerp, lerp } from 'src/utils/math-utils';
-import { BLOCK, imLayout, imLayoutEnd } from './core/layout';
+import { BLOCK, imLayoutBegin, imLayoutEnd } from './core/layout';
 import { cssVars } from './core/stylesheets';
 
 const MIN_STEP = 0.0001;
@@ -27,7 +27,7 @@ export function imSliderInput(
     const sliderEndChanged = imMemo(c, end);
     const width = end - start;
 
-    const sliderBody = imLayout(c, BLOCK); {
+    const sliderBody = imLayoutBegin(c, BLOCK); {
         const { size } = imTrackSize(c);
 
         const widthChanged = imMemo(c, size.width);
@@ -52,7 +52,7 @@ export function imSliderInput(
                     let t = (i + 1) / count;
                     const sliderPos = lerp(0, size.width - sliderHandleSize, t);
 
-                    imLayout(c, BLOCK); {
+                    imLayoutBegin(c, BLOCK); {
                         if (isFirstishRender(c)) {
                             elSetStyle(c, "position", "absolute");
                             elSetStyle(c, "aspectRatio", "1 / 1");
@@ -69,7 +69,7 @@ export function imSliderInput(
         } imForEnd(c);
 
         // slider handle
-        imLayout(c, BLOCK); {
+        imLayoutBegin(c, BLOCK); {
             if (isFirstishRender(c)) {
                 elSetStyle(c, "position", "absolute");
                 elSetStyle(c, "backgroundColor", cssVars.fg);

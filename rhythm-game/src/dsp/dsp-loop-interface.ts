@@ -101,6 +101,10 @@ export function getPlaybackSpeed(): number {
     return scheduledSpeed;
 }
 
+export function getPlaybackVolume(): number {
+    return scheduledVolume;
+}
+
 export function setPlaybackTime(value: number) {
     audioLoopDispatch({ newPlaybackTime: value });
 }

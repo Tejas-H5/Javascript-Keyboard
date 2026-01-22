@@ -1,6 +1,5 @@
 import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
-import { BLOCK, imLayout, imLayoutEnd } from "./components/core/layout";
-import { fpsMarkRenderingEnd, fpsMarkRenderingStart, newFpsCounterState } from "./components/fps-counter";
+import { BLOCK, imLayoutBegin, imLayoutEnd } from "./components/core/layout";
 import { debugFlags } from "./debug-flags";
 import { cleanupChartRepo, loadChartMetadataList, newDataRepository } from "./state/data-repository";
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state";
@@ -102,9 +101,6 @@ function imMainInner(c: ImCache) {
     if (imIf(c) && globalContext) {
         globalContext.deltaTime = getDeltaTimeSeconds(c);
 
-        const fps = imState(c, newFpsCounterState);
-        fpsMarkRenderingStart(fps);
-
         const tryState = imTry(c); try {
             const { err } = tryState;
             if (imIf(c) && !err) {
@@ -112,14 +108,14 @@ function imMainInner(c: ImCache) {
             } else {
                 imIfElse(c);
 
-                imLayout(c, BLOCK); {
+                imLayoutBegin(c, BLOCK); {
                     imEl(c, EL_H2); imStr(c, "An error occured..."); imElEnd(c, EL_H2);
-                    imLayout(c, BLOCK); {
+                    imLayoutBegin(c, BLOCK); {
                         imStr(c, err);
                     } imLayoutEnd(c);
 
                     if (imIf(c) && err instanceof Error && err.stack) {
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
                             if (isFirstishRender(c)) {
                                 elSetStyle(c, "fontFamily", "monospace");
                                 elSetStyle(c, "whiteSpace", "pre");
@@ -131,17 +127,15 @@ function imMainInner(c: ImCache) {
                 } imLayoutEnd(c);
             } imIfEnd(c);
 
-            imDiagnosticInfo(c, fps, globalContext);
+            imDiagnosticInfo(c, globalContext);
         } catch (err) {
             imCatch(c, tryState, err);
             console.error("An error in the render loop:", err);
         } imTryEnd(c, tryState);
-
-        fpsMarkRenderingEnd(fps);
     } else {
         imIfElse(c);
 
-        imLayout(c, BLOCK); imStr(c, "Loading..."); imLayoutEnd(c);
+        imLayoutBegin(c, BLOCK); imStr(c, "Loading..."); imLayoutEnd(c);
     } imEndIf(c);
 }
 

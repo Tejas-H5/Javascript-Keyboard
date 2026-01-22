@@ -12,7 +12,7 @@ import {
     imFontSize,
     imGap,
     imJustify,
-    imLayout,
+    imLayoutBegin,
     imLayoutEnd,
     imRelative,
     imSize,
@@ -406,7 +406,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     const practiceMode = gameplayState.practiceMode;
     updatePracticeMode(ctx, gameplayState, chart);
 
-    imLayout(c, COL); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
+    imLayoutBegin(c, COL); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
         const { size: rootContainerSize } = imTrackSize(c);
 
         // We want to put the game inside a container that maintains it's aspect ratio, so that 
@@ -430,32 +430,32 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
         {
             // Top and bottom 
             {
-                imLayout(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
+                imLayoutBegin(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
                 imAbsolute(c, 0, PX, 0, PX, (100 - heightReduction / 2), PERCENT, 0, PX); imLayoutEnd(c);
 
-                imLayout(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
+                imLayoutBegin(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
                 imAbsolute(c, (100 - heightReduction / 2), PERCENT, 0, PX, 0, PX, 0, PX); imLayoutEnd(c);
             }
 
             // Left and right
             {
-                imLayout(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
+                imLayoutBegin(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
                 imAbsolute(c, 0, PX, (100 - widthReduction / 2), PERCENT, 0, PX, 0, PX); imLayoutEnd(c);
 
-                imLayout(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
+                imLayoutBegin(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
                 imAbsolute(c, 0, PX, 0, PX, 0, PX, (100 - widthReduction / 2), PERCENT); imLayoutEnd(c);
             }
         }
 
-        imLayout(c, ROW); imJustify(c); 
+        imLayoutBegin(c, ROW); imJustify(c); 
         imAbsolute(c, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT); {
             const { size: playfieldSize } = imTrackSize(c);
             const dividerWidth = 2;
             const playfieldWidth = playfieldSize.width - (ctx.keyboard.keys.length * dividerWidth);
             const letterWidth = playfieldWidth / ctx.keyboard.flatKeys.length;
 
-            imLayout(c, COL); imAbsolute(c, 0, PX, 0, PX, 0, NA, 0, PX); imZIndex(c, 10); imBg(c, `rgba(255, 255, 255, 0.4)`); {
-                imLayout(c, ROW); {
+            imLayoutBegin(c, COL); imAbsolute(c, 0, PX, 0, PX, 0, NA, 0, PX); imZIndex(c, 10); imBg(c, `rgba(255, 255, 255, 0.4)`); {
+                imLayoutBegin(c, ROW); {
                     if (isFirstishRender(c)) {
                         elSetClass(c, cn.mediumFont);
                         elSetClass(c, cn.noWrap);
@@ -476,7 +476,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                     // lerpColor(theme.bg, theme.fg, amountPenalized01, colours.textColor);
                     lerpColor(theme.fg, theme.fg, amountPenalized01, colours.textColor);
 
-                    imLayout(c, BLOCK); imZIndex(c, -1); {
+                    imLayoutBegin(c, BLOCK); imZIndex(c, -1); {
                         // imAbsolute(c, 0, PX, amountPenalized01 * 50, PERCENT, 0, PX, amountPenalized01 * 50, PERCENT);
                         imAbsolute(c, 0, PX, 0, PX, 0, NA, 0, PX);
                         imSize(c, 0, NA, 2, EM);
@@ -493,9 +493,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                         // imBg(c, colours.barColor.toString());
                     } imLayoutEnd(c);
 
-                    imLayout(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c); imFg(c, colours.textColor.toCssString()); {
-                        imLayout(c, COL); imAlign(c, START); imFlex(c); {
-                            imLayout(c, ROW); imFontSize(c, 1, EM); {
+                    imLayoutBegin(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c); imFg(c, colours.textColor.toCssString()); {
+                        imLayoutBegin(c, COL); imAlign(c, START); imFlex(c); {
+                            imLayoutBegin(c, ROW); imFontSize(c, 1, EM); {
                                 im3DLookingText(c, chart.name);
 
                                 if (imIf(c) && debugFlags.testGameplaySpeed !== 1) {
@@ -504,7 +504,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             } imLayoutEnd(c);
                         } imLayoutEnd(c);
 
-                        imLayout(c, ROW); imRelative(c); imFlex(c); {
+                        imLayoutBegin(c, ROW); imRelative(c); imFlex(c); {
                             let val;
                             const anim = practiceMode.rewindAnimation;
                             if (anim.started) {
@@ -521,7 +521,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             im3DLookingText(c, val);
                         } imLayoutEnd(c);
 
-                        imLayout(c, ROW); imFlex(c); imJustify(c, END); {
+                        imLayoutBegin(c, ROW); imFlex(c); imJustify(c, END); {
                             if (imIf(c) && gameplayState.practiceMode.enabled) {
                                 let measuresCount = 0;
                                 for (const item of chart.timeline) {
@@ -538,7 +538,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
 
-            imLayout(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
+            imLayoutBegin(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
                 gameplayState.avoidPenalty = true;
 
                 imFor(c); for (let rowIdx = 0; rowIdx < keyboard.keys.length; rowIdx++) {
@@ -589,14 +589,14 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             copyColor(theme.bg, s.currentBgColor);
 
                             if (imIf(c) && instrumentKey.isLeftmost) {
-                                imLayout(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
+                                imLayoutBegin(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
                             } imEndIf(c);
 
-                            imLayout(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
-                                imLayout(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
+                            imLayoutBegin(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
+                                imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
                                 } imLayoutEnd(c);
 
-                                imLayout(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
+                                imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
                                     imFor(c); for (let i = 0; i < thread.length; i++) {
                                         const item = thread[i];
                                         const s = imState(c, newBarState);
@@ -635,13 +635,13 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                             color = cssVarsApp.fg;
                                         }
 
-                                        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, heightPercent, PERCENT); {
+                                        imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, heightPercent, PERCENT); {
                                             if (isFirstishRender(c)) {
                                                 elSetStyle(c, "color", "transparent");
                                             }
 
-                                            imLayout(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT); imRelative(c); imBg(c, cssVarsApp.fg); {
-                                                imLayout(c, BLOCK); imAbsolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imBg(c, color); {
+                                            imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT); imRelative(c); imBg(c, cssVarsApp.fg); {
+                                                imLayoutBegin(c, BLOCK); imAbsolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imBg(c, color); {
                                                 } imLayoutEnd(c);
                                             } imLayoutEnd(c);
                                         } imLayoutEnd(c);
@@ -652,13 +652,13 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                         if (bottomPercent > 100) continue;
                                         if (bottomPercent < -5) continue;
 
-                                        imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, 2, PX);
+                                        imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, 2, PX);
                                         imBg(c, cssVars.mg); {
                                         } imLayoutEnd(c);
                                     } imForEnd(c);
                                 } imLayoutEnd(c);
 
-                                imLayout(c, BLOCK); imSize(c, 0, NA, 2, PX); {
+                                imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 2, PX); {
                                     if (isFirstishRender(c)) {
                                         elSetStyle(c, "backgroundColor", cssVarsApp.fg);
                                     }
@@ -691,8 +691,8 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                     gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
                 }
             } imLayoutEnd(c);
-            imLayout(c, BLOCK); imSize(c, 0, NA, 10, PX); imRelative(c); {
-                imLayout(c, BLOCK); imAbsolute(c, 0, PX, (100 - progressPercent), PERCENT, 0, PX, 0, PX); imBg(c, cssVars.fg); {
+            imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 10, PX); imRelative(c); {
+                imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, (100 - progressPercent), PERCENT, 0, PX, 0, PX); imBg(c, cssVars.fg); {
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
@@ -701,18 +701,18 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     if (imIf(c) && gameplayState.pauseMenu.isPaused) {
         // Pause menu
 
-        imLayout(c, COL); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0,0,0, 0.4`); imZIndex(c, 100); {
+        imLayoutBegin(c, COL); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0,0,0, 0.4`); imZIndex(c, 100); {
             if (isFirstishRender(c)) {
                 elSetStyle(c, "fontSize", "3em");
             }
 
-            imLayout(c, BLOCK); {
+            imLayoutBegin(c, BLOCK); {
                 im3DLookingText(c, "Paused");
             } imLayoutEnd(c);
 
 
             let uiIdx = 0;
-            imLayout(c, ROW); {
+            imLayoutBegin(c, ROW); {
                 const isSelected = uiIdx++ === gameplayState.pauseMenu.idx; 
 
                 const hasPress = imSelectionArrow(c, ctx, isSelected);
@@ -722,7 +722,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 }
             } imLayoutEnd(c);
 
-            imLayout(c, ROW); {
+            imLayoutBegin(c, ROW); {
                 const isSelected = uiIdx++ === gameplayState.pauseMenu.idx;
 
                 const hasPress = imSelectionArrow(c, ctx, isSelected);
@@ -797,11 +797,11 @@ function imLetter(
 
     s.bgColor = letterColor ?? theme.bg;
 
-    imLayout(c, COL); imSize(c, width, PX, 0, NA); imFontSize(c, Math.floor(width * 0.55), PX); imAlign(c); imJustify(c); imZIndex(c, 10); {
+    imLayoutBegin(c, COL); imSize(c, width, PX, 0, NA); imFontSize(c, Math.floor(width * 0.55), PX); imAlign(c); imJustify(c); imZIndex(c, 10); {
         imBg(c, s.bgColor.toString());
         imFg(c, s.textColor.toString());
 
-        imLayout(c, BLOCK); {
+        imLayoutBegin(c, BLOCK); {
             if (isFirstishRender(c)) {
                 elSetStyle(c, "fontSize", "2em");
                 elSetStyle(c, "height", "1.3em");
@@ -815,12 +815,12 @@ function imLetter(
 }
 
 function im3DLookingText(c: ImCache, value: Stringifyable) {
-    imLayout(c, ROW); imFlex(c); imJustify(c); imRelative(c); {
-        imLayout(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 3, PX, 0, PX, 0, PX, 3, PX); {
+    imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imRelative(c); {
+        imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 3, PX, 0, PX, 0, PX, 3, PX); {
             imFg(c, cssVars.bg);
             imStr(c, value);
         } imLayoutEnd(c);
-        imLayout(c, ROW); imFlex(c); imJustify(c); imZIndex(c, 2); {
+        imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imZIndex(c, 2); {
             imFg(c, cssVars.fg2);
             imStr(c, value);
         } imLayoutEnd(c);
@@ -1042,7 +1042,7 @@ function imSelectionArrow(
     if (imIf(c) && focused) {
         // The Inter font we're using for this game has a ligature that converts -> into a legit arrow character. 
         // Pretty crazy
-        imLayout(c, BLOCK); imStr(c, "->"); imLayoutEnd(c);
+        imLayoutBegin(c, BLOCK); imStr(c, "->"); imLayoutEnd(c);
 
         if (!ctx.handled && ctx.keyPressState?.key === "Enter") {
             result = true;

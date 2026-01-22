@@ -1,5 +1,5 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAbsolute, imAlign, imFlex, imLayout, imLayoutEnd, imRelative, NA, PERCENT } from "src/components/core/layout";
+import { BLOCK, COL, imAbsolute, imAlign, imFlex, imLayoutBegin, imLayoutEnd, imRelative, NA, PERCENT } from "src/components/core/layout";
 import { getDeltaTimeSeconds, ImCache, imState, isFirstishRender } from "src/utils/im-core";
 import { elSetStyle, imStr } from "src/utils/im-dom";
 import { GlobalContext, setViewChartSelect } from "./app";
@@ -44,12 +44,12 @@ export function imStartupView(c: ImCache, ctx: GlobalContext) {
     } 
     s.fontSizeAnimated = s.fontSize + s.animateScale * Math.sin(s.t * 2 * Math.PI);
 
-    imLayout(c, COL); imFlex(c); imAlign(c); imRelative(c); {
-        imLayout(c, COL); imFlex(c); imAlign(c); imRelative(c); {
+    imLayoutBegin(c, COL); imFlex(c); imAlign(c); imRelative(c); {
+        imLayoutBegin(c, COL); imFlex(c); imAlign(c); imRelative(c); {
             elSetStyle(c,"fontSize", s.fontSizeAnimated + "px");
             imStr(c, gameName);
         } imLayoutEnd(c);
-        imLayout(c, BLOCK); imAbsolute(c, 25, PERCENT, 0, NA, 25, PERCENT, 0, NA); {
+        imLayoutBegin(c, BLOCK); imAbsolute(c, 25, PERCENT, 0, NA, 25, PERCENT, 0, NA); {
             if (isFirstishRender(c)) {
                 elSetStyle(c,"fontSize", "24px");
             }

@@ -1,5 +1,5 @@
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
-import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imLayout, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imLayoutBegin, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
 import { deleteChart } from "src/state/data-repository";
 import {
     playAll,
@@ -43,14 +43,14 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
     const chartSelect = ui.chartSelect;
     const currentChart = getCurrentChart(ctx);
 
-    imLayout(c, COL); imSize(c, 25, PERCENT, 0, NA); imAlign(c, STRETCH); {
+    imLayoutBegin(c, COL); imSize(c, 25, PERCENT, 0, NA); imAlign(c, STRETCH); {
         const allAvailableCharts = ctx.repo.charts.allChartMetadata;
         imFor(c); for (let i = 0; i < allAvailableCharts.length; i++) {
             const chart = allAvailableCharts[i];
             const isFocused = chart === chartSelect.currentChartMeta;
             const shouldRename = isFocused && s.isRenaming && chart;
 
-            imLayout(c, ROW); imBg(c, isFocused ? cssVarsApp.bg2 : ""); {
+            imLayoutBegin(c, ROW); imBg(c, isFocused ? cssVarsApp.bg2 : ""); {
                 if (imIf(c) && shouldRename) {
                     const ev = imTextInputOneLine(c, chart.name);
                     if (ev) {
@@ -63,11 +63,11 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                 } else {
                     imElse(c);
 
-                    imLayout(c, BLOCK); {
+                    imLayoutBegin(c, BLOCK); {
                         let name = chart.name || "untitled"
                         imStr(c, name);
                         if (imIf(c) && isBundledChartId(chart.id)) {
-                            imLayout(c, INLINE); imFg(c, cssVarsApp.error); {
+                            imLayoutBegin(c, INLINE); imFg(c, cssVarsApp.error); {
                                 imStr(c, " (readonly)");
                             } imLayoutEnd(c);
                         } imIfEnd(c);
@@ -76,23 +76,23 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
             } imLayoutEnd(c);
         } imEndFor(c);
 
-        imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-        imLayout(c, BLOCK); {
+        imLayoutBegin(c, BLOCK); {
             if (!ctx.handled && ctx.keyPressState?.keyUpper === "H") {
                 s.helpEnabled = !s.helpEnabled;
                 ctx.handled = true;
             }
 
             if (imIf(c) && s.helpEnabled) {
-                imLayout(c, BLOCK); imStr(c, "[Up/Down] -> move, preview"); imLayoutEnd(c);
-                imLayout(c, BLOCK); imStr(c, "[Enter] -> start editing"); imLayoutEnd(c);
-                imLayout(c, BLOCK); imStr(c, "[R] -> rename"); imLayoutEnd(c);
-                imLayout(c, BLOCK); imStr(c, "[N] -> new"); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imStr(c, "[Up/Down] -> move, preview"); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imStr(c, "[Enter] -> start editing"); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imStr(c, "[R] -> rename"); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imStr(c, "[N] -> new"); imLayoutEnd(c);
                 if (imIf(c) && currentChart) {
-                    imLayout(c, BLOCK); imStr(c, "[C] -> copy"); imLayoutEnd(c);
+                    imLayoutBegin(c, BLOCK); imStr(c, "[C] -> copy"); imLayoutEnd(c);
                 } imIfEnd(c);
-                imLayout(c, BLOCK); imStr(c, "[X] -> delete"); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imStr(c, "[X] -> delete"); imLayoutEnd(c);
             } else {
                 imIfElse(c);
 

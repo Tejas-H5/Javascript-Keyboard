@@ -1,7 +1,7 @@
 import { newCssBuilder } from "src/utils/cssb";
 import { ImCache, isFirstishRender } from "src/utils/im-core";
 import { elSetClass, elSetStyle } from "src/utils/im-dom";
-import { BLOCK, DisplayType, EM, imFixed, imLayout, imLayoutEnd, imRelative, imSize, NA, PX } from "./core/layout";
+import { BLOCK, DisplayType, EM, imFixed, imLayoutBegin, imLayoutEnd, imRelative, imSize, NA, PX } from "./core/layout";
 
 // NOTE: This work is incomplete. We might not even need this. Circle back around to it
 
@@ -40,7 +40,7 @@ export function imRadialMenuBegin(c: ImCache, s: RadialMenuState) {
     s.angle = 0;
     s.itemIdx = 0;
 
-    s.root = imLayout(c, BLOCK); imSize(c, 3, EM, 3, EM); imRelative(c); {
+    s.root = imLayoutBegin(c, BLOCK); imSize(c, 3, EM, 3, EM); imRelative(c); {
         imFixed(c, s.position.y, PX, 0, NA, 0, NA, s.position.x, PX);
         if (isFirstishRender(c)) {
             elSetClass(c, cnRadialMenuCenter);
@@ -55,7 +55,7 @@ export function imRadialMenuEnd(c: ImCache, s: RadialMenuState) {
 }
 
 export function imRadialMenuItemBegin(c: ImCache, s: RadialMenuState, type: DisplayType) {
-    const item = imLayout(c, type);
+    const item = imLayoutBegin(c, type);
     imFixed(c, s.position.y, PX, 0, NA, 0, NA, s.position.x, PX); {
         if (isFirstishRender(c)) {
             elSetClass(c, "item");

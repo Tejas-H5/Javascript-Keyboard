@@ -5,7 +5,7 @@ import {
     imBg,
     imFixed,
     imJustify,
-    imLayout,
+    imLayoutBegin,
     imLayoutEnd,
     imZIndex,
     PX,
@@ -16,8 +16,8 @@ import {
 } from "src/utils/im-core";
 
 export function imModalBegin(c: ImCache, zIndex = 100) {
-    imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, zIndex); {
-        imLayout(c, COL); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+    imLayoutBegin(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, zIndex); {
+        imLayoutBegin(c, COL); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
         } // imLayoutEnd(c);
     } // imLayoutEnd(c);
 }

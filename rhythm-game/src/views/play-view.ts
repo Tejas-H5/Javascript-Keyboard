@@ -1,4 +1,4 @@
-import { BLOCK, COL, imAlign, imFlex, imJustify, imLayout, imLayoutEnd, imSize, NA, PERCENT, REM, ROW } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imFlex, imJustify, imLayoutBegin, imLayoutEnd, imSize, NA, PERCENT, REM, ROW } from "src/components/core/layout";
 import { chooseItem } from "src/utils/array-utils";
 import {
     getDeltaTimeSeconds,
@@ -42,7 +42,7 @@ export function imPlayView(c: ImCache, ctx: GlobalContext) {
     // NOTE: strange code boundary here between the results screen and the gameplay screen, because I wrote this code a while ago.
     // but it seems to work ok for now.
 
-    imLayout(c, COL); imFlex(c); {
+    imLayoutBegin(c, COL); imFlex(c); {
         if (imIf(c) && ctx.ui.playView.result) {
             imResultsScreen(ctx, c, ctx.ui.playView.result);
         } else {
@@ -131,8 +131,8 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
     s.fontSize = s.baseFontSize + s.wiggle * Math.sin(Math.PI * 2 * s.t);
 
-    imLayout(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
-        imLayout(c, COL); imSize(c, 80, PERCENT, 80, PERCENT); {
+    imLayoutBegin(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
+        imLayoutBegin(c, COL); imSize(c, 80, PERCENT, 80, PERCENT); {
             if (isFirstishRender(c)) {
                 elSetStyle(c,"border", "1px solid currentColor");
             }
@@ -146,39 +146,39 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
                 imEl(c, EL_B); imStr(c, result.chartName); imElEnd(c, EL_B);
             } imLayoutEnd(c);
 
-            imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+            imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
                 currentStart += 0.3;
 
-                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
                 imStr(c, "Best possible score: "); 
 
-                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
                 imAnimatedNumber(c, result.bestPossibleScore, s.t, currentStart, 0.3);
                 currentStart += 0.3;
 
-                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
             } imLayoutEnd(c);
 
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
                 currentStart += 0.3;
 
-                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
                 imStr(c, "Score: "); 
 
-                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
                 imAnimatedNumber(c, result.score, s.t, currentStart, 0.3);
                 currentStart += 0.3;
 
-                imLayout(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
             } imLayoutEnd(c);
 
-            imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+            imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
                 currentStart += 0.3;
@@ -213,7 +213,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
                 }
 
                 imFor(c); for (let i = 0; i < designation.length; i++) {
-                    imLayout(c, BLOCK); {
+                    imLayoutBegin(c, BLOCK); {
                         if (isFirstishRender(c)) {
                             elSetStyle(c, "position", `absolute`);
                         }
@@ -243,7 +243,7 @@ function imBeginAnimatedRow(
 
     t = clamp((t - inTime) / duration, 0, 1);
 
-    const root = imLayout(c, ROW); imJustify(c); {
+    const root = imLayoutBegin(c, ROW); imJustify(c); {
         elSetStyle(c,"opacity", t + "");
         elSetStyle(c,"transform", `translate(0, ${downAmount * (1 - t)}px)`);
     } // user specified end

@@ -1,4 +1,4 @@
-import { BLOCK, imAbsolute, imBg, imFg, imFixed, imLayout, imLayoutEnd, imOpacity, imSize, NA, PX } from "src/components/core/layout";
+import { BLOCK, imAbsolute, imBg, imFg, imFixed, imFixedXY, imLayoutBegin, imLayoutEnd, imOpacity, imSize, NA, PX } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { ImCache, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, EV_CONTEXTMENU, getGlobalEventSystem, imOn } from "src/utils/im-dom";
@@ -187,15 +187,13 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
 
     if (imIf(c) && s.isDragging) {
         // Cursor handles
-        imLayout(c, BLOCK); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+        imLayoutBegin(c, BLOCK); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
             if (isFirstishRender(c)) elSetStyle(c, "zIndex", "100000");
 
             const ctxEv = imOn(c, EV_CONTEXTMENU);
-            if (s.isDragging) {
-                if (ctxEv) {
-                    // used to re-center the rotation in a more comfortable position on the screen.
-                    ctxEv.preventDefault();
-                }
+            if (ctxEv) {
+                // used to re-center the rotation in a more comfortable position on the screen.
+                ctxEv.preventDefault();
             }
 
             const sectorSize = 2 * Math.PI / cursorsPerSector.length;
@@ -207,17 +205,19 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
             wantedCursor = cursorsPerSector[wantedCursorIdx];
         } imLayoutEnd(c);
 
-        // Spinning square thing
-        imLayout(c, BLOCK); imSize(c, s.distance / 2, PX, s.distance / 2, PX);
+        // inner square
+        {
+
+        }
+
+        const angleChanged = imMemo(c, s.angle);
+
+        imLayoutBegin(c, BLOCK); imSize(c, s.distance / 2, PX, s.distance / 2, PX);
         imOpacity(c, 0.3); imFg(c, cssVars.bg); imBg(c, cssVars.fg);
-        imFixed(c, s.startMouseY, PX, 0, NA, 0, NA, s.startMouseX, PX); {
-            if (imMemo(c, s.angle)) {
-                elSetStyle(c, "transform", `translate(-50%, -50%) rotateZ(${s.angle}rad)`);
-            }
+        imFixedXY(c, s.startMouseX, PX,s.startMouseX, PX); {
+            if (angleChanged) elSetStyle(c, "transform", `translate(-50%, -50%) rotateZ(${s.angle}rad)`);
         } imLayoutEnd(c);
-        imLayout(c, BLOCK); imFixed(c, s.startMouseY, PX, 0, NA, 0, NA, s.startMouseX, PX); {
-            if (isFirstishRender(c)) elSetStyle(c, "transform", `translate(-50%, -50%)`);
-        } imLayoutEnd(c);
+
     } imIfEnd(c);
 
     if (imMemo(c, wantedCursor)) elSetStyle(c, "cursor", wantedCursor);

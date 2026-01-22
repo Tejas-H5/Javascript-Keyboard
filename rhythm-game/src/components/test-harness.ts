@@ -1,5 +1,5 @@
 import { imButton, imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imFixed, imGap, imLayout, imLayoutBegin, imLayoutEnd, imNoWrap, imPadding, imPre, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFixed, imGap, imLayoutBegin, imLayoutBegin, imLayoutEnd, imNoWrap, imPadding, imPre, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { resizeObjectPool } from "src/utils/array-utils";
@@ -79,9 +79,9 @@ export function imTestHarness(c: ImCache) {
 
             const sc = imState(c, newScrollContainer);
             imScrollContainerBegin(c, sc); {
-                imLayout(c, BLOCK); imBg(c, cssVars.bg); {
-                    imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
-                        imLayout(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imBg(c, cssVars.bg); {
+                    imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
+                        imLayoutBegin(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
 
                         imEl(c, EL_H3); imStr(c, "Tests"); imElEnd(c, EL_H3);
 
@@ -104,13 +104,13 @@ export function imTestHarness(c: ImCache) {
                         const test = tests[testIdx]; assert(!!test);
                         const testUi = s.testUi[testIdx]; assert(!!testUi);
 
-                        imLayout(c, COL); imGap(c, 10, PX); {
-                            imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
-                                imLayout(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
+                        imLayoutBegin(c, COL); imGap(c, 10, PX); {
+                            imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
+                                imLayoutBegin(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
 
                                 imEl(c, EL_H4); imStr(c, test.name); imElEnd(c, EL_H4);
 
-                                imLayout(c, BLOCK); imSize(c, 0, NA, 100, PERCENT); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imCode(c); {
+                                imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 100, PERCENT); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imCode(c); {
                                     let bg = "";
                                     let text: Stringifyable = "";
                                     let textCol = "";
@@ -157,7 +157,7 @@ export function imTestHarness(c: ImCache) {
                                     runTestHarnessTest(s, test, testUi);
                                 }
                             } imLayoutEnd(c);
-                            imLayout(c, COL); imPadding(c, 0, NA, 0, NA, 0, NA, 10, PX); imGap(c, 5, PX); {
+                            imLayoutBegin(c, COL); imPadding(c, 0, NA, 0, NA, 0, NA, 10, PX); imGap(c, 5, PX); {
                                 if (imIf(c) && testUi.result && testUi.result.expectationsPerFork.length > 0) {
                                     imFor(c); for (const expectations of testUi.result.expectationsPerFork) {
                                         const anyFailed = expectations.some(ex => ex.failure);
@@ -167,14 +167,14 @@ export function imTestHarness(c: ImCache) {
 
                                         imFor(c); for (const ex of expectations) {
                                             if (imIf(c) && (ex.failure || testUi.viewingExpectations)) {
-                                                imLayout(c, ROW); {
-                                                    imLayout(c, BLOCK); imPre(c); {
+                                                imLayoutBegin(c, ROW); {
+                                                    imLayoutBegin(c, BLOCK); imPre(c); {
                                                         imStr(c, ex.desc);
                                                     } imLayoutEnd(c);
 
-                                                    imLayout(c, BLOCK); imSize(c, 20, PX, 0, NA); imLayoutEnd(c);
+                                                    imLayoutBegin(c, BLOCK); imSize(c, 20, PX, 0, NA); imLayoutEnd(c);
 
-                                                    imLayout(c, BLOCK); imGap(c, 10, PX); {
+                                                    imLayoutBegin(c, BLOCK); imGap(c, 10, PX); {
                                                         let first = true;
                                                         imFor(c); ex.failure?.permutation.forEach(f => {
                                                             imLayoutBegin(c, BLOCK); imNoWrap(c); {
@@ -194,7 +194,7 @@ export function imTestHarness(c: ImCache) {
                                         } imForEnd(c);
                                     } imForEnd(c);
                                 } else if (imIfElse(c) && testUi.result && testUi.result.expectationsPerFork.length === 0) {
-                                    imLayout(c, BLOCK); imCode(c); imPre(c); {
+                                    imLayoutBegin(c, BLOCK); imCode(c); imPre(c); {
                                         imStr(c, "Test had no expectations");
                                     } imLayoutEnd(c);
                                 } else if (imIfElse(c) && !testUi.result) {
@@ -208,7 +208,7 @@ export function imTestHarness(c: ImCache) {
         } else {
             imIfElse(c);
 
-            imLayout(c, BLOCK); imCode(c); {
+            imLayoutBegin(c, BLOCK); imCode(c); {
                 imStr(c, tryState.err);
             } imLayoutEnd(c);
 

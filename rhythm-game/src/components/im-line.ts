@@ -1,4 +1,4 @@
-import { BLOCK, imBg, imLayout, imLayoutEnd, imOpacity, imSize, NA, PERCENT, PX } from "src/components/core/layout";
+import { BLOCK, imBg, imLayoutBegin, imLayoutEnd, imOpacity, imSize, NA, PERCENT, PX } from "src/components/core/layout";
 import { newCssBuilder } from "src/utils/cssb";
 import { ImCache, isFirstishRender } from "src/utils/im-core";
 import { elSetClass } from "src/utils/im-dom";
@@ -30,7 +30,7 @@ export function imLine(
     const isH = type === LINE_HORIZONTAL || type === LINE_HORIZONTAL_PADDING;
     const isOpaque = type === LINE_HORIZONTAL || type === LINE_VERTICAL;
 
-    imLayout(c, BLOCK); 
+    imLayoutBegin(c, BLOCK); 
     imSize(c, !isH ? widthPx : 100, !isH ? heightUnit : PERCENT,
                isH ? widthPx : 100,  isH ? heightUnit : PERCENT); 
     imBg(c, isOpaque ? cssVars.fg : ""); imOpacity(c, opacity); {
@@ -41,6 +41,6 @@ export function imLine(
 }
 
 export function imHLineDivider(c: ImCache) {
-    imLayout(c, BLOCK); imSize(c, 0, NA, 10, PX); imLayoutEnd(c);
+    imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 10, PX); imLayoutEnd(c);
 }
 

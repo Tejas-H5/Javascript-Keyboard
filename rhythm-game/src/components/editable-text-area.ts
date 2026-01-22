@@ -2,7 +2,7 @@ import { newCssBuilder } from "src/utils/cssb";
 import { setInputValue } from "src/utils/dom-utils";
 import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core";
 import { EL_TEXTAREA, elSetAttr, elSetClass, elSetStyle, elSetTextSafetyRemoved, imEl, imElEnd } from "src/utils/im-dom";
-import { BLOCK, imLayout, imLayoutEnd, INLINE } from "./core/layout";
+import { BLOCK, imLayoutBegin, imLayoutEnd, INLINE } from "./core/layout";
 import { cn, cssVars } from "./core/stylesheets";
 
 export function getLineBeforePos(text: string, pos: number): string {
@@ -70,7 +70,7 @@ export function imTextAreaBegin(c: ImCache, {
 }: TextAreaArgs) {
     let textArea: HTMLTextAreaElement;
 
-    const root = imLayout(c, BLOCK); {
+    const root = imLayoutBegin(c, BLOCK); {
         if (isFirstishRender(c)) {
             elSetClass(c, cn.flex1);
             elSetClass(c, cn.row);
@@ -80,7 +80,7 @@ export function imTextAreaBegin(c: ImCache, {
         }
 
         // This is now always present.
-        imLayout(c, BLOCK); {
+        imLayoutBegin(c, BLOCK); {
             if (isFirstishRender(c)) {
                 elSetClass(c, cn.handleLongWords);
                 elSetClass(c, cn.relative);
@@ -98,7 +98,7 @@ export function imTextAreaBegin(c: ImCache, {
 
             // This is a facade that gives the text area the illusion of auto-sizing!
             // but it only works if the text doesn't end in whitespace....
-            imLayout(c, INLINE); {
+            imLayoutBegin(c, INLINE); {
                 const placeholderChanged = imMemo(c, placeholder);
                 const valueChanged = imMemo(c, value);
                 if (placeholderChanged || valueChanged) {
@@ -113,7 +113,7 @@ export function imTextAreaBegin(c: ImCache, {
             } imLayoutEnd(c);
 
             // This full-stop at the end of the text is what prevents the text-area from collapsing in on itself
-            imLayout(c, INLINE); {
+            imLayoutBegin(c, INLINE); {
                 if (isFirstishRender(c)) {
                     elSetStyle(c, "color", "transparent");
                     elSetStyle(c, "userSelect", "none");

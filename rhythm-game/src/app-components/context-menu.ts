@@ -1,4 +1,4 @@
-import { COL, imAbsolute, imFixed, imJustify, imLayout, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout";
+import { COL, imAbsolute, imFixed, imJustify, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { ImCache, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
@@ -25,8 +25,8 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState) {
     const x = s.position.x;
     const y = s.position.y;
 
-    imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, 10000); {
-        const root = imLayout(c, COL); imAbsolute(c, y, PX, 0, NA, 0, NA, x, PX); {
+    imLayoutBegin(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, 10000); {
+        const root = imLayoutBegin(c, COL); imAbsolute(c, y, PX, 0, NA, 0, NA, x, PX); {
             const mouse = getGlobalEventSystem().mouse;
             const rect = root.getBoundingClientRect();
 
@@ -79,7 +79,7 @@ export function imContextMenuEnd(c: ImCache, s: ContextMenuState) {
 
 // This is not as important as imContextMenuBegin/End, and can be changed for something else.
 export function imContextMenuItemBegin(c: ImCache) {
-    imLayout(c, ROW); imJustify(c); {
+    imLayoutBegin(c, ROW); imJustify(c); {
         if (isFirstishRender(c)) {
             elSetStyle(c, "borderBottom", "1px solid rgba(0,0,0,0.37)");
         }

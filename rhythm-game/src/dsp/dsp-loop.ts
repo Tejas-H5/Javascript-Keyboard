@@ -126,7 +126,7 @@ export function updateOscillator(
         state._frequency = getNoteFrequency(inputs.noteId);
     }
 
-    const startedPressing = state.pressedTime === state.time;
+    const startedPressing = state.time === 0;
 
     const dt = 1 / sampleRate;
     if (inputs.signal || Math.abs(state.value) > OSC_GAIN_AWAKE_THRESHOLD) {

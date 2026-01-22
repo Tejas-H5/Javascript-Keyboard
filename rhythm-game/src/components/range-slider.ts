@@ -2,7 +2,7 @@ import { ImCache, imGet, imMemo, imSet, isFirstishRender } from "src/utils/im-co
 import { elHasMousePress, elSetStyle, getGlobalEventSystem, imTrackSize } from "src/utils/im-dom";
 import { clamp } from "src/utils/math-utils";
 import { cssVarsApp } from "src/views/styling";
-import { BLOCK, imLayout, imLayoutEnd } from "./core/layout";
+import { BLOCK, imLayoutBegin, imLayoutEnd } from "./core/layout";
 
 
 type RangeSliderHandle = {
@@ -61,11 +61,11 @@ export function imRangeSlider(
         });
     }
 
-    const body = imLayout(c, BLOCK); 
+    const body = imLayoutBegin(c, BLOCK); 
     const bodySize = imTrackSize(c);
-        const sliderMiddle = imLayout(c, BLOCK); imLayoutEnd(c);
-        const startHandle = imLayout(c, BLOCK); imLayoutEnd(c);
-        const endHandle = imLayout(c, BLOCK); imLayoutEnd(c);
+        const sliderMiddle = imLayoutBegin(c, BLOCK); imLayoutEnd(c);
+        const startHandle = imLayoutBegin(c, BLOCK); imLayoutEnd(c);
+        const endHandle = imLayoutBegin(c, BLOCK); imLayoutEnd(c);
     imLayoutEnd(c);
 
     if (isFirstishRender(c)) {

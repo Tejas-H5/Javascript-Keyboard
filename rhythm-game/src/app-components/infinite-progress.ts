@@ -1,5 +1,5 @@
 import { getDeltaTimeSeconds, ImCache, imIf, imIfElse, imIfEnd, imMemo, imState } from "src/utils/im-core";
-import { BLOCK, COL, imAlign, imBg, imFg, imLayout, imLayoutEnd, imPadding, imRelative, imSize, NA, PERCENT, PX, REM, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFg, imLayoutBegin, imLayoutEnd, imPadding, imRelative, imSize, NA, PERCENT, PX, REM, STRETCH } from "src/components/core/layout";
 import { imStr } from "src/utils/im-dom";
 import { imLink } from "src/components/im-link";
 import { cssVars } from "src/components/core/stylesheets";
@@ -25,13 +25,13 @@ export function imInfiniteProgress(c: ImCache): number {
     // animate t -> 1. However, animation speed is inversly proportional to how far we've come.
     s.t = lerp(s.t, 1, (1 - s.t) * getDeltaTimeSeconds(c) * INFINTE_LOAD_SPEED)
 
-    imLayout(c, COL); imAlign(c, STRETCH); imRelative(c); imPadding(c, 0.5, REM, 0, NA, 0.5, REM, 0, NA); {
-        imLayout(c, BLOCK); imSize(c, 100 * (s.t), PERCENT, 20, PX); {
-            imLayout(c, BLOCK); imSize(c, 0, NA, 100, PERCENT); imBg(c, cssVars.fg); imFg(c, cssVars.bg); imLayoutEnd(c);
+    imLayoutBegin(c, COL); imAlign(c, STRETCH); imRelative(c); imPadding(c, 0.5, REM, 0, NA, 0.5, REM, 0, NA); {
+        imLayoutBegin(c, BLOCK); imSize(c, 100 * (s.t), PERCENT, 20, PX); {
+            imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 100, PERCENT); imBg(c, cssVars.fg); imFg(c, cssVars.bg); imLayoutEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 
-    imLayout(c, BLOCK); {
+    imLayoutBegin(c, BLOCK); {
         if (imIf(c) && s.t > 0.93) {
             imStr(c, "This action should have completed by now, but it hasn't. Submit this bug to ");
             imLink(c, "https://github.com/Tejas-H5/Javascript-Keyboard/issues");

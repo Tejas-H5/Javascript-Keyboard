@@ -1,4 +1,4 @@
-import { BLOCK, COL, imAbsolute, imAlign, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imRelative, imSize, NA, PX, ROW, START } from "src/components/core/layout";
+import { BLOCK, COL, imAbsolute, imAlign, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imRelative, imSize, NA, PX, ROW, START } from "src/components/core/layout";
 import {
     getCurrentOscillatorGain,
     pressKey,
@@ -36,7 +36,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
         maxOffset = Math.max(maxOffset, computedOffset);
     }
 
-    imLayout(c, COL); imFlex(c); imAlign(c); {
+    imLayoutBegin(c, COL); imFlex(c); imAlign(c); {
         elSetClass(c, "keyboard");
 
         const mouse = getGlobalEventSystem().mouse;
@@ -52,13 +52,13 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
         const height = parent.clientHeight;
         const keySize = Math.min(width / maxOffset, height / (keyboard.keys.length));
 
-        imLayout(c, COL); imFlex(c); {
+        imLayoutBegin(c, COL); imFlex(c); {
             imFor(c); for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
                 const keyRow = keyboard.keys[rowIdx];
                 const startOffset = offsets[rowIdx];
 
-                imLayout(c, ROW); imGap(c, 5, PX); imJustify(c, START); {
-                    imLayout(c, BLOCK); imSize(c, startOffset * keySize, PX, 0, NA); imLayoutEnd(c);
+                imLayoutBegin(c, ROW); imGap(c, 5, PX); imJustify(c, START); {
+                    imLayoutBegin(c, BLOCK); imSize(c, startOffset * keySize, PX, 0, NA); imLayoutEnd(c);
 
                     imFor(c); for (
                         let keyIdx = 0;
@@ -84,7 +84,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
 
                         const pressEffect = PRESS_EFFECT * Math.max(signal, hasNote ? 1 : 0);
 
-                        imLayout(c, BLOCK); imRelative(c); {
+                        imLayoutBegin(c, BLOCK); imRelative(c); {
                             if (isFirstishRender(c)) {
                                 elSetStyle(c, "fontFamily", "monospace");
                                 elSetStyle(c, "outline", `1px solid ${cssVarsApp.fg}`);
@@ -122,23 +122,23 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                             }
 
                             // indicator that shows if it's pressed on the sequencer
-                            imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                            imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
                                 if (imMemo(c, hasNote)) {
                                     elSetStyle(c, "backgroundColor", hasNote ? cssVarsApp.mg : cssVarsApp.bg);
                                 }
                             } imLayoutEnd(c);
                             // letter bg
-                            imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                            imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
                                 if (imMemo(c, signal)) {
                                     elSetStyle(c, "backgroundColor", `rgba(0, 0, 0, ${signal})`);
                                 }
                             } imLayoutEnd(c);
                             // letter text
-                            imLayout(c, BLOCK); imAbsolute(c, 5, PX, 0, PX, 0, PX, 0, PX); {
+                            imLayoutBegin(c, BLOCK); imAbsolute(c, 5, PX, 0, PX, 0, PX, 0, PX); {
                                 imStr(c, key.text);
                             } imLayoutEnd(c);
                             // note text
-                            imLayout(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, 5, PX, 0, PX); {
+                            imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, 5, PX, 0, PX); {
                                 if (isFirstishRender(c)) {
                                     elSetStyle(c, "textAlign", "right");
                                 }
@@ -180,7 +180,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                                     const t = -relativeTime / APPROACH_WINDOW;
                                     const scale = 250 * Math.max(0, t)
 
-                                    imLayout(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                                    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
                                         if (isFirstishRender(c)) {
                                             elSetStyle(c, "backgroundColor", cssVarsApp.playback);
                                         }
@@ -189,7 +189,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                                         }
                                     } imLayoutEnd(c);
                                     // This osu! style border kinda whack ngl.
-                                    imLayout(c, BLOCK); imAbsolute(c, -scale, PX, -scale, PX, scale, PX, scale, PX); {
+                                    imLayoutBegin(c, BLOCK); imAbsolute(c, -scale, PX, -scale, PX, scale, PX, scale, PX); {
                                         if (isFirstishRender(c)) {
                                             elSetStyle(c, "border", `5px solid ${cssVarsApp.fg}`);
                                             elSetStyle(c, "opacity", "1");

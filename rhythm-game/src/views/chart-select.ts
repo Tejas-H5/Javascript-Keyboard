@@ -1,5 +1,5 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayout, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { InstrumentKey } from "src/state/keyboard-state";
@@ -9,7 +9,7 @@ import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "
 import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
-import { arrayMax, clamp } from "src/utils/math-utils";
+import { arrayMax, clamp, lerp } from "src/utils/math-utils";
 import {
     GlobalContext,
     openChartUpdateModal,
@@ -81,6 +81,12 @@ export function moveChartSelection(ctx: GlobalContext, listNavAxis: number) {
         const idx = meta._index;
         const newIdx = clamp(idx + listNavAxis, 0, availableCharts.length - 1);
         result = setCurrentChartMeta(ctx, availableCharts[newIdx]);
+
+        // UI sound effect
+        const keyboardPitch = newIdx / availableCharts.length;
+        const lowPitch = 0.2;
+        const highPitch = 0.8;
+        playKeyPressForUI(ctx, lerp(lowPitch, highPitch, 1 - keyboardPitch));
     }
 
     return result;
@@ -89,37 +95,20 @@ export function moveChartSelection(ctx: GlobalContext, listNavAxis: number) {
 export function imChartSelect(c: ImCache, ctx: GlobalContext) {
     const s = ctx.ui.chartSelect;
 
-    const keyPressState = ctx.keyPressState;
-
-    if (keyPressState) {
-        const { vAxis, hAxis, key } = keyPressState;
-
-        // UI sound effects (before other key events)
-        if (vAxis < 0 || hAxis < 0) {
-            playKeyPressForUI(ctx, ctx.keyboard.keys[1][6]);
-        } else if (vAxis > 0 || hAxis > 0) {
-            playKeyPressForUI(ctx, ctx.keyboard.keys[1][8]);
-        } else if (key === "Enter") {
-            playKeyPressForUI(ctx, ctx.keyboard.keys[1][5]);
-        } else if (key === "Escape") {
-            playKeyPressForUI(ctx, ctx.keyboard.keys[1][1]);
-        }
-    }
-
     const availableCharts = ctx.repo.charts.allChartMetadata;
     const currentChart = s.currentChartReload.isPending() ? null : getCurrentChart(ctx);
 
-    imLayout(c, COL); imFlex(c); {
-        imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
-            imLayout(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX); {
-                const scrollContainer = imLayout(c, COL); imFlex(c); imScrollOverflow(c, true); {
+    imLayoutBegin(c, COL); imFlex(c); {
+        imLayoutBegin(c, ROW); imAlign(c, STRETCH); imFlex(c); {
+            imLayoutBegin(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX); {
+                const scrollContainer = imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c, true); {
                     if (imIf(c) && availableCharts.length > 0) {
                         const lastSelected = imGetInline(c, imChartSelect) ?? imSet(c, { id: 0 });
 
                         imFor(c); for (let i = 0; i < availableCharts.length; i++) {
                             const metadata = availableCharts[i];
 
-                            const root = imLayout(c, ROW); imGap(c, 5, PX); imAlign(c); {
+                            const root = imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
                                 if (elHasMouseOver(c)) {
                                     if (lastSelected.id !== metadata.id) {
                                         lastSelected.id = metadata.id;
@@ -148,7 +137,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                         } imForEnd(c);
                     } else {
                         imIfElse(c);
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
                             // We have react-suspense at home. xD
                             // Actually we don't. I'm pretty sure it can be done though, but prob not worth the effort yet.
                             // It is a combination of pushing promises onto a global state stack,
@@ -161,7 +150,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                         } imLayoutEnd(c);
                     } imIfEnd(c);
                 } imLayoutEnd(c);
-                imLayout(c, ROW); imGap(c, 5, PX); {
+                imLayoutBegin(c, ROW); imGap(c, 5, PX); {
 
                     if (imIf(c) && currentChart) {
                         if (imIf(c) && currentChart.timeline.length === 0) {
@@ -180,12 +169,12 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                     } else {
                         imIfElse(c);
 
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
                             imStr(c, "Loading....");
                         } imLayoutEnd(c);
                     } imIfEnd(c);
 
-                    imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                    imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
                     if (imButtonIsClicked(c, "Back")) {
                         setViewStartScreen(ctx);
@@ -202,29 +191,29 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
 
             if (imIf(c) && currentChart) {
                 const bundled = currentChart._savedStatus === CHART_STATUS_READONLY;
-                imLayout(c, COL); imFlex(c); {
-                    imLayout(c, COL); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+                imLayoutBegin(c, COL); imFlex(c); {
+                    imLayoutBegin(c, COL); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                         imEl(c, EL_H2); {
-                            imLayout(c, ROW); {
-                                imLayout(c, ROW); {
+                            imLayoutBegin(c, ROW); {
+                                imLayoutBegin(c, ROW); {
                                     imStr(c, currentChart.name);
                                 } imLayoutEnd(c);
 
-                                imLayout(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
+                                imLayoutBegin(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
 
-                                imLayout(c, ROW); {
+                                imLayoutBegin(c, ROW); {
                                     imStr(c, "<Artist Name>");
                                 } imLayoutEnd(c);
 
-                                imLayout(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
+                                imLayoutBegin(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
 
-                                imLayout(c, ROW); {
+                                imLayoutBegin(c, ROW); {
                                     imStr(c, bundled ? "TejasH5" : "Some player");
                                 } imLayoutEnd(c);
                             } imLayoutEnd(c);
                         } imElEnd(c, EL_H2);
 
-                        imLayout(c, BLOCK); {
+                        imLayoutBegin(c, BLOCK); {
                             if (isFirstishRender(c)) {
                                 elSetStyle(c, "whiteSpace", "pre-wrap");
                             }
@@ -238,7 +227,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
             } else {
                 imIfElse(c);
 
-                imLayout(c, BLOCK); {
+                imLayoutBegin(c, BLOCK); {
                     imStr(c, "Loading....");
                 } imLayoutEnd(c);
             } imIfEnd(c);
@@ -285,13 +274,13 @@ function imChartStatistics(
         s = imSet(c, val);
     }
 
-    imLayout(c, COL); imFlex(c); {
+    imLayoutBegin(c, COL); imFlex(c); {
         imLine(c, LINE_HORIZONTAL, 1);
 
-        imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
+        imLayoutBegin(c, ROW); imAlign(c, STRETCH); imFlex(c); {
 
-            imLayout(c, BLOCK); imSize(c, 20, PERCENT, 0, NA); imPadding(c, 5, PX, 10, PX, 10, PX, 10, PX); {
-                imLayout(c, BLOCK); {
+            imLayoutBegin(c, BLOCK); imSize(c, 20, PERCENT, 0, NA); imPadding(c, 5, PX, 10, PX, 10, PX, 10, PX); {
+                imLayoutBegin(c, BLOCK); {
                     imStr(c, currentChart.timeline.length);
                     imStr(c, " notes");
                 } imLayoutEnd(c);
@@ -300,7 +289,7 @@ function imChartStatistics(
                 // can literally derive table layout from flexbox. lmao. As much as I shit on web,
                 // they got several things right
 
-                const root = imLayout(c, ROW); imSize(c, 0, NA, 100, PERCENT); {
+                const root = imLayoutBegin(c, ROW); imSize(c, 0, NA, 100, PERCENT); {
                     const height = root.clientHeight;
                     if (imMemo(c, height)) {
                         const fontSize = (height - (ctx.keyboard.keys.length * 2)) / ctx.keyboard.flatKeys.length;
@@ -308,10 +297,10 @@ function imChartStatistics(
                         elSetStyle(c, "fontSize", fontSize + "px");
                     }
 
-                    imLayout(c, COL); {
+                    imLayoutBegin(c, COL); {
                         imFor(c); for (const row of ctx.keyboard.keys) {
                             for (const key of row) {
-                                imLayout(c, BLOCK); {
+                                imLayoutBegin(c, BLOCK); {
                                     imStr(c, key.keyboardKey);
                                     imStr(c, " -> ");
                                     imStr(c, key.noteText);
@@ -321,12 +310,12 @@ function imChartStatistics(
                             imLine(c, LINE_HORIZONTAL, 2);
                         } imForEnd(c);
                     } imLayoutEnd(c);
-                    imLayout(c, COL); imFlex(c); {
+                    imLayoutBegin(c, COL); imFlex(c); {
                         imFor(c); for (const row of ctx.keyboard.keys) {
                             for (const key of row) {
                                 const count = s.keyFrequencies[key.index];
                                 const normalized = count / s.maxFrequency;
-                                imLayout(c, BLOCK); imBg(c, cssVarsApp.fg); {
+                                imLayoutBegin(c, BLOCK); imBg(c, cssVarsApp.fg); {
                                     if (isFirstishRender(c)) {
                                         elSetStyle(c, "color", cssVars.bg);
                                     }
@@ -336,7 +325,7 @@ function imChartStatistics(
                                 } imLayoutEnd(c);
                             }
 
-                            imLayout(c, BLOCK); imBg(c, cssVarsApp.fg); imSize(c, 0, NA, 2, PX); imLayoutEnd(c);
+                            imLayoutBegin(c, BLOCK); imBg(c, cssVarsApp.fg); imSize(c, 0, NA, 2, PX); imLayoutEnd(c);
                         } imForEnd(c);
                     } imLayoutEnd(c);
                 } imLayoutEnd(c);
@@ -344,18 +333,18 @@ function imChartStatistics(
 
             imLine(c, LINE_VERTICAL, 1);
 
-            const root = imLayout(c, COL); imFlex(c); imAlign(c, STRETCH); {
+            const root = imLayoutBegin(c, COL); imFlex(c); imAlign(c, STRETCH); {
                 const width = root.clientWidth;
                 const widthChanged = imMemo(c, root.clientWidth);
 
-                imLayout(c, ROW); imFlex(c); {
+                imLayoutBegin(c, ROW); imFlex(c); {
                     imVerticalText(c); {
                         imStr(c, "Transitions");
                     } imLayoutEnd(c);
 
                     imLine(c, LINE_VERTICAL, 1);
 
-                    imLayout(c, ROW); imFlex(c); {
+                    imLayoutBegin(c, ROW); imFlex(c); {
                         let vis; vis = imGetInline(c, imChartStatistics);
                         if (!vis || currentChartChanged || widthChanged) {
                             const n = Math.floor(width / 4);
@@ -390,14 +379,14 @@ function imChartStatistics(
 
                 imLine(c, LINE_HORIZONTAL, 1);
 
-                imLayout(c, ROW); imFlex(c); {
+                imLayoutBegin(c, ROW); imFlex(c); {
                     imVerticalText(c); {
                         imStr(c, "Concurrency");
                     } imLayoutEnd(c);
 
                     imLine(c, LINE_VERTICAL, 1);
 
-                    imLayout(c, ROW); imFlex(c); {
+                    imLayoutBegin(c, ROW); imFlex(c); {
                         let vis; vis = imGetInline(c, imChartStatistics);
                         if (!vis || currentChartChanged || widthChanged) {
                             const n = Math.floor(width / 4);
@@ -421,14 +410,14 @@ function imChartStatistics(
 
                 imLine(c, LINE_HORIZONTAL, 1);
 
-                imLayout(c, ROW); imFlex(c); {
+                imLayoutBegin(c, ROW); imFlex(c); {
                     imVerticalText(c); {
                         imStr(c, "Speed");
                     } imLayoutEnd(c);
 
                     imLine(c, LINE_VERTICAL, 1);
 
-                    imLayout(c, ROW); imFlex(c); {
+                    imLayoutBegin(c, ROW); imFlex(c); {
                         let vis; vis = imGetInline(c, imChartStatistics);
                         if (!vis || currentChartChanged || widthChanged) {
                             const n = Math.floor(width / 4);
@@ -465,12 +454,12 @@ function imVerticalHistogram(c: ImCache, arr: number[], arrMax: number) {
     // Avoid div by 0 issues
     arrMax = Math.max(arrMax, 0.000001);
 
-    imLayout(c, ROW); imAlign(c, STRETCH); imFlex(c); {
+    imLayoutBegin(c, ROW); imAlign(c, STRETCH); imFlex(c); {
         imFor(c); for (const val of arr) {
-            imLayout(c, COL); imFlex(c); {
-                imLayout(c, BLOCK); imFlex(c); imLayoutEnd(c);
+            imLayoutBegin(c, COL); imFlex(c); {
+                imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
                 const percent = 100 * val / arrMax;
-                imLayout(c, BLOCK); {
+                imLayoutBegin(c, BLOCK); {
                     imBg(c, cssVars.fg); imSize(c, 0, NA, percent, PERCENT);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);

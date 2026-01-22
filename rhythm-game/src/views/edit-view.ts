@@ -1,4 +1,4 @@
-import { imFlex, imLayout, imLayoutEnd, ROW } from "src/components/core/layout";
+import { imFlex, imLayoutBegin, imLayoutEnd, ROW } from "src/components/core/layout";
 import { pressKey, setPlaybackSpeed } from "src/dsp/dsp-loop-interface";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import {
@@ -402,7 +402,7 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
         stopPlayback(ctx);
     }
 
-    imLayout(c, ROW); imFlex(c); {
+    imLayoutBegin(c, ROW); imFlex(c); {
         imSequencer(c, ctx);
 
         if (imIf(c) && loadSaveModal._open) {

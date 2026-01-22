@@ -6,7 +6,7 @@ import {
     imBg,
     imFlex,
     imJustify,
-    imLayout,
+    imLayoutBegin,
     imLayoutEnd,
     imPadding,
     imScrollOverflow,
@@ -57,8 +57,8 @@ export function imImportModal(c: ImCache): ImportModalState {
     }
 
     imModalBegin(c, 200); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-        imLayout(c, COL); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
-            imLayout(c, COL); imFlex(c); imScrollOverflow(c); {
+        imLayoutBegin(c, COL); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
+            imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c); {
                 const [_, textArea] = imTextAreaBegin(c, {
                     value: s.json,
                     placeholder: "Paste in your wave program JSON!"
@@ -75,12 +75,12 @@ export function imImportModal(c: ImCache): ImportModalState {
             } imLayoutEnd(c);
 
             if (imIf(c) && s.importError) {
-                imLayout(c, BLOCK); imBg(c, cssVarsApp.error); {
+                imLayoutBegin(c, BLOCK); imBg(c, cssVarsApp.error); {
                     imStr(c, s.importError);
                 } imLayoutEnd(c);
             } imIfEnd(c);
 
-            imLayout(c, ROW); {
+            imLayoutBegin(c, ROW); {
                 if (imButtonIsClicked(c, "Import")) {
                     s.event = { import: true };
                 }
@@ -92,7 +92,7 @@ export function imImportModal(c: ImCache): ImportModalState {
 }
 
 function imHeading(c: ImCache, text: string) {
-    imLayout(c, ROW); imJustify(c); {
+    imLayoutBegin(c, ROW); imJustify(c); {
         imEl(c, EL_B); imStr(c, text); imElEnd(c, EL_B);
     } imLayoutEnd(c);
 }
@@ -115,10 +115,10 @@ export function imExportModal<T>(c: ImCache, jsonSerializable: T, customSerializ
     }
 
     imModalBegin(c, 200); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-        imLayout(c, COL); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
+        imLayoutBegin(c, COL); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
             imHeading(c, "Paste this JSON somewhere safe!");
 
-            imLayout(c, BLOCK); imFlex(c); imScrollOverflow(c); {
+            imLayoutBegin(c, BLOCK); imFlex(c); imScrollOverflow(c); {
                 imStr(c, s.json);
             } imLayoutEnd(c);
         } imLayoutEnd(c);

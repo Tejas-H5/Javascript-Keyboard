@@ -4,43 +4,16 @@ import {
     CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME,
     ImCache,
     imGet,
+    getFpsCounterState,
     imSet,
     inlineTypeId
 } from "src/utils/im-core";
 import { imStr } from "src/utils/im-dom";
-import { BLOCK, imLayout, imLayoutEnd } from "./core/layout";
+import { BLOCK, imLayoutBegin, imLayoutEnd } from "./core/layout";
 
-export type FpsCounterState = {
-    renderStart: number;
-    renderEnd: number;
-    frameMs: number;
-    renderMs: number;
-}
+export function imFpsCounterSimple(c: ImCache) {
+    const fpsCounter = getFpsCounterState(c);
 
-export function newFpsCounterState(): FpsCounterState {
-    return {
-        renderStart: 0,
-        renderEnd: 0,
-        frameMs: 0,
-        renderMs: 0,
-    }
-}
-
-// It's a bit complicated and I've forgotten how it works, but it seems to be working so I'll keep it around for now
-export function fpsMarkRenderingStart(fps: FpsCounterState) {
-    const t = performance.now();;
-
-    fps.renderMs = fps.renderEnd - fps.renderStart;
-    fps.frameMs = t - fps.renderStart;
-
-    fps.renderStart = t;
-}
-
-export function fpsMarkRenderingEnd(fps: FpsCounterState) {
-    fps.renderEnd = performance.now();
-}
-
-export function imFpsCounterSimple(c: ImCache, fpsCounter: FpsCounterState) {
     const RINGBUFFER_SIZE = 20;
     let arr; arr = imGet(c, inlineTypeId(Array));
     if (!arr) arr = imSet(c, {
@@ -65,7 +38,7 @@ export function imFpsCounterSimple(c: ImCache, fpsCounter: FpsCounterState) {
     renderMs /= arr.frameMsRingbuffer.length;
     frameMs /= arr.frameMsRingbuffer.length;
 
-    imLayout(c, BLOCK); imStr(c, Math.round(renderMs) + "ms/" + Math.round(frameMs) + "ms"); imLayoutEnd(c);
+    imLayoutBegin(c, BLOCK); imStr(c, Math.round(renderMs) + "ms/" + Math.round(frameMs) + "ms"); imLayoutEnd(c);
 }
 
 export function imExtraDiagnosticInfo(c: ImCache) {
@@ -73,7 +46,7 @@ export function imExtraDiagnosticInfo(c: ImCache) {
     const numDestructors = c[CACHE_TOTAL_DESTRUCTORS];
     const numMapEntries  = c[CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME];
 
-    imLayout(c, BLOCK); {
+    imLayoutBegin(c, BLOCK); {
         imStr(c, itemsIterated);
         imStr(c, "i ");
 

@@ -20,11 +20,13 @@ export const EFFECT_RACK_ITEM__NOISE = 4;
 export const EFFECT_RACK_ITEM__DELAY = 5;
 export const EFFECT_RACK_ITEM__BIQUAD_FILTER = 6;  // TODO: consider removing
 export const EFFECT_RACK_ITEM__SINC_FILTER = 7; 
+export const EFFECT_RACK_ITEM__REVERB = 8; 
 
 // Delay effect uses a crap tonne of memmory, so we're limiting how long it can be.
 // While simple, it is suprisingly OP - you can use it to double waveforms repeatedly.
-export const EFFECT_RACK_DELAY_MAX_DURATION = 1;
+export const EFFECT_RACK_DELAY_MAX_DURATION_SECONDS = 1;
 export const EFFECT_RACK_ITEM__CONVOLUTION_FILTER_MAX_KERNEL_LENGTH = 1024; 
+export const EFFECT_RACK_REVERB_MAX_DURATION_SECONDS = 1;
 
 // export const EFFECT_RACK_DSP_INSTRUCTION_SET; this would be quite funny wouldnt it.
 
@@ -38,6 +40,7 @@ export type EffectRackItemType
     | typeof EFFECT_RACK_ITEM__DELAY
     | typeof EFFECT_RACK_ITEM__BIQUAD_FILTER
     | typeof EFFECT_RACK_ITEM__SINC_FILTER
+    | typeof EFFECT_RACK_ITEM__REVERB
     ;
 
 // If we're using a RegisterIndex without reading from or writing to a register, then we're using it wrong.
@@ -404,6 +407,45 @@ export function newEffectRackConvolutionFilter(): EffectRackSincFilter {
     };
 }
 
+export type EffectRackReverb = {
+    type: typeof EFFECT_RACK_ITEM__REVERB;
+
+    // ring buffer.
+    _kernel: BufferIdx;
+    _kernelIdx: RegisterIdx;
+
+    signalUi: RegisterIdxUi;
+    decayUi: RegisterIdxUi;
+    densityUi: RegisterIdxUi;
+}
+
+/**
+ * I'm implementing reverb like
+ *
+ *  echo strength
+ *
+ *     ^ |
+ *     | | |
+ *       | | |
+ *       | | | |
+ *       | | | | |
+ *       | | | | | | .
+ *
+ *      -> time of echo 
+ */
+export function newEffectRackReverb(): EffectRackReverb {
+    return {
+        type: EFFECT_RACK_ITEM__REVERB,
+        signalUi: newRegisterIdxUi("signal", { value: 0 }),
+
+        _kernel: -1 as BufferIdx,
+        _kernelIdx: asRegisterIdx(0),
+
+        decayUi: newRegisterIdxUi("decay", { value: 0.1 }, 0, EFFECT_RACK_REVERB_MAX_DURATION_SECONDS),
+        densityUi: newRegisterIdxUi("density", { value: 0.1 }, 0, 1),
+    };
+}
+
 export const SWITCH_OP_LT = 1;
 export const SWITCH_OP_GT = 2;
 
@@ -452,6 +494,7 @@ type EffectRackItemValue
     | EffectRackDelay
     | EffectRackBiquadFilter
     | EffectRackSincFilter
+    | EffectRackReverb
     ;
 
 export type EffectRack = {
@@ -516,14 +559,18 @@ export const defaultBindings = [
 
 // Read a value out of a register
 export function r(registers: number[], idx: RegisterIdx) {
-    assert(idx >= 0 && idx < registers.length);
-    return registers[idx];
+    let result = 0;
+    if(idx >= 0 && idx < registers.length) {
+        result = registers[idx];
+    }
+    return result;
 }
 
 // Write to a register
 export function w(registers: number[], idx: RegisterIdx, val: number) {
-    assert(idx >= 0 && idx < registers.length);
-    registers[idx] =  val;
+    if (idx >= 0 && idx < registers.length) {
+        registers[idx] =  val;
+    }
 }
 
 // Only constant values and persistent state need a register allocated to them.
@@ -798,6 +845,16 @@ export function compileEffectRack(e: EffectRack) {
                 allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyUi, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyMultUi, remap, effectPos);
             } break;
+            case EFFECT_RACK_ITEM__REVERB: {
+                const reverb = effectValue;
+
+                reverb._kernel    = allocateBufferIdx(e, EFFECT_RACK_REVERB_MAX_DURATION_SECONDS, 0); 
+                reverb._kernelIdx = allocateRegisterIdx(e, 0, true);
+
+                allocateRegisterIdxIfNeeded(e, reverb.signalUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, reverb.decayUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, reverb.densityUi, remap, effectPos);
+            } break;
             default: unreachable(effectValue);
         }
     }
@@ -982,67 +1039,39 @@ export function computeEffectRackIteration(
 
                 const signal = r(re, envelope.signalUI._regIdx);
 
-                value = r(re, envelope._value);
+                let envValue = r(re, envelope._value);
                 let stage = r(re, envelope._stage);
 
-                let velocity = 0;
-                let targetValue = 0;
-                switch(stage) {
-                    case 0: { // attack -> decay
-                    } break;
-                    case 1: { // decay -> sustain
-                    } break;
-                    case 2: { // sustain -> release
-                        velocity = 0;
-                        targetValue = 0;
-                    } break;
-                }
-
-                // TODO: handle signal between 0 and 1 when we envetually get there. Right now signal can only ever be 0 or 1
-                // so it's not that important. Also not clear what the correct approach is.
-                // Does velocity slow down? does the amlitude decrease? not sure.
-                if (signal > 0) {
-                    if (stage === 0) {
-                        velocity = 1 / r(re, envelope.attackUI._regIdx);
-                        targetValue = 1;
-                    } else {
-                        const sustainLevel = r(re, envelope.sustainUI._regIdx)
-                        const amountToDrop = 1 - sustainLevel;
-                        velocity = amountToDrop / r(re, envelope.decayUI._regIdx);
-                        targetValue = sustainLevel;
-                    }
-                } else if (value > 0) {
-                    const amountToDrop = r(re, envelope.sustainUI._regIdx) - 0;
-                    velocity = amountToDrop / r(re, envelope.decayUI._regIdx);
-                    targetValue = 0;
-                }
-
-                // NOTE: we can smooth the velocit here if we wanted to.
+                let targetSample = 0;
+                let targetDuration = 0;
+                let targetStage = 0;
 
                 if (signal > 0) {
                     if (stage === 0) {
-                        value += dt * velocity;
-                        if (value > 1) {
-                            value = 1;
-                            stage = 1;
-                        }
+                        targetSample = 1;
+                        targetDuration = r(re, envelope.attackUI._regIdx);
+                        targetStage = 1;
                     } else {
-                        value = moveTowards(value, targetValue, dt * velocity);
+                        targetSample = r(re, envelope.sustainUI._regIdx);
+                        targetDuration = r(re, envelope.decayUI._regIdx);
+                        targetStage = 2;
                     }
-                } else if (value > 0) {
-                    value -= dt * velocity;
-                    if (value < 0) {
-                        value = 0;
-                    }
-                    // We want the attack to work instantly after a release and press.
-                    stage = 0;
+                } else {
+                    targetSample = 0;
+                    targetDuration = r(re, envelope.releaseUI._regIdx);
+                    targetStage = 0;
                 }
 
-                w(re, envelope._value, value);
+                envValue = moveTowards(envValue, targetSample, dt / targetDuration);
+                if (envValue === targetSample) {
+                    stage = targetStage;
+                }
+
+                w(re, envelope._value, envValue);
                 w(re, envelope._stage, stage);
 
                 const target = r(re, envelope.toModulateUI._regIdx);
-                value *= target;
+                value = envValue * target;
             } break;
             case EFFECT_RACK_ITEM__MATHS: {
                 const maths = effectValue;
@@ -1214,6 +1243,51 @@ export function computeEffectRackIteration(
                 }
                 w(re, conv._kernelIdx, idx);
             } break;
+            case EFFECT_RACK_ITEM__REVERB: {
+                const reverb = effectValue;
+
+                const signal = r(re, reverb.signalUi._regIdx);
+
+                // TODO: use density to decide the number of samples
+                const density = r(re, reverb.densityUi._regIdx);
+                const densitySamples = Math.round(density * sampleRate);
+
+                let decay = r(re, reverb.decayUi._regIdx);
+                if (decay > EFFECT_RACK_REVERB_MAX_DURATION_SECONDS) decay = EFFECT_RACK_REVERB_MAX_DURATION_SECONDS;
+                let decaySamples = Math.floor(decay * sampleRate - 1);
+
+                let idx = r(re, reverb._kernelIdx);
+                const signalPrev = buff[reverb._kernel];
+                signalPrev.val[idx] = signal;
+
+                if (decaySamples > 0) {
+                    let total = 0;
+                    let numSamples = 0;
+                    let counter = 0;
+
+                    for (let i = 0; i < decaySamples; i++) {
+                        counter -= 1;
+
+                        if (counter <= 0) {
+                            let val = signalPrev.val[(idx + i) % signalPrev.val.length];
+                            const falloff = 1.0 - (i + 1) / decaySamples;
+                            total += val * falloff;
+                            numSamples += 1;
+
+                            counter = densitySamples;
+                        }
+                    }
+
+                    value = total;
+                }
+
+                idx -= 1;
+                if (idx < 0) {
+                    idx = decaySamples - 1;
+                }
+                w(re, reverb._kernelIdx, idx);
+
+            } break;
             default: unreachable(effectValue);
         }
 
@@ -1255,6 +1329,7 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
         EFFECT_RACK_ITEM__DELAY,
         EFFECT_RACK_ITEM__BIQUAD_FILTER,
         EFFECT_RACK_ITEM__SINC_FILTER,
+        EFFECT_RACK_ITEM__REVERB,
     ]);
 
     let value: EffectRackItemValue | undefined;
@@ -1359,6 +1434,15 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                 stopbandUi: regUiUnmarshaller,
                 cutoffFrequencyUi: regUiUnmarshaller,
                 cutoffFrequencyMultUi: regUiUnmarshaller,
+            });
+        } break;
+        case EFFECT_RACK_ITEM__REVERB: {
+            value = unmarshalObject(o, newEffectRackReverb(), {
+                type: asIs,
+
+                signalUi: regUiUnmarshaller,
+                decayUi: regUiUnmarshaller,
+                densityUi: regUiUnmarshaller,
             });
         } break;
         default: unreachable(type);

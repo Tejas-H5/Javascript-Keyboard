@@ -1,7 +1,7 @@
-import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayout, imLayoutEnd, imZIndex, NA, PX } from "src/components/core/layout";
-import { FpsCounterState, imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
+import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX } from "src/components/core/layout";
+import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { debugFlags, getTestSleepMs } from "src/debug-flags";
-import { getDspInfo, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { DataRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/data-repository";
 import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
@@ -24,9 +24,8 @@ import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
-import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
+import { ImCache, imFor, imForEnd, getFpsCounterState, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
-import { handleKeysLifecycle, KeyState, newKeyState } from "src/utils/key-state";
 import { getAllAsyncContexts, newAsyncContext, waitFor } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
@@ -36,30 +35,6 @@ import { runSaveCurrentChartTask } from "./saving-chart";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
 import { imUpdateModal } from "./update-modal";
 import { imEffectRackEditor } from "./sound-lab-effect-rack-editor";
-
-type AllKeysState = {
-    keys: KeyState[];
-    ctrlKey:  KeyState;
-    shiftKey: KeyState;
-    altKey:   KeyState;
-};
-
-function newAllKeysState(): AllKeysState {
-    const state: AllKeysState = {
-        keys: [],
-
-        ctrlKey:  newKeyState("Ctrl", "Control", "Meta"),
-        shiftKey: newKeyState("Shift", "Shift"),
-        altKey:   newKeyState("Alt", "Alt"),
-    };
-
-    for (const k in state) {
-        const key = k as keyof typeof state;
-        if (key !== "keys") state.keys.push(state[key]); 
-    }
-
-    return state;
-}
 
 export type GlobalContext = {
     keyboard:  KeyboardState;
@@ -73,7 +48,6 @@ export type GlobalContext = {
     repo: DataRepository;
 
     // TODO: input state
-    allKeysState: AllKeysState;
     keyPressState: KeyPressState | null;
     keyReleaseState: KeyPressState | null;
     blurredState: boolean;
@@ -91,7 +65,6 @@ export function newGlobalContext(
 
     const ctx: GlobalContext = {
         keyboard,
-        allKeysState: newAllKeysState(),
         sequencer: sequencer,
         gameplay: null,
         ui: newUiState(),
@@ -112,11 +85,13 @@ export function newGlobalContext(
 }
 
 
-// I know I'll need ctx here. I just can't prove it ...
-export function playKeyPressForUI(_ctx: GlobalContext, key: InstrumentKey) {
+export function playKeyPressForUI(ctx: GlobalContext, normalizedPitch: number) {
+    const idx = Math.floor(normalizedPitch * (ctx.keyboard.flatKeys.length - 1));
+    const key = ctx.keyboard.flatKeys[idx]; assert(!!key);
+
     updatePlaySettings(s => s.isUserDriven = false);
     schedulePlayback([{
-        time: 0, timeEnd: 200,
+        time: 0, timeEnd: 10,
         keyId: key.index,
         noteId: key.noteId,
     }]);
@@ -291,6 +266,7 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             case APP_VIEW_PLAY_CHART: {
                 stopPlayback(ctx);
                 setPlaybackVolume(1);
+                setPlaybackSpeed(1);
             } break;
         }
     }
@@ -430,8 +406,6 @@ export function imApp(
     ctx.handled = false;
     ctx.dontPreventDefault = false;
 
-    handleKeysLifecycle(ctx.allKeysState.keys, keyDown, keyUp, blur);
-
     // NOTE: this is not quite how I would do key input today - this
     // app has gone through a lot of rewrites as I was improving the framework 
     // alongside other projects and upgrading everything side-by-side.
@@ -481,7 +455,7 @@ export function imApp(
         ctx.blurredState = true;
     }
 
-    imLayout(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+    imLayoutBegin(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
         if (imIf(c) && ui.unitTestModal) {
             imUnitTestsModal(c, ctx, ui.unitTestModal);
         } else if (imIfElse(c) && ui.updateModal) {
@@ -518,20 +492,20 @@ export function imApp(
     }
 }
 
-export function imDiagnosticInfo(c: ImCache, fps: FpsCounterState, ctx: GlobalContext | undefined) {
+export function imDiagnosticInfo(c: ImCache, ctx: GlobalContext | undefined) {
     // diagnostic info
-    imLayout(c, BLOCK); imAbsolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imBg(c, `rgba(255, 255, 255, 0.6)`); imZIndex(c, 10000); {
-        imFpsCounterSimple(c, fps);
+    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imBg(c, `rgba(255, 255, 255, 0.6)`); imZIndex(c, 10000); {
+        imFpsCounterSimple(c);
         imExtraDiagnosticInfo(c);
 
         // What's playing?
 
         if (imIf(c) && ctx) {
-            imLayout(c, BLOCK); {
+            imLayoutBegin(c, BLOCK); {
                 const info = getDspInfo();
                 imFor(c); for (const [keyId, signal] of info.currentlyPlaying) {
                     const key = ctx.keyboard.flatKeys[keyId];
-                    imLayout(c, BLOCK); {
+                    imLayoutBegin(c, BLOCK); {
                         imStr(c, "[");
                         imStr(c, key.text);
                         imStr(c, ",");
@@ -539,14 +513,19 @@ export function imDiagnosticInfo(c: ImCache, fps: FpsCounterState, ctx: GlobalCo
                         imStr(c, "]");
                     } imLayoutEnd(c);
                 } imForEnd(c);
+
+                imLayoutBegin(c, BLOCK); {
+                    imStr(c, "volume="); imStr(c, getPlaybackVolume());
+                    imStr(c, "speed="); imStr(c, getPlaybackSpeed());
+                } imLayoutEnd(c);
             } imLayoutEnd(c);
         } imIfEnd(c);
 
         // Info about background tasks
-        imLayout(c, BLOCK); {
+        imLayoutBegin(c, BLOCK); {
             const tasks = getAllAsyncContexts();
             imFor(c); for (const t of tasks) {
-                imLayout(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
+                imLayoutBegin(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
                     const ms = performance.now() - t.t0;
                     const testDelay = getTestSleepMs(debugFlags);
                     imStr(c, testDelay ? "[TEST]" : "");
