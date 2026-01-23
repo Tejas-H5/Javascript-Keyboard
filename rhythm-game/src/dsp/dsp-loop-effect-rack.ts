@@ -7,7 +7,7 @@
 import { filterInPlace, resizeValuePool } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { moveTowards } from "src/utils/math-utils";
-import { asArray, asBooleanOrUndefined, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
+import { asArray, asBooleanOrUndefined, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, asStringOrUndefined, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
 import { deepEquals } from "src/utils/testing";
 import { cos, sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
 
@@ -498,6 +498,8 @@ type EffectRackItemValue
     ;
 
 export type EffectRack = {
+    name: string;
+    id: number;
     effects: EffectRackItem[];
 
     _effectIdToEffectPos: number[];
@@ -531,6 +533,9 @@ export function newEffectRackBinding(name: string, r: boolean, w: boolean): Regi
 
 export function newEffectRack(): EffectRack {
     return {
+        name: "",
+        id: 0,
+
         _lastEffectTypes: [],
 
         effects: [],
@@ -1311,6 +1316,8 @@ export function deserializeEffectRack(json: string): EffectRack {
 // Literally serializing the fields 1 by 1. The shit I do for hidden classes. literal astrology. Im a believer, however.
 function unmarshallEffectRack(jsonObj: unknown) {
     return unmarshalObject(jsonObj, newEffectRack(), {
+        name:    u => asStringOrUndefined(u) ?? "",
+        id:      u => asNumberOrUndefined(u) ?? 0,
         effects: u => asArray(u).map(u => unmarshalEffectRackItem(u)),
     });
 }

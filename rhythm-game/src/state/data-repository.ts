@@ -357,8 +357,12 @@ export function loadAllEffectRackPresets(repo: DataRepository): Promise<void> {
     });
 }
 
-export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset): Promise<void> {
-    repo.effectRackPresets.allEffectRackPresets.push(preset);
+export function getLoadedPreset(repo: DataRepository, id: number): EffectRackPreset | undefined {
+    return repo.effectRackPresets.allEffectRackPresets
+        .find(p => p.id === id);
+}
+
+export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset): Promise<void> { repo.effectRackPresets.allEffectRackPresets.push(preset);
 
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
     const a = newAsyncContext("Creating effects rack preset");

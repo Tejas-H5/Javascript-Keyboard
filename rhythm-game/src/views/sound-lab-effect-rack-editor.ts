@@ -100,7 +100,7 @@ import {
     ValueRef
 } from "src/dsp/dsp-loop-effect-rack";
 import { getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { createEffectRackPreset, deleteEffectRackPreset, EffectRackPreset, effectRackToPreset, loadAllEffectRackPresets, updateEffectRackPreset } from "src/state/data-repository";
+import { createEffectRackPreset, deleteEffectRackPreset, EffectRackPreset, effectRackToPreset, getLoadedPreset, loadAllEffectRackPresets, updateEffectRackPreset } from "src/state/data-repository";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { arrayMove, copyArray, filterInPlace, removeItem, resizeObjectPool, resizeValuePool } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
@@ -2202,6 +2202,11 @@ function stopRenaming(s: PresetsListState) {
     s.renaming = false;
 }
 
+function selectPreset(s: PresetsListState, id: number) {
+    s.selectedId = id;
+    s.renaming = false;
+}
+
 function imPresetsList(
     c: ImCache,
     ctx: GlobalContext,
@@ -2212,7 +2217,6 @@ function imPresetsList(
     }
 
     const s = imState(c, presetsListState);
-    const presets = ctx.repo.effectRackPresets.allEffectRackPresets;
     const loading = ctx.repo.effectRackPresets.allEffectRackPresetsLoading.isPending();
 
     // UI could be better but for now I don't care too much.
@@ -2222,7 +2226,13 @@ function imPresetsList(
 
             imFlex1(c);
 
-            const selectedPreset = presets.find(p => p.id === s.selectedId);
+            let selectedPreset = getLoadedPreset(ctx.repo, s.selectedId);
+
+            if (imButtonIsClicked(c, "Update preset", false, !!selectedPreset) && selectedPreset) {
+                const a = newAsyncContext("Updating preset");
+                selectedPreset.serialized = serializeEffectRack(editor.effectRack);
+                waitForOne(a, updateEffectRackPreset(ctx.repo, selectedPreset));
+            }
 
             if (imButtonIsClicked(c, "Rename", false, !!selectedPreset) && selectedPreset) {
                 startRenamingPreset(s, selectedPreset);
@@ -2230,7 +2240,7 @@ function imPresetsList(
 
             if (imButtonIsClicked(c, "Delete", false, !!selectedPreset) && selectedPreset) {
                 deleteEffectRackPreset(ctx.repo, selectedPreset);
-                s.selectedId = 0;
+                selectPreset(s, 0);
             }
 
             if (imButtonIsClicked(c, "Create new preset")) {
@@ -2255,7 +2265,7 @@ function imPresetsList(
             } imIfEnd(c);
 
             imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c); {
-                imFor(c); for (const preset of presets) {
+                imFor(c); for (const preset of ctx.repo.effectRackPresets.allEffectRackPresets) {
                     const selected = preset.id === s.selectedId;
 
                     imKeyedBegin(c, preset); {
@@ -2268,11 +2278,11 @@ function imPresetsList(
 
                             if (elHasMousePress(c)) {
                                 if (s.selectedId === preset.id) {
-                                    s.selectedId = 0;
+                                    selectPreset(s, 0);
                                 } else {
                                     try {
+                                        selectPreset(s, preset.id);
                                         editorImport(editor, preset.serialized);
-                                        s.selectedId = preset.id;
                                         s.error = "";
                                     } catch (err) {
                                         s.error = "" + err;
