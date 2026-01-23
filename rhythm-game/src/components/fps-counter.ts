@@ -46,6 +46,8 @@ export function imExtraDiagnosticInfo(c: ImCache) {
     const numDestructors = c[CACHE_TOTAL_DESTRUCTORS];
     const numMapEntries  = c[CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME];
 
+    const fps = getFpsCounterState(c);
+
     imLayoutBegin(c, BLOCK); {
         imStr(c, itemsIterated);
         imStr(c, "i ");
@@ -54,6 +56,8 @@ export function imExtraDiagnosticInfo(c: ImCache) {
         imStr(c, numDestructors);
         imStr(c, "d ");
         imStr(c, numMapEntries);
-        imStr(c, "m");
+        imStr(c, "m ");
+        imStr(c, fps.lastRenderCount);
+        imStr(c, "r");
     } imLayoutEnd(c);
 }

@@ -24,7 +24,6 @@ import {
     imGap,
     imJustify,
     imLayoutBegin,
-    imLayoutBegin,
     imLayoutEnd,
     imNoWrap,
     imPadding,
@@ -128,7 +127,7 @@ import {
     imSwitchEnd,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, EL_I, EL_SVG_PATH, elHasMouseOver, elHasMousePress, elSetAttr, elSetClass, elSetStyle, getGlobalEventSystem, imEl, imElBeginExisting, imElBeginSvg, imElEnd, imElEndExisting, imElEndSvg, imStr, imStrFmt, imSvgContext, SvgContext } from "src/utils/im-dom";
+import { EL_B, EL_I, EL_SVG_PATH, elHasMouseOver, elHasMousePress, elSetAttr, elSetClass, elSetStyle, getGlobalEventSystem, imDomRootExistingBegin, imDomRootExistingEnd, imElBegin, imElEnd, imElSvgBegin, imElSvgEnd, imStr, imStrFmt, imSvgContext, SvgContext } from "src/utils/im-dom";
 import { arrayMax, arrayMin } from "src/utils/math-utils";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
 import { newAsyncContext, waitFor, waitForOne } from "src/utils/promise-utils";
@@ -391,7 +390,7 @@ function onEdited(editor: EffectRackEditorState, wasUndoTraversed = false, editU
 
 function imHeading(c: ImCache, text: string) {
     imLayoutBegin(c, ROW); imJustify(c); {
-        imEl(c, EL_B); imStr(c, text); imElEnd(c, EL_B);
+        imElBegin(c, EL_B); imStr(c, text); imElEnd(c, EL_B);
     } imLayoutEnd(c);
 }
 
@@ -542,7 +541,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
             const fps = getFpsCounterState(c);
             const remainingTime = fps.frameMs - (performance.now() - fps.renderStart);
-            const allowedTimeMs = remainingTime * 0.5;
+            const allowedTimeMs = Math.min(remainingTime * 0.5, 8);
 
             const t0 = performance.now();
             while (
@@ -744,16 +743,16 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
                         editor.svgCtx = svgCtx;
 
-                        imElBeginExisting(c, svgCtx.root); {
+                        imDomRootExistingBegin(c, svgCtx.root); {
                             if (isFirstishRender(c)) {
                                 // Dont want to be able to touch the SVG actually.
                                 // It's just for the wires visual.
                                 elSetStyle(c, "pointerEvents", "none");
                             }
-                        } imElEndExisting(c, svgCtx.root);
+                        } imDomRootExistingEnd(c, svgCtx.root);
 
                         if (imIf(c) && wires.drag.outputEffectId !== undefined || wires.drag.registerInput !== undefined) {
-                            imElBeginExisting(c, editor.svgCtx.root); {
+                            imDomRootExistingBegin(c, editor.svgCtx.root); {
                                 const mouse = getGlobalEventSystem().mouse;
                                 let srcX = mouse.X, srcY = mouse.Y;
                                 let dstX = mouse.X, dstY = mouse.Y;
@@ -771,7 +770,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                                     srcX, srcY, dstX, dstY,
                                     dragColour.r, dragColour.g, dragColour.b, 1,
                                 );
-                            } imElEndExisting(c, editor.svgCtx.root);
+                            } imDomRootExistingEnd(c, editor.svgCtx.root);
                         } imIfEnd(c);
 
                         const effectsDnd = imDragAndDrop(c);
@@ -958,15 +957,15 @@ function imEffectRackEditorEffect(
 
                 let name = "???";
                 switch (effect.value.type) {
-                    case EFFECT_RACK_ITEM__OSCILLATOR: name = "OSC"; break;
-                    case EFFECT_RACK_ITEM__ENVELOPE: name = "ENV"; break;
-                    case EFFECT_RACK_ITEM__MATHS: name = "MATHS"; break;
-                    case EFFECT_RACK_ITEM__SWITCH: name = "SWITCH"; break;
-                    case EFFECT_RACK_ITEM__NOISE: name = "NOISE"; break;
-                    case EFFECT_RACK_ITEM__DELAY: name = "DELAY"; break;
+                    case EFFECT_RACK_ITEM__OSCILLATOR:    name = "OSC"; break;
+                    case EFFECT_RACK_ITEM__ENVELOPE:      name = "ENV"; break;
+                    case EFFECT_RACK_ITEM__MATHS:         name = "MATHS"; break;
+                    case EFFECT_RACK_ITEM__SWITCH:        name = "SWITCH"; break;
+                    case EFFECT_RACK_ITEM__NOISE:         name = "NOISE"; break;
+                    case EFFECT_RACK_ITEM__DELAY:         name = "DELAY"; break;
                     case EFFECT_RACK_ITEM__BIQUAD_FILTER: name = "FIL2ER"; break;
-                    case EFFECT_RACK_ITEM__SINC_FILTER: name = "SINC"; break;
-                    case EFFECT_RACK_ITEM__REVERB: name = "REVERB"; break;
+                    case EFFECT_RACK_ITEM__SINC_FILTER:   name = "SINC"; break;
+                    case EFFECT_RACK_ITEM__REVERB:        name = "REVERB"; break;
                     default: unreachable(effect.value);
                 }
 
@@ -1057,8 +1056,8 @@ function imEffectRackEditorEffect(
                                             }
 
                                             imLayoutBegin(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
-                                                imEl(c, EL_I); {
-                                                    imEl(c, EL_B); imStr(c, "x"); imStr(c, termIdx); imElEnd(c, EL_B);
+                                                imElBegin(c, EL_I); {
+                                                    imElBegin(c, EL_B); imStr(c, "x"); imStr(c, termIdx); imElEnd(c, EL_B);
                                                 } imElEnd(c, EL_I);
 
                                                 if (imButtonIsClicked(c, "-")) {
@@ -1894,7 +1893,7 @@ function imWireDragEndpoint(
 
             assert(editor.svgCtx != null);
 
-            imElBeginExisting(c, editor.svgCtx.root); {
+            imDomRootExistingBegin(c, editor.svgCtx.root); {
                 const color = wires.outputPositions.colours[reg.valueRef.effectId]
                 const signalValues = wires.outputPositions.signalBuffers[reg.valueRef.effectId];
 
@@ -1903,7 +1902,7 @@ function imWireDragEndpoint(
                     srcX, srcY, dstX, dstY,
                     color.r, color.g, color.b, 0.3 + (1 - 0.3) * signalValues.metric,
                 );
-            } imElEndExisting(c, editor.svgCtx.root);
+            } imDomRootExistingEnd(c, editor.svgCtx.root);
         } imIfEnd(c);
     } imLayoutEnd(c);
 
@@ -1972,7 +1971,7 @@ function imWire(
     dstX: number, dstY: number,
     r: number, g: number, b: number, a: number,
 ) {
-    imElBeginSvg(c, EL_SVG_PATH); {
+    imElSvgBegin(c, EL_SVG_PATH); {
         if (imMemo(c, r) | imMemo(c, g) | imMemo(c, b) | imMemo(c, a)) {
             elSetAttr(c, "stroke", rgbaToCssString(r, g, b, a));
         }
@@ -2005,7 +2004,7 @@ function imWire(
 
             elSetAttr(c, "d", newPath);
         }
-    } imElEndSvg(c, EL_SVG_PATH);
+    } imElSvgEnd(c, EL_SVG_PATH);
 }
 
 // want to visualize the program somehow. 

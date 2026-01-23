@@ -78,7 +78,7 @@ import { filteredCopy } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { copyToClipboard } from "src/utils/clipboard";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
-import { EL_B, elSetClass, elSetStyle, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
+import { EL_B, elSetClass, elSetStyle, EV_INPUT, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
 import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, } from "./app";
@@ -626,7 +626,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             imLine(c, LINE_HORIZONTAL, 1);
 
             imLayoutBegin(c, ROW); imJustify(c); imGap(c, 10, PX); {
-                imEl(c, EL_B); { 
+                imElBegin(c, EL_B); { 
                     imStr(c, sequencer._currentChart.name); 
                 } imElEnd(c, EL_B);
 

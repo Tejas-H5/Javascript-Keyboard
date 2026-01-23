@@ -25,7 +25,7 @@ import { filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, getFpsCounterState, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
-import { EL_H2, getGlobalEventSystem, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { EL_H2, getGlobalEventSystem, imElBegin, imElEnd, imStr } from "src/utils/im-dom";
 import { getAllAsyncContexts, newAsyncContext, waitFor } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
@@ -469,7 +469,7 @@ export function imApp(
             case APP_VIEW_EDIT_CHART:   imEditView(c, ctx);    break;
             case APP_VIEW_SOUND_LAB:    imEffectRackEditor(c, ctx); break;
             default: {
-                imEl(c, EL_H2); imStr(c, `TODO: implement ${ui.currentView} ...`); imElEnd(c, EL_H2);
+                imElBegin(c, EL_H2); imStr(c, `TODO: implement ${ui.currentView} ...`); imElEnd(c, EL_H2);
             } break;
         } imSwitchEnd(c);
 

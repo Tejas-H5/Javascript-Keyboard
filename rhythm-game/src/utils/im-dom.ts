@@ -1,14 +1,6 @@
-// IM-DOM 1.57
-// NOTE: the parent of a dom node is no longer a constant, like a lot of the code here may assume. TODO: we should fix this code
-// NOTE: this version may be unstable, as we've updated the DOM diffing algorithm yet again:
-// - Multiple dom appenders may append to the same node out of order
-// - Multiple dom appenders may append the same nodes to different dom nodes
-// - Multiple dom appenders _MAY NOT_ be created for the same DOM node though.
-// - Finalization can now optionally be moved to the very end. 
-//      - for now, we can't do the optimization where we only finalize when something has changed, because any dom node may be appended to at any time
-//      - it does allow for DOM node reuse, and appending to different places in the DOM tree via different places in the immediate mode tree.
+// IM-DOM 1.62
 
-import { imFixed, imSize, NA, PX } from "src/components/core/layout";
+import { imFixedXY, imSize, PX } from "src/components/core/layout";
 import { assert } from "src/utils/assert";
 import {
     __GetEntries,
@@ -29,6 +21,7 @@ import {
     inlineTypeId,
     recursivelyEnumerateEntries
 } from "./im-core";
+import { KeysState, newKeysState, updateKeysState } from "./key-state";
 
 export type ValidElement = HTMLElement | SVGElement;
 export type AppendableElement = (ValidElement | Text);
@@ -60,10 +53,10 @@ export type DomAppender<E extends AppendableElement> = {
     // depending on how the browser has implemented DOM node rendering.
     manualDom: boolean;
 
-    idx: number; // Used to iterate the list
+    idx: number;     // Used to iterate the list
 
-    parent: DomAppender<ValidElement> | null;
     // if null, root is a text node. else, it can be appended to.
+    parent: DomAppender<ValidElement> | null;
     children: (DomAppender<AppendableElement>[] | null);
     selfIdx: number; // index of this node in it's own array
 
@@ -112,22 +105,26 @@ export function appendToDomRoot(a: DomAppender<ValidElement>, child: DomAppender
         a.idx++;
         const idx = a.idx;
 
-        if (child.parent !== a && child.parent !== null) {
+        if (child.parent !== null && child.parent !== a) {
             const parent = child.parent;
             domAppenderDetatch(parent, child);
-
-            // Only do assertions on the non-hot paths
-            assert(child.parent === a);
-            assert(child.selfIdx === a.idx);
         }
 
-        if (idx < a.children.length) {
+        if (idx === a.children.length) {
+            // Simply append this element
+            child.parent = a;
+            child.selfIdx = a.children.length;
+            a.children.push(child);
+            a.root.appendChild(child.root);
+        } else if (idx < a.children.length) {
             const last = a.children[idx];
+            assert(last.parent === a);
+
             if (last === child) {
-                // no action required. Hopefully, this is the HOT path
+                // no action required. Hopefull, this is the HOT path
             } else {
                 if (child.parent === a) {
-                    // If child is already under this appender, we'll need to remove it beforehand
+                    // If child is already here, we'll need to remove it beforehand
                     domAppenderClearParentAndShift(child.parent, child);
                 }
                 a.root.replaceChild(child.root, last.root);
@@ -135,25 +132,15 @@ export function appendToDomRoot(a: DomAppender<ValidElement>, child: DomAppender
                 last.parent = null;
                 child.selfIdx = idx;
                 child.parent = a;
-
-                // Only do assertions on the non-hot paths
-                assert(child.parent === a);
-                assert(child.selfIdx === a.idx);
             }
-        } else if (idx === a.children.length) {
-            // Simply append this element
-            child.parent = a;
-            child.selfIdx = a.children.length;
-            a.children.push(child);
-            a.root.appendChild(child.root);
-
-            // Only do assertions on the non-hot paths
-            assert(child.parent === a);
-            assert(child.selfIdx === a.idx);
         } else {
             assert(false); // unreachable
         }
     }
+
+    assert(child.parent === a);
+    assert(child.selfIdx === a.idx);
+    assert(child.root.parentNode === a.root);
 }
 
 // Useful for debugging. Should be unused in prod.
@@ -164,7 +151,6 @@ function assertInvariants(appender: DomAppender<ValidElement>) {
         const child = appender.children[i];
 
         assert(appender.children[child.selfIdx] === child);
-        assert(child.root.parentNode === appender.root);
 
         let count = 0;
         for (let i = 0; i <= appender.idx; i++) {
@@ -250,7 +236,7 @@ function finalizeDomAppender(a: DomAppender<ValidElement>) {
 
 /**
  * NOTE: SVG elements are actually different from normal HTML elements, and 
- * will need to be created wtih {@link imElBeginSvg}
+ * will need to be created wtih {@link imElSvgBegin}
  */
 export function imElBegin<K extends keyof HTMLElementTagNameMap>(
     c: ImCache,
@@ -271,8 +257,6 @@ export function imElBegin<K extends keyof HTMLElementTagNameMap>(
     return childAppender;
 }
 
-export const imEl = imElBegin;
-
 function imBeginDomAppender(c: ImCache, appender: DomAppender<ValidElement>, childAppender: DomAppender<ValidElement>) {
     appendToDomRoot(appender, childAppender);
 
@@ -291,6 +275,7 @@ export type SvgContext = {
     resized: boolean;
 }
 
+
 /**
  * An alternative to {@link EL_SVG} for larger svg-based components/scenes.
  * Use this with {@link imElBeginExisting/imElEndExisting}
@@ -304,7 +289,7 @@ export function imSvgContext(c: ImCache): SvgContext {
     const el = elGet(c);
     const elRect = el.getBoundingClientRect();
 
-    const svgRoot = imElBeginSvg(c, EL_SVG); imFinalizeDeferred(c); 
+    const svgRoot = imElSvgBegin(c, EL_SVG); imFinalizeDeferred(c); 
     let ctx = imGet(c, imSvgContext);
     if (ctx === undefined) {
         ctx = { 
@@ -326,7 +311,7 @@ export function imSvgContext(c: ImCache): SvgContext {
         ctx.y0 = elRect.top;
         ctx.height = elRect.height;
 
-        imFixed(c, ctx.y0, PX, 0, NA, 0, NA, ctx.x0, PX);
+        imFixedXY(c, ctx.x0, PX, ctx.y0, PX);
         imSize(c, ctx.width, PX, ctx.height, PX);
 
         const x0Changed = imMemo(c, ctx.x0);
@@ -342,16 +327,20 @@ export function imSvgContext(c: ImCache): SvgContext {
 
         // users to render their stuff here.
     
-    } imElEndSvg(c, EL_SVG);
+    } imElSvgEnd(c, EL_SVG);
 
 
     return ctx;
 }
 
+export function imSvgContextEnd(c: ImCache) {
+    imElSvgEnd(c, EL_SVG);
+}
+
 /**
  * Svg nodes are different from normal DOM nodes, so you'll need to use this function to create them instead.
  */
-export function imElBeginSvg<K extends keyof SVGElementTagNameMap>(
+export function imElSvgBegin<K extends keyof SVGElementTagNameMap>(
     c: ImCache,
     r: KeyRef<K>
 ): DomAppender<SVGElementTagNameMap[K]> {
@@ -384,7 +373,7 @@ export function imElEnd(c: ImCache, r: KeyRef<keyof HTMLElementTagNameMap | keyo
     imBlockEnd(c);
 }
 
-export const imElEndSvg = imElEnd;
+export const imElSvgEnd = imElEnd;
 
 
 /**
@@ -422,16 +411,18 @@ export function addDebugLabelToAppender(c: ImCache, str: string | undefined) {
     appender.label = str;
 }
 
-export function imElBeginExisting(c: ImCache, existing: DomAppender<any>) {
-    // If you want to re-push this DOM node to the immediate mode stack, with imElBeginExisting, 
-    // the dom node needs to be finalized at the very end. You can set this by calling imFinalizeDeferred(c).
-    // I.e imElBegin(c, EL_BLAH); imFinalizeDeferred(c); { ... }
+export function imDomRootExistingBegin(c: ImCache, existing: DomAppender<any>) {
+    // If you want to re-push this DOM node to the immediate mode stack, use imFinalizeDeferred(c).
+    // I.e imElBegin(c, EL_BLAH); imFinalizeDeferred(c); ...
+    // This allows the 'diff' to happen at the _end_ of the render pass instead of immediately after we close the element.
+    // This isn't the default, because it breaks some code that expects the node to have been inserted - 
+    // calls to textInput.focus() for example, won't work till the next frame, for example.
     assert(existing.finalizeType === FINALIZE_DEFERRED);
 
     imBlockBegin(c, newDomAppender, existing);
 }
 
-export function imElEndExisting(c: ImCache, existing: DomAppender<any>) {
+export function imDomRootExistingEnd(c: ImCache, existing: DomAppender<any>) {
     let appender = getEntriesParent(c, newDomAppender);
     assert(appender === existing);
     imBlockEnd(c);
@@ -618,6 +609,11 @@ export function imOn<K extends keyof HTMLElementEventMap>(
             eventType: null,
             eventValue: null,
             eventListener: (e: HTMLElementEventMap[K]) => {
+                // NOTE: Some of you coming from a non-web background may be puzzled as to why
+                // we are re-rendering the entire app for EVERY event. This is because we always want
+                // the ability to call e.preventDefault() while the event is occuring for any event.
+                // Buffering the events means that we will miss the opportunity to prevent the default event.
+
                 val.eventValue = e;
                 c[CACHE_RERENDER_FN]();
             },
@@ -687,6 +683,8 @@ export type ImKeyboardState = {
     // from knowing about this event.
     keyDown: KeyboardEvent | null;
     keyUp: KeyboardEvent | null;
+
+    keys: KeysState;
 };
 
 
@@ -750,6 +748,7 @@ export function newImGlobalEventSystem(rerenderFn: () => void): ImGlobalEventSys
     const keyboard: ImKeyboardState = {
         keyDown: null,
         keyUp: null,
+        keys: newKeysState(),
     };
 
     const mouse: ImMouseState = {
@@ -865,16 +864,19 @@ export function newImGlobalEventSystem(rerenderFn: () => void): ImGlobalEventSys
             },
             keydown: (e: KeyboardEvent) => {
                 keyboard.keyDown = e;
+                updateKeysState(keyboard.keys, e, null, false);
                 eventSystem.rerender();
             },
             keyup: (e: KeyboardEvent) => {
                 keyboard.keyUp = e;
+                updateKeysState(keyboard.keys, null, e, false);
                 eventSystem.rerender();
             },
             blur: () => {
-                resetMouseState(mouse, true);
-                resetKeyboardState(keyboard);
+                resetImMouseState(mouse);
+                resetImKeyboardState(keyboard);
                 eventSystem.blur = true;
+                updateKeysState(keyboard.keys, null, null, true);
                 eventSystem.rerender();
             }
         },
@@ -883,9 +885,12 @@ export function newImGlobalEventSystem(rerenderFn: () => void): ImGlobalEventSys
     return eventSystem;
 }
 
-function resetKeyboardState(keyboard: ImKeyboardState) {
+function resetImKeyboardState(keyboard: ImKeyboardState) {
     keyboard.keyDown = null
     keyboard.keyUp = null
+
+    const keys = keyboard.keys;
+    updateKeysState(keys, null, null, true);
 }
 
 /**
@@ -909,8 +914,11 @@ export function imGlobalEventSystemBegin(c: ImCache): ImGlobalEventSystem {
 }
 
 export function imGlobalEventSystemEnd(_c: ImCache, eventSystem: ImGlobalEventSystem) {
-    resetKeyboardState(eventSystem.keyboard);
-    resetMouseState(eventSystem.mouse, false);
+    updateMouseState(eventSystem.mouse);
+    updateKeysState(eventSystem.keyboard.keys, null, null, false);
+
+    eventSystem.keyboard.keyDown = null
+    eventSystem.keyboard.keyUp = null
     eventSystem.blur = false;
 
     globalStateStackPop(gssEventSystems, eventSystem);
@@ -919,7 +927,6 @@ export function imGlobalEventSystemEnd(_c: ImCache, eventSystem: ImGlobalEventSy
 export function imTrackSize(c: ImCache) {
     let state; state = imGet(c, inlineTypeId(imTrackSize));
     if (state === undefined) {
-        // NOTE: the parent of a dom node is no longer a constant. TODO: we should fix this code
         const root = elGet(c);
 
         const self = {
@@ -989,7 +996,16 @@ export function imPreventScrollEventPropagation(c: ImCache) {
     return state;
 }
 
-export function resetMouseState(mouse: ImMouseState, clearPersistedStateAsWell: boolean) {
+export function updateMouseState(mouse: ImMouseState) {
+    mouse.dX = 0;
+    mouse.dY = 0;
+    mouse.lastX = mouse.X;
+    mouse.lastY = mouse.Y;
+
+    mouse.scrollWheel = 0;
+}
+
+export function resetImMouseState(mouse: ImMouseState) {
     mouse.dX = 0;
     mouse.dY = 0;
     mouse.lastX = mouse.X;
@@ -997,11 +1013,9 @@ export function resetMouseState(mouse: ImMouseState, clearPersistedStateAsWell: 
 
     mouse.scrollWheel = 0;
 
-    if (clearPersistedStateAsWell === true) {
-        mouse.leftMouseButton = false;
-        mouse.middleMouseButton = false;
-        mouse.rightMouseButton = false;
-    }
+    mouse.leftMouseButton = false;
+    mouse.middleMouseButton = false;
+    mouse.rightMouseButton = false;
 }
 
 export function addDocumentAndWindowEventListeners(eventSystem: ImGlobalEventSystem) {

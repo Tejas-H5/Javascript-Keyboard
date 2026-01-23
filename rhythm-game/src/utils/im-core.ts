@@ -1,4 +1,4 @@
-// IM-CORE 1.066
+// IM-CORE 1.067
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 // Majority of the last changes have just been updates to the documentation though
@@ -50,6 +50,8 @@ export type ImCache = (ImCacheEntries | any)[];
 export type ImCacheEntries = any[] & { __ImCacheEntries: void };
 
 export type FpsCounterState = {
+    renderCount: number;
+    lastRenderCount: number;
     renderStart: number;
     renderEnd: number;
     frameMs: number;
@@ -58,6 +60,8 @@ export type FpsCounterState = {
 
 export function newFpsCounterState(): FpsCounterState {
     return {
+        renderCount: 0,
+        lastRenderCount: 0,
         renderStart: 0,
         renderEnd: 0,
         frameMs: 0,
@@ -71,6 +75,8 @@ export function fpsMarkRenderingStart(fps: FpsCounterState) {
     fps.renderMs = fps.renderEnd - fps.renderStart;
     fps.frameMs = t - fps.renderStart;
     fps.renderStart = t;
+    fps.lastRenderCount = fps.renderCount;
+    fps.renderCount = 0;
 }
 
 export function fpsMarkRenderingEnd(fps: FpsCounterState) {
@@ -87,18 +93,19 @@ export const CACHE_ROOT_ENTRIES                 = 5;
 export const CACHE_NEEDS_RERENDER               = 6;
 export const CACHE_RERENDER_FN                  = 7;
 export const CACHE_IS_RENDERING                 = 8;
-export const CACHE_RENDER_COUNT                 = 9;
-export const CACHE_ANIMATE_FN                   = 10;
-export const CACHE_ANIMATION_ID                 = 11;
-export const CACHE_ANIMATION_TIME_LAST          = 12;
-export const CACHE_ANIMATION_TIME               = 13;
-export const CACHE_ANIMATION_DELTA_TIME_SECONDS = 14;
-export const CACHE_ITEMS_ITERATED               = 15;
-export const CACHE_ITEMS_ITERATED_LAST_FRAME    = 16; // Useful performance metric
-export const CACHE_TOTAL_DESTRUCTORS            = 17; // Useful memory leak indicator
-export const CACHE_TOTAL_MAP_ENTRIES            = 18; // Useful memory leak indicator
-export const CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME = 19; // Useful memory leak indicator
-export const CACHE_ENTRIES_START                = 20;
+export const CACHE_IS_EVENT_RERENDER            = 9;
+export const CACHE_RENDER_COUNT                 = 10;
+export const CACHE_ANIMATE_FN                   = 11;
+export const CACHE_ANIMATION_ID                 = 12;
+export const CACHE_ANIMATION_TIME_LAST          = 13;
+export const CACHE_ANIMATION_TIME               = 14;
+export const CACHE_ANIMATION_DELTA_TIME_SECONDS = 15;
+export const CACHE_ITEMS_ITERATED               = 16;
+export const CACHE_ITEMS_ITERATED_LAST_FRAME    = 17; // Useful performance metric
+export const CACHE_TOTAL_DESTRUCTORS            = 18; // Useful memory leak indicator
+export const CACHE_TOTAL_MAP_ENTRIES            = 19; // Useful memory leak indicator
+export const CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME = 20; // Useful memory leak indicator
+export const CACHE_ENTRIES_START                = 21;
 
 
 export const REMOVE_LEVEL_NONE = 1;
@@ -200,7 +207,13 @@ export function imCacheBegin(
                 // we can't rerender right here, so we'll queue a rerender at the end of the component
                 c[CACHE_NEEDS_RERENDER] = true;
             } else {
-                renderFn(c);
+                c[CACHE_IS_EVENT_RERENDER] = true;
+                try {
+                    renderFn(c);
+                } catch(e) {
+                    console.error(e);
+                }
+                c[CACHE_IS_EVENT_RERENDER] = false;
             }
         };
 
@@ -229,11 +242,15 @@ export function imCacheBegin(
         }
     }
 
-    fpsMarkRenderingStart(c[CACHE_FPS_COUNTER_STATE]);
+    const fpsState = getFpsCounterState(c);
+    if (c[CACHE_IS_EVENT_RERENDER] === false) {
+        fpsMarkRenderingStart(fpsState);
+    }
+    fpsState.renderCount += 1;
 
+    c[CACHE_NEEDS_RERENDER] = false;
     c[CACHE_IS_RENDERING] = true; 
     c[CACHE_IDX] = CACHE_ENTRIES_START - 1;
-    c[CACHE_NEEDS_RERENDER] = false;
     c[CACHE_ITEMS_ITERATED_LAST_FRAME] = c[CACHE_ITEMS_ITERATED];
     c[CACHE_ITEMS_ITERATED] = 0;
     c[CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME] = c[CACHE_TOTAL_MAP_ENTRIES];
@@ -254,7 +271,7 @@ export function imCacheBegin(
 }
 
 export function getFpsCounterState(c: ImCache): FpsCounterState {
-    assert(!!c[CACHE_FPS_COUNTER_STATE]);
+    assert(c[CACHE_FPS_COUNTER_STATE] != null);
     return c[CACHE_FPS_COUNTER_STATE];
 }
 
@@ -290,7 +307,9 @@ export function imCacheEnd(c: ImCache) {
         c[CACHE_ANIMATION_ID] = requestAnimationFrame(c[CACHE_ANIMATE_FN]);
     }
 
-    fpsMarkRenderingEnd(c[CACHE_FPS_COUNTER_STATE]);
+    if (c[CACHE_IS_EVENT_RERENDER] === false) {
+        fpsMarkRenderingEnd(c[CACHE_FPS_COUNTER_STATE]);
+    }
 }
 
 const INTERNAL_TYPE_NORMAL_BLOCK = 1;

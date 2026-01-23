@@ -56,7 +56,7 @@ import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
-import { EL_B, elSetClass, elSetStyle, imEl, imElEnd, imStr, imTrackSize, Stringifyable } from "src/utils/im-dom";
+import { EL_B, elSetClass, elSetStyle, imElBegin, imElEnd, imStr, imTrackSize, Stringifyable } from "src/utils/im-dom";
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app";
 import { cssVarsApp, getCurrentTheme } from "./styling";
@@ -807,7 +807,7 @@ function imLetter(
                 elSetStyle(c, "height", "1.3em");
             }
 
-            imEl(c, EL_B); {
+            imElBegin(c, EL_B); {
                 imStr(c, instrumentKey ? instrumentKey.text : "?");
             } imElEnd(c, EL_B);
         } imLayoutEnd(c);

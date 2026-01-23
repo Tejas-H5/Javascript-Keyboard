@@ -1,11 +1,11 @@
 import { imButton, imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imFixed, imGap, imLayoutBegin, imLayoutBegin, imLayoutEnd, imNoWrap, imPadding, imPre, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFixed, imGap, imLayoutBegin, imLayoutEnd, imNoWrap, imPadding, imPre, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { resizeObjectPool } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { imBlockBegin, imBlockEnd, ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, imTry, imTryCatch, imTryEnd, isFirstishRender } from "src/utils/im-core";
-import { EL_H3, EL_H4, elHasMousePress, elSetStyle, imEl, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
+import { EL_H3, EL_H4, elHasMousePress, elSetStyle, imElBegin, imElEnd, imStr, Stringifyable } from "src/utils/im-dom";
 import { getAllTests, runTest, Test, TestingHarness, TestResult } from "src/utils/testing";
 import { imLine, LINE_HORIZONTAL } from "./im-line";
 
@@ -83,7 +83,7 @@ export function imTestHarness(c: ImCache) {
                     imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
                         imLayoutBegin(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
 
-                        imEl(c, EL_H3); imStr(c, "Tests"); imElEnd(c, EL_H3);
+                        imElBegin(c, EL_H3); imStr(c, "Tests"); imElEnd(c, EL_H3);
 
                         if (imButtonIsClicked(c, "Run failed")) {
                             assert(false) // TODO: IMPLEMENT
@@ -108,7 +108,7 @@ export function imTestHarness(c: ImCache) {
                             imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
                                 imLayoutBegin(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
 
-                                imEl(c, EL_H4); imStr(c, test.name); imElEnd(c, EL_H4);
+                                imElBegin(c, EL_H4); imStr(c, test.name); imElEnd(c, EL_H4);
 
                                 imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 100, PERCENT); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imCode(c); {
                                     let bg = "";

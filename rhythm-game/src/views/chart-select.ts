@@ -8,7 +8,7 @@ import { getCurrentChart } from "src/state/sequencer-state";
 import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "src/state/ui-state";
 import { scrollIntoViewVH } from "src/utils/dom-utils";
 import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
-import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imElBegin, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax, clamp, lerp } from "src/utils/math-utils";
 import {
     GlobalContext,
@@ -193,7 +193,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                 const bundled = currentChart._savedStatus === CHART_STATUS_READONLY;
                 imLayoutBegin(c, COL); imFlex(c); {
                     imLayoutBegin(c, COL); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                        imEl(c, EL_H2); {
+                        imElBegin(c, EL_H2); {
                             imLayoutBegin(c, ROW); {
                                 imLayoutBegin(c, ROW); {
                                     imStr(c, currentChart.name);

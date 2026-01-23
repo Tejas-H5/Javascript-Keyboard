@@ -1,8 +1,8 @@
 import { BLOCK, imAbsolute, imBg, imFg, imFixed, imFixedXY, imLayoutBegin, imLayoutEnd, imOpacity, imSize, NA, PX } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { ImCache, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, EV_CONTEXTMENU, getGlobalEventSystem, imOn } from "src/utils/im-dom";
-import { clamp, deltaAngle } from "src/utils/math-utils";
+import { clamp, deltaAngle, lerp, lerp01 } from "src/utils/math-utils";
 
 export type CompactLinearDragSlideInteractionState = {
     isDragging: boolean;
@@ -92,10 +92,15 @@ type CompactCircularDragSlideInteractionState = {
 
     startMouseX: number;
     startMouseY: number;
+    startAngle: number;
 
     lastAngle: number;
     angle: number;
     distance: number;
+    ringSize: number;
+    deadzone: number;
+    ringIdx: number;
+    ringDistance: number;
 
     // Track our own copy of the value being dragged, so that
     // clamping can be implemented userside properly
@@ -109,10 +114,15 @@ function newCompactCircularDragSlideInteractionState(): CompactCircularDragSlide
 
         startMouseX: 0,
         startMouseY: 0,
+        startAngle: 0,
 
         lastAngle: 0,
         angle: 0,
         distance: 0,
+        ringSize: 0,
+        deadzone: 0,
+        ringIdx: 0,
+        ringDistance: 0,
 
         // Track our own copy of the value being dragged, so that
         // clamping can be implemented userside properly
@@ -130,9 +140,9 @@ export function imCompactCircularDragSlideInteraction(
     value: number,
     min: number,
     max: number,
-    pixelsPerUnit: number,
-    distanceInfluence: number,
-    deadzone: number = 10
+    ringSize: number,
+    ringSizeExp: number,
+    lockRing: boolean,
 ): CompactCircularDragSlideInteractionState {
     const s = imState(c, newCompactCircularDragSlideInteractionState);
     s.value = value;
@@ -160,19 +170,41 @@ export function imCompactCircularDragSlideInteraction(
 
         const startToMouseX = mouse.X - s.startMouseX;
         const startToMouseY = mouse.Y - s.startMouseY;
-        s.angle = Math.atan2(startToMouseY, startToMouseX);
+        s.angle = Math.atan2(startToMouseY, startToMouseX) - Math.PI / 2;
         s.distance = Math.sqrt(startToMouseX * startToMouseX + startToMouseY * startToMouseY);
+
+        if (startedDragging) {
+            s.startAngle = s.angle;
+        }
+
+        s.ringSize = ringSize;
+        s.deadzone = ringSize;
+
+        s.ringIdx = 0;
+        s.ringDistance = s.deadzone;
+
+        // Each segment outwards will be a bit larger (at least, when ringSizeExp a bit larget than 1)
+        let segmentSize = ringSize;
+        let nextRingDist = s.ringDistance;
+        let dist = s.distance - s.deadzone;
+        while (dist > 0) {
+            s.ringIdx += 1;
+            s.ringDistance = nextRingDist;
+            nextRingDist += segmentSize;
+            s.ringSize = segmentSize;
+            dist -= segmentSize;
+            segmentSize *= ringSizeExp;
+
+            if (lockRing && s.ringIdx >= 2) break;
+        } 
 
         // Clockwise     -> positive
         // Anticlockwise -> negative
         const angleDelta = -deltaAngle(s.lastAngle, s.angle);
         s.lastAngle = s.angle;
 
-        if (Math.abs(angleDelta) > 0.000001 && !startedDragging) {
-            s.draggedValue += angleDelta * Math.pow(
-                Math.max(0, s.distance - deadzone),
-                distanceInfluence
-            ) / pixelsPerUnit;
+        if (s.ringIdx >= 0 && Math.abs(angleDelta) > 0.000001 && !startedDragging) {
+            s.draggedValue += Math.pow(10, -5 + s.ringIdx) * Math.sign(angleDelta);
             s.draggedValue = clamp(s.draggedValue, min, max);
             s.value = s.draggedValue;
         }
@@ -205,18 +237,42 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
             wantedCursor = cursorsPerSector[wantedCursorIdx];
         } imLayoutEnd(c);
 
-        // inner square
-        {
-
-        }
-
         const angleChanged = imMemo(c, s.angle);
+        const ringDistanceChanged = imMemo(c, s.ringDistance);
 
-        imLayoutBegin(c, BLOCK); imSize(c, s.distance / 2, PX, s.distance / 2, PX);
-        imOpacity(c, 0.3); imFg(c, cssVars.bg); imBg(c, cssVars.fg);
-        imFixedXY(c, s.startMouseX, PX,s.startMouseX, PX); {
-            if (angleChanged) elSetStyle(c, "transform", `translate(-50%, -50%) rotateZ(${s.angle}rad)`);
+        // centerpoint
+        imLayoutBegin(c, BLOCK); {
+            imSize(c, 20, PX, 20, PX);
+            imOpacity(c, lerp01(0, 0.5, s.distance / s.ringSize));
+            imFixedXY(c, s.startMouseX, PX, s.startMouseY, PX);
+            if (isFirstishRender(c)) elSetStyle(c, "border", "2px solid " + cssVars.fg);
+
+            if (angleChanged) {
+                elSetStyle(c, "transform", `translate(-50%, -50%) rotateZ(${s.angle - Math.PI / 2}rad)`);
+            }
         } imLayoutEnd(c);
+
+
+        // dynamic dials
+        if (imIf(c) && s.ringIdx >= 0) {
+            imFor(c); for (let i = 0; i <= 10; i++) {
+                const width = 5;
+                const height = s.ringSize;
+
+                const isSolid = i === 10
+                const tickAngle = isSolid ? s.angle : i * 2 * Math.PI / 10 + s.startAngle;
+
+                imLayoutBegin(c, BLOCK); {
+                    imSize(c, width, PX, height, PX);
+                    imOpacity(c, isSolid ? 1 : 0.3); imFg(c, cssVars.bg); imBg(c, cssVars.fg);
+                    imFixedXY(c, s.startMouseX, PX, s.startMouseY, PX);
+
+                    if (ringDistanceChanged || angleChanged) {
+                        elSetStyle(c, "transform", `translate(-50%, -50%) rotateZ(${tickAngle}rad) translate(0, calc(50% + ${s.ringDistance}px)`);
+                    }
+                } imLayoutEnd(c);
+            } imForEnd(c);
+        } imIfEnd(c);
 
     } imIfEnd(c);
 

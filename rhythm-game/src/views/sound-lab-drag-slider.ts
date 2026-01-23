@@ -1,16 +1,15 @@
 import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideInteractionFeedback, imCompactLinearDragSlideInteraction } from "src/app-components/drag-slider-interaction";
-import {
-    ImCache,
-    imElse,
-    imEndIf,
-    imIf
-} from "src/utils/im-core";
+import {ImCache, imElse, imEndIf, imIf} from "src/utils/im-core";
 import { elHasMousePress, getGlobalEventSystem } from "src/utils/im-dom";
+import { getNormalizedKey, isKeyHeld } from "src/utils/key-state";
 import { clamp, gridsnapRound } from "src/utils/math-utils";
 
 
 export const DRAG_TYPE_LINEAR = 1;
 export const DRAG_TYPE_CIRCULAR = 2;
+
+const shiftKey = getNormalizedKey("Shift");
+const modKey = getNormalizedKey("Modifier");
 
 export function imParameterSliderInteraction(
     c: ImCache,
@@ -23,28 +22,18 @@ export function imParameterSliderInteraction(
 ): { val: number } | null {
     let initialVal = val;
 
-    const { mouse } = getGlobalEventSystem();
+    const { mouse, keyboard } = getGlobalEventSystem();
 
-    let shift = false;
-
-    if (mouse.ev?.shiftKey) {
-        step = 0.1
-        shift = true;
-    }
+    const shift = isKeyHeld(keyboard.keys, shiftKey);
+    const mod = isKeyHeld(keyboard.keys, modKey);
 
     let pixelsPerUnit = 100;
-
-    if (mouse.ev?.ctrlKey) {
-        pixelsPerUnit = 1000;
-        if (shift) {
-            step = 0.001;
-        }
-    }
 
     let isDragging = false;
 
     if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
-        const state = imCompactCircularDragSlideInteraction(c, val, min, max, pixelsPerUnit, 1);
+        const lockRing = shift;
+        const state = imCompactCircularDragSlideInteraction(c, val, min, max, 30, 2, lockRing);
         imCompactCircularDragSlideInteractionFeedback(c, state);
 
         if (state.isDragging) {
@@ -53,6 +42,13 @@ export function imParameterSliderInteraction(
         }
     } else {
         imElse(c);
+
+        if (mod) {
+            pixelsPerUnit = 1000;
+            if (shift) {
+                step = 0.001;
+            }
+        }
 
         const state = imCompactLinearDragSlideInteraction(c, 100, val, min, max);
         if (state.isDragging) {

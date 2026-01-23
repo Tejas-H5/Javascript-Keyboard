@@ -22,6 +22,10 @@ export function lerp(a: number, b: number, t: number) {
     return a + (b - a) * t;
 }
 
+export function lerp01(a: number, b: number, t: number) {
+    return a + (b - a) * clamp(t, 0, 1);
+}
+
 export function inverseLerp(value: number, start: number, end: number) {
     if (start === end) {
         return value;

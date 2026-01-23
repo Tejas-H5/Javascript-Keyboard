@@ -13,7 +13,7 @@ import {
     imSet,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, EL_I, elSetStyle, imEl, imElEnd, imStr } from "src/utils/im-dom";
+import { EL_B, EL_I, elSetStyle, imElBegin, imElEnd, imStr } from "src/utils/im-dom";
 import { clamp } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./app";
 import { GameplayState, imGameplay } from "./gameplay";
@@ -143,7 +143,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
                 currentStart += 0.3;
                 elSetStyle(c, "fontSize", s.fontSize + "rem");
 
-                imEl(c, EL_B); imStr(c, result.chartName); imElEnd(c, EL_B);
+                imElBegin(c, EL_B); imStr(c, result.chartName); imElEnd(c, EL_B);
             } imLayoutEnd(c);
 
             imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
@@ -220,7 +220,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
                         elSetStyle(c, "transform", `scaleX(${scale}) rotateY(${angle}rad) translate3d(${i * 0.05 * height}px, ${i * 0.05 * height}px, ${i * 10}px)`);
 
-                        imEl(c, EL_I); imStr(c, designation[i]); imElEnd(c, EL_I);
+                        imElBegin(c, EL_I); imStr(c, designation[i]); imElEnd(c, EL_I);
                     } imLayoutEnd(c);
                 } imForEnd(c);
             } imLayoutEnd(c);

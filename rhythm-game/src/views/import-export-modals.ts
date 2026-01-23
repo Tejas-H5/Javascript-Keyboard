@@ -27,7 +27,7 @@ import {
     imState,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, EV_INPUT, imEl, imElEnd, imOn, imStr } from "src/utils/im-dom";
+import { EL_B, EV_INPUT, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom";
 import { cssVarsApp } from "./styling";
 
 export type ImportEvent = {
@@ -93,7 +93,7 @@ export function imImportModal(c: ImCache): ImportModalState {
 
 function imHeading(c: ImCache, text: string) {
     imLayoutBegin(c, ROW); imJustify(c); {
-        imEl(c, EL_B); imStr(c, text); imElEnd(c, EL_B);
+        imElBegin(c, EL_B); imStr(c, text); imElEnd(c, EL_B);
     } imLayoutEnd(c);
 }
 

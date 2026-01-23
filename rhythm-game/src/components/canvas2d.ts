@@ -1,5 +1,5 @@
 import { ImCache, imGet, imMemo, imSet } from "src/utils/im-core";
-import { EL_CANVAS, elSetStyle, imEl, imElEnd, imTrackSize } from "src/utils/im-dom";
+import { EL_CANVAS, elSetStyle, imElBegin, imElEnd, imTrackSize } from "src/utils/im-dom";
 import { BLOCK, imFlex, imLayoutBegin, imLayoutEnd, imRelative, imSize, PERCENT } from "./core/layout";
 
 type ImCanvasRenderingContext = [
@@ -18,7 +18,7 @@ export function imBeginCanvasRenderingContext2D(c: ImCache): ImCanvasRenderingCo
     imLayoutBegin(c, BLOCK); imRelative(c); imFlex(c);
     const { size } = imTrackSize(c);
 
-    const canvas = imEl(c, EL_CANVAS).root;
+    const canvas = imElBegin(c, EL_CANVAS).root;
 
     let ctx = imGet(c, imBeginCanvasRenderingContext2D);
     if (!ctx) {
