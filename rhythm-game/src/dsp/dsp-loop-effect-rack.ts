@@ -20,7 +20,7 @@ export const EFFECT_RACK_ITEM__NOISE = 4;
 export const EFFECT_RACK_ITEM__DELAY = 5;
 export const EFFECT_RACK_ITEM__BIQUAD_FILTER = 6;  // TODO: consider removing
 export const EFFECT_RACK_ITEM__SINC_FILTER = 7; 
-export const EFFECT_RACK_ITEM__REVERB = 8; 
+export const EFFECT_RACK_ITEM__REVERB_BAD = 8; 
 
 // Delay effect uses a crap tonne of memmory, so we're limiting how long it can be.
 // While simple, it is suprisingly OP - you can use it to double waveforms repeatedly.
@@ -40,7 +40,7 @@ export type EffectRackItemType
     | typeof EFFECT_RACK_ITEM__DELAY
     | typeof EFFECT_RACK_ITEM__BIQUAD_FILTER
     | typeof EFFECT_RACK_ITEM__SINC_FILTER
-    | typeof EFFECT_RACK_ITEM__REVERB
+    | typeof EFFECT_RACK_ITEM__REVERB_BAD
     ;
 
 // If we're using a RegisterIndex without reading from or writing to a register, then we're using it wrong.
@@ -407,8 +407,8 @@ export function newEffectRackConvolutionFilter(): EffectRackSincFilter {
     };
 }
 
-export type EffectRackReverb = {
-    type: typeof EFFECT_RACK_ITEM__REVERB;
+export type EffectRackReverbBadImplementation = {
+    type: typeof EFFECT_RACK_ITEM__REVERB_BAD;
 
     // ring buffer.
     _kernel: BufferIdx;
@@ -433,9 +433,9 @@ export type EffectRackReverb = {
  *
  *      -> time of echo 
  */
-export function newEffectRackReverb(): EffectRackReverb {
+export function newEffectRackReverbBadImpl(): EffectRackReverbBadImplementation {
     return {
-        type: EFFECT_RACK_ITEM__REVERB,
+        type: EFFECT_RACK_ITEM__REVERB_BAD,
         signalUi: newRegisterIdxUi("signal", { value: 0 }),
 
         _kernel: -1 as BufferIdx,
@@ -494,7 +494,7 @@ type EffectRackItemValue
     | EffectRackDelay
     | EffectRackBiquadFilter
     | EffectRackSincFilter
-    | EffectRackReverb
+    | EffectRackReverbBadImplementation
     ;
 
 export type EffectRack = {
@@ -850,7 +850,7 @@ export function compileEffectRack(e: EffectRack) {
                 allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyUi, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyMultUi, remap, effectPos);
             } break;
-            case EFFECT_RACK_ITEM__REVERB: {
+            case EFFECT_RACK_ITEM__REVERB_BAD: {
                 const reverb = effectValue;
 
                 reverb._kernel    = allocateBufferIdx(e, EFFECT_RACK_REVERB_MAX_DURATION_SECONDS, 0); 
@@ -1248,7 +1248,7 @@ export function computeEffectRackIteration(
                 }
                 w(re, conv._kernelIdx, idx);
             } break;
-            case EFFECT_RACK_ITEM__REVERB: {
+            case EFFECT_RACK_ITEM__REVERB_BAD: {
                 const reverb = effectValue;
 
                 const signal = r(re, reverb.signalUi._regIdx);
@@ -1336,7 +1336,7 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
         EFFECT_RACK_ITEM__DELAY,
         EFFECT_RACK_ITEM__BIQUAD_FILTER,
         EFFECT_RACK_ITEM__SINC_FILTER,
-        EFFECT_RACK_ITEM__REVERB,
+        EFFECT_RACK_ITEM__REVERB_BAD,
     ]);
 
     let value: EffectRackItemValue | undefined;
@@ -1443,8 +1443,8 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                 cutoffFrequencyMultUi: regUiUnmarshaller,
             });
         } break;
-        case EFFECT_RACK_ITEM__REVERB: {
-            value = unmarshalObject(o, newEffectRackReverb(), {
+        case EFFECT_RACK_ITEM__REVERB_BAD: {
+            value = unmarshalObject(o, newEffectRackReverbBadImpl(), {
                 type: asIs,
 
                 signalUi: regUiUnmarshaller,

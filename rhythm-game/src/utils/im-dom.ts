@@ -1,4 +1,4 @@
-// IM-DOM 1.62
+// IM-DOM 1.63
 
 import { imFixedXY, imSize, PX } from "src/components/core/layout";
 import { assert } from "src/utils/assert";
@@ -775,7 +775,7 @@ export function newImGlobalEventSystem(rerenderFn: () => void): ImGlobalEventSys
         lastMouseOverElement: null,
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
+    function handleMouseMove(e: MouseEvent) {
         mouse.ev = e;
         mouse.lastX = mouse.X;
         mouse.lastY = mouse.Y;
@@ -793,7 +793,7 @@ export function newImGlobalEventSystem(rerenderFn: () => void): ImGlobalEventSys
         return false
     };
 
-    const updateMouseButtons = (e: MouseEvent) => {
+    function updateMouseButtons(e: MouseEvent) {
         mouse.leftMouseButton   = Boolean(e.buttons & (1 << 0));
         mouse.rightMouseButton  = Boolean(e.buttons & (2 << 0));
         mouse.middleMouseButton = Boolean(e.buttons & (3 << 0));

@@ -61,7 +61,7 @@ import {
     EFFECT_RACK_ITEM__MATHS,
     EFFECT_RACK_ITEM__NOISE,
     EFFECT_RACK_ITEM__OSCILLATOR,
-    EFFECT_RACK_ITEM__REVERB,
+    EFFECT_RACK_ITEM__REVERB_BAD,
     EFFECT_RACK_ITEM__SINC_FILTER,
     EFFECT_RACK_ITEM__SWITCH,
     EffectId,
@@ -83,7 +83,7 @@ import {
     newEffectRackNoise,
     newEffectRackOscillator,
     newEffectRackRegisters,
-    newEffectRackReverb,
+    newEffectRackReverbBadImpl,
     newEffectRackSwitch,
     newEffectRackSwitchCondition,
     OSC_WAVE__SAWTOOTH,
@@ -152,7 +152,7 @@ type DspMockHarnessState = {
     allSamplesWindowLength: number;
     allSamplesVisibleStart: number;
     allSamplesVisibleEnd: number;
-    
+
     frequenciesStartIdx: number;
     frequenciesLength: number;
     signalFftWindow: number[];
@@ -163,7 +163,7 @@ type DspMockHarnessState = {
     autoPan: boolean;
     // This is just the format that the audo worker script needs to output.
     // [output(? not sure)][channel][sample] I think
-    output: [[number[]]]; 
+    output: [[number[]]];
 
     effectRackEditor: EffectRackEditorState | null;
 
@@ -279,7 +279,27 @@ export type EffectRackEditorState = {
     svgCtx: SvgContext | null;
 
     deferredAction: (() => void) | null;
+
+    presetsListState: PresetsListState;
 };
+
+type PresetsListState = {
+    selectedId: number;
+    renaming: boolean;
+
+    error: string;
+    newName: string;
+};
+
+function presetsListState(): PresetsListState {
+    return {
+        selectedId: 0,
+        renaming: false,
+        error: "",
+        newName: "",
+    };
+}
+
 
 type BindingSvgWire = {
     outputPositions: {
@@ -367,6 +387,8 @@ export function newEffectRackEditorState(effectRack: EffectRack): EffectRackEdit
         deferredAction: null,
 
         svgCtx: null,
+
+        presetsListState: presetsListState(),
     };
 
     return state;
@@ -389,9 +411,18 @@ function onEdited(editor: EffectRackEditorState, wasUndoTraversed = false, editU
 }
 
 function imHeading(c: ImCache, text: string) {
-    imLayoutBegin(c, ROW); imJustify(c); {
-        imElBegin(c, EL_B); imStr(c, text); imElEnd(c, EL_B);
-    } imLayoutEnd(c);
+    imHeadingBegin(c); imStr(c, text); imHeadingEnd(c);
+}
+
+function imHeadingBegin(c: ImCache) {
+    imLayoutBegin(c, ROW); imJustify(c); imElBegin(c, EL_B); {
+    } // imElEnd(c, EL_B); imLayoutEnd(c);
+}
+
+function imHeadingEnd(c: ImCache) {
+    // imLayoutBegin(c, ROW); imJustify(c); imElBegin(c, EL_B); 
+    {
+    } imElEnd(c, EL_B); imLayoutEnd(c);
 }
 
 
@@ -458,7 +489,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
         resizeValuePool(wires.outputPositions.registerIdx, editor.effectRack.effects.length, 0);
 
         resizeObjectPool(wires.outputPositions.signalBuffers, () => newRingbuffer(10), editor.effectRack.effects.length);
-        for(let i = 0; i < editor.effectRack.effects.length; i++) {
+        for (let i = 0; i < editor.effectRack.effects.length; i++) {
             let total = 0;
 
             for (const [num, osc] of editor.mockDspHarness.dsp.playingOscillators) {
@@ -545,7 +576,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
             const t0 = performance.now();
             while (
-                performance.now() - t0 < allowedTimeMs && 
+                performance.now() - t0 < allowedTimeMs &&
                 s.calculatedUpToIdx < s.samples.length
             ) {
                 for (let i = 0; i < batchSize && s.calculatedUpToIdx < s.samples.length; i++) {
@@ -622,7 +653,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                 const samples = state.output[0][0];
 
                 const dt = getDeltaTimeSeconds(c);
-                
+
                 // The DSP we're running here is purely for visuals.
                 // It is the exact same code that runs in the DSP loop.
                 // We can actually just resize the array to be exactly the size we want
@@ -702,7 +733,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
         if (isFirstishRender(c)) elSetClass(c, cnEffectRackEditor);
         if (isFirstishRender(c)) {
             // Should be the default for web apps tbh. Only on documents, would you ever want to select the text ...
-            elSetClass(c, cn.userSelectNone); 
+            elSetClass(c, cn.userSelectNone);
         }
 
         imLayoutBegin(c, COL); imFlex(c, 4); {
@@ -720,7 +751,17 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
                     imFlex1(c);
 
-                    imHeading(c, "Effects rack");
+                    imHeadingBegin(c); {
+                        imStr(c, "Effects rack");
+
+                        let selectedPreset = getLoadedPreset(ctx.repo, editor.presetsListState.selectedId);
+
+                        if (imIf(c) && selectedPreset) {
+                            imStr(c, " - "); 
+                            imStr(c, selectedPreset.name);
+                        } imIfEnd(c);
+
+                    } imHeadingEnd(c);
 
                     imFlex1(c);
 
@@ -815,7 +856,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                         // imStr(c, " (budget = " + wantedSamplesPerMs.toFixed(3) + ")");
                     } else {
                         imIfElse(c);
-                        imStr(c,"...");
+                        imStr(c, "...");
                     } imIfEnd(c);
                 } imLayoutEnd(c);
             }
@@ -841,7 +882,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
             imLayoutBegin(c, COL); imFlex(c, 3); {
                 imLine(c, LINE_HORIZONTAL, 2);
-                
+
                 imLayoutBegin(c, ROW); imGap(c, 5, PX); {
                     if (imButtonIsClicked(c, "Wave preview", !editor.ui.presetsPanel)) {
                         editor.ui.presetsPanel = false;
@@ -854,7 +895,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
                 if (imIf(c) && editor.ui.presetsPanel) {
                     imLayoutBegin(c, COL); imFlex(c); {
-                        imPresetsList(c, ctx, editor);
+                        imPresetsList(c, ctx, editor.presetsListState, editor);
                     } imLayoutEnd(c);
                 } else {
                     imIfElse(c);
@@ -919,8 +960,8 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                 if (instrumentKey) {
                     pressKey(instrumentKey.index, instrumentKey.noteId, ctx.keyPressState.isRepeat);
                     if (!ctx.keyPressState.isRepeat) {
-                        editor.mockDspHarness.messagesToSend.push({ 
-                            setOscilatorSignal: [instrumentKey.index, { noteId: instrumentKey.noteId, signal: 1 }] 
+                        editor.mockDspHarness.messagesToSend.push({
+                            setOscilatorSignal: [instrumentKey.index, { noteId: instrumentKey.noteId, signal: 1 }]
                         });
                     }
                     ctx.handled = true;
@@ -957,15 +998,15 @@ function imEffectRackEditorEffect(
 
                 let name = "???";
                 switch (effect.value.type) {
-                    case EFFECT_RACK_ITEM__OSCILLATOR:    name = "OSC"; break;
-                    case EFFECT_RACK_ITEM__ENVELOPE:      name = "ENV"; break;
-                    case EFFECT_RACK_ITEM__MATHS:         name = "MATHS"; break;
-                    case EFFECT_RACK_ITEM__SWITCH:        name = "SWITCH"; break;
-                    case EFFECT_RACK_ITEM__NOISE:         name = "NOISE"; break;
-                    case EFFECT_RACK_ITEM__DELAY:         name = "DELAY"; break;
+                    case EFFECT_RACK_ITEM__OSCILLATOR: name = "OSC"; break;
+                    case EFFECT_RACK_ITEM__ENVELOPE: name = "ENV"; break;
+                    case EFFECT_RACK_ITEM__MATHS: name = "MATHS"; break;
+                    case EFFECT_RACK_ITEM__SWITCH: name = "SWITCH"; break;
+                    case EFFECT_RACK_ITEM__NOISE: name = "NOISE"; break;
+                    case EFFECT_RACK_ITEM__DELAY: name = "DELAY"; break;
                     case EFFECT_RACK_ITEM__BIQUAD_FILTER: name = "FIL2ER"; break;
-                    case EFFECT_RACK_ITEM__SINC_FILTER:   name = "SINC"; break;
-                    case EFFECT_RACK_ITEM__REVERB:        name = "REVERB"; break;
+                    case EFFECT_RACK_ITEM__SINC_FILTER: name = "SINC"; break;
+                    case EFFECT_RACK_ITEM__REVERB_BAD: name = "REVERB"; break;
                     default: unreachable(effect.value);
                 }
 
@@ -1354,14 +1395,14 @@ function imEffectRackEditorEffect(
                                                         onEdited(editor);
                                                     }
 
-                                                    imStr(c, "Highpass");effect
+                                                    imStr(c, "Highpass"); effect
                                                 } imLayoutEnd(c);
                                             } imLayoutEnd(c);
                                         } imDspVisualGroupEnd(c);
                                     } imLayoutEnd(c);
 
                                     if (imIf(c) && filterUi.analyzing) {
-                                        let hasAllManualInputs = 
+                                        let hasAllManualInputs =
                                             conv.cutoffFrequencyMultUi.valueRef !== undefined &&
                                             conv.cutoffFrequencyUi.valueRef !== undefined &&
                                             conv.stopbandUi.valueRef !== undefined;
@@ -1370,7 +1411,7 @@ function imEffectRackEditorEffect(
                                     } imIfEnd(c);
                                 } imLayoutEnd(c);
                             } break;
-                            case EFFECT_RACK_ITEM__REVERB: {
+                            case EFFECT_RACK_ITEM__REVERB_BAD: {
                                 const reverb = effectValue;
 
 
@@ -1603,7 +1644,7 @@ function imDspVisualGroupBegin(c: ImCache, type: DisplayType, enabled: boolean =
         if (imMemo(c, enabled)) {
             elSetStyle(c, "flexWrap", "wrap");
             elSetStyle(c, "border", !enabled ? "" : "1px solid " + cssVars.fg);
-            elSetStyle(c, "padding", !enabled ? "" :"5px");
+            elSetStyle(c, "padding", !enabled ? "" : "5px");
             elSetStyle(c, "borderRadius", !enabled ? "" : "5px");
         }
 
@@ -1863,7 +1904,7 @@ function imWireDragEndpoint(
         }
     }
 
-    const root = imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imSize(c, 30, PX, 30, PX); 
+    const root = imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imSize(c, 30, PX, 30, PX);
     imBg(c, isEligibleDropZone ? cssVars.mg : cssVars.bg2); {
         if (isFirstishRender(c)) {
             elSetStyle(c, "borderRadius", "1000px");
@@ -2076,8 +2117,8 @@ function imRegisterHighlightBg(
     effectIdx: EffectId | undefined,
 ) {
     const hv = editor.highlightedValueRef;
-    const isHighlighted = 
-        (hv.regIdx !== undefined && hv.regIdx === regIdx) || 
+    const isHighlighted =
+        (hv.regIdx !== undefined && hv.regIdx === regIdx) ||
         (hv.effectId !== undefined && hv.effectId === effectIdx);
 
     imBg(c, isHighlighted ? cssVarsApp.codeHighlight : "");
@@ -2121,7 +2162,7 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
                 imStr(c, "Maths");
                 if (elHasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackMaths());
-            }
+                }
             } imContextMenuItemEnd(c);
             imEditorContextMenuItemBegin(c); {
                 imStr(c, "Switch");
@@ -2154,9 +2195,9 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
                 }
             } imContextMenuItemEnd(c);
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "Reverb");
+                imStr(c, "Reverb (bad)");
                 if (elHasMousePress(c)) {
-                    toAdd = newEffectRackItem(newEffectRackReverb());
+                    toAdd = newEffectRackItem(newEffectRackReverbBadImpl());
                 }
             } imContextMenuItemEnd(c);
         } imContextMenuEnd(c, contextMenu);
@@ -2172,23 +2213,6 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
     if (imButtonIsClicked(c, "+")) {
         openContextMenuAtMouse(contextMenu);
     }
-}
-
-type PresetsListState = {
-    selectedId: number;
-    renaming: boolean;
-
-    error:         string;
-    newName:       string;
-};
-
-function presetsListState(): PresetsListState {
-    return {
-        selectedId: 0,
-        renaming: false,
-        error: "",
-        newName: "",
-    };
 }
 
 function startRenamingPreset(s: PresetsListState, preset: EffectRackPreset) {
@@ -2210,13 +2234,13 @@ function selectPreset(s: PresetsListState, id: number) {
 function imPresetsList(
     c: ImCache,
     ctx: GlobalContext,
+    s: PresetsListState,
     editor: EffectRackEditorState
 ) {
     if (imMemo(c, true)) {
         loadAllEffectRackPresets(ctx.repo);
     }
 
-    const s = imState(c, presetsListState);
     const loading = ctx.repo.effectRackPresets.allEffectRackPresetsLoading.isPending();
 
     // UI could be better but for now I don't care too much.

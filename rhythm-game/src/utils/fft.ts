@@ -37,7 +37,7 @@ export function fftToReal(
     re: number[], im: number[],
 ) {
     assert(re.length === im.length);
-    rDst.length = re.length / 2;
+    rDst.length = Math.ceil(re.length / 2);
 
     for (let i = 0; i < rDst.length; i++) {
         const rVal = re[i];

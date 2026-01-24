@@ -22,6 +22,7 @@ export function newPlotState(): PlotState {
         canZoom: false,
 
         isNewFrame: false,
+        resized: false,
         ctx: null,
     };
 }
@@ -151,6 +152,7 @@ export type PlotState = {
     scrollY: number;
 
     isNewFrame: boolean;
+    resized: boolean;
     ctx: CanvasRenderingContext2D | null;
 }
 
@@ -172,8 +174,8 @@ export function imPlotBegin(c: ImCache): PlotState {
         const heightChanged = imMemo(c, height);
         const dpiChanged    = imMemo(c, dpi);
 
-        const resize = widthChanged || heightChanged || dpiChanged;
-        if (resize) {
+        plotState.resized = (widthChanged || heightChanged || dpiChanged) !== 0;
+        if (plotState.resized) {
             plotState.width = width;
             plotState.height = height;
             plotState.dpi = dpi;

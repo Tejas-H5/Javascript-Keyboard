@@ -1,4 +1,4 @@
-import { assert } from "./assert";
+import { filterInPlace } from "./array-utils";
 
 type PressedSymbols<T extends string> = {
     pressed: T[];
@@ -87,12 +87,16 @@ function updatePressedSymbols<T extends string>(
 
     switch (ev) {
         case EV_PRESSED: {
-            // It is assumed that the number of press events for a particular
-            // key type will equal the number of release events, so no deduplication
-            // is requried here. If this is not the case, then there's not much we can 
-            // do about it really.
-            assert(s.pressed.length < 1000);
-            s.pressed.push(key);
+            // NOTE: the main issue with this input mechanism, is that 
+            // Shift + Click on some browsers will open a context menu that can't be detected. (or at least, I don't know how to detect it).
+            // This can result in EV_RELEASED never being sent. 
+            // The compromise made here is that we only ever have one of any key in these arrays.
+            // The keys _may_ get stuck down, but if the user does the natural thing, press this key again,
+            // it will get released, and all is good.
+
+            if (s.pressed.indexOf(key) === -1) {
+                s.pressed.push(key);
+            }
         } break;
         case EV_REPEATED: {
             if (s.repeated.indexOf(key) === -1) {
@@ -100,16 +104,10 @@ function updatePressedSymbols<T extends string>(
             }
         } break;
         case EV_RELEASED: {
-            // Ensure only one of that key is removed
-            for (let i = 0; i < s.held.length; i++) {
-                if (s.held[i] === key) {
-                    s.held[i] = s.held[s.held.length - 1];
-                    s.held.pop();
-                    break;
-                }
+            filterInPlace(s.held, heldKey => heldKey !== key);
+            if (s.released.indexOf(key) !== -1) {
+                s.released.push(key);
             }
-
-            s.released.push(key);
         } break;
         case EV_BLUR: {
             s.pressed.length = 0;
