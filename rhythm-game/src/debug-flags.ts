@@ -62,7 +62,7 @@ export const debugFlags: DebugFlags = {
 
     testSoundLab: ON,
     testSoundLabWaveEditor: ON,
-    testSoundLabAllEffectRackEffects: OFF,
+    testSoundLabAllEffectRackEffects: ON,
     testSoundLabLoadPreset: "design",
 
     testAsync: OFF,

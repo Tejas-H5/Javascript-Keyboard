@@ -40,22 +40,22 @@ const playSettings = newDspPlaySettings();
         rack.effects.push(newEffectRackItem(maths));
         rack.effects.push(newEffectRackItem(newEffectRackBiquadFilter()));
 
-        // {
-        //     const term = newEffectRackMathsItemTerm();
-        //     maths.terms.push(term);
-        //     term.coefficients.push(newEffectRackMathsItemCoefficient());
-        //     term.coefficients.push(newEffectRackMathsItemCoefficient());
-        // }
-        // {
-        //     const term = newEffectRackMathsItemTerm();
-        //     maths.terms.push(term);
-        //     term.coefficients.push(newEffectRackMathsItemCoefficient());
-        //     term.coefficients.push(newEffectRackMathsItemCoefficient());
-        // }
+        {
+            const term = newEffectRackMathsItemTerm();
+            maths.terms.push(term);
+            term.coefficients.push(newEffectRackMathsItemCoefficient());
+            term.coefficients.push(newEffectRackMathsItemCoefficient());
+        }
+        {
+            const term = newEffectRackMathsItemTerm();
+            maths.terms.push(term);
+            term.coefficients.push(newEffectRackMathsItemCoefficient());
+            term.coefficients.push(newEffectRackMathsItemCoefficient());
+        }
 
-        // rack.effects.push(newEffectRackItem(newEffectRackSwitch()));
-        // rack.effects.push(newEffectRackItem(newEffectRackNoise()));
-        // rack.effects.push(newEffectRackItem(newEffectRackDelay()));
+        rack.effects.push(newEffectRackItem(newEffectRackSwitch()));
+        rack.effects.push(newEffectRackItem(newEffectRackNoise()));
+        rack.effects.push(newEffectRackItem(newEffectRackDelay()));
     }
 
     compileEffectRack(rack);

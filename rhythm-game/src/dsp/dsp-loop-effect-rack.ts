@@ -202,14 +202,15 @@ export type EffectRackMaths = {
 };
 
 export type EffectRackMathsItemTerm = {
-    // Bro put his designer hat on.
     coefficients: EffectRackMathsItemTermCoefficient[];
+    coefficientsDivide: EffectRackMathsItemTermCoefficient[];
 };
 
 export function newEffectRackMathsItemTerm(): EffectRackMathsItemTerm {
     return { 
         // NOTE: UI will need to set this dynamically
         coefficients: [newEffectRackMathsItemCoefficient()], 
+        coefficientsDivide: [],
     };
 }
 
@@ -796,6 +797,10 @@ export function compileEffectRack(e: EffectRack) {
                         const c = term.coefficients[i];
                         allocateRegisterIdxIfNeeded(e, c.valueUI, remap, effectPos);
                     }
+                    for (let i = 0; i < term.coefficientsDivide.length; i++) {
+                        const c = term.coefficientsDivide[i];
+                        allocateRegisterIdxIfNeeded(e, c.valueUI, remap, effectPos);
+                    }
                 }
             } break;
             case EFFECT_RACK_ITEM__SWITCH: {
@@ -1084,13 +1089,18 @@ export function computeEffectRackIteration(
                 for (let i = 0; i < maths.terms.length; i++) {
                     const term = maths.terms[i];
 
-                    let termValue = 1;
+                    let termValue = 1, divideTermValue = 1;
                     for (let i = 0; i < term.coefficients.length; i++) {
                         const c = term.coefficients[i];
                         termValue *= r(re, c.valueUI._regIdx);
                     }
 
-                    value += termValue;
+                    for (let i = 0; i < term.coefficientsDivide.length; i++) {
+                        const c = term.coefficientsDivide[i];
+                        divideTermValue *= r(re, c.valueUI._regIdx);
+                    }
+
+                    value += termValue / divideTermValue;
                 }
 
             } break;
@@ -1380,6 +1390,12 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                     coefficients: u => asArray(u).map(u => unmarshalObject(u, newEffectRackMathsItemCoefficient(), {
                         valueUI: regUiUnmarshaller,
                     })),
+                    coefficientsDivide: u => {
+                        if (!u) return [];
+                        return asArray(u).map(u => unmarshalObject(u, newEffectRackMathsItemCoefficient(), {
+                            valueUI: regUiUnmarshaller,
+                        }))
+                    },
                 })),
             });
 

@@ -59,8 +59,7 @@ export function imButtonBegin(
     flags: number = 0,
     type: DisplayType = ROW,
     compact: boolean = false,
-) {
-
+): boolean {
     let result = false;
 
     imLayoutBegin(c, type); imButton(c, flags); imAlign(c); imNoWrap(c); {

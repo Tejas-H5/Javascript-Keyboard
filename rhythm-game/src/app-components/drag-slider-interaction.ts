@@ -2,7 +2,7 @@ import { BLOCK, imAbsolute, imBg, imFg, imFixed, imFixedXY, imLayoutBegin, imLay
 import { cssVars } from "src/components/core/stylesheets";
 import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, EV_CONTEXTMENU, getGlobalEventSystem, imOn } from "src/utils/im-dom";
-import { clamp, deltaAngle, lerp, lerp01 } from "src/utils/math-utils";
+import { clamp, deltaAngle, gridsnapRound, lerp, lerp01 } from "src/utils/math-utils";
 
 export type CompactLinearDragSlideInteractionState = {
     isDragging: boolean;
@@ -131,6 +131,11 @@ function newCompactCircularDragSlideInteractionState(): CompactCircularDragSlide
     };
 }
 
+// Need to be large enough, such that we can 'feel' how large a particular ring is,
+// but small enough that we can move the cursor toward the center without increment/decrement.
+const TICK_SPACING_MINIMUM = 20;
+
+
 // Actually a better idea than I thought. Haven't seen it other people do it yet for some reason.
 // As a side-effect of the implementation, you can right-click to reposition the centerpoint in the middle of the interaction.
 // I kinda just dont want to fix this bug for now xD
@@ -170,7 +175,7 @@ export function imCompactCircularDragSlideInteraction(
 
         const startToMouseX = mouse.X - s.startMouseX;
         const startToMouseY = mouse.Y - s.startMouseY;
-        s.angle = Math.atan2(startToMouseY, startToMouseX) - Math.PI / 2;
+        s.angle = Math.atan2(startToMouseY, startToMouseX);
         s.distance = Math.sqrt(startToMouseX * startToMouseX + startToMouseY * startToMouseY);
 
         if (startedDragging) {
@@ -201,12 +206,20 @@ export function imCompactCircularDragSlideInteraction(
         // Clockwise     -> positive
         // Anticlockwise -> negative
         const angleDelta = -deltaAngle(s.lastAngle, s.angle);
-        s.lastAngle = s.angle;
 
         if (s.ringIdx >= 0 && Math.abs(angleDelta) > 0.000001 && !startedDragging) {
-            s.draggedValue += Math.pow(10, -5 + s.ringIdx) * Math.sign(angleDelta);
-            s.draggedValue = clamp(s.draggedValue, min, max);
-            s.value = s.draggedValue;
+            const numTicks = Math.ceil(s.ringDistance * 2 * Math.PI / TICK_SPACING_MINIMUM);
+            const tickSpacing = 2 * Math.PI / numTicks;
+            if (Math.abs(angleDelta) > tickSpacing) {
+                s.lastAngle = s.angle;
+
+                const unit = Math.pow(10, -5 + s.ringIdx);
+                s.draggedValue += unit * Math.sign(angleDelta);
+                s.draggedValue = gridsnapRound(s.draggedValue, unit);
+                s.draggedValue = clamp(s.draggedValue, min, max);
+
+                s.value = s.draggedValue;
+            }
         }
     }
 
@@ -228,6 +241,7 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
                 ctxEv.preventDefault();
             }
 
+            // Cursor handles. Different sector.
             const sectorSize = 2 * Math.PI / cursorsPerSector.length;
             const sectorStart = -sectorSize / 2;
             let positiveAngle = s.angle;
@@ -255,12 +269,17 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
 
         // dynamic dials
         if (imIf(c) && s.ringIdx >= 0) {
-            imFor(c); for (let i = 0; i <= 10; i++) {
+            const numTicks = Math.ceil(s.ringDistance * 2 * Math.PI / TICK_SPACING_MINIMUM);
+            const tickSpacing = 2 * Math.PI / numTicks;
+
+            imFor(c); for (let i = 0; i <= numTicks; i++) {
                 const width = 5;
                 const height = s.ringSize;
 
-                const isSolid = i === 10
-                const tickAngle = isSolid ? s.angle : i * 2 * Math.PI / 10 + s.startAngle;
+
+                const isSolid = i === numTicks
+                let tickAngle = isSolid ? s.angle : i * tickSpacing + s.startAngle;
+                tickAngle -= Math.PI / 2;
 
                 imLayoutBegin(c, BLOCK); {
                     imSize(c, width, PX, height, PX);

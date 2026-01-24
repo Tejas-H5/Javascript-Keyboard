@@ -8,7 +8,7 @@ import {
 } from "src/app-components/context-menu";
 import { imVerticalText } from "src/app-components/misc";
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
-import { imButtonIsClicked } from "src/components/button";
+import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
 import { imCheckbox } from "src/components/checkbox";
 import {
     BLOCK,
@@ -67,6 +67,8 @@ import {
     EffectId,
     EffectRack,
     EffectRackItem,
+    EffectRackMaths,
+    EffectRackMathsItemTermCoefficient,
     EffectRackOscillatorWaveType,
     EffectRackRegisters,
     getConvolutionSincWindowTypeName,
@@ -125,7 +127,8 @@ import {
     imState,
     imSwitch,
     imSwitchEnd,
-    isFirstishRender
+    isFirstishRender,
+    imElse
 } from "src/utils/im-core";
 import { EL_B, EL_I, EL_SVG_PATH, elHasMouseOver, elHasMousePress, elSetAttr, elSetClass, elSetStyle, getGlobalEventSystem, imDomRootExistingBegin, imDomRootExistingEnd, imElBegin, imElEnd, imElSvgBegin, imElSvgEnd, imStr, imStrFmt, imSvgContext, SvgContext } from "src/utils/im-dom";
 import { arrayMax, arrayMin } from "src/utils/math-utils";
@@ -1088,64 +1091,49 @@ function imEffectRackEditorEffect(
                             case EFFECT_RACK_ITEM__MATHS: {
                                 const math = effectValue;
 
-                                imLayoutBegin(c, COL); imAlign(c); imGap(c, 10, PX); {
-                                    imFor(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
-                                        const term = math.terms[termIdx];
-                                        imDspVisualGroupBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
-                                            if (isFirstishRender(c)) {
-                                                elSetStyle(c, "flexFlow", "wrap");
-                                            }
+                                imLayoutBegin(c, COL); imAlign(c); imFlex(c); {
+                                    // dont want the contents to be aligned, but I do want this thing's
+                                    // final size to be aligned. like
+                                    // [   |[           ]   |   ]
+                                    // [   |[         ]     |   ]
+                                    // [   |[              ]|   ]
+                                    
+                                    imLayoutBegin(c, COL); imGap(c, 10, PX); {
+                                        imFor(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
+                                            const term = math.terms[termIdx];
 
-                                            imLayoutBegin(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
-                                                imElBegin(c, EL_I); {
-                                                    imElBegin(c, EL_B); imStr(c, "x"); imStr(c, termIdx); imElEnd(c, EL_B);
-                                                } imElEnd(c, EL_I);
+                                            imLayoutBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                                                imDspVisualGroupBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
 
-                                                if (imButtonIsClicked(c, "-")) {
-                                                    editor.deferredAction = () => {
-                                                        filterInPlace(math.terms, termOther => termOther !== term);
-                                                        onEdited(editor);
-                                                    };
-                                                }
-                                            } imLayoutEnd(c);
+                                                    imMathsCoefficientsList(c, editor, effectPos, math, termIdx, term.coefficients);
 
-                                            imFor(c); for (let coIdx = 0; coIdx < term.coefficients.length; coIdx++) {
-                                                const co = term.coefficients[coIdx];
-                                                imLayoutBegin(c, ROW); imJustify(c); {
-                                                    if (imMemo(c, co)) co.valueUI._name = "x" + termIdx.toString() + coIdx.toString();
-                                                    imValueOrBindingEditor(c, editor, effectPos, co.valueUI, BINDING_UI_ROW);
-
-                                                    if (imButtonIsClicked(c, "-")) {
-                                                        editor.deferredAction = () => {
-                                                            filterInPlace(term.coefficients, coOther => coOther !== co);
+                                                    if (imIf(c) && term.coefficientsDivide.length === 0) {
+                                                        if (imButtonIsClicked(c, "/")) {
+                                                            const co = newEffectRackMathsItemCoefficient();
+                                                            term.coefficientsDivide.push(co);
                                                             onEdited(editor);
-                                                        };
-                                                    }
-                                                } imLayoutEnd(c);
-                                                if (imIf(c) && coIdx < term.coefficients.length - 1) {
-                                                    imLayoutBegin(c, ROW); imJustify(c); {
-                                                        imStr(c, " * ");
-                                                    } imLayoutEnd(c);
+                                                        }
+                                                    } imIfEnd(c); 
+
+                                                    if (imIf(c) && term.coefficientsDivide.length > 0) {
+                                                        imStr(c, " / ");
+
+                                                        imMathsCoefficientsList(c, editor, effectPos, math, termIdx, term.coefficientsDivide);
+                                                    } imIfEnd(c);
+                                                } imDspVisualGroupEnd(c);
+
+                                                if (imIf(c) && termIdx < math.terms.length - 1) {
+                                                    imStr(c, " + ");
                                                 } imIfEnd(c);
-                                            } imForEnd(c);
-                                            if (imButtonIsClicked(c, "+")) {
-                                                const co = newEffectRackMathsItemCoefficient();
-                                                term.coefficients.push(co);
-                                                onEdited(editor);
-                                            }
-                                        } imDspVisualGroupEnd(c);
+                                            } imLayoutEnd(c);
+                                        } imForEnd(c);
 
-                                        if (imIf(c) && termIdx < math.terms.length - 1) {
-                                            imStr(c, " + ");
-                                        } imIfEnd(c);
-
-                                    } imForEnd(c);
-
-                                    if (imButtonIsClicked(c, "+")) {
-                                        const term = newEffectRackMathsItemTerm();
-                                        math.terms.push(term);
-                                        onEdited(editor);
-                                    }
+                                        if (imButtonIsClicked(c, "+")) {
+                                            const term = newEffectRackMathsItemTerm();
+                                            math.terms.push(term);
+                                            onEdited(editor);
+                                        }
+                                    } imLayoutEnd(c);
                                 } imLayoutEnd(c);
                             } break;
                             case EFFECT_RACK_ITEM__SWITCH: {
@@ -1471,6 +1459,54 @@ function imEffectRackEditorEffect(
     } imDragZoneEnd(c, z, effectPos);
 }
 
+function imMathsCoefficientsList(
+    c: ImCache,
+    editor: EffectRackEditorState,
+    effectPos: number,
+    math: EffectRackMaths,
+    termIdx: number,
+    coefficients: EffectRackMathsItemTermCoefficient[]
+) {
+    imDspVisualGroupBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
+        if (isFirstishRender(c)) {
+            elSetStyle(c, "flexFlow", "wrap");
+        }
+
+        imLayoutBegin(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
+            imElBegin(c, EL_I); {
+                imElBegin(c, EL_B); imStr(c, termIdx); imElEnd(c, EL_B);
+            } imElEnd(c, EL_I);
+        } imLayoutEnd(c);
+
+        imFor(c); for (let coIdx = 0; coIdx < coefficients.length; coIdx++) {
+            const co = coefficients[coIdx];
+            imLayoutBegin(c, ROW); imJustify(c); imGap(c, 5, PX); {
+                if (imMemo(c, coIdx)) co.valueUI._name = "";
+                imValueOrBindingEditor(c, editor, effectPos, co.valueUI, BINDING_UI_ROW);
+
+                if (imButtonIsClicked(c, "-")) {
+                    editor.deferredAction = () => {
+                        filterInPlace(coefficients, coOther => coOther !== co);
+                        filterInPlace(math.terms, term => coefficients.length > 0);
+                        onEdited(editor);
+                    };
+                }
+            } imLayoutEnd(c);
+            if (imIf(c) && coIdx < coefficients.length - 1) {
+                imLayoutBegin(c, ROW); imJustify(c); {
+                    imStr(c, " * ");
+                } imLayoutEnd(c);
+            } imIfEnd(c);
+        } imForEnd(c);
+
+        if (imButtonIsClicked(c, "+")) {
+            const co = newEffectRackMathsItemCoefficient();
+            coefficients.push(co);
+            onEdited(editor);
+        }
+    } imDspVisualGroupEnd(c);
+}
+
 function imSelectChoice<T>(c: ImCache, currentChoice: T, choices: T[], fmt: (val: T) => string): { choice: T } | null {
     let result: { choice: T } | null = null;
 
@@ -1490,9 +1526,13 @@ function imSelectChoice<T>(c: ImCache, currentChoice: T, choices: T[], fmt: (val
         } imContextMenuEnd(c, contextMenu);
     } imIfEnd(c);
 
-    if (imButtonIsClicked(c, fmt(currentChoice))) {
-        openContextMenuAtMouse(contextMenu);
-    }
+    const clicked = imButtonBegin(c, fmt(currentChoice)); {
+        imStr(c, " | v");
+
+        if (clicked) {
+            openContextMenuAtMouse(contextMenu);
+        }
+    } imButtonEnd(c);
 
     return result;
 }
@@ -2467,4 +2507,3 @@ function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
     } imLayoutEnd(c);
 }
 
-// Almost 2000 lines! keep going! you can do it.
