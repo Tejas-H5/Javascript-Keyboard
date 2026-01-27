@@ -47,14 +47,18 @@ function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): bool
     }
 
     if (currentChart && key === "Enter") {
-        if (currentChart.timeline.length === 0) {
-            setViewEditChart(ctx);
-        } else {
-            setViewPlayCurrentChart(ctx);
-        }
-
         // UI sound effect - confirm
+        // TODO: we can't do this because it breaks everything xDDDDD - for now we do this, then timeout the playing of the chart.
         playKeyPressForUI(ctx, 0.5);
+
+        setTimeout(() => {
+            if (currentChart.timeline.length === 0) {
+                setViewEditChart(ctx);
+            } else {
+                setViewPlayCurrentChart(ctx);
+            }
+        }, 40);
+
         return true;
     }
 

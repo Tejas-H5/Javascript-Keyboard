@@ -232,7 +232,7 @@ function resumeAudio() {
 }
 
 export async function initDspLoopInterface({
-    onDspMessage: render
+    onDspMessage
 }: {
     onDspMessage(): void;
 }) {
@@ -289,7 +289,7 @@ export async function initDspLoopInterface({
         }
 
         if (rerender) {
-            render();
+            onDspMessage();
         }
     });
 }
