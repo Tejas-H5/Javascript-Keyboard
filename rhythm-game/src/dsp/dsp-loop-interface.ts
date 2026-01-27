@@ -232,9 +232,9 @@ function resumeAudio() {
 }
 
 export async function initDspLoopInterface({
-    render
+    onDspMessage: render
 }: {
-    render(): void;
+    onDspMessage(): void;
 }) {
     // registers the DSP loop. we must communicate with this thread through a Port thinggy
     const url = getDspLoopClassUrl();

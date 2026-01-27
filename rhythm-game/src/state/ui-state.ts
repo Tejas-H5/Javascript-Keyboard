@@ -1,5 +1,4 @@
 import { SequencerChart, TimelineItem } from "src/state/sequencer-chart";
-import { AsyncContext, newAsyncContext } from "src/utils/promise-utils";
 import { GlobalContext } from "src/views/app";
 import { GameplayState } from "src/views/gameplay";
 import { SequencerChartMetadata } from "./data-repository";
@@ -22,7 +21,6 @@ export type ChartSelectState = {
     loading: boolean;
     loadCounter: number;
 
-    currentChartReload: AsyncContext;
     currentChartMeta: SequencerChartMetadata | null;
     currentChart: SequencerChart | null;
     currentChartLoadingId: number | null;
@@ -52,9 +50,8 @@ export type UpdateModalState = {
     operation:     OperationType;
     chartToUpdate: SequencerChart;
     newName:       string;
-
-    updateCtx:  AsyncContext;
-    error:      any | null;
+    error:         any | null;
+    isUpdating: boolean;
 };
 
 export type LoadSaveState = {
@@ -99,7 +96,6 @@ export function newUiState(): UIState {
 
             // actually used to track our position in the list
             currentChartMeta: null, 
-            currentChartReload: newAsyncContext("Loading chart"),
             currentChart: null,
             currentChartLoadingId: null,
         },

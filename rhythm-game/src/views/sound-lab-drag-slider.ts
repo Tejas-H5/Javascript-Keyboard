@@ -1,15 +1,11 @@
 import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideInteractionFeedback, imCompactLinearDragSlideInteraction } from "src/app-components/drag-slider-interaction";
 import {ImCache, imElse, imEndIf, imIf} from "src/utils/im-core";
 import { elHasMousePress, getGlobalEventSystem } from "src/utils/im-dom";
-import { getNormalizedKey, isKeyHeld } from "src/utils/key-state";
+import { isKeyHeld, KEY_MOD, KEY_SHIFT } from "src/utils/key-state";
 import { clamp, gridsnapRound } from "src/utils/math-utils";
-
 
 export const DRAG_TYPE_LINEAR = 1;
 export const DRAG_TYPE_CIRCULAR = 2;
-
-const shiftKey = getNormalizedKey("Shift");
-const modKey = getNormalizedKey("Modifier");
 
 export function imParameterSliderInteraction(
     c: ImCache,
@@ -24,15 +20,15 @@ export function imParameterSliderInteraction(
 
     const { mouse, keyboard } = getGlobalEventSystem();
 
-    const shift = isKeyHeld(keyboard.keys, shiftKey);
-    const mod = isKeyHeld(keyboard.keys, modKey);
+    const shiftHeld = isKeyHeld(keyboard.keys, KEY_SHIFT);
+    const modHeld   = isKeyHeld(keyboard.keys, KEY_MOD);
 
     let pixelsPerUnit = 100;
 
     let isDragging = false;
 
     if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
-        const lockRing = shift;
+        const lockRing = shiftHeld;
         const state = imCompactCircularDragSlideInteraction(c, val, min, max, 30, 2, lockRing);
         imCompactCircularDragSlideInteractionFeedback(c, state);
 
@@ -43,9 +39,9 @@ export function imParameterSliderInteraction(
     } else {
         imElse(c);
 
-        if (mod) {
+        if (modHeld) {
             pixelsPerUnit = 1000;
-            if (shift) {
+            if (shiftHeld) {
                 step = 0.001;
             }
         }

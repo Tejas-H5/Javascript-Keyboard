@@ -1,3 +1,4 @@
+import { SequencerChartMetadata } from "src/state/data-repository";
 import { uncompressChart, SequencerChart, CHART_STATUS_READONLY } from "src/state/sequencer-chart";
 
 const allBundledCharts = [
@@ -14,6 +15,20 @@ const allBundledCharts = [
     t: c
 }, CHART_STATUS_READONLY))
 
+const allBundledChartsMetadata = allBundledCharts.map(toChartMetadata);
+
+function toChartMetadata(chart: SequencerChart): SequencerChartMetadata {
+    let result: SequencerChartMetadata = {
+        id:   chart.id,
+        name: chart.name,
+    };
+    return result;
+}
+
 export function getAllBundledCharts(): SequencerChart[] {
     return allBundledCharts;
+}
+
+export function getAllBundledChartsMetadata(): SequencerChartMetadata[] {
+    return allBundledChartsMetadata;
 }

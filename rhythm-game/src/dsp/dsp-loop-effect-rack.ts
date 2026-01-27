@@ -6,7 +6,7 @@
 // try to keep them small.
 import { filterInPlace, resizeValuePool } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
-import { moveTowards } from "src/utils/math-utils";
+import { clamp, moveTowards } from "src/utils/math-utils";
 import { asArray, asBooleanOrUndefined, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, asStringOrUndefined, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
 import { deepEquals } from "src/utils/testing";
 import { cos, sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
@@ -150,11 +150,11 @@ export function newEffectRackOscillator(): EffectRackOscillator {
         waveType:    OSC_WAVE__SIN,
 
         // Need to fit all this horizontally, so using shorter UI names...
-        amplitudeUI:     newRegisterIdxUi("amp",   { value: 1 }, 0, 1),
-        phaseUI:         newRegisterIdxUi("phase",    { value: 0 }, 0, 1),
-        frequencyUI:     newRegisterIdxUi("f",     { regIdx: REG_IDX_KEY_FREQUENCY }, 0, 20_000),
-        frequencyMultUI: newRegisterIdxUi("fmult", { value: 1 }, 0, 1_000_000),
-        offsetUI:        newRegisterIdxUi("offset",    { value: 0 }, -2, 2), 
+        amplitudeUI:     newRegisterIdxUi("amp",    { value: 0.5 }, 0, 1),
+        phaseUI:         newRegisterIdxUi("phase",  { value: 0 }, 0, 1),
+        frequencyUI:     newRegisterIdxUi("f",      { regIdx: REG_IDX_KEY_FREQUENCY }, 0, 20_000),
+        frequencyMultUI: newRegisterIdxUi("fmult",  { value: 1 }, 0, 1_000_000),
+        offsetUI:        newRegisterIdxUi("offset", { value: 0 }, -2, 2), 
     };
 }
 
@@ -190,7 +190,7 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
 
         signalUI:  newRegisterIdxUi("signal",  { regIdx: REG_IDX_KEY_SIGNAL }, 0, 1),
         attackUI:  newRegisterIdxUi("attack",  { value: 0.02 } , 0, 0.5),
-        decayUI:   newRegisterIdxUi("decay",   { value: 0.1 } , 0, 4),
+        decayUI:   newRegisterIdxUi("decay",   { value: 0.02 } , 0, 4),
         sustainUI: newRegisterIdxUi("sustain", { value: 0.2 } , 0, 1),
         releaseUI: newRegisterIdxUi("release", { value: 0.2 } , 0, 10),
     };
@@ -1230,7 +1230,7 @@ export function computeEffectRackIteration(
                     // since idx is decrementing, we seek ahead to get the previous sample
                     const signalPrevVal = signalPrev.val[(idx + i) % stopband];
 
-                    let sinc = i === 0 ? fc : sin(fc * i / 2) / (i * Math.PI);
+                    let sinc = i === 0 ? 1 : sin(fc * i / 2) / (i * Math.PI);
                     if (isHighpass === true) {
                         sinc = i === 0 ? 1 - sinc : -sinc;
                     }
@@ -1309,7 +1309,10 @@ export function computeEffectRackIteration(
         w(re, effect._dst, value);
     }
 
-    return re[REG_IDX_EFFECT_BINDINGS_START + lastEffect];
+    let value = re[REG_IDX_EFFECT_BINDINGS_START + lastEffect];
+
+    // Do not remove the `clamp` here under any circumstances. 
+    return clamp(value, -1, 1);
 }
 
 // Prob not needed for undo buffer, but should be useful for import/export. 

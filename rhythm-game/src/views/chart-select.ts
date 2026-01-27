@@ -1,13 +1,16 @@
+import { imVerticalText } from "src/app-components/misc";
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
+import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imFlex1, imGap, imJustify, imLayoutBegin, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { InstrumentKey } from "src/state/keyboard-state";
-import { CHART_STATUS_READONLY, getChartDurationInBeats, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
-import { getCurrentChart } from "src/state/sequencer-state";
+import { CHART_STATUS_READONLY, getChartDurationInBeats, isBundledChartId, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
+import { getCurrentChartOrNullIfLoading } from "src/state/sequencer-state";
 import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "src/state/ui-state";
+import { assert } from "src/utils/assert";
+import { AsyncCallback, AsyncCallbackResult, done } from "src/utils/async-utils";
 import { scrollIntoViewVH } from "src/utils/dom-utils";
-import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
+import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
 import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imElBegin, imElEnd, imStr } from "src/utils/im-dom";
 import { arrayMax, clamp, lerp } from "src/utils/math-utils";
 import {
@@ -21,14 +24,13 @@ import {
     setViewStartScreen
 } from "./app";
 import { cssVarsApp } from "./styling";
-import { imVerticalText } from "src/app-components/misc";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
     if (!ctx.keyPressState) return false;
 
     const { key, keyUpper, listNavAxis } = ctx.keyPressState;
 
-    const currentChart = s.currentChartReload.isPending() ? null : getCurrentChart(ctx);
+    const currentChart = getCurrentChartOrNullIfLoading(ctx);
 
     if (currentChart && keyUpper === "E") {
         if (currentChart._savedStatus === CHART_STATUS_READONLY) {
@@ -50,6 +52,9 @@ function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): bool
         } else {
             setViewPlayCurrentChart(ctx);
         }
+
+        // UI sound effect - confirm
+        playKeyPressForUI(ctx, 0.5);
         return true;
     }
 
@@ -59,44 +64,43 @@ function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): bool
     }
 
     if (listNavAxis !== 0) {
-        moveChartSelection(ctx, listNavAxis);
+        moveChartSelection(ctx, listNavAxis, done);
         return true;
     }
 
     return false;
 }
 
-export function moveChartSelection(ctx: GlobalContext, listNavAxis: number) {
-    if (listNavAxis === 0) return;
+export function moveChartSelection(ctx: GlobalContext, listNavAxis: number, cb: AsyncCallback<void>): AsyncCallbackResult {
+    if (listNavAxis === 0) return cb();
 
     const availableCharts = ctx.repo.charts.allChartMetadata;
-    if (availableCharts.length === 0) return;
-
-    let result;
+    if (availableCharts.length === 0) return cb();
 
     const meta = getCurrentChartMetadata(ctx);
     if (!meta) {
-        result = setCurrentChartMeta(ctx, availableCharts[0]);
-    } else {
-        const idx = meta._index;
-        const newIdx = clamp(idx + listNavAxis, 0, availableCharts.length - 1);
-        result = setCurrentChartMeta(ctx, availableCharts[newIdx]);
+        return setCurrentChartMeta(ctx, availableCharts[0], cb);
+    } 
 
+    const idx = availableCharts.indexOf(meta);
+    assert(idx !== -1);
+
+    const newIdx = clamp(idx + listNavAxis, 0, availableCharts.length - 1);
+    return setCurrentChartMeta(ctx, availableCharts[newIdx], () => {
         // UI sound effect
         const keyboardPitch = newIdx / availableCharts.length;
         const lowPitch = 0.2;
         const highPitch = 0.8;
         playKeyPressForUI(ctx, lerp(lowPitch, highPitch, 1 - keyboardPitch));
-    }
-
-    return result;
+        return cb();
+    });
 }
 
 export function imChartSelect(c: ImCache, ctx: GlobalContext) {
     const s = ctx.ui.chartSelect;
 
     const availableCharts = ctx.repo.charts.allChartMetadata;
-    const currentChart = s.currentChartReload.isPending() ? null : getCurrentChart(ctx);
+    const currentChart = getCurrentChartOrNullIfLoading(ctx);
 
     imLayoutBegin(c, COL); imFlex(c); {
         imLayoutBegin(c, ROW); imAlign(c, STRETCH); imFlex(c); {
@@ -112,7 +116,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                 if (elHasMouseOver(c)) {
                                     if (lastSelected.id !== metadata.id) {
                                         lastSelected.id = metadata.id;
-                                        setCurrentChartMeta(ctx, metadata);
+                                        setCurrentChartMeta(ctx, metadata, done);
                                     }
                                 }
 
@@ -133,6 +137,10 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                 if (currentChart && elHasMousePress(c)) {
                                     setViewPlayCurrentChart(ctx);
                                 }
+
+                                imFlex1(c);
+
+                                imStr(c, isBundledChartId(metadata.id) ? "[bundled]" : "");
                             } imLayoutEnd(c);
                         } imForEnd(c);
                     } else {
@@ -150,8 +158,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                         } imLayoutEnd(c);
                     } imIfEnd(c);
                 } imLayoutEnd(c);
-                imLayoutBegin(c, ROW); imGap(c, 5, PX); {
-
+                imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
                     if (imIf(c) && currentChart) {
                         if (imIf(c) && currentChart.timeline.length === 0) {
                             imStr(c, "Empty chart");
@@ -208,7 +215,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                 imLayoutBegin(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
 
                                 imLayoutBegin(c, ROW); {
-                                    imStr(c, bundled ? "TejasH5" : "Some player");
+                                    imStr(c, bundled ? "[Bundled]" : "Some player");
                                 } imLayoutEnd(c);
                             } imLayoutEnd(c);
                         } imElEnd(c, EL_H2);

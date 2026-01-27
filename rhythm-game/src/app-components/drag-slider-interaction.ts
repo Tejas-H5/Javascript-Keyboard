@@ -1,8 +1,8 @@
-import { BLOCK, imAbsolute, imBg, imFg, imFixed, imFixedXY, imLayoutBegin, imLayoutEnd, imOpacity, imSize, NA, PX } from "src/components/core/layout";
+import { BLOCK, imBg, imFg, imFixed, imFixedXY, imLayoutBegin, imLayoutEnd, imOpacity, imSize, PX } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, EV_CONTEXTMENU, getGlobalEventSystem, imOn } from "src/utils/im-dom";
-import { clamp, deltaAngle, gridsnapRound, lerp, lerp01 } from "src/utils/math-utils";
+import { clamp, deltaAngle, gridsnapRound, lerp01 } from "src/utils/math-utils";
 
 export type CompactLinearDragSlideInteractionState = {
     isDragging: boolean;
@@ -131,7 +131,7 @@ function newCompactCircularDragSlideInteractionState(): CompactCircularDragSlide
     };
 }
 
-// Need to be large enough, such that we can 'feel' how large a particular ring is,
+// Need to be large enough, such that we can 'feel' how large a particular ring is while we're dragging,
 // but small enough that we can move the cursor toward the center without increment/decrement.
 const TICK_SPACING_MINIMUM = 20;
 

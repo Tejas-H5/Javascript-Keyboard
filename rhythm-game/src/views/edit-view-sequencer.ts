@@ -78,13 +78,14 @@ import { filteredCopy } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { copyToClipboard } from "src/utils/clipboard";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
-import { EL_B, elSetClass, elSetStyle, EV_INPUT, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom";
+import { EL_B, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
 import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
 import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, } from "./app";
 import { isSavingAnyChart } from "./saving-chart";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view";
 import { cssVarsApp } from "./styling";
+import { isKeyHeld, KEY_SHIFT } from "src/utils/key-state";
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
@@ -1049,8 +1050,9 @@ function imFilterModal(
 
                             let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
                             if (imMemo(c, hasPress) && hasPress) {
+                                const keys = getGlobalEventSystem().keyboard.keys;
 
-                                if (ctx.allKeysState.shiftKey.held) {
+                                if (isKeyHeld(keys, KEY_SHIFT)) {
                                     let min = Math.min(sequencer.keyEditFilterRangeIdx0, key.index);
                                     if (min === -1) min = 0;
                                     let max = Math.max(sequencer.keyEditFilterRangeIdx0, key.index);

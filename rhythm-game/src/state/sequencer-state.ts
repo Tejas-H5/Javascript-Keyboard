@@ -678,3 +678,8 @@ export function setSequencerChart(sequencer: SequencerState, chart: SequencerCha
 export function getCurrentChart(ctx: GlobalContext) {
     return ctx.sequencer._currentChart;
 }
+
+export function getCurrentChartOrNullIfLoading(ctx: GlobalContext) {
+    return ctx.repo.charts.loading ? null : getCurrentChart(ctx);
+}
+

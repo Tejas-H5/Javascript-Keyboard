@@ -1,5 +1,7 @@
 import { filterInPlace } from "./array-utils";
 
+// TODO: use keycode if supported
+
 type PressedSymbols<T extends string> = {
     pressed: T[];
     held: T[];
@@ -239,4 +241,63 @@ export function isLetterHeld(keysState: KeysState, letter: string): boolean {
     return false;
 }
 
+export const KEY_1             = getNormalizedKey("1");
+export const KEY_2             = getNormalizedKey("2");
+export const KEY_3             = getNormalizedKey("3");
+export const KEY_4             = getNormalizedKey("4");
+export const KEY_5             = getNormalizedKey("5");
+export const KEY_6             = getNormalizedKey("6");
+export const KEY_7             = getNormalizedKey("7");
+export const KEY_8             = getNormalizedKey("8");
+export const KEY_9             = getNormalizedKey("9");
+export const KEY_0             = getNormalizedKey("0");
+export const KEY_MINUS         = getNormalizedKey("-");
+export const KEY_EQUALS        = getNormalizedKey("=");
+export const KEY_Q             = getNormalizedKey("Q");
+export const KEY_W             = getNormalizedKey("W");
+export const KEY_E             = getNormalizedKey("E");
+export const KEY_R             = getNormalizedKey("R");
+export const KEY_T             = getNormalizedKey("T");
+export const KEY_Y             = getNormalizedKey("Y");
+export const KEY_U             = getNormalizedKey("U");
+export const KEY_I             = getNormalizedKey("I");
+export const KEY_O             = getNormalizedKey("O");
+export const KEY_P             = getNormalizedKey("P");
+export const KEY_OPEN_BRACKET  = getNormalizedKey("[");
+export const KEY_CLOSE_BRACKET = getNormalizedKey("]");
+export const KEY_BACKSLASH     = getNormalizedKey("\\");
+export const KEY_A             = getNormalizedKey("A");
+export const KEY_S             = getNormalizedKey("S");
+export const KEY_D             = getNormalizedKey("D");
+export const KEY_F             = getNormalizedKey("F");
+export const KEY_G             = getNormalizedKey("G");
+export const KEY_H             = getNormalizedKey("H");
+export const KEY_J             = getNormalizedKey("J");
+export const KEY_K             = getNormalizedKey("K");
+export const KEY_L             = getNormalizedKey("L");
+export const KEY_SEMICOLON     = getNormalizedKey(";");
+export const KEY_QUOTE         = getNormalizedKey("'");
+export const KEY_Z             = getNormalizedKey("Z");
+export const KEY_X             = getNormalizedKey("X");
+export const KEY_C             = getNormalizedKey("C");
+export const KEY_V             = getNormalizedKey("V");
+export const KEY_B             = getNormalizedKey("B");
+export const KEY_N             = getNormalizedKey("N");
+export const KEY_M             = getNormalizedKey("M");
+export const KEY_COMMA         = getNormalizedKey(",");
+export const KEY_PERIOD        = getNormalizedKey(".");
+export const KEY_FORWAR_SLASH  = getNormalizedKey("/");
 
+export const KEY_SHIFT = getNormalizedKey("Shift");
+export const KEY_CTRL  = getNormalizedKey("Control");
+export const KEY_META  = getNormalizedKey("Meta");
+export const KEY_ALT   = getNormalizedKey("Alt");
+export const KEY_MOD   = getNormalizedKey("Modifier"); // Either CTRL or META
+
+export const KEY_SPACE       = getNormalizedKey(" ");
+export const KEY_ENTER       = getNormalizedKey("Enter");
+export const KEY_BACKSPACE   = getNormalizedKey("Backspace");
+export const KEY_ARROW_UP    = getNormalizedKey("ArrowUp");
+export const KEY_ARROW_DOWN  = getNormalizedKey("ArrowDown");
+export const KEY_ARROW_LEFT  = getNormalizedKey("ArrowLeft");
+export const KEY_ARROW_RIGHT = getNormalizedKey("ArrowRight");

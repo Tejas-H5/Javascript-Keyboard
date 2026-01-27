@@ -1,10 +1,9 @@
-import { getAllBundledCharts } from "src/assets/bundled-charts";
-import { sleepForAsyncTesting } from "src/debug-flags";
+import { getAllBundledCharts, getAllBundledChartsMetadata } from "src/assets/bundled-charts";
 import { EffectRack, serializeEffectRack } from "src/dsp/dsp-loop-effect-rack";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
+import { ACB, ACR, AsyncCallback, AsyncCallbackResult, DONE, newError, parallelIterator, toTrackedCallback } from "src/utils/async-utils";
 import * as idb from "src/utils/indexed-db";
-import { AsyncContext, newAsyncContext, waitFor, waitForOne } from "src/utils/promise-utils";
 import {
     CHART_STATUS_READONLY,
     CHART_STATUS_SAVED,
@@ -19,18 +18,24 @@ import {
 /////////////////////////////////////
 // Data repository core utils
 
-const TBL_CHART_METADATA      = idb.newTableName<SequencerChartMetadata>("chart_metadata");
-const TBL_CHART_DATA          = idb.newTableName<SequencerChartCompressed>("chart_data");
-const TBL_EFFECT_RACK_PRESETS = idb.newTableName<EffectRackPreset>("effect_rack_presets");
+const tablesVersion = 4;
+
+function compressedChartToMetadata(compressedChart: SequencerChartCompressed): SequencerChartMetadata {
+    return {
+        id:   compressedChart.i,
+        name: compressedChart.n
+    };
+}
+
+
 
 const tables = {
-    chartMetadata: idb.newTable(TBL_CHART_METADATA, "id", idb.KEYGEN_AUTOINCREMENT), 
-    chartData:     idb.newTable(TBL_CHART_DATA,     "i",  idb.KEYGEN_NONE),
-
-    effectsRackPresets: idb.newTable(TBL_EFFECT_RACK_PRESETS, "id", idb.KEYGEN_AUTOINCREMENT),
+    chart: idb.newDataMetadataTablePairDefinition<SequencerChartCompressed, SequencerChartMetadata>(
+        "chart", "i", "id", compressedChartToMetadata
+    ),
+    effectsRackPresets: idb.newTableDefinition("effect_rack_presets", "id", idb.KEYGEN_AUTOINCREMENT),
 } as const satisfies idb.AllTables;
 
-const tablesVersion = 3;
 
 // This is actually the central place where we load/save all data. 
 // This design may allow for smarter batching of saving/loading multiple different entities at once.
@@ -38,106 +43,114 @@ export type DataRepository = {
     db: IDBDatabase;
     charts: {
         allChartMetadata: SequencerChartMetadata[];
-        allChartMetadataLoading: AsyncContext;
+        loading: boolean;
     };
     effectRackPresets: {
+        loading: boolean;
         allEffectRackPresets: EffectRackPreset[];
-        allEffectRackPresetsLoading: AsyncContext;
     };
 };
 
-export function newDataRepository(): Promise<DataRepository> {
-    const a = newAsyncContext("Initializing chart repository");
-
-    const idbConnected = idb.openConnection("KeyboardRhythmGameIDB", tablesVersion, tables, {
+export function newDataRepository(cb: AsyncCallback<DataRepository>): ACR {
+    return idb.openConnection("KeyboardRhythmGameIDB", tablesVersion, tables, {
         onBlocked(event: IDBVersionChangeEvent) {
             console.error("IDB blocked!", { event });
         },
         onUnexpectedlyClosed() {
             console.error("IDB unexpectedly closed!");
         }
-    });
+    }, onConnected);
 
-    return waitFor(a, [idbConnected], ([db]) => {
+    function onConnected(db: IDBDatabase | undefined, err: any): ACR {
+        if (err || !db) return cb(undefined, err);
+
         const repo: DataRepository = {
             db: db,
             charts: {
                 allChartMetadata: [],
-                allChartMetadataLoading: newAsyncContext("Loading chart metadata list"),
+                loading: false,
             },
             effectRackPresets: {
                 allEffectRackPresets: [],
-                allEffectRackPresetsLoading: newAsyncContext("Loading effect rack presets"),
+                loading: false,
             }
         };
 
-        setChartMetadataList(
-            repo,
-            getAllBundledCharts().map(toChartMetadata)
-        );
+        updateAvailableMetadata(repo, []);
 
-        return repo;
-    });
+        return cb(repo, undefined);
+    }
 }
 
-function repositoryReadTx(repo: DataRepository, tables: idb.AnyTable[]) {
+function repositoryReadTx(repo: DataRepository, tables: idb.AnyTableDef[]) {
     const tx = idb.newReadTransaction(repo.db, tables);
     return tx;
 }
 
-function repositoryWriteTx(repo: DataRepository, tables: idb.AnyTable[]) {
+function repositoryWriteTx(repo: DataRepository, tables: idb.AnyTableDef[]) {
     const tx = idb.newWriteTransaction(repo.db, tables);
     return tx;
 }
 
-export type SaveResult = 0 | { error: string; }
-
 /////////////////////////////////////
 // Charts
 
-export function loadChartMetadataList(repo: DataRepository) {
-    const tx = repositoryReadTx(repo, [tables.chartMetadata]);
+export function loadChartMetadataList(repo: DataRepository, cb: ACB<SequencerChartMetadata[]>): ACR {
+    const tx = repositoryReadTx(repo, [tables.chart]);
+    return loadChartMetadataListTx(repo, tx, cb);
+}
 
-    return waitFor(repo.charts.allChartMetadataLoading.bump(), [
-        idb.getAll(tx, tables.chartMetadata),
-        sleepForAsyncTesting(),
-    ], ([charts]) => {
-        // Add bundled charts too.
-        const bundled = getAllBundledCharts().map(toChartMetadata);
-        setChartMetadataList(repo, [...charts, ...bundled]);
+/**
+ * The first time it's called, it may take some time.
+ * From then onwards, all mutations get optimistically forked into a cache and the database, 
+ * so subsequent calls should be relatively instant.
+ */
+export function loadChartMetadataListTx(repo: DataRepository, tx: idb.ReadTransaction, cb: ACB<SequencerChartMetadata[]>): ACR {
+    repo.charts.loading = true;
+
+    return idb.getAllMetadata(tx, tables.chart, (charts) => {
+        if (!charts) return DONE;
+
+        repo.charts.loading = false;
+        updateAvailableMetadata(repo, charts);
+
+        return cb(repo.charts.allChartMetadata);
     });
 }
 
-function setChartMetadataList(repo: DataRepository, metadata: SequencerChartMetadata[]) {
-    metadata.sort((a, b) => a.name.localeCompare(b.name));
-
-    // reindex _at the end_
-    for (let i = 0; i < metadata.length; i++) {
-        metadata[i]._index = i;
-    }
-
-    repo.charts.allChartMetadata = metadata;
+function updateAvailableMetadata(repo: DataRepository, metadata: SequencerChartMetadata[]) {
+    const bundled = getAllBundledChartsMetadata();
+    repo.charts.allChartMetadata = [
+        ...metadata,
+        ...bundled
+    ];
+    repo.charts.allChartMetadata.sort((a, b) => {
+        return a.name.localeCompare(b.name);
+    });
 }
 
-export function cleanupChartRepo(a: AsyncContext, repo: DataRepository) {
+export function cleanupChartRepo(repo: DataRepository, cb: AsyncCallback<void>): ACR {
     let cleanedUp: any[] = [];
 
-    const tx = repositoryWriteTx(repo, [tables.chartMetadata, tables.chartData]);
+    const tx = repositoryWriteTx(repo, [tables.chart]);
 
-    return waitFor(a, [
-        idb.getAll(tx, tables.chartMetadata),
-    ], ([
-        metadatas
-    ]) => {
+    return idb.getAll(tx, tables.chart.metadata, (metadatas) => {
+        if (!metadatas) return DONE;
 
-        const chartCleanedTasks = metadatas.map(chart => {
-            const chartMetadataLoaded = waitForOne(a, idb.getOne(tx, tables.chartData, chart.id));
+        return parallelIterator(
+            metadatas,
+            (chart, iter) => {
+                return idb.getOne(tx, tables.chart.data, chart.id, (data) => {
+                    if (!data) {
+                        // Ignore the error
+                        return iter(); 
+                    }
 
-            return waitFor(a, [chartMetadataLoaded, sleepForAsyncTesting()], ([data]) => {
-                if (isBundledChartId(chart.id) || !data) {
-                    cleanedUp.push(chart);
-                    return idb.deleteOne(tx, tables.chartMetadata, chart.id);
-                } else {
+                    if (isBundledChartId(chart.id) || !data) {
+                        cleanedUp.push(chart);
+                        return idb.deleteOne(tx, tables.chart.metadata, chart.id, () => iter());
+                    } 
+
                     let modified = false;
 
                     if (data.n.trim() !== data.n) {
@@ -147,179 +160,125 @@ export function cleanupChartRepo(a: AsyncContext, repo: DataRepository) {
 
                     if (modified) {
                         cleanedUp.push(chart);
-                        return idb.putOne(tx, tables.chartData, data);
+                        return idb.putOne(tx, tables.chart.data, data, () => iter());
                     }
-                    return;
+
+                    return iter();
+                })
+            },
+            () => {
+                if (cleanedUp.length > 0) {
+                    console.warn("Cleaned up non-matching or wrongly saved records: ", cleanedUp);
                 }
-            })
-        });
-
-        const allChartsCleaned = waitFor(a, chartCleanedTasks, () => true);
-
-        return waitFor(a, [allChartsCleaned], () => {
-            if (cleanedUp.length > 0) {
-                console.warn("Cleaned up non-matching or wrongly saved records: ", cleanedUp);
+                return cb();
             }
-        });
+        );
     });
 }
 
-export type SequencerChartMetadata = Pick<SequencerChart, "id" | "name"> & { _index: number; };
+export type SequencerChartMetadata = Pick<SequencerChart, "id" | "name">;
 
-export function queryChart(a: AsyncContext, repo: DataRepository, id: number): Promise<SequencerChart> {
+export function queryChart(
+    repo: DataRepository,
+    id: number,
+    cb: AsyncCallback<SequencerChart>,
+): AsyncCallbackResult {
     if (isBundledChartId(id)) {
         // Bundled charts will load substantially faster, since they come with the game
         const bundled = getAllBundledCharts();
         const chart = bundled.find(c => c.id === id)
-        if (!chart) {
-            throw new Error("Couldn't find bundled chart for id=" + id);
+
+        let err = chart ? undefined : Error("Couldn't find bundled chart for id=" + id);
+        if (err) {
+            console.log(err);
         }
 
-        return Promise.resolve(chart);
+        return cb(chart, err);
     }
 
     // TODO: cache this codepath
 
-    const tx = repositoryReadTx(repo, [tables.chartData]);
+    const tx = repositoryReadTx(repo, [tables.chart]);
 
-    const compresedChartLoaded = waitForOne(a, idb.getOne(tx, tables.chartData, id));
-
-    const slept = sleepForAsyncTesting();
-
-    return waitFor(a, [compresedChartLoaded, slept], ([compressedChart]) => {
+    return idb.getData(tx, tables.chart, id, (compressedChart, err) => {
         if (!compressedChart) {
-            throw new Error("Couldn't find a chart with id=" + id);
+            return cb(undefined, err);
         }
 
         // TODO: saved/unsaved status system to avoid needless saves/loads.
         // or remove if we think its useless.
         const chart = uncompressChart(compressedChart, CHART_STATUS_UNSAVED);
-        return chart;
+        return cb(chart);
     });
 }
 
-export function saveChart(a: AsyncContext, repo: DataRepository, chart: SequencerChart): Promise<SaveResult> {
+export function saveChart(repo: DataRepository, chart: SequencerChart, cb: ACB<boolean>): ACR {
+    cb = toTrackedCallback(cb, "saveChart");
+
     if (isBundledChartId(chart.id)) {
-        return Promise.resolve({ error: "Can't save a bundled chart. Copy it first" });
+        return cb(false, "Can't save a bundled chart. Copy it first");
     }
 
     if (chart._savedStatus === CHART_STATUS_READONLY) {
-        return Promise.resolve({ error: "Can't save a readonly chart. Copy it first" });
+        return cb(false, "Can't save a readonly chart. Copy it first");
     }
 
-    const tx = repositoryWriteTx(repo, [tables.chartData, tables.chartMetadata]);
+    const tx = repositoryWriteTx(repo, [tables.chart]);
 
-    const existingMetadataLoaded = waitForOne(a, idb.getOne(tx, tables.chartMetadata, chart.id));
-    const existingDataLoaded     = waitForOne(a, idb.getOne(tx, tables.chartData, chart.id));
-
-    const existingLoaded = waitFor(a, [
-        existingMetadataLoaded, 
-        existingDataLoaded,
-    ], ([
-        existingMetadata, 
-        existingData
-    ]) => {
-        if (!existingMetadata) {
-            throw new Error("Metadata doesn't already exist");
-        }
-        if (!existingData) {
-            throw new Error("Data doesn't already exist");
-        }
-    })
-
-    const metadataAndDataSaved = waitFor(a, [existingLoaded], () => {
-        const chartCompressed = compressChart(chart);
-        const metadata        = toChartMetadata(chart);
-
-        return waitFor(a, [
-            idb.putOne(tx, tables.chartMetadata, metadata),
-            idb.putOne(tx, tables.chartData, chartCompressed),
-        ], () => true);
-    });
-
-    return waitFor(a, [
-        metadataAndDataSaved,
-        sleepForAsyncTesting(),
-    ], () => {
+    const compressedChart = compressChart(chart);
+    return idb.saveData(tx, tables.chart, compressedChart, (result, err) => {
+        if (result === undefined) return cb(result, err);
+        
         if (chart._savedStatus === CHART_STATUS_UNSAVED) {
             chart._savedStatus = CHART_STATUS_SAVED;
         }
 
-        return 0;
+        return cb(true);
     });
-}
-
-function asNumericId(id: idb.ValidKey): number {
-    assert(typeof id === "number");
-    return id;
 }
 
 // Creates a chart, returns it's id
-export function createChart(a: AsyncContext, repo: DataRepository, chart: SequencerChart): Promise<number> {
+export function createChart(repo: DataRepository, chart: SequencerChart, cb: ACB<boolean>): ACR {
+    cb = toTrackedCallback(cb, "createChart");
+
     chart.name = chart.name.trim();
 
-    const tx = repositoryWriteTx(repo, [tables.chartMetadata, tables.chartData]);
+    const tx = repositoryWriteTx(repo, [tables.chart]);
 
-    const data     = compressChart(chart);
-    const metadata = toChartMetadata(chart);
+    const data = compressChart(chart);
+    return idb.createData(tx, tables.chart, data, (id, err) => {
+        if (!id || err) return cb(false, err);
 
-    const metadataCreated = waitForOne(a, idb.createOne(tx, tables.chartMetadata, metadata));
+        assert(data.i > 0);
+        chart.id = data.i;
 
-    const dataCreated = waitFor(a, [metadataCreated], ([]) => {
-        // Link the data to the metadata
-        data.i = metadata.id;
-        return idb.putOne(tx, tables.chartData, data);
-    });
-
-    return waitFor(a, [metadataCreated, dataCreated], ([]) => {
-        // Since we know what happens to the list when we create an item in the database, we can 
-        // simply do the same on our side as well, rather than reloading all entries from the database.
-
-        const allCharts = repo.charts.allChartMetadata;
-        const idx = allCharts.findIndex(val => val.id === metadata.id);
-        if (idx === -1) {
-            allCharts.push(metadata);
-        }
-
-        return metadata.id;
+        return loadChartMetadataListTx(repo, tx, () => {
+            if (chart._savedStatus === CHART_STATUS_UNSAVED) {
+                chart._savedStatus = CHART_STATUS_SAVED;
+            }
+            return cb(true);
+        })
     });
 }
 
-export function deleteChart(a: AsyncContext, repo: DataRepository, chartToDelete: SequencerChart): Promise<void> {
+export function deleteChart(repo: DataRepository, chartToDelete: SequencerChart, cb: ACB<void>): ACR {
+    cb = toTrackedCallback(cb, "deleteChart");
+
     if (chartToDelete._savedStatus === CHART_STATUS_READONLY) {
-        throw new Error("Can't delete a bundled chart");
+        return cb(undefined, newError("Can't delete a bundled chart"));
     }
 
     if (chartToDelete.id <= 0) {
-        return Promise.resolve();
+        // Our work here is done :)
+        return cb(undefined);
     }
 
-    const tx = repositoryWriteTx(repo, [tables.chartData, tables.chartMetadata]);
-
-    const metadata = repo.charts.allChartMetadata.find(m => m.id === chartToDelete.id);
-    if (!metadata) {
-        console.error("Not present in the metadata list: ", chartToDelete);
-        return Promise.resolve();
-    }
-
-    return waitFor(a, [
-        idb.deleteOne(tx, tables.chartMetadata, metadata.id),
-        idb.deleteOne(tx, tables.chartData, chartToDelete.id),
-        sleepForAsyncTesting(),
-    ], () => {
-        const allCharts = repo.charts.allChartMetadata;
-        filterInPlace(allCharts, chart => chartToDelete.id !== chart.id);
-        setChartMetadataList(repo, allCharts);
+    const tx = repositoryWriteTx(repo, [tables.chart]);
+    return idb.deleteData(tx, tables.chart, chartToDelete.id, () => {
+        return loadChartMetadataListTx(repo, tx, () => {
+            return cb()
+        });
     });
-}
-
-export function toChartMetadata(chart: SequencerChart): SequencerChartMetadata {
-    let result: SequencerChartMetadata = {
-        id:   chart.id,
-        name: chart.name,
-        _index: 0,
-    };
-    return result;
 }
 
 export function findChartMetadata(repo: DataRepository, id: number): SequencerChartMetadata | undefined {
@@ -343,17 +302,18 @@ export function effectRackToPreset(effectRack: EffectRack): EffectRackPreset {
     };
 }
 
-export function loadAllEffectRackPresets(repo: DataRepository): Promise<void> {
-    const a = repo.effectRackPresets.allEffectRackPresetsLoading;
-
+export function loadAllEffectRackPresets(repo: DataRepository, cb: ACB<EffectRackPreset[]>): ACR {
     const tx = repositoryReadTx(repo, [tables.effectsRackPresets])
+    return idb.getAll(tx, tables.effectsRackPresets, (effects, err) => {
+        if (!effects) {
+            console.error("Couldn't load effect rack:", err);
+            effects = [];
+        }
 
-    a.bump();
-    const effectsLoaded = waitForOne(a, idb.getAll(tx, tables.effectsRackPresets));
-
-    return waitFor(a, [effectsLoaded], ([effects]) => {
         repo.effectRackPresets.allEffectRackPresets = effects;
         sortPresetsByName(repo);
+
+        return cb(repo.effectRackPresets.allEffectRackPresets);
     });
 }
 
@@ -362,34 +322,39 @@ export function getLoadedPreset(repo: DataRepository, id: number): EffectRackPre
         .find(p => p.id === id);
 }
 
-export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset): Promise<void> { repo.effectRackPresets.allEffectRackPresets.push(preset);
+export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCallback<void>) {
+    cb = toTrackedCallback(cb, "createEffectRackPreset");
 
+    repo.effectRackPresets.allEffectRackPresets.push(preset);
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
-    const a = newAsyncContext("Creating effects rack preset");
-    return waitFor(a, [idb.createOne(tx, tables.effectsRackPresets, preset)], () => {
+    idb.createOne(tx, tables.effectsRackPresets, preset, () => {
         sortPresetsByName(repo);
-    })
+        return cb();
+    });
 }
 
-export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset): Promise<void> {
+export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCallback<void>) {
+    cb = toTrackedCallback(cb, "updateEffectRackPreset");
+
     assert(preset.id > 0);
     assert(repo.effectRackPresets.allEffectRackPresets.indexOf(preset) !== -1);
 
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
-    const a = newAsyncContext("Updating effects rack preset");
-    return waitFor(a, [idb.putOne(tx, tables.effectsRackPresets, preset)], () => {
+    idb.putOne(tx, tables.effectsRackPresets, preset, () => {
         sortPresetsByName(repo);
+        return cb();
     })
 }
 
-export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset): Promise<void> {
+export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCallback<void>) {
+    cb = toTrackedCallback(cb, "deleteEffectRackPreset");
+
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
-    const a = newAsyncContext("Deleting effects rack preset");
-    const deleted = waitForOne(a, idb.deleteOne(tx, tables.effectsRackPresets, preset.id));
-    return waitFor(a, [deleted], () => {
+    idb.deleteOne(tx, tables.effectsRackPresets, preset.id, () => {
         filterInPlace(repo.effectRackPresets.allEffectRackPresets, p => p !== preset);
         sortPresetsByName(repo);
-    });
+        return cb();
+    })
 }
 
 function sortPresetsByName(repo: DataRepository) {

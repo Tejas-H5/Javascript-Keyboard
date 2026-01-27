@@ -1,9 +1,10 @@
 import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX } from "src/components/core/layout";
 import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
-import { debugFlags, getTestSleepMs } from "src/debug-flags";
-import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
+import { debugFlags } from "src/debug-flags";
+import { getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { DataRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/data-repository";
-import { getKeyForKeyboardKey, InstrumentKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
+import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
     startPlaying,
     stopPlayback
@@ -23,18 +24,18 @@ import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VI
 import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
+import { AsyncCallback, AsyncCallbackResult, done, DONE, getTrackedAsyncActions } from "src/utils/async-utils";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
-import { ImCache, imFor, imForEnd, getFpsCounterState, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
+import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
 import { EL_H2, getGlobalEventSystem, imElBegin, imElEnd, imStr } from "src/utils/im-dom";
-import { getAllAsyncContexts, newAsyncContext, waitFor } from "src/utils/promise-utils";
 import { imChartSelect } from "src/views/chart-select";
 import { imEditView } from "src/views/edit-view";
 import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
-import { runSaveCurrentChartTask } from "./saving-chart";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
-import { imUpdateModal } from "./update-modal";
+import { runSaveCurrentChartTask } from "./saving-chart";
 import { imEffectRackEditor } from "./sound-lab-effect-rack-editor";
+import { imUpdateModal } from "./update-modal";
 
 export type GlobalContext = {
     keyboard:  KeyboardState;
@@ -97,24 +98,29 @@ export function playKeyPressForUI(ctx: GlobalContext, normalizedPitch: number) {
     }]);
 }
 
-export function setCurrentChartMeta(ctx: GlobalContext, metadata: SequencerChartMetadata) {
+export function setCurrentChartMeta(
+    ctx: GlobalContext,
+    metadata: SequencerChartMetadata,
+    cb: AsyncCallback<void>
+): AsyncCallbackResult {
     const chartSelect = ctx.ui.chartSelect;
     if (chartSelect.currentChartLoadingId === metadata.id) {
-        return;
+        return cb();
     }
 
     chartSelect.currentChartLoadingId = metadata.id;
     chartSelect.currentChartMeta      = metadata;
-    chartSelect.currentChartReload.bump();
 
-    const chartQueried = queryChart(
-        chartSelect.currentChartReload,
-        ctx.repo,
-        metadata.id
-    );
+    return queryChart(ctx.repo, metadata.id, (chart, err) => {
+        if (!chart) return DONE;
 
-    return waitFor(chartSelect.currentChartReload, [chartQueried], ([chart]) => {
+        if (chart.id !== chartSelect.currentChartLoadingId) {
+            return DONE;
+        }
+
         setSequencerChart(ctx.sequencer, chart);
+
+        return cb(undefined, err);
     });
 }
 
@@ -224,8 +230,8 @@ export function openChartUpdateModal(
         operation: operation,
         chartToUpdate: chart,
         newName: newName,
-        updateCtx: newAsyncContext("Updating a chart"),
         error: null,
+        isUpdating: false,
     };
 }
 
@@ -284,15 +290,16 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             case APP_VIEW_CHART_SELECT: {
                 editView.lastCursor = 0;
 
-                loadChartMetadataList(ctx.repo).then(() => {
-                    const availableCharts = ctx.repo.charts.allChartMetadata;
-                    if (availableCharts.length === 0) return;
+                loadChartMetadataList(ctx.repo, (availableCharts) => {
+                    if (!availableCharts)             return DONE;
+                    if (availableCharts.length === 0) return DONE;
 
                     const currentChartId = ctx.sequencer._currentChart.id;
                     let idx = availableCharts.findIndex(c => c.id === currentChartId);
                     if (idx === -1) idx = 0;
 
-                    setCurrentChartMeta(ctx, availableCharts[idx]);
+                    setCurrentChartMeta(ctx, availableCharts[idx], done);
+                    return DONE;
                 });
             } break;
             case APP_VIEW_PLAY_CHART: {
@@ -309,9 +316,9 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                     playView.result = result;
                 } 
 
-                setPlaybackVolume(0.1);
-                startPlaying(ctx, -1 * FRACTIONAL_UNITS_PER_BEAT, undefined, { isUserDriven: true });
+                setPlaybackVolume(1);
                 setPlaybackSpeed(debugFlags.testGameplaySpeed);
+                startPlaying(ctx, -1 * FRACTIONAL_UNITS_PER_BEAT, undefined, { isUserDriven: true });
             } break;
         }
     }
@@ -523,16 +530,19 @@ export function imDiagnosticInfo(c: ImCache, ctx: GlobalContext | undefined) {
 
         // Info about background tasks
         imLayoutBegin(c, BLOCK); {
-            const tasks = getAllAsyncContexts();
-            imFor(c); for (const t of tasks) {
-                imLayoutBegin(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
-                    const ms = performance.now() - t.t0;
-                    const testDelay = getTestSleepMs(debugFlags);
-                    imStr(c, testDelay ? "[TEST]" : "");
-                    imStr(c, Math.round(ms));
-                    imStr(c, "ms |");
-                    imStr(c, t.name);
-                } imLayoutEnd(c);
+            const asyncActions = getTrackedAsyncActions();
+            imFor(c); for (const slot of asyncActions.values()) {
+                imFor(c); for (const action of slot) {
+                    imLayoutBegin(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
+                        const t1 = action.t1 ?? performance.now();
+                        const ms = t1 - action.t0;
+                        imStr(c, Math.round(ms));
+                        imStr(c, "ms |");
+                        imStr(c, action.name);
+                    } imLayoutEnd(c);
+                } imForEnd(c);
+
+                imLine(c, LINE_HORIZONTAL, 1);
             } imForEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);

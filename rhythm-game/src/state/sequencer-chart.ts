@@ -130,7 +130,7 @@ export function getFractional(timelinePoint: TimelinePoint): number {
 }
 
 export function getBeatOffset(timelinePoint: TimelinePoint): number {
-    return timelinePoint >> 0xFF;
+    return timelinePoint >> 8;
 }
 
 // Can be interpreted as a position, or a length

@@ -5,26 +5,22 @@ import { cleanupChartRepo, loadChartMetadataList, newDataRepository } from "./st
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state";
 import { NAME_OPERATION_COPY } from "./state/ui-state";
 import { assert } from "./utils/assert";
+import { ACB, ACR, done, toAsyncCallback } from "./utils/async-utils";
 import { initCssbStyles } from "./utils/cssb";
-import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imState, imTry, imTryEnd, isFirstishRender, USE_REQUEST_ANIMATION_FRAME } from "./utils/im-core";
+import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imTry, imTryEnd, isFirstishRender, USE_REQUEST_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imElBegin, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import { waitForOne, newAsyncContext, waitFor } from "./utils/promise-utils";
 import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app";
 
 "use strict"
 
 let globalContext: GlobalContext | undefined;
 
-function initGlobalContext() {
+function initGlobalContext(cb: ACB<void>): ACR {
     // Our code only works after we've established a connection with our
     // IndexedDB instance, and the audio context has loaded.
 
-    const a = newAsyncContext("Initializing global context");
-
-    const newSequencer = newSequencerState();
-
-    const dspLoaded = waitForOne(a, initDspLoopInterface({
-        render: () => {
+    const dspInitialized = initDspLoopInterface({
+        onDspMessage: () => {
             const ctx = globalContext;
             if (!ctx) return;
 
@@ -38,64 +34,70 @@ function initGlobalContext() {
                 } 
             } 
         }
-    }));
-
-    const repoConnected = waitForOne(a, newDataRepository());
-
-    const ctxCreated = waitFor(a, [repoConnected, dspLoaded], ([repo, _]) => {
-        return newGlobalContext(repo, newSequencer);
     });
 
-    const debugScenarioSetUp = waitFor(a, [ctxCreated], async ([ctx]) => {
-        // Setup debug scenario 
+    return toAsyncCallback(dspInitialized, () => {
+        return newDataRepository((repo, err) => {
+            if (!repo) return cb(repo, err);
 
-        if (debugFlags.testFixDatabase) {
-            await cleanupChartRepo(a, ctx.repo)
-        }
+            const newSequencer = newSequencerState();
+            const ctx = newGlobalContext(repo, newSequencer);
+            globalContext = ctx;
 
-        if (debugFlags.testSoundLab) {
-            setViewSoundLab(ctx);
-            return null;
-        } 
+            if (debugFlags.testFixDatabase) {
+                cleanupChartRepo(ctx.repo, onDatabaseCleaned);
+                return cb();
+            }
 
-        if (
-            debugFlags.testEditView ||
-            debugFlags.testGameplay ||
-            debugFlags.testChartSelectView ||
-            debugFlags.testCopyModal
-        ) {
-            await loadChartMetadataList(ctx.repo);
+            return onDatabaseCleaned();
 
-            const charts = ctx.repo.charts.allChartMetadata;
-            const meta = charts.find(c => c.name === debugFlags.testChart);
-            assert(!!meta);
-
-            await setCurrentChartMeta(ctx, meta);
-
-            const chart = getCurrentChart(ctx);
-
-            if (debugFlags.testEditView) {
-                setViewEditChart(ctx);
-                if (debugFlags.testLoadSave) {
-                    setLoadSaveModalOpen(ctx);
+            function onDatabaseCleaned(): ACR {
+                if (debugFlags.testSoundLab) {
+                    setViewSoundLab(ctx);
+                    return cb();
                 }
-            } else if (debugFlags.testGameplay) {
-                setViewPlayCurrentChart(ctx);
-            } else if (debugFlags.testChartSelectView) {
-                setViewChartSelect(ctx);
-            }
 
-            if (debugFlags.testCopyModal) {
-                openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
-            }
-        }
-    });
+                if (
+                    debugFlags.testEditView ||
+                    debugFlags.testGameplay ||
+                    debugFlags.testChartSelectView ||
+                    debugFlags.testCopyModal
+                ) {
+                    return loadChartMetadataList(ctx.repo, (charts, err) => {
+                        if (!charts) return cb(undefined, err);
 
-    return waitFor(a, [ctxCreated, debugScenarioSetUp], ([ctx, _]) => {
-        globalContext = ctx;
+                        const meta = charts.find(c => c.name === debugFlags.testChart);
+                        assert(!!meta);
+
+                        return setCurrentChartMeta(ctx, meta, () => {
+                            const chart = getCurrentChart(ctx);
+
+                            if (debugFlags.testEditView) {
+                                setViewEditChart(ctx);
+                                if (debugFlags.testLoadSave) {
+                                    setLoadSaveModalOpen(ctx);
+                                }
+                            } else if (debugFlags.testGameplay) {
+                                setViewPlayCurrentChart(ctx);
+                            } else if (debugFlags.testChartSelectView) {
+                                setViewChartSelect(ctx);
+                            }
+
+                            if (debugFlags.testCopyModal) {
+                                openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
+                            }
+
+                            return cb();
+                        });
+                    });
+                }
+
+                return cb();
+            }
+        });
     });
 }
-initGlobalContext();
+initGlobalContext(done);
 
 function imMainInner(c: ImCache) {
     if (imIf(c) && globalContext) {

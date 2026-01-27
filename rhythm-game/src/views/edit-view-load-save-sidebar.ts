@@ -25,7 +25,6 @@ import {
 import {
     imStr
 } from "src/utils/im-dom";
-import { newAsyncContext } from "src/utils/promise-utils";
 import {
     GlobalContext,
     openChartUpdateModal,
@@ -34,6 +33,7 @@ import {
 } from "./app";
 import { moveChartSelection } from "./chart-select";
 import { cssVarsApp } from "./styling";
+import { done, DONE } from "src/utils/async-utils";
 
 
 export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
@@ -113,8 +113,9 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
             // the input component over there will handle these.
         } else {
             if (listNavAxis !== 0) {
-                moveChartSelection(ctx, listNavAxis)?.then(() => {
+                moveChartSelection(ctx, listNavAxis, () => {
                     playAll(ctx);
+                    return DONE;
                 });
                 handled = true;
             } else if (key === "Enter") {
@@ -134,7 +135,7 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                     s.chartBeforeOpenMeta &&
                     s.chartBeforeOpenMeta.id !== currentChart?.id
                 ) {
-                    setCurrentChartMeta(ctx, s.chartBeforeOpenMeta);
+                    setCurrentChartMeta(ctx, s.chartBeforeOpenMeta, done);
                 } else {
                     setLoadSaveModalClosed(ctx);
                 }
@@ -147,7 +148,7 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
             ) {
                 const meta = getCurrentChartMetadata(ctx);
                 if (meta) {
-                    deleteChart(newAsyncContext("Deleting chart"), ctx.repo, currentChart);
+                    deleteChart(ctx.repo, currentChart, done);
                     chartSelect.currentChartMeta
                 }
                 handled = true;

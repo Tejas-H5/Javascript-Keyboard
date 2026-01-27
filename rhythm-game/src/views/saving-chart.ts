@@ -1,7 +1,7 @@
 import { saveChart } from "src/state/data-repository";
 import { isReadonlyChart, } from "src/state/sequencer-chart";
 import { GlobalContext } from "./app";
-import { newAsyncContext } from "src/utils/promise-utils";
+import { DONE } from "src/utils/async-utils";
 
 const saveTasks = new Set<number>();
 export function isSavingAnyChart() {
@@ -19,9 +19,10 @@ export function runSaveCurrentChartTask(ctx: GlobalContext) {
     const editView = ctx.ui.editView;
     editView.chartSaveTimerSeconds = -1;
 
-    const a = newAsyncContext("Saving current chart");
-    const saveTask = saveChart(a, ctx.repo, chart)
     saveTasks.add(chart.id);
-    saveTask.finally(() => saveTasks.delete(chart.id));
+    saveChart(ctx.repo, chart, () => {
+        saveTasks.delete(chart.id)
+        return DONE;
+    })
 }
 

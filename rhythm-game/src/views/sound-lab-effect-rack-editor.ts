@@ -128,12 +128,10 @@ import {
     imSwitch,
     imSwitchEnd,
     isFirstishRender,
-    imElse
 } from "src/utils/im-core";
 import { EL_B, EL_I, EL_SVG_PATH, elHasMouseOver, elHasMousePress, elSetAttr, elSetClass, elSetStyle, getGlobalEventSystem, imDomRootExistingBegin, imDomRootExistingEnd, imElBegin, imElEnd, imElSvgBegin, imElSvgEnd, imStr, imStrFmt, imSvgContext, SvgContext } from "src/utils/im-dom";
 import { arrayMax, arrayMin } from "src/utils/math-utils";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
-import { newAsyncContext, waitFor, waitForOne } from "src/utils/promise-utils";
 import { canRedo, canUndo, JSONUndoBuffer, newJSONUndoBuffer, redo, stepUndoBufferTimer, undo, undoBufferIsEmpty, writeToUndoBuffer, writeToUndoBufferDebounced } from "src/utils/undo-buffer-json";
 import { utf16ByteLength } from "src/utils/utf8";
 import { GlobalContext, setViewChartSelect } from "./app";
@@ -142,6 +140,7 @@ import { imKeyboard } from "./keyboard";
 import { drawSamples, imPlotBegin, imPlotEnd } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 import { cssVarsApp, getCurrentTheme } from "./styling";
+import { DONE, done } from "src/utils/async-utils";
 
 const MAX_NUM_FREQUENCIES = 4096 * 2 * 2;
 
@@ -213,7 +212,6 @@ const allWindowTypes: ConvolutionSincWindowType[] = [
 const MODAL_NONE = 0;
 const MODAL_EXPORT = 1;
 const MODAL_IMPORT = 2;
-const MODAL_NEW_PRESET = 3;
 
 const UNDO_DEBOUNCE_SECONDS = 0.2;
 
@@ -518,8 +516,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
     const rack = editor.effectRack;
 
-    const dspInfo = getDspInfo();
-
     const versionChanged = imMemo(c, editor.version);
     if (versionChanged) {
         compileEffectRack(rack);
@@ -755,7 +751,7 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                     imFlex1(c);
 
                     imHeadingBegin(c); {
-                        imStr(c, "Effects rack");
+                        imStr(c, "Effect rack");
 
                         let selectedPreset = getLoadedPreset(ctx.repo, editor.presetsListState.selectedId);
 
@@ -1487,7 +1483,7 @@ function imMathsCoefficientsList(
                 if (imButtonIsClicked(c, "-")) {
                     editor.deferredAction = () => {
                         filterInPlace(coefficients, coOther => coOther !== co);
-                        filterInPlace(math.terms, term => coefficients.length > 0);
+                        filterInPlace(math.terms, term => term.coefficients.length > 0);
                         onEdited(editor);
                     };
                 }
@@ -2278,10 +2274,10 @@ function imPresetsList(
     editor: EffectRackEditorState
 ) {
     if (imMemo(c, true)) {
-        loadAllEffectRackPresets(ctx.repo);
+        loadAllEffectRackPresets(ctx.repo, done);
     }
 
-    const loading = ctx.repo.effectRackPresets.allEffectRackPresetsLoading.isPending();
+    const loading = ctx.repo.effectRackPresets.loading;
 
     // UI could be better but for now I don't care too much.
     imLayoutBegin(c, COL); imFlex(c); {
@@ -2293,9 +2289,8 @@ function imPresetsList(
             let selectedPreset = getLoadedPreset(ctx.repo, s.selectedId);
 
             if (imButtonIsClicked(c, "Update preset", false, !!selectedPreset) && selectedPreset) {
-                const a = newAsyncContext("Updating preset");
                 selectedPreset.serialized = serializeEffectRack(editor.effectRack);
-                waitForOne(a, updateEffectRackPreset(ctx.repo, selectedPreset));
+                updateEffectRackPreset(ctx.repo, selectedPreset, done);
             }
 
             if (imButtonIsClicked(c, "Rename", false, !!selectedPreset) && selectedPreset) {
@@ -2303,15 +2298,16 @@ function imPresetsList(
             }
 
             if (imButtonIsClicked(c, "Delete", false, !!selectedPreset) && selectedPreset) {
-                deleteEffectRackPreset(ctx.repo, selectedPreset);
+                deleteEffectRackPreset(ctx.repo, selectedPreset, done);
                 selectPreset(s, 0);
             }
 
             if (imButtonIsClicked(c, "Create new preset")) {
-                const a = newAsyncContext("Saving preset");
                 const preset = effectRackToPreset(editor.effectRack);
-                const saved = waitForOne(a, createEffectRackPreset(ctx.repo, preset));
-                waitFor(a, [saved], () => startRenamingPreset(s, preset));
+                createEffectRackPreset(ctx.repo, preset, () => {
+                    startRenamingPreset(s, preset)
+                    return DONE;
+                });
             }
         } imLayoutEnd(c);
 
@@ -2366,8 +2362,7 @@ function imPresetsList(
                                         preset.name = s.newName;
                                         stopRenaming(s);
 
-                                        const a = newAsyncContext("Renaming preset " + preset.id);
-                                        waitFor(a, [], () => updateEffectRackPreset(ctx.repo, preset));
+                                        updateEffectRackPreset(ctx.repo, preset, done);
 
                                         ctx.handled = true;
                                     }
