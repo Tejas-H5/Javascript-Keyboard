@@ -265,7 +265,6 @@ export function putOne<T>(
     const store = tx.raw.objectStore(table.name);
     const txGetRequest: IDBRequest = store.put({ ...value });
     txGetRequest.onsuccess = () => {
-        console.log(txGetRequest.result);
         cb(true);
     }
     txGetRequest.onerror = (err) => {

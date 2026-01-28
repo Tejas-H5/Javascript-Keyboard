@@ -128,6 +128,7 @@ import {
     imSwitch,
     imSwitchEnd,
     isFirstishRender,
+    imGetInline,
 } from "src/utils/im-core";
 import { EL_B, EL_I, EL_SVG_PATH, elHasMouseOver, elHasMousePress, elSetAttr, elSetClass, elSetStyle, getGlobalEventSystem, imDomRootExistingBegin, imDomRootExistingEnd, imElBegin, imElEnd, imElSvgBegin, imElSvgEnd, imStr, imStrFmt, imSvgContext, SvgContext } from "src/utils/im-dom";
 import { arrayMax, arrayMin } from "src/utils/math-utils";
@@ -2325,72 +2326,113 @@ function imPresetsList(
             } imIfEnd(c);
 
             imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c); {
-                imFor(c); for (const preset of ctx.repo.effectRackPresets.allEffectRackPresets) {
-                    const selected = preset.id === s.selectedId;
+                const groupsUiState = imGetInline(c, imPresetsList) ?? imSet(c, {
+                    openGroup: ""
+                });
 
-                    imKeyedBegin(c, preset); {
-                        imLayoutBegin(c, BLOCK); imBg(c, selected ? cssVars.bg2 : ""); {
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c, "cursor", "pointer");
-                                elSetClass(c, "hoverable");
-                                elSetClass(c, cn.userSelectNone);
-                            }
+                imFor(c); for (const [groupName, group] of ctx.repo.effectRackPresets.groups) {
+                    const open = groupsUiState.openGroup === groupName;
+                    
+                    imKeyedBegin(c, groupName); {
+                        imLayoutBegin(c, BLOCK); {
+                            imLayoutBegin(c, ROW); imAlign(c); {
 
-                            if (elHasMousePress(c)) {
-                                if (s.selectedId === preset.id) {
-                                    selectPreset(s, 0);
-                                } else {
-                                    try {
-                                        selectPreset(s, preset.id);
-                                        editorImport(editor, preset.serialized);
-                                        s.error = "";
-                                    } catch (err) {
-                                        s.error = "" + err;
+                                if (imButtonIsClicked(c, open ? "v" : ">")) {
+                                    if (open) {
+                                        groupsUiState.openGroup = "";
+                                    } else {
+                                        groupsUiState.openGroup = groupName;
                                     }
                                 }
-                            }
 
-                            if (imIf(c) && selected && s.renaming) {
-                                const ev = imTextInputOneLine(c, s.newName, "Enter preset name");
-                                if (ev) {
-                                    if (ev.newName) {
-                                        s.newName = ev.newName;
-                                        ctx.handled = true;
-                                    }
-
-                                    if (ev.submit) {
-                                        preset.name = s.newName;
-                                        stopRenaming(s);
-
-                                        updateEffectRackPreset(ctx.repo, preset, done);
-
-                                        ctx.handled = true;
-                                    }
-
-                                    if (ev.cancel) {
-                                        stopRenaming(s);
-                                        editor.ui.modal = MODAL_NONE;
-                                        ctx.handled = true;
-                                    }
-                                }
-                            } else {
-                                imIfElse(c);
-
-                                imLayoutBegin(c, ROW); {
-                                    imStr(c, preset.name);
-
-                                    imFlex1(c);
-
-                                    imStr(c, utf16ByteLength(preset.serialized)); imStr(c, "b");
+                                imLayoutBegin(c, ROW); imFlex(c); {
+                                    imStr(c, groupName);
                                 } imLayoutEnd(c);
+                            } imLayoutEnd(c);
+
+                            if (imIf(c) && open) {
+                                imPresetsArray(c, ctx, s, editor, group);
                             } imIfEnd(c);
                         } imLayoutEnd(c);
-
                     } imKeyedEnd(c);
                 } imForEnd(c);
             } imLayoutEnd(c);
         } imIfEnd(c);
     } imLayoutEnd(c);
+}
+
+
+function imPresetsArray(
+    c: ImCache,
+    ctx: GlobalContext,
+    s: PresetsListState,
+    editor: EffectRackEditorState,
+    presets: EffectRackPreset[]
+) {
+
+    imFor(c); for (const preset of presets) {
+        const selected = preset.id === s.selectedId;
+
+        imKeyedBegin(c, preset); {
+            imLayoutBegin(c, BLOCK); imBg(c, selected ? cssVars.bg2 : ""); {
+                if (isFirstishRender(c)) {
+                    elSetStyle(c, "cursor", "pointer");
+                    elSetClass(c, "hoverable");
+                    elSetClass(c, cn.userSelectNone);
+                }
+
+                if (elHasMousePress(c)) {
+                    if (s.selectedId === preset.id) {
+                        selectPreset(s, 0);
+                    } else {
+                        try {
+                            selectPreset(s, preset.id);
+                            editorImport(editor, preset.serialized);
+                            s.error = "";
+                        } catch (err) {
+                            s.error = "" + err;
+                        }
+                    }
+                }
+
+                if (imIf(c) && selected && s.renaming) {
+                    const ev = imTextInputOneLine(c, s.newName, "Enter preset name");
+                    if (ev) {
+                        if (ev.newName) {
+                            s.newName = ev.newName;
+                            ctx.handled = true;
+                        }
+
+                        if (ev.submit) {
+                            preset.name = s.newName;
+                            stopRenaming(s);
+
+                            updateEffectRackPreset(ctx.repo, preset, done);
+
+                            ctx.handled = true;
+                        }
+
+                        if (ev.cancel) {
+                            stopRenaming(s);
+                            editor.ui.modal = MODAL_NONE;
+                            ctx.handled = true;
+                        }
+                    }
+                } else {
+                    imIfElse(c);
+
+                    imLayoutBegin(c, ROW); {
+                        imStr(c, preset.name);
+
+                        imFlex1(c);
+
+                        imStr(c, utf16ByteLength(preset.serialized)); imStr(c, "b");
+                    } imLayoutEnd(c);
+                } imIfEnd(c);
+            } imLayoutEnd(c);
+
+        } imKeyedEnd(c);
+    } imForEnd(c);
 }
 
 // TODO: consolidate with imOscilloscope.

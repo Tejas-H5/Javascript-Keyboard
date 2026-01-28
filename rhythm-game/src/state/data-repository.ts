@@ -48,6 +48,7 @@ export type DataRepository = {
     effectRackPresets: {
         loading: boolean;
         allEffectRackPresets: EffectRackPreset[];
+        groups: Map<string, EffectRackPreset[]>;
     };
 };
 
@@ -72,6 +73,7 @@ export function newDataRepository(cb: AsyncCallback<DataRepository>): ACR {
             },
             effectRackPresets: {
                 allEffectRackPresets: [],
+                groups: new Map(),
                 loading: false,
             }
         };
@@ -311,7 +313,7 @@ export function loadAllEffectRackPresets(repo: DataRepository, cb: ACB<EffectRac
         }
 
         repo.effectRackPresets.allEffectRackPresets = effects;
-        sortPresetsByName(repo);
+        recomputePresets(repo);
 
         return cb(repo.effectRackPresets.allEffectRackPresets);
     });
@@ -328,7 +330,7 @@ export function createEffectRackPreset(repo: DataRepository, preset: EffectRackP
     repo.effectRackPresets.allEffectRackPresets.push(preset);
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
     idb.createOne(tx, tables.effectsRackPresets, preset, () => {
-        sortPresetsByName(repo);
+        recomputePresets(repo);
         return cb();
     });
 }
@@ -341,7 +343,7 @@ export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackP
 
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
     idb.putOne(tx, tables.effectsRackPresets, preset, () => {
-        sortPresetsByName(repo);
+        recomputePresets(repo);
         return cb();
     })
 }
@@ -352,12 +354,47 @@ export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackP
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
     idb.deleteOne(tx, tables.effectsRackPresets, preset.id, () => {
         filterInPlace(repo.effectRackPresets.allEffectRackPresets, p => p !== preset);
-        sortPresetsByName(repo);
+        recomputePresets(repo);
         return cb();
     })
 }
 
-function sortPresetsByName(repo: DataRepository) {
+function recomputePresets(repo: DataRepository) {
     const presets = repo.effectRackPresets.allEffectRackPresets;
     presets.sort((a, b) => a.name.localeCompare(b.name));
+
+    const groups = repo.effectRackPresets.groups;
+    groups.clear();
+    for (const preset of repo.effectRackPresets.allEffectRackPresets) {
+        forEachPresetGroup(preset, group => {
+            let presets = groups.get(group);
+            if (!presets) {
+                presets = [];
+                groups.set(group, presets);
+            }
+
+            presets.push(preset);
+        });
+    }
+}
+
+function forEachPresetGroup(preset: EffectRackPreset, iter: (group: string) => void) {
+    let idx = 0;
+    let inGroup = false;
+    while (idx < preset.name.length) {
+        const startIdx = preset.name.indexOf("[", idx);
+        if (startIdx === -1) break;
+
+        const endIdx = preset.name.indexOf("]", startIdx);
+        if (endIdx === -1) break;
+
+        inGroup = true;
+        iter(preset.name.substring(startIdx, endIdx + 1));
+
+        idx = endIdx + 1;
+    }
+
+    if (!inGroup) {
+        iter("ungrouped");
+    }
 }
