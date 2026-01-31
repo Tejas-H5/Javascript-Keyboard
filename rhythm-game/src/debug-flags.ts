@@ -49,7 +49,7 @@ export const debugFlags: DebugFlags = {
     testCopyModal:       OFF,
     testChart:           "Good old days",
     debuUndoBuffer:      OFF,
-    testChartSelectView: ON,
+    testChartSelectView: OFF,
 
     testGameplay:      OFF,
     testGameplaySpeed: getSpeed(1),
@@ -58,7 +58,7 @@ export const debugFlags: DebugFlags = {
 
     testFixDatabase: OFF,
 
-    testSoundLab: ON,
+    testSoundLab: OFF,
     testSoundLabWaveEditor: ON,
     testSoundLabAllEffectRackEffects: OFF,
     testSoundLabLoadPreset: "design",

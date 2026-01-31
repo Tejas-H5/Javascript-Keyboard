@@ -389,6 +389,13 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 gameplayState.score--;
             }
         }
+
+        // NOTE: There will never be a game mechanic that increases the penalty, should you hit a wrong note. 
+        // This is because 'wrong' notes are just notes that the charter did not think to put in,
+        // and adding them might actually make for a better performance, and I do not want to penalize this.
+        // This does mean, however, that a player can get top score on the level by mashing every key down at once.
+        // This is ok - they will not do this, because if they do, then they will not find the experience fun, 
+        // and if they have an audience of any sort, they will find the performance dull and boring.
     }
 
     // Required so that we can process certain inputs
@@ -666,12 +673,12 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
 
                                 let letterColor;
-                                if (keyState.keyHeld && keyState.lastPressedItem) {
+                                if (keyState.keyHeld && keyState.lastPressedItem && !keyState.keyReleasedAtLeastOnce) {
                                     const itemBestPossibleScore = getBestPossibleScoreForNote(keyState.lastPressedItem);
                                     const progress = (keyState.lastItemScore / itemBestPossibleScore);
-                                    if (progress < 0.4) letterColor = theme.unhit;
+                                    if (progress < 0.4)       letterColor = theme.lowHit;
                                     else if (progress < 0.95) letterColor = theme.mediumHit;
-                                    else letterColor = theme.fullyHit;
+                                    else                      letterColor = theme.fullyHit;
                                 } else {
                                     if (keyState.keyHeld) {
                                         letterColor = theme.unhit;

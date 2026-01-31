@@ -10,6 +10,7 @@ type AppTheme = ComponentsCoreTheme & {
     calm:      CssColor;
     danger:    CssColor;
     unhit:     CssColor;
+    lowHit:    CssColor;
     mediumHit: CssColor;
     fullyHit:  CssColor;
 
@@ -24,6 +25,7 @@ export const cssVarsApp: Record<keyof AppTheme, string> = {
     calm:      "var(--calm)",
     danger:    "var(--danger)",
     unhit:     "var(--unhit)",
+    lowHit:    "var(--lowHit)",
     mediumHit: "var(--unhit)",
     fullyHit:  "var(--fullyHit)",
 
@@ -87,6 +89,7 @@ const mainTheme = Object.freeze<AppTheme>({
     calm:      newColorFromHex("#00AAFF"),
     danger:    newColorFromHex("#FF0000"),
     unhit:     newColorFromHex("#FF0000"),
+    lowHit:    newColorFromHex("#FF9100"),
     mediumHit: newColorFromHex("#FFCC00"),
     fullyHit:  newColorFromHex("#00FF00"),
 

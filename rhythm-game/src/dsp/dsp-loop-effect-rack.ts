@@ -188,6 +188,7 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
 
         _stage: asRegisterIdx(0),
         _value: asRegisterIdx(0),
+        _valueWhenReleased: asRegisterIdx(0),
 
         // This is the signal we modulate
         toModulateUI: newRegisterIdxUi("signal", { value: 1 }),
@@ -622,8 +623,6 @@ export type EffectRack = {
     _registersTemplate: EffectRackRegisters; 
 
     _debugEffectPos: number;
-
-    _lastEffectTypes: EffectRackItemValue["type"][];
 };
 
 export function newEffectRackItem(value: EffectRackItemValue): EffectRackItem {
@@ -648,8 +647,6 @@ export function newEffectRack(): EffectRack {
     return {
         name: "",
         id: 0,
-
-        _lastEffectTypes: [],
 
         effects: [],
         _effectIdToEffectPos: [],
@@ -1008,6 +1005,8 @@ export type EffectRackRegisters = {
     buffers: { val: Float32Array; seconds: number; samples: number; }[];
     sampleRate: number;
     // Dynamic state persists between recompilation. It's assumed that UI can't control this state.
+
+    _lastEffectTypes: EffectRackItemValue["type"][];
 };
 
 // An effect rack is stateless. All it's state lives in one of these.
@@ -1019,6 +1018,7 @@ export function newEffectRackRegisters(): EffectRackRegisters {
         buffers: [],
         isPersistedBetweenFrames: [],
         sampleRate: 0,
+        _lastEffectTypes: [],
     };
 }
 
@@ -1036,15 +1036,14 @@ export function updateRegisters(
     startedPressing: boolean,
 ) {
     const re = registers.values;
-    const buff = registers.buffers;
     
     let shapeChanged = false;
-    e._lastEffectTypes.length = e.effects.length;
+    registers._lastEffectTypes.length = e.effects.length;
     for (let i = 0; i < e.effects.length; i++) {
         const type = e.effects[i].value.type;
-        if (type !== e._lastEffectTypes[i]) {
+        if (type !== registers._lastEffectTypes[i]) {
             shapeChanged = true;
-            e._lastEffectTypes[i] = type;
+            registers._lastEffectTypes[i] = type;
         }
     }
     if (re.length !== e._registersTemplate.values.length) {
@@ -1102,7 +1101,6 @@ export function updateRegisters(
             console.log("reallocated buffers");
         }
     }
-
 }
 
 

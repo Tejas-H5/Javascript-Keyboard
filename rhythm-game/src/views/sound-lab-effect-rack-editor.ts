@@ -443,7 +443,8 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
 
     let editor = imGet(c, newEffectRackEditorState);
     if (!editor) {
-        editor = imSet(c, newEffectRackEditorState(settings.parameters.rack));
+        const rack = settings.parameters.rack;
+        editor = imSet(c, newEffectRackEditorState(rack));
     }
 
     if (imMemo(c, true)) {
