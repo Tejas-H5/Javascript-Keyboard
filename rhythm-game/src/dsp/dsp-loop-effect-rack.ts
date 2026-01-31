@@ -168,6 +168,7 @@ export type EffectRackEnvelope = {
     // it can be per-key
     _stage: RegisterIdx;
     _value: RegisterIdx;
+    _valueWhenReleased: RegisterIdx;
 
     // UI
 
@@ -890,6 +891,7 @@ export function compileEffectRack(e: EffectRack) {
 
                 envelope._stage = allocateRegisterIdx(e, 0, true);
                 envelope._value = allocateRegisterIdx(e, 0, true);
+                envelope._valueWhenReleased = allocateRegisterIdx(e, 0, true);
 
                 allocateRegisterIdxIfNeeded(e, envelope.toModulateUI, remap, effectPos);
 
@@ -1173,6 +1175,8 @@ export function computeEffectRackIteration(
                     value += r(re, wave.offsetUI._regIdx);
                 }
             } break;
+            // TODO: figure out why for a very short press, this envelope can perpetually be > 0. 
+            // NOTE: could also be a bug in my wave previewing code.
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effectValue;
 
@@ -1183,25 +1187,48 @@ export function computeEffectRackIteration(
 
                 let targetSample = 0;
                 let targetDuration = 0;
+                let targetDistance = 0;
                 let targetStage = 0;
 
                 if (signal > 0) {
-                    if (stage === 0) {
+                    if (stage === 0 || stage > 2) {
                         targetSample = 1;
+                        targetDistance = 1;
                         targetDuration = r(re, envelope.attackUI._regIdx);
                         targetStage = 1;
                     } else {
                         targetSample = r(re, envelope.sustainUI._regIdx);
+                        targetDistance = 1 - targetSample;
                         targetDuration = r(re, envelope.decayUI._regIdx);
                         targetStage = 2;
                     }
                 } else {
+                    const sustain = r(re, envelope.sustainUI._regIdx);
+
+                    // set stage immediately, so we can retrigger
+                    let decayToUse;
+                    if (envValue > sustain) {
+                        decayToUse = r(re, envelope.decayUI._regIdx);
+                        if (stage !== 3) {
+                            stage = 3;
+                            w(re, envelope._valueWhenReleased, envValue);
+                        }
+                    } else {
+                        decayToUse = r(re, envelope.releaseUI._regIdx);
+                        if (stage !== 4) {
+                            stage = 4;
+                            w(re, envelope._valueWhenReleased, envValue);
+                        }
+                    }
+
                     targetSample = 0;
-                    targetDuration = r(re, envelope.releaseUI._regIdx);
-                    targetStage = 0;
+                    targetDistance = r(re, envelope._valueWhenReleased);
+                    targetDuration = decayToUse;
+                    targetStage = stage;
                 }
 
-                envValue = moveTowards(envValue, targetSample, dt / targetDuration);
+                let speed = targetDuration === 0 ? 1000 : targetDistance * (dt / targetDuration);
+                envValue = moveTowards(envValue, targetSample, speed);
                 if (envValue === targetSample) {
                     stage = targetStage;
                 }

@@ -34,8 +34,6 @@ import {
     PX,
     ROW,
     ROW_REVERSE,
-    SPACE_AROUND,
-    SPACE_BETWEEN,
     SPACE_EVENLY,
     STRETCH
 } from "src/components/core/layout";
@@ -497,7 +495,13 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
             const effect = editor.effectRack.effects[i];
             const rb = wires.outputPositions.signalBuffers[effect.id]; assert(!!rb);
             pushValueToRingbuffer(rb, total);
-            rb.metric = arrayMax(rb.buff);
+
+            let metric = 0;
+            for (let i = 0; i < rb.buff.length; i++) {
+                metric += Math.abs(rb.buff[i]);
+            }
+            metric /= rb.buff.length;
+            rb.metric = metric;
         }
 
 
