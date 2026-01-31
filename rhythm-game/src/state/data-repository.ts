@@ -378,7 +378,7 @@ function recomputePresets(repo: DataRepository) {
     }
 }
 
-function forEachPresetGroup(preset: EffectRackPreset, iter: (group: string) => void) {
+export function forEachPresetGroup(preset: EffectRackPreset, iter: (group: string) => void) {
     let idx = 0;
     let inGroup = false;
     while (idx < preset.name.length) {
@@ -395,6 +395,8 @@ function forEachPresetGroup(preset: EffectRackPreset, iter: (group: string) => v
     }
 
     if (!inGroup) {
-        iter("ungrouped");
+        iter(DEFAULT_GROUP_NAME);
     }
 }
+
+export const DEFAULT_GROUP_NAME = "ungrouped";

@@ -1,5 +1,6 @@
-import { COL, imAbsolute, imFixed, imJustify, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout";
+import { COL, imAbsolute, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
 import { ImCache, imState, isFirstishRender } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
 
@@ -79,11 +80,12 @@ export function imContextMenuEnd(c: ImCache, s: ContextMenuState) {
 
 // This is not as important as imContextMenuBegin/End, and can be changed for something else.
 export function imContextMenuItemBegin(c: ImCache) {
-    imLayoutBegin(c, ROW); imJustify(c); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "borderBottom", "1px solid rgba(0,0,0,0.37)");
-        }
+    imLayoutBegin(c, ROW); {
     } // imLayoutEnd
+}
+
+export function imContextMenuDivider(c: ImCache) {
+    imLine(c, LINE_HORIZONTAL, 1);
 }
 
 export function imContextMenuItemEnd(c: ImCache) {

@@ -456,9 +456,11 @@ export function stopPlayingScheduledKeys(s: DspState) {
 export function dspProcess(s: DspState, outputs: (Float32Array[][]) | (number[][][])) {
     const output = outputs[0];
 
+    const defaultOscilatorVolume = 0.4;
+
     // run oscillators
     for (let i = 0; i < output[0].length; i++) {
-        output[0][i] = processSample(s, i);
+        output[0][i] = processSample(s, i) * defaultOscilatorVolume;
     }
     // it doesn't work too good, actually :(
     // normalizeIfGreaterThanOne(output[0]);

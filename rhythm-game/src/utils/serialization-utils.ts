@@ -388,9 +388,9 @@ export function asArray(u: unknown): unknown[] {
 }
 
 type ValueOf<T extends readonly unknown[]> = T[number];
-export function asEnum<const T extends unknown>(u: unknown, values: T[]): T {
+export function asEnum<const T extends unknown>(u: unknown, values: T[], typeName: string): T {
     if (!values.includes(u as T)) {
-        throw new Error(u + " was not one of " + values.join(", "));
+        throw new Error(u + " was not one of " + values.join(", ") + " - you may have added a variant to " + typeName + ", but forgot to update the serialization code");
     }
     return u as T;
 }

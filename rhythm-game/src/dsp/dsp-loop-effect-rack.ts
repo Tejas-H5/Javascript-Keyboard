@@ -12,15 +12,16 @@ import { deepEquals } from "src/utils/testing";
 import { cos, sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
 
 // TODO: _VALUE__
-export const EFFECT_RACK_ITEM__OSCILLATOR = 0;
-export const EFFECT_RACK_ITEM__ENVELOPE = 1;
-export const EFFECT_RACK_ITEM__MATHS = 2;
-export const EFFECT_RACK_ITEM__SWITCH = 3;
-export const EFFECT_RACK_ITEM__NOISE = 4;
-export const EFFECT_RACK_ITEM__DELAY = 5;
-export const EFFECT_RACK_ITEM__BIQUAD_FILTER = 6;  // TODO: consider removing
-export const EFFECT_RACK_ITEM__SINC_FILTER = 7; 
-export const EFFECT_RACK_ITEM__REVERB_BAD = 8; 
+export const EFFECT_RACK_ITEM__OSCILLATOR      = 0;
+export const EFFECT_RACK_ITEM__ENVELOPE        = 1;
+export const EFFECT_RACK_ITEM__MATHS           = 2;
+export const EFFECT_RACK_ITEM__SWITCH          = 3;
+export const EFFECT_RACK_ITEM__NOISE           = 4;
+export const EFFECT_RACK_ITEM__DELAY           = 5;
+export const EFFECT_RACK_ITEM__BIQUAD_FILTER   = 6;  // TODO: consider removing
+export const EFFECT_RACK_ITEM__SINC_FILTER     = 7;  // TODO: consider removing once EFFECT_RACK_ITEM__BIQUAD_FILTER_2 is working
+export const EFFECT_RACK_ITEM__REVERB_BAD      = 8;
+export const EFFECT_RACK_ITEM__BIQUAD_FILTER_2 = 9;
 
 // Delay effect uses a crap tonne of memmory, so we're limiting how long it can be.
 // While simple, it is suprisingly OP - you can use it to double waveforms repeatedly.
@@ -41,6 +42,7 @@ export type EffectRackItemType
     | typeof EFFECT_RACK_ITEM__BIQUAD_FILTER
     | typeof EFFECT_RACK_ITEM__SINC_FILTER
     | typeof EFFECT_RACK_ITEM__REVERB_BAD
+    | typeof EFFECT_RACK_ITEM__BIQUAD_FILTER_2
     ;
 
 // If we're using a RegisterIndex without reading from or writing to a register, then we're using it wrong.
@@ -186,9 +188,11 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
         _stage: asRegisterIdx(0),
         _value: asRegisterIdx(0),
 
-        toModulateUI: newRegisterIdxUi("to modulate", { value: 0 }),
+        // This is the signal we modulate
+        toModulateUI: newRegisterIdxUi("signal", { value: 1 }),
 
-        signalUI:  newRegisterIdxUi("signal",  { regIdx: REG_IDX_KEY_SIGNAL }, 0, 1),
+        // This is what people call the 'gate' of the envelope. ____-----______ 
+        signalUI:  newRegisterIdxUi("gate",  { regIdx: REG_IDX_KEY_SIGNAL }, 0, 1),
         attackUI:  newRegisterIdxUi("attack",  { value: 0.02 } , 0, 0.5),
         decayUI:   newRegisterIdxUi("decay",   { value: 0.02 } , 0, 4),
         sustainUI: newRegisterIdxUi("sustain", { value: 0.2 } , 0, 1),
@@ -251,13 +255,22 @@ export function newEffectRackSwitch(): EffectRackSwitch {
 
 export type EffectRackNoise = {
     type: typeof EFFECT_RACK_ITEM__NOISE;
-    amplitudeUi: RegisterIdxUi;
+
+    amplitudeUi:     RegisterIdxUi;
+    amplitudeMultUi: RegisterIdxUi;
+    midpointUi:      RegisterIdxUi;
+    anchorUi:        RegisterIdxUi;
 }
 
 export function newEffectRackNoise(): EffectRackNoise {
     return {
         type: EFFECT_RACK_ITEM__NOISE,
-        amplitudeUi: newRegisterIdxUi("amplitude", { value: 1 }, 0, 1),
+
+        amplitudeUi:     newRegisterIdxUi("amplitude", { value: 2 }, 0, 1),
+        amplitudeMultUi: newRegisterIdxUi("mult", { value: 2 }),
+
+        midpointUi:      newRegisterIdxUi("midpoint", { value: 0 }),
+        anchorUi:        newRegisterIdxUi("anchor", { value: 0.5 }, 0, 1),
     };
 }
 
@@ -324,8 +337,106 @@ export function newEffectRackBiquadFilter(): EffectRackBiquadFilter {
     };
 }
 
-//
-// A better interface for the Convolve filter UI would be liek
+// https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html#mjx-eqn%3Adirect-form-1
+export type EffectRackBiquadFilter2 = {
+    type: typeof EFFECT_RACK_ITEM__BIQUAD_FILTER_2;
+
+    _x1: RegisterIdx;
+    _x2: RegisterIdx;
+    _y1: RegisterIdx;
+    _y2: RegisterIdx;
+
+    signalUi: RegisterIdxUi;
+
+    // We need to know what to do with the parameters.
+    filterType: Biquad2FilterType;
+
+    // Center Frequency or Corner Frequency, or shelf midpoint frequency, depending on which filter type. The "significant frequency". "wherever it's happenin', man."
+    f0: RegisterIdxUi;
+    fMult: RegisterIdxUi; // easily multiply this frequency.
+
+    // used only for peaking and shelving filters
+    dbGain: RegisterIdxUi;
+    
+    // when used as Q: the EE kind of definition, except for peakingEQ in which A (dot) Q is the 
+    // classic EE Q. That adjustment in definition was made so that a boost of N dB followed 
+    // by a cut of N dB for identical Q and f0/sampleRate results in a precisely flat unity gain filter or "wire".
+    //
+    // when used as BW: the bandwidth in octaves (between -3 dB frequencies for BPF and notch or between midpoint 
+    // (dbGain / 2) gain frequencies for peaking EQ)
+    //
+    // when used as S: a "shelf slope" parameter (for shelving EQ only). When S = 1, the shelf slope is as steep 
+    // as it can be and remain monotonically increasing or decreasing gain with frequency. The shelf slope, in dB/octave, 
+    // remains proportional to S for all other values for a fixed f0/sampleRate and dbGain.
+    qOrBWOrS: RegisterIdxUi;
+}
+
+export function newEffectRackBiquadFilter2(): EffectRackBiquadFilter2 {
+    return {
+        type: EFFECT_RACK_ITEM__BIQUAD_FILTER_2,
+
+        _x1: asRegisterIdx(0),
+        _x2: asRegisterIdx(0),
+        _y1: asRegisterIdx(0),
+        _y2: asRegisterIdx(0),
+
+        signalUi:   newRegisterIdxUi("signal", { value: 0 }),
+        filterType: BIQUAD2_TYPE__LOWPASS,
+        f0:         newRegisterIdxUi("f0", { regIdx: REG_IDX_KEY_FREQUENCY }),
+        fMult:      newRegisterIdxUi("fmult", { value: 1 }),
+        dbGain:     newRegisterIdxUi("gain", { value: 1 }),
+        qOrBWOrS:   newRegisterIdxUi("bandwidth", { value: 1 }),
+    };
+}
+
+export const BIQUAD2_TYPE__LOWPASS    = 0;
+export const BIQUAD2_TYPE__HIGHPASS   = 1;
+export const BIQUAD2_TYPE__BANDPASS_1 = 2; // constant skirt gain, peak gain = Q
+export const BIQUAD2_TYPE__BANDPASS_2 = 3; // constant 0 dB peak gain
+export const BIQUAD2_TYPE__NOTCH      = 4;
+export const BIQUAD2_TYPE__ALLPASS    = 5;
+export const BIQUAD2_TYPE__PEAKINGEQ  = 6;
+export const BIQUAD2_TYPE__LOW_SHELF  = 7;
+export const BIQUAD2_TYPE__HIGH_SHELF = 8;
+
+export type Biquad2FilterType
+ = typeof BIQUAD2_TYPE__LOWPASS
+ | typeof BIQUAD2_TYPE__HIGHPASS
+ | typeof BIQUAD2_TYPE__BANDPASS_1
+ | typeof BIQUAD2_TYPE__BANDPASS_2
+ | typeof BIQUAD2_TYPE__NOTCH
+ | typeof BIQUAD2_TYPE__ALLPASS
+ | typeof BIQUAD2_TYPE__PEAKINGEQ
+ | typeof BIQUAD2_TYPE__LOW_SHELF
+ | typeof BIQUAD2_TYPE__HIGH_SHELF;
+
+export function getBiquad2FilterTypeName(type: Biquad2FilterType): string {
+    switch (type) {
+        case BIQUAD2_TYPE__LOWPASS:    return "Lowpass";
+        case BIQUAD2_TYPE__HIGHPASS:   return "Highpass";
+        case BIQUAD2_TYPE__BANDPASS_1: return "Bandpass_1";
+        case BIQUAD2_TYPE__BANDPASS_2: return "Bandpass_2";
+        case BIQUAD2_TYPE__NOTCH:      return "Notch";
+        case BIQUAD2_TYPE__ALLPASS:    return "Allpass";
+        case BIQUAD2_TYPE__PEAKINGEQ:  return "Peaking-eq"; // ??  b
+        case BIQUAD2_TYPE__LOW_SHELF:  return "Low-shelf";
+        case BIQUAD2_TYPE__HIGH_SHELF: return "High-shelf";
+        default: return "???"
+    }
+}
+
+export function biquad2IsUsingDbGain(filter: EffectRackBiquadFilter2): boolean {
+    switch (filter.filterType) {
+        case BIQUAD2_TYPE__PEAKINGEQ:
+        case BIQUAD2_TYPE__LOW_SHELF:
+        case BIQUAD2_TYPE__HIGH_SHELF:
+            return true;
+    }
+
+    return false;
+}
+
+// A better interface for the Convolve filter UI would be like
 //
 // Response:  Actually, I reckon I only want to use sinc. 
 //
@@ -343,9 +454,6 @@ export function newEffectRackBiquadFilter(): EffectRackBiquadFilter {
 //         let inverseSinc = x == 0 ? 1 - sinc : -1 * sinc
 //
 // also btw.   let sinc = x != 0 ? sin(PI * fc * x) / (PI * x) : fc
-//
-// We can do something similar to make a band-pass filter. In fact, the kernel 
-// Let's try coding this interface. 
 export type EffectRackSincFilter = {
     type: typeof EFFECT_RACK_ITEM__SINC_FILTER;
 
@@ -360,6 +468,7 @@ export type EffectRackSincFilter = {
     stopbandUi: RegisterIdxUi;
     cutoffFrequencyUi: RegisterIdxUi;
     cutoffFrequencyMultUi: RegisterIdxUi;
+    gainUi: RegisterIdxUi;
 
     windowType: ConvolutionSincWindowType;
     highpass: boolean;
@@ -394,7 +503,7 @@ export function newEffectRackConvolutionFilter(): EffectRackSincFilter {
         // Also should only be an integer...
         stopbandUi: newRegisterIdxUi(
             "stopband",
-            { value: 20 },
+            { value: 5 },
             2, // needs to be 2 to account for the Hamming window code
             EFFECT_RACK_ITEM__CONVOLUTION_FILTER_MAX_KERNEL_LENGTH
         ),
@@ -402,6 +511,7 @@ export function newEffectRackConvolutionFilter(): EffectRackSincFilter {
 
         cutoffFrequencyUi:     newRegisterIdxUi("f cutoff", { regIdx: REG_IDX_KEY_FREQUENCY }),
         cutoffFrequencyMultUi: newRegisterIdxUi("fmult", { value: 1 }),
+        gainUi:                newRegisterIdxUi("gain", { value: 1 }),
 
         _kernel: -1 as BufferIdx,
         _kernelIdx: asRegisterIdx(0),
@@ -496,6 +606,7 @@ type EffectRackItemValue
     | EffectRackBiquadFilter
     | EffectRackSincFilter
     | EffectRackReverbBadImplementation
+    | EffectRackBiquadFilter2
     ;
 
 export type EffectRack = {
@@ -820,6 +931,9 @@ export function compileEffectRack(e: EffectRack) {
                 const noise = effectValue;
 
                 allocateRegisterIdxIfNeeded(e, noise.amplitudeUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, noise.amplitudeMultUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, noise.midpointUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, noise.anchorUi, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__DELAY: {
                 const delay = effectValue;
@@ -854,6 +968,7 @@ export function compileEffectRack(e: EffectRack) {
                 allocateRegisterIdxIfNeeded(e, conv.stopbandUi, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyUi, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyMultUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, conv.gainUi, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__REVERB_BAD: {
                 const reverb = effectValue;
@@ -864,6 +979,20 @@ export function compileEffectRack(e: EffectRack) {
                 allocateRegisterIdxIfNeeded(e, reverb.signalUi, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, reverb.decayUi, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, reverb.densityUi, remap, effectPos);
+            } break;
+            case EFFECT_RACK_ITEM__BIQUAD_FILTER_2: {
+                const filter = effectValue;
+
+                filter._x1 = allocateRegisterIdx(e, 0, true);
+                filter._x2 = allocateRegisterIdx(e, 0, true);
+                filter._y1 = allocateRegisterIdx(e, 0, true);
+                filter._y2 = allocateRegisterIdx(e, 0, true);
+
+                allocateRegisterIdxIfNeeded(e, filter.signalUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.f0, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.fMult, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.dbGain, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.qOrBWOrS, remap, effectPos);
             } break;
             default: unreachable(effectValue);
         }
@@ -1134,9 +1263,16 @@ export function computeEffectRackIteration(
             case EFFECT_RACK_ITEM__NOISE: {
                 const noise = effectValue;
 
-                value = r(re, noise.amplitudeUi._regIdx)
-                if (Math.abs(value) > 0) {
-                    value = 2 * Math.random() - 1;
+                const amplitudeIn   = r(re, noise.amplitudeUi._regIdx);
+                const amplitudeMult = r(re, noise.amplitudeMultUi._regIdx);
+                const amplitude     = amplitudeIn * amplitudeMult;
+
+                if (Math.abs(amplitude) > 0) {
+                    const midpoint = r(re, noise.midpointUi._regIdx);
+                    const anchor   = r(re, noise.anchorUi._regIdx);
+                    const low      = midpoint + amplitude * -anchor;
+                    const hi       = midpoint + amplitude * (1 - anchor);
+                    value = low + Math.random() * (hi - low);
                 }
             } break;
             case EFFECT_RACK_ITEM__DELAY: {
@@ -1205,6 +1341,7 @@ export function computeEffectRackIteration(
                 const conv = effectValue;
 
                 const signal = r(re, conv.signalUi._regIdx);
+                const gain   = r(re, conv.gainUi._regIdx);
 
                 let idx = r(re, conv._kernelIdx);
                 const signalPrev = buff[conv._kernel];
@@ -1249,7 +1386,7 @@ export function computeEffectRackIteration(
                         } break;
                     }
 
-                    value += signalPrevVal * sinc;
+                    value += signalPrevVal * sinc * gain;
                 }
 
                 idx -= 1;
@@ -1303,6 +1440,145 @@ export function computeEffectRackIteration(
                 w(re, reverb._kernelIdx, idx);
 
             } break;
+            case EFFECT_RACK_ITEM__BIQUAD_FILTER_2: {
+                const filter = effectValue;
+
+                // https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html#mjx-eqn%3Adirect-form-1
+
+                const signal   = r(re, filter.signalUi._regIdx);
+                const f0In     = r(re, filter.f0._regIdx);
+                const fMult    = r(re, filter.fMult._regIdx);
+                const dbGain   = r(re, filter.dbGain._regIdx);
+                const qOrBWOrS = r(re, filter.qOrBWOrS._regIdx);
+
+                const f0 = f0In * fMult;
+
+                let a0 = 0;
+                let a1 = 0;
+                let a2 = 0;
+                let b0 = 0;
+                let b1 = 0;
+                let b2 = 0;
+
+                const w0 = 2 * Math.PI * f0 / sampleRate;
+                const cosw0 = Math.cos(w0);
+                const sinw0 = Math.sin(w0);
+
+                // when Q
+                // const alpha = sinw0 / (2 * qOrBWOrS);
+                
+                // When BW
+                const alpha = sinw0 === 0 ? 0 : sinw0 * Math.sinh(Math.log(2) / 2 * qOrBWOrS * w0 / sinw0);
+
+                // When S
+                // const alpha = sinw0/2 * Math.sqrt( (A + 1/A)*(1/qOrBWOrS - 1) + 2 );
+
+                switch (filter.filterType) {
+                    case BIQUAD2_TYPE__LOWPASS: {
+                        b0 = (1 - cosw0) / 2;
+                        b1 = (1 - cosw0);
+                        b2 = (1 - cosw0) / 2;
+                        a0 = 1 + alpha;
+                        a1 = -2 * cosw0;
+                        a2 = 1 - alpha;
+                    } break;
+                    case BIQUAD2_TYPE__HIGHPASS: {
+                        b0 = (1 + cosw0) / 2;
+                        b1 = -(1 + cosw0);
+                        b2 = (1 + cosw0) / 2;
+                        a0 = 1 + alpha;
+                        a1 = -2 * cosw0;
+                        a2 = 1 - alpha;
+                    } break;
+                    case BIQUAD2_TYPE__BANDPASS_1: {
+                        b0 = sinw0 / 2
+                        b1 = 0
+                        b2 = -sinw0 / 2
+                        a0 = 1 + alpha;
+                        a1 = -2 * cosw0;
+                        a2 = 1 - alpha;
+                    } break;
+                    case BIQUAD2_TYPE__BANDPASS_2: {
+                        b0 = alpha
+                        b1 = 0
+                        b2 = -alpha
+                        a0 = 1 + alpha;
+                        a1 = -2 * cosw0;
+                        a2 = 1 - alpha;
+                    } break;
+                    case BIQUAD2_TYPE__NOTCH: {
+                        b0 = 1;
+                        b1 = -2 * cosw0;
+                        b2 = 1;
+                        a0 = 1 + alpha;
+                        a1 = -2 * cosw0;
+                        a2 = 1 - alpha;
+                    } break;
+                    case BIQUAD2_TYPE__ALLPASS: {
+                        b0 = 1 - alpha;
+                        b1 = -2 * cosw0;
+                        b2 = 1 + alpha;
+                        a0 = 1 + alpha;
+                        a1 = -2 * cosw0;
+                        a2 = 1 - alpha;
+                    } break;
+                    case BIQUAD2_TYPE__PEAKINGEQ: {
+                        let A = Math.pow(10, dbGain/40);
+
+                        b0 = 1 + alpha * A;
+                        b1 = -2 * cosw0;
+                        b2 = 1 - alpha * A;
+                        a0 = 1 + alpha / A;
+                        a1 = -2 * cosw0;
+                        a2 = 1 - alpha / A;
+                    } break;
+                    case BIQUAD2_TYPE__LOW_SHELF: {
+                        let A = Math.pow(10, dbGain/40);
+                        let twoSqrtAAlpha = 2 * Math.sqrt(A) * alpha;
+
+                        b0 =    A*( (A+1) - (A-1)*cosw0 + twoSqrtAAlpha );
+                        b1 =  2*A*( (A-1) - (A+1)*cosw0                   );
+                        b2 =    A*( (A+1) - (A-1)*cosw0 - twoSqrtAAlpha );
+                        a0 =        (A+1) + (A-1)*cosw0 + twoSqrtAAlpha;
+                        a1 =   -2*( (A-1) + (A+1)*cosw0                   );
+                        a2 =        (A+1) + (A-1)*cosw0 - twoSqrtAAlpha;
+                    } break;
+                    case BIQUAD2_TYPE__HIGH_SHELF: {
+                        let A = Math.pow(10, dbGain/40);
+                        let twoSqrtAAlpha = 2 * Math.sqrt(A) * alpha;
+
+                        b0 = A * ((A + 1) + (A - 1) * cosw0 + twoSqrtAAlpha);
+                        b1 = -2 * A * ((A - 1) + (A + 1) * cosw0);
+                        b2 = A * ((A + 1) + (A - 1) * cosw0 - twoSqrtAAlpha);
+                        a0 = (A + 1) - (A - 1) * cosw0 + twoSqrtAAlpha;
+                        a1 = 2 * ((A - 1) - (A + 1) * cosw0);
+                        a2 = (A + 1) - (A - 1) * cosw0 - twoSqrtAAlpha;
+                    } break;
+                };
+
+                let x1 = r(re, filter._x1);
+                let x2 = r(re, filter._x2);
+                let y1 = r(re, filter._y1);
+                let y2 = r(re, filter._y2);
+
+                value =
+                    + (b0 / a0) * signal
+                    + (b1 / a0) * x1
+                    + (b2 / a0) * x2
+                    - (a1 / a0) * y1
+                    - (a2 / a0) * y2;
+
+                x2 = x1;
+                x1 = signal;
+
+                y2 = y1;
+                y1 = value;
+
+                w(re, filter._x1, x1);
+                w(re, filter._x2, x2);
+                w(re, filter._y1, y1);
+                w(re, filter._y2, y2);
+            } break;
             default: unreachable(effectValue);
         }
 
@@ -1350,7 +1626,8 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
         EFFECT_RACK_ITEM__BIQUAD_FILTER,
         EFFECT_RACK_ITEM__SINC_FILTER,
         EFFECT_RACK_ITEM__REVERB_BAD,
-    ]);
+        EFFECT_RACK_ITEM__BIQUAD_FILTER_2,
+    ], "EffectRackItemType");
 
     let value: EffectRackItemValue | undefined;
     switch (type) {
@@ -1364,7 +1641,7 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                     OSC_WAVE__SAWTOOTH,
                     OSC_WAVE__TRIANGLE,
                     OSC_WAVE__SAWTOOTH2
-                ]),
+                ], "EffectRackOscillatorWaveType"),
 
                 amplitudeUI: regUiUnmarshaller,
                 phaseUI: regUiUnmarshaller,
@@ -1407,7 +1684,7 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
             value = unmarshalObject(o, newEffectRackSwitch(), {
                 type: asIs,
                 conditions: u => asArray(u).map(u => unmarshalObject(u, newEffectRackSwitchCondition(), {
-                    operator: u => asEnum(u, [SWITCH_OP_LT, SWITCH_OP_GT]),
+                    operator: u => asEnum<EffectRackSwitchOperator>(u, [SWITCH_OP_LT, SWITCH_OP_GT], "EffectRackSwitchOperator"),
                     aUi: regUiUnmarshaller,
                     valUi: regUiUnmarshaller,
                     bUi: regUiUnmarshaller,
@@ -1419,7 +1696,10 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
         case EFFECT_RACK_ITEM__NOISE: {
             value = unmarshalObject(o, newEffectRackNoise(), {
                 type: asIs,
-                amplitudeUi: regUiUnmarshaller,
+                amplitudeUi:     regUiUnmarshaller,
+                amplitudeMultUi: regUiUnmarshaller,
+                midpointUi:      regUiUnmarshaller,
+                anchorUi:        regUiUnmarshaller,
             });
         } break;
         case EFFECT_RACK_ITEM__DELAY: {
@@ -1452,9 +1732,11 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                     CONVOLUTION_SINC_WINDOW__RECTANGLE,
                     CONVOLUTION_SINC_WINDOW__HAMMING,
                     CONVOLUTION_SINC_WINDOW__BLACKMAN,
-                ]),
+                ], "ConvolutionSincWindowType"),
 
                 highpass: (u, def) => asBooleanOrUndefined(u) ?? def,
+
+                gainUi: regUiUnmarshaller,
 
                 signalUi: regUiUnmarshaller,
                 stopbandUi: regUiUnmarshaller,
@@ -1469,6 +1751,30 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                 signalUi: regUiUnmarshaller,
                 decayUi: regUiUnmarshaller,
                 densityUi: regUiUnmarshaller,
+            });
+        } break;
+        case EFFECT_RACK_ITEM__BIQUAD_FILTER_2: {
+            value = unmarshalObject(o, newEffectRackBiquadFilter2(), {
+                type: asIs,
+
+                signalUi:   regUiUnmarshaller,
+
+                filterType: u => asEnum<Biquad2FilterType>(u, [
+                    BIQUAD2_TYPE__LOWPASS,
+                    BIQUAD2_TYPE__HIGHPASS,
+                    BIQUAD2_TYPE__BANDPASS_1,
+                    BIQUAD2_TYPE__BANDPASS_2,
+                    BIQUAD2_TYPE__NOTCH,
+                    BIQUAD2_TYPE__ALLPASS,
+                    BIQUAD2_TYPE__PEAKINGEQ,
+                    BIQUAD2_TYPE__LOW_SHELF,
+                    BIQUAD2_TYPE__HIGH_SHELF,
+                ], "ConvolutionSincWindowType"),
+
+                f0:         regUiUnmarshaller,
+                fMult:      regUiUnmarshaller,
+                dbGain:     regUiUnmarshaller,
+                qOrBWOrS:   regUiUnmarshaller,
             });
         } break;
         default: unreachable(type);
@@ -1486,10 +1792,14 @@ assert(deepEquals(
 ).mismatches.length === 0);
 
 function unmarshalRegisterIdxUi(arg: unknown, defaultVal: RegisterIdxUi) {
+    if (!arg) {
+        return defaultVal;
+    }
+
     return unmarshalObject(arg, defaultVal, {
         valueRef: (u, valueRef) => unmarshalObject<ValueRef>(u, valueRef, {
-            value: u => asNumberOrUndefined(u),
-            regIdx: u => asNumberOrUndefined(u) as RegisterIdx,
+            value:    u => asNumberOrUndefined(u),
+            regIdx:   u => asNumberOrUndefined(u) as RegisterIdx,
             effectId: u => asNumberOrUndefined(u) as EffectId,
         }),
     });

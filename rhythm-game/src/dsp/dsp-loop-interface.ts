@@ -20,16 +20,17 @@ const playSettings = newDspPlaySettings();
     const rack = playSettings.parameters.rack;
 
     // Good default
-    const osc = newEffectRackOscillator();
-    const oscItem = newEffectRackItem(osc);
-    rack.effects.push(oscItem);
-
     const env = newEffectRackEnvelope();
     const envItem = newEffectRackItem(env);
     rack.effects.push(envItem);
 
-    compileEffectRack(rack); // To get ids
-    env.toModulateUI.valueRef = { effectId: oscItem.id };
+    const osc = newEffectRackOscillator();
+    const oscItem = newEffectRackItem(osc);
+    rack.effects.push(oscItem);
+
+    // Need to compile before we have ids we can use
+    compileEffectRack(rack);
+    osc.amplitudeUI.valueRef = { effectId: envItem.id };
 
     // Rest are for testing purposes
     if (

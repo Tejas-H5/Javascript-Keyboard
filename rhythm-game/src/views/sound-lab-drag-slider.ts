@@ -29,7 +29,7 @@ export function imParameterSliderInteraction(
 
     if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
         const lockRing = shiftHeld;
-        const state = imCompactCircularDragSlideInteraction(c, val, min, max, 30, 2, lockRing);
+        const state = imCompactCircularDragSlideInteraction(c, val, min, max, 30, 1.6, lockRing);
         imCompactCircularDragSlideInteractionFeedback(c, state);
 
         if (state.isDragging) {
