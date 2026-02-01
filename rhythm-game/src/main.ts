@@ -1,7 +1,7 @@
-import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
+import { getCurrentPlaySettings, getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
 import { BLOCK, imLayoutBegin, imLayoutEnd } from "./components/core/layout";
 import { debugFlags } from "./debug-flags";
-import { cleanupChartRepo, loadChartMetadataList, newDataRepository } from "./state/data-repository";
+import { cleanupChartRepo, loadAllEffectRackPresets, loadChartMetadataList, newDataRepository } from "./state/data-repository";
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state";
 import { NAME_OPERATION_COPY } from "./state/ui-state";
 import { assert } from "./utils/assert";
@@ -10,6 +10,7 @@ import { initCssbStyles } from "./utils/cssb";
 import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imTry, imTryEnd, isFirstishRender, USE_REQUEST_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imElBegin, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
 import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app";
+import { deserializeEffectRack } from "./dsp/dsp-loop-effect-rack";
 
 "use strict"
 
@@ -27,12 +28,7 @@ function initGlobalContext(cb: ACB<void>): ACR {
             const sequencer = ctx.sequencer;
             const dspInfo = getDspInfo();
 
-            if (sequencer.isPlaying) {
-                // Allow playback to go off the end, so that downstream code may react to this.
-                if (dspInfo.scheduledPlaybackTime !== -1) {
-                    syncPlayback(sequencer, dspInfo.scheduledPlaybackTime, dspInfo.isPaused);
-                } 
-            } 
+            syncPlayback(sequencer, dspInfo);
         }
     });
 
@@ -54,7 +50,20 @@ function initGlobalContext(cb: ACB<void>): ACR {
             function onDatabaseCleaned(): ACR {
                 if (debugFlags.testSoundLab) {
                     setViewSoundLab(ctx);
-                    return cb();
+
+                    if (!debugFlags.testSoundLabLoadPreset) return cb();
+
+                    return loadAllEffectRackPresets(ctx.repo, (presets) => {
+                        if (!presets) return cb();
+
+                        const preset = presets.find(p => p.name === debugFlags.testSoundLabLoadPreset);
+                        if (preset) {
+                            const playSetings = getCurrentPlaySettings();
+                            playSetings.parameters.rack = deserializeEffectRack(preset.serialized);
+                        }
+
+                        return cb();
+                    });
                 }
 
                 if (

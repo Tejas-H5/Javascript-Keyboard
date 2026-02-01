@@ -8,6 +8,7 @@ import {
     imFg,
     imFlex,
     imFlex1,
+    imFlexWrap,
     imGap,
     imLayoutBegin,
     imLayoutEnd,
@@ -90,7 +91,7 @@ export function imPresetsList(
 
     // UI could be better but for now I don't care too much.
     imLayoutBegin(c, COL); imFlex(c); {
-        imLayoutBegin(c, ROW); imGap(c, 5, PX); {
+        imLayoutBegin(c, ROW); imGap(c, 5, PX); imFlexWrap(c); {
             imHeading(c, "Presets");
 
             imFlex1(c);

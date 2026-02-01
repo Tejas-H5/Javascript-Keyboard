@@ -8,8 +8,8 @@ import { assert } from "src/utils/assert";
 import { lerp, max } from "src/utils/math-utils";
 import { getNoteFrequency } from "src/utils/music-theory-utils";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
-import { ScheduledKeyPress } from "./dsp-loop-interface";
-import { newEffectRack, newEffectRackRegisters, EffectRackRegisters, computeEffectRackIteration, serializeEffectRack, EffectRack }  from "./dsp-loop-effect-rack";
+import { ScheduledKeyPress, ScheduledKeyPresses } from "./dsp-loop-interface";
+import { newEffectRack, newEffectRackRegisters, EffectRackRegisters, computeEffectRackIteration, serializeEffectRack, EffectRack, compileEffectRack }  from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
     rack: EffectRack;
@@ -83,7 +83,7 @@ export type DspLoopMessage = 1337 | {
     setOscilatorSignal?:               [number, PlayingOscillator["inputs"]];
     clearAllOscilatorSignals?:         true;
 
-    scheduleKeys?:    ScheduledKeyPress[] | null;
+    scheduleKeys?:    ScheduledKeyPresses | null;
     newPlaybackTime?: number;
 
     scheduleKeysVolume?:               number;
@@ -94,7 +94,8 @@ export type DspLoopMessage = 1337 | {
 export type DspInfo = {
     // [keyId, signal strength, owner]
     currentlyPlaying: [keyId: number, signal: number, owner: number][];
-    scheduledPlaybackTime: number;
+    scheduledPlaybackTime: number; // the current time of the dsp, as last updated
+    isStopped: boolean;
     isPaused: boolean;
     sampleRate: number;
 }
@@ -183,8 +184,8 @@ export function getMessageForMainThread(s: DspState, signals = true) {
     }
 
     payload.scheduledPlaybackTime = s.trackPlayback.scheduledPlaybackTime;
-
-    payload.isPaused = s.trackPlayback.isPaused;
+    payload.isPaused              = s.trackPlayback.isPaused;
+    payload.isStopped             = s.trackPlayback.scheduleKeys === undefined;
 
     return payload;
 }
@@ -241,11 +242,11 @@ export type DspState = {
     playingOscillators: [number, PlayingOscillator][];
     trackPlayback: {
         shouldSendUiUpdateSignals: boolean;
-        scheduleKeys?: ScheduledKeyPress[];
+        scheduleKeys?: ScheduledKeyPresses;
         scheduledKeysVolume: number;
         scheduledKeysSpeed: number;
         scheduedKeysCurrentlyPlaying: ScheduledKeyPress[];
-        scheduledPlaybackTime: number;
+        scheduledPlaybackTime: number; // in milliseconds
         scheduledPlaybackCurrentIdx: number;
         isPaused: boolean;
     };
@@ -273,7 +274,7 @@ export function processSample(s: DspState, idx: number) {
     // update automated scheduled inputs, if applicable
     if (
         trackPlayback.scheduleKeys &&
-        trackPlayback.scheduledPlaybackCurrentIdx <= trackPlayback.scheduleKeys.length
+        trackPlayback.scheduledPlaybackCurrentIdx <= trackPlayback.scheduleKeys.keys.length
     ) {
 
         // keep track of where we're currently at with the playback
@@ -284,8 +285,8 @@ export function processSample(s: DspState, idx: number) {
             // Pause scheduled playback if we've reached a note that isn't currently being played by the player
 
             let allUserNotes = true;
-            for (let i = trackPlayback.scheduledPlaybackCurrentIdx; i < trackPlayback.scheduleKeys.length; i++) {
-                const nextItem = trackPlayback.scheduleKeys[i];
+            for (let i = trackPlayback.scheduledPlaybackCurrentIdx; i < trackPlayback.scheduleKeys.keys.length; i++) {
+                const nextItem = trackPlayback.scheduleKeys.keys[i];
                 if (nextScheduledPlaybackTime < nextItem.time) {
                     // dont care abt things we've scheduled that aren't here yet..
                     break;
@@ -328,14 +329,14 @@ export function processSample(s: DspState, idx: number) {
         let safetyCounter = 0;
         while (
             !trackPlayback.isPaused &&
-            trackPlayback.scheduledPlaybackCurrentIdx < trackPlayback.scheduleKeys.length
-            && trackPlayback.scheduleKeys[trackPlayback.scheduledPlaybackCurrentIdx].time < trackPlayback.scheduledPlaybackTime
+            trackPlayback.scheduledPlaybackCurrentIdx < trackPlayback.scheduleKeys.keys.length
+            && trackPlayback.scheduleKeys.keys[trackPlayback.scheduledPlaybackCurrentIdx].time < trackPlayback.scheduledPlaybackTime
         ) {
             if (safetyCounter++ >= 1000) {
                 throw new Error("safety counter was hit!");
             }
 
-            const nextItem = trackPlayback.scheduleKeys[trackPlayback.scheduledPlaybackCurrentIdx];
+            const nextItem = trackPlayback.scheduleKeys.keys[trackPlayback.scheduledPlaybackCurrentIdx];
             trackPlayback.scheduledPlaybackCurrentIdx++;
 
             currentlyPlaying.push(nextItem);
@@ -357,11 +358,14 @@ export function processSample(s: DspState, idx: number) {
             }
         }
 
-        // stop playback once we've reached the last note, and
+        // stop playback once we've reached the last note or the scheduled end time, and
         // have finished playing all other notes
         if (
-            trackPlayback.scheduledPlaybackCurrentIdx >= trackPlayback.scheduleKeys.length &&
-            trackPlayback.scheduedKeysCurrentlyPlaying.length === 0
+            (
+                trackPlayback.scheduledPlaybackCurrentIdx >= trackPlayback.scheduleKeys.keys.length ||
+                trackPlayback.scheduledPlaybackTime > trackPlayback.scheduleKeys.timeEnd
+            )
+            && trackPlayback.scheduedKeysCurrentlyPlaying.length === 0
         ) {
             stopPlayingScheduledKeys(s);
         }
@@ -451,6 +455,8 @@ export function stopPlayingScheduledKeys(s: DspState) {
     trackPlayback.scheduleKeys = undefined;
     trackPlayback.scheduledPlaybackTime = -1;
     trackPlayback.scheduledPlaybackCurrentIdx = -1;
+    trackPlayback.isPaused = true;
+    trackPlayback.shouldSendUiUpdateSignals = true;
 }
 
 export function dspProcess(s: DspState, outputs: (Float32Array[][]) | (number[][][])) {
@@ -487,6 +493,8 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
     assert(e !== 1337);
 
     if (e.playSettings) {
+        const rack = s.playSettings.parameters.rack;
+
         for (const k in e.playSettings) {
             if (!(k in s.playSettings)) {
                 continue;
@@ -498,6 +506,10 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
                 // @ts-ignore trust me bro
                 s.playSettings[k] = val;
             }
+        }
+
+        if (s.playSettings.parameters.rack !== rack) {
+            compileEffectRack(s.playSettings.parameters.rack);
         }
     }
 
@@ -524,10 +536,10 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
 
     if (e.scheduleKeys !== undefined) {
         stopPlayingScheduledKeys(s);
-        if (e.scheduleKeys !== null && e.scheduleKeys.length > 0) {
+        if (e.scheduleKeys !== null && e.scheduleKeys.keys.length > 0) {
             console.log("new scheduled keys: ", e.scheduleKeys);
             trackPlayback.scheduleKeys = e.scheduleKeys;
-            // trackPlayback.isPaused = false;
+            trackPlayback.isPaused = false;
             trackPlayback.scheduledPlaybackTime = 0;
             trackPlayback.scheduledPlaybackCurrentIdx = 0;
         }

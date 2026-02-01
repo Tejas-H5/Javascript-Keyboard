@@ -501,8 +501,10 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
                         let color = cssVars.bg2;
                         let thickness = 1;
-                        const divisor1 = FRACTIONAL_UNITS_PER_BEAT / 2;
-                        if (x % divisor1 === 0) {
+
+                        if (x % FRACTIONAL_UNITS_PER_BEAT === 0) {
+                            thickness = 3;
+                        } else if (x % (FRACTIONAL_UNITS_PER_BEAT / 2) === 0) {
                             thickness = 2;
                         }
                         imSequencerVerticalLine(c, s, x, color, thickness);
@@ -646,36 +648,30 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     // And this will always be the case.
 
                     if (imIf(c) && (ui.editView.chartSaveTimerSeconds > 0 || isSaving)) {
-                        let message = "This chart is readonly, changes won't be saved";
-
-                        if (!isReadonlyChart(chart)) {
-                            if (isSaving) {
-                                message = "Saving";
-                            } else {
-                                const t = ui.editView.chartSaveTimerSeconds / CHART_SAVE_DEBOUNCE_SECONDS;
-                                const numDots = Math.floor((1.0 - t) * 10);
-                                message = "Awaiting save" + ".".repeat(numDots);
-                            }
-                        }
+                        const t = ui.editView.chartSaveTimerSeconds / CHART_SAVE_DEBOUNCE_SECONDS;
+                        const numDots = Math.floor((1.0 - t) * 10);
+                        let message = "Awaiting save" + ".".repeat(numDots);
 
                         imStr(c, message);
-                    } imIfEnd(c);
+                    } else {
+                        imIfElse(c);
 
-                    const numToUndo = chart._undoBuffer.idx + 1;
-                    if (imIf(c) && numToUndo > 0) {
-                        imStr(c, "|");
-                        imStr(c, numToUndo + " undo");
-                    } imIfEnd(c);
-                    const numToRedo = chart._undoBuffer.items.length - chart._undoBuffer.idx - 1;
-                    if (imIf(c) && numToRedo > 0) {
-                        imStr(c, "|");
-                        imStr(c, numToRedo + " redo");
-                    } imIfEnd(c);
+                        const numToUndo = chart._undoBuffer.idx + 1;
+                        if (imIf(c) && numToUndo > 0) {
+                            imStr(c, "|");
+                            imStr(c, numToUndo + " undo");
+                        } imIfEnd(c);
+                        const numToRedo = chart._undoBuffer.items.length - chart._undoBuffer.idx - 1;
+                        if (imIf(c) && numToRedo > 0) {
+                            imStr(c, "|");
+                            imStr(c, numToRedo + " redo");
+                        } imIfEnd(c);
 
-                    const numCopied = ui.copied.items.length;
-                    if (imIf(c) && numCopied > 0) {
-                        imStr(c, "|");
-                        imStr(c, numCopied + " items copied");
+                        const numCopied = ui.copied.items.length;
+                        if (imIf(c) && numCopied > 0) {
+                            imStr(c, "|");
+                            imStr(c, numCopied + " items copied");
+                        } imIfEnd(c);
                     } imIfEnd(c);
                 } imLayoutEnd(c);
 

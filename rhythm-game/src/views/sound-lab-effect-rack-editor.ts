@@ -21,6 +21,7 @@ import {
     imFg,
     imFlex,
     imFlex1,
+    imFlexWrap,
     imGap,
     imJustify,
     imLayoutBegin,
@@ -115,10 +116,10 @@ import {
     SWITCH_OP_LT,
     ValueRef
 } from "src/dsp/dsp-loop-effect-rack";
-import { getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getLoadedPreset } from "src/state/data-repository";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
-import { arrayMove, copyArray, filterInPlace, removeItem, resizeObjectPool, resizeValuePool } from "src/utils/array-utils";
+import { arrayAt, arrayMove, copyArray, filterInPlace, removeItem, resizeObjectPool, resizeValuePool } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { CssColor, newColor, newColorFromHsv, rgbaToCssString } from "src/utils/colour";
 import { newCssBuilder } from "src/utils/cssb";
@@ -155,7 +156,7 @@ import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-dr
 import { imPresetsList, presetsListState, PresetsListState } from "./sound-lab-presets-list";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
-const MAX_NUM_FREQUENCIES = 4096 * 2 * 2;
+const MAX_NUM_FREQUENCIES = 16384;
 
 const MOCK_SAMPLE_RATE = 44100;
 
@@ -749,6 +750,19 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
                         if (imButtonIsClicked(c, "Export")) {
                             editor.ui.modal = MODAL_EXPORT;
                         }
+
+                        if (imButtonIsClicked(c, "Reset")) {
+                            editor.deferredAction = () => {
+                                const playSettings = getCurrentPlaySettings();
+
+                                applyPlaySettingsDefaults(playSettings);
+                                updatePlaySettings();
+
+                                editor.effectRack = playSettings.parameters.rack;
+
+                                onEdited(editor);
+                            }
+                        }
                     } imLayoutEnd(c);
 
                     imFlex1(c);
@@ -1054,12 +1068,8 @@ function imEffectRackEditorEffect(
 
                 // imLine(c, LINE_VERTICAL, 5);
 
-                imDspVisualGroupBegin(c, ROW); imFlex(c); imJustify(c); {
+                imDspVisualGroupBegin(c, ROW); imFlex(c); imFlexWrap(c); imJustify(c); {
                     imLayoutBegin(c, ROW); imFlex(c); {
-                        if (isFirstishRender(c)) {
-                            elSetStyle(c, "flexWrap", "wrap");
-                        }
-
                         const effectValue = effect.value;
                         imSwitch(c, effectValue.type); switch (effectValue.type) {
                             case EFFECT_RACK_ITEM__OSCILLATOR: {
@@ -1077,17 +1087,31 @@ function imEffectRackEditorEffect(
 
                                 imSpacingSymbol(c, "");
 
-                                imDspVisualGroupBegin(c, ROW); {
-                                    imDspVisualGroupBegin(c, ROW); {
-                                        imValueOrBindingEditor(c, editor, effectPos, osc.frequencyUI);
-                                        imValueOrBindingEditor(c, editor, effectPos, osc.frequencyMultUI);
+                                imDspVisualGroupBegin(c, COL); {
+                                    imLayoutBegin(c, ROW); {
+                                        imDspVisualGroupBegin(c, ROW); {
+                                            imValueOrBindingEditor(c, editor, effectPos, osc.frequencyUI);
+                                            imValueOrBindingEditor(c, editor, effectPos, osc.frequencyMultUI);
+                                        } imDspVisualGroupEnd(c);
+
+                                        imValueOrBindingEditor(c, editor, effectPos, osc.phaseUI);
+
+                                        imSpacingSymbol(c, " + ", true);
+
+                                        imValueOrBindingEditor(c, editor, effectPos, osc.offsetUI);
+                                    } imLayoutEnd(c);
+
+                                    imDspVisualGroupBegin(c, COL); {
+                                        imHeading(c, "unison");
+
+                                        imLayoutBegin(c, ROW); imJustify(c, SPACE_EVENLY); {
+                                            imValueOrBindingEditor(c, editor, effectPos, osc.unisonCountUi);
+                                            imValueOrBindingEditor(c, editor, effectPos, osc.unisionWidthUi);
+                                            imValueOrBindingEditor(c, editor, effectPos, osc.unisonMixUi);
+                                        } imLayoutEnd(c);
                                     } imDspVisualGroupEnd(c);
-                                    imValueOrBindingEditor(c, editor, effectPos, osc.phaseUI);
                                 } imDspVisualGroupEnd(c);
 
-                                imSpacingSymbol(c, " + ", true);
-
-                                imValueOrBindingEditor(c, editor, effectPos, osc.offsetUI);
                             } break;
                             case EFFECT_RACK_ITEM__ENVELOPE: {
                                 const envelope = effectValue;
@@ -1205,6 +1229,7 @@ function imEffectRackEditorEffect(
 
                                 imDspVisualGroupBegin(c, ROW); imFlex(c); imJustify(c, SPACE_EVENLY); {
                                     imValueOrBindingEditor(c, editor, effectPos, noise.amplitudeUi);
+                                    imValueOrBindingEditor(c, editor, effectPos, noise.amplitudeMultUi);
 
                                     imValueOrBindingEditor(c, editor, effectPos, noise.midpointUi);
 
@@ -1223,8 +1248,15 @@ function imEffectRackEditorEffect(
                                         imValueOrBindingEditor(c, editor, effectPos, delay.secondsUi);
 
                                         imSpacingSymbol(c, " -> ");
-                                    } imDspVisualGroupEnd(c);
 
+                                        imDspVisualGroupBegin(c, ROW); imJustify(c, SPACE_EVENLY); {
+                                            imValueOrBindingEditor(c, editor, effectPos, delay.originalUi);
+
+                                            imValueOrBindingEditor(c, editor, effectPos, delay.delayedUi);
+
+                                            imSpacingSymbol(c, " -> ");
+                                        } imDspVisualGroupEnd(c);
+                                    } imDspVisualGroupEnd(c);
                                     imLayoutBegin(c, BLOCK); {
                                         imStr(c, "Due to the high memory usage of this effect, the max delay has been artifically limited to 1 second");
                                     } imLayoutEnd(c);
@@ -1393,6 +1425,7 @@ function imEffectRackEditorEffect(
                                                 } imDspVisualGroupEnd(c);
 
                                                 imValueOrBindingEditor(c, editor, effectPos, conv.stopbandUi);
+                                                imValueOrBindingEditor(c, editor, effectPos, conv.gainUi);
 
                                                 const windowTypeChanged = imSelectChoice(c, conv.windowType, allWindowTypes, getConvolutionSincWindowTypeName);
                                                 if (windowTypeChanged) {
@@ -1568,7 +1601,12 @@ function imMathsCoefficientsList(
         imFor(c); for (let coIdx = 0; coIdx < coefficients.length; coIdx++) {
             const co = coefficients[coIdx];
             imLayoutBegin(c, ROW); imJustify(c); imGap(c, 5, PX); {
-                if (imMemo(c, coIdx)) co.valueUI._name = "";
+                if (
+                    imMemo(c, termIdx) |
+                    imMemo(c, coIdx) 
+                ) {
+                    co.valueUI._name = "x[" + termIdx + "][" + coIdx + "]";
+                }
                 imValueOrBindingEditor(c, editor, effectPos, co.valueUI);
 
                 if (imButtonIsClicked(c, "-")) {
@@ -1617,7 +1655,7 @@ function imSelectChoice<T>(c: ImCache, currentChoice: T, choices: T[], fmt: (val
         imStr(c, " | v");
 
         if (clicked) {
-            openContextMenuAtMouse(contextMenu);
+            openContextMenuAtMouse(c, contextMenu);
         }
     } imButtonEnd(c);
 
@@ -1672,7 +1710,8 @@ function imFilterAnalyzer(
         const registers = newEffectRackRegisters();
 
         compileEffectRack(rack);
-        const keyFrequency = getNoteIndex("A", 3);
+        const keyNoteId    = getNoteIndex("A", 3);
+        const keyFrequency = getNoteFrequency(keyNoteId);
 
         rack._registersTemplate.values[filter.signalUi._regIdx] = 1;
         s.impulseResponse[0] = computeEffectRackIteration(
@@ -1751,8 +1790,16 @@ export function editorImport(editor: EffectRackEditorState, json: string) {
     // Try computing a sample. Does it work??
     compileEffectRack(effectRack);
     const registers = newEffectRackRegisters();
-    const f = getNoteFrequency(getNoteIndex("C", 4));
-    computeEffectRackIteration(effectRack, registers, f, 1, 48000, true);
+    const noteId = getNoteIndex("C", 4);
+    const f = getNoteFrequency(noteId);
+    computeEffectRackIteration(
+        effectRack,
+        registers,
+        f,
+        1,
+        48000,
+        true
+    );
 
     // If we reach here, then yeah its probably legit...
     editor.effectRack = effectRack;
@@ -1955,7 +2002,7 @@ function imBindingEditorContextMenu(
     } imIfEnd(c);
 
     if (elHasMousePress(c)) {
-        openContextMenuAtMouse(contextMenu);
+        openContextMenuAtMouse(c, contextMenu);
     }
 }
 
@@ -2263,11 +2310,11 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
     const contextMenu = imContextMenu(c);
     if (imIf(c) && contextMenu.open) {
         imContextMenuBegin(c, contextMenu); {
-            if (imIf(c) && insertIdx !== -1) {
+            const effect = arrayAt(rack.effects, insertIdx);
+            if (imIf(c) && !!effect) {
                 imEditorContextMenuItemBegin(c); {
                     imStr(c, "Duplicate");
                     if (elHasMousePress(c)) {
-                        const effect = rack.effects[insertIdx]; assert(!!effect);
                         toAdd = copyEffectRackItem(effect);
                     }
                 } imContextMenuItemEnd(c);
@@ -2359,7 +2406,7 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
     }
 
     if (imButtonIsClicked(c, "+")) {
-        openContextMenuAtMouse(contextMenu);
+        openContextMenuAtMouse(c, contextMenu);
     }
 }
 

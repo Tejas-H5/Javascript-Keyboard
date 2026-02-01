@@ -235,6 +235,8 @@ export function saveChart(repo: DataRepository, chart: SequencerChart, cb: ACB<b
             chart._savedStatus = CHART_STATUS_SAVED;
         }
 
+        updateAvailableMetadata(repo, tables.chart.loadedMetadata);
+
         return cb(true);
     });
 }
@@ -278,7 +280,7 @@ export function deleteChart(repo: DataRepository, chartToDelete: SequencerChart,
     const tx = repositoryWriteTx(repo, [tables.chart]);
     return idb.deleteData(tx, tables.chart, chartToDelete.id, () => {
         return loadChartMetadataListTx(repo, tx, () => {
-            return cb()
+            return cb();
         });
     });
 }

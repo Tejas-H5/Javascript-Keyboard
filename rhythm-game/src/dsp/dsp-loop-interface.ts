@@ -1,7 +1,7 @@
 import { debugFlags } from "src/debug-flags";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings } from "./dsp-loop";
 import { getDspLoopClassUrl } from "./dsp-loop-class-url";
-import { compileEffectRack, newEffectRackBiquadFilter, newEffectRackDelay, newEffectRackEnvelope, newEffectRackItem, newEffectRackMaths, newEffectRackMathsItemCoefficient, newEffectRackMathsItemTerm, newEffectRackNoise, newEffectRackOscillator, newEffectRackSwitch, serializeEffectRack } from "./dsp-loop-effect-rack";
+import { compileEffectRack, newEffectRack, newEffectRackBiquadFilter, newEffectRackDelay, newEffectRackEnvelope, newEffectRackItem, newEffectRackMaths, newEffectRackMathsItemCoefficient, newEffectRackMathsItemTerm, newEffectRackNoise, newEffectRackOscillator, newEffectRackSwitch, serializeEffectRack } from "./dsp-loop-effect-rack";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
@@ -12,12 +12,20 @@ export type ScheduledKeyPress = {
     noteId: number;
 }
 
+export type ScheduledKeyPresses = {
+    keys: ScheduledKeyPress[];
+    timeEnd: number;
+}
+
 const audioCtx = new AudioContext()
 
 const playSettings = newDspPlaySettings();
-// init play settings
-{
-    const rack = playSettings.parameters.rack;
+
+applyPlaySettingsDefaults(playSettings);
+
+export function applyPlaySettingsDefaults(playSettings: DSPPlaySettings) {
+    const rack = newEffectRack();
+    playSettings.parameters.rack = rack;
 
     // Good default
     const env = newEffectRackEnvelope();
@@ -67,6 +75,7 @@ let dspPort: MessagePort | undefined;
 const dspInfo: DspInfo = { 
     currentlyPlaying: [],
     scheduledPlaybackTime: 0,
+    isStopped: false,
     isPaused: false,
     sampleRate: 1,
 };
@@ -79,8 +88,7 @@ function unreachable() {
 
 function noOp() {};
 
-export function updatePlaySettings(fn: (s: DSPPlaySettings) => void = noOp) {
-    fn(playSettings);
+export function updatePlaySettings() {
     audioLoopDispatch({ playSettings });
 }
 
@@ -193,7 +201,7 @@ export function releaseKey(keyId: number, noteId: number) {
     pressedKeys.delete(keyId);
 }
 
-export function schedulePlayback(presses: ScheduledKeyPress[]) {
+export function schedulePlayback(presses: ScheduledKeyPresses) {
     resumeAudio();
     audioLoopDispatch({ scheduleKeys: presses });
 }
@@ -261,7 +269,7 @@ export async function initDspLoopInterface({
     }, frequency);
 
     // sync initial settings.
-    updatePlaySettings(() => { });
+    updatePlaySettings();
 
     dspPort.onmessage = ((e) => {
         const data = e.data as Partial<DspInfo>;
@@ -279,6 +287,10 @@ export async function initDspLoopInterface({
         if (data.scheduledPlaybackTime !== undefined) {
             dspInfo.scheduledPlaybackTime = data.scheduledPlaybackTime;
             rerender = true;
+        }
+
+        if (data.isStopped !== undefined) {
+            dspInfo.isStopped = data.isStopped;
         }
 
         if (data.isPaused !== undefined) {

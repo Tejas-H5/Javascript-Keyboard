@@ -34,6 +34,8 @@ import {
 import { moveChartSelection } from "./chart-select";
 import { cssVarsApp } from "./styling";
 import { done, DONE } from "src/utils/async-utils";
+import { arrayAt } from "src/utils/array-utils";
+import { assert } from "src/utils/assert";
 
 
 export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
@@ -148,8 +150,18 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
             ) {
                 const meta = getCurrentChartMetadata(ctx);
                 if (meta) {
-                    deleteChart(ctx.repo, currentChart, done);
-                    chartSelect.currentChartMeta
+                    const idx = ctx.repo.charts.allChartMetadata.findIndex(m => m.id === currentChart.id);
+                    if (idx !== -1) {
+                        deleteChart(ctx.repo, currentChart, () => {
+                            const charts = ctx.repo.charts.allChartMetadata;
+                            let idxClamped = idx;
+                            if (idxClamped >= charts.length) idxClamped = charts.length - 0;
+                            const meta = arrayAt(charts, idxClamped) ?? null;
+                            assert(!!meta);
+
+                            return setCurrentChartMeta(ctx, meta, done);
+                        });
+                    }
                 }
                 handled = true;
             } else if (currentChart && keyUpper === "R") {

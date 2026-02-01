@@ -103,8 +103,30 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     ctx.handled = true;
 }
 
-function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, cb: ACB<boolean>): ACR {
+function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, cbIn: ACB<boolean>): ACR {
     if (s.isUpdating) return CANCELLED;
+
+    // Figure out the message, clear the message
+    {
+        switch (s.operation) {
+            case NAME_OPERATION_RENAME:
+                s.message = "Renaming [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
+                break;
+            case NAME_OPERATION_CREATE:
+                s.message = "Creating " + s.newName + "] ...";
+                break;
+            case NAME_OPERATION_COPY:
+                s.message = "Copying [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
+                break;
+            default: unreachable(s.operation);
+        }
+    }
+
+    let cb: ACB<boolean> = (val, err) => {
+        s.message = "";
+        ctx.ui.updateModal = null;
+        return cbIn(val, err);
+    };
 
     cb = toTrackedCallback(cb, "handleCreateCopyOrRenameChart " + s.message);
 
@@ -119,18 +141,13 @@ function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, 
 
     switch (s.operation) {
         case NAME_OPERATION_RENAME:
-            s.message = "Renaming [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
-
-            const toRename = { ...s.chartToUpdate };
-            toRename.name = s.newName;
-            if (toRename._savedStatus === CHART_STATUS_SAVED) {
-                toRename._savedStatus = CHART_STATUS_UNSAVED;
+            s.chartToUpdate.name = s.newName;
+            if (s.chartToUpdate._savedStatus === CHART_STATUS_SAVED) {
+                s.chartToUpdate._savedStatus = CHART_STATUS_UNSAVED;
             }
 
-            return saveChart(ctx.repo, toRename, cb);
+            return saveChart(ctx.repo, s.chartToUpdate, cb);
         case NAME_OPERATION_CREATE:
-            s.message = "Creating " + s.newName + "] ...";
-
             const toCreate = newChart(s.newName);
 
             return createChart(ctx.repo, toCreate, (created, error) => {
@@ -140,8 +157,6 @@ function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, 
                 return cb(true);
             });
         case NAME_OPERATION_COPY:
-            s.message = "Copying [" + s.chartToUpdate.name + " -> " + s.newName + "] ...";
-
             const toCopy = { ...s.chartToUpdate };
             toCopy.id = -1;
             toCopy.name = s.newName;

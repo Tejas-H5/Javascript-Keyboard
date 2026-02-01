@@ -268,6 +268,12 @@ export function imFlex(c: ImCache, ratio = 1) {
     }
 }
 
+export function imFlexWrap(c: ImCache) {
+    if (isFirstishRender(c)) {
+        elSetStyle(c, "flexWrap", "wrap");
+    }
+}
+
 export function imGap(c: ImCache, val = 0, units: SizeUnits) {
     const valChanged = imMemo(c, val);
     const unitsChanged = imMemo(c, units);

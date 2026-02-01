@@ -2,7 +2,7 @@ import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayoutBegin, imLayoutEnd, imZI
 import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
 import { debugFlags } from "src/debug-flags";
-import { getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { DataRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/data-repository";
 import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
 import {
@@ -90,14 +90,18 @@ export function playKeyPressForUI(ctx: GlobalContext, normalizedPitch: number) {
     const idx = Math.floor(normalizedPitch * (ctx.keyboard.flatKeys.length - 1));
     const key = ctx.keyboard.flatKeys[idx]; assert(!!key);
 
-    updatePlaySettings(s => s.isUserDriven = false);
-    schedulePlayback([{
-        time: 0, timeEnd: 10,
-        keyId: key.index,
-        noteId: key.noteId,
-    }]);
+    const settings = getCurrentPlaySettings();
+    settings.isUserDriven = false;
+    updatePlaySettings();
+
+    schedulePlayback({
+        keys: [{ time: 0, timeEnd: 10, keyId: key.index, noteId: key.noteId, }],
+        timeEnd: 10,
+    });
 }
 
+// NOTE: there should always at least be 1 bundled chart, so you should never need to 
+// clear the current metadata to `null`
 export function setCurrentChartMeta(
     ctx: GlobalContext,
     metadata: SequencerChartMetadata,

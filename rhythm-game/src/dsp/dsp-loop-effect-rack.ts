@@ -83,7 +83,9 @@ export type RegisterIdxUi = {
 
     // These are more like recommendations that UI can use to make itself more useable.
     // The UI could also choose to ignore these values.
-    _defaultValue: number; _max: number; _min: number; _name: string;
+    _defaultValue: number; _max: number; _min: number; 
+    // NOTE: this should never be empty - otherwise the user has no way to click on the associated UI
+    _name: string;
 };
 
 export function newRegisterIdxUi(
@@ -141,6 +143,11 @@ export type EffectRackOscillator = {
     frequencyUI:     RegisterIdxUi;
     frequencyMultUI: RegisterIdxUi;
     offsetUI:        RegisterIdxUi;
+
+    // TODO: remove unison from here, make a second oscilator based on the note
+    unisonCountUi:  RegisterIdxUi;
+    unisionWidthUi: RegisterIdxUi;
+    unisonMixUi:    RegisterIdxUi;
 };
 
 export function newEffectRackOscillator(): EffectRackOscillator {
@@ -157,6 +164,10 @@ export function newEffectRackOscillator(): EffectRackOscillator {
         frequencyUI:     newRegisterIdxUi("f",      { regIdx: REG_IDX_KEY_FREQUENCY }, 0, 20_000),
         frequencyMultUI: newRegisterIdxUi("fmult",  { value: 1 }, 0, 1_000_000),
         offsetUI:        newRegisterIdxUi("offset", { value: 0 }, -2, 2), 
+
+        unisonCountUi:  newRegisterIdxUi("voices", { value: 1 }, 0, 100),
+        unisionWidthUi: newRegisterIdxUi("detune", { value: 0.1 }, 0, 1),
+        unisonMixUi:    newRegisterIdxUi("mix", { value: 0.5 }, 0, 1),
     };
 }
 
@@ -284,6 +295,9 @@ export type EffectRackDelay = {
 
     signalUi: RegisterIdxUi;
     secondsUi: RegisterIdxUi;
+
+    originalUi: RegisterIdxUi;
+    delayedUi: RegisterIdxUi;
 }
 
 export function newEffectRackDelay(): EffectRackDelay {
@@ -293,8 +307,10 @@ export function newEffectRackDelay(): EffectRackDelay {
         _sampleBuffer: -1 as BufferIdx,
         _idx: asRegisterIdx(0),
 
-        signalUi: newRegisterIdxUi("signal", { value: 0 }),
-        secondsUi: newRegisterIdxUi("seconds", { value: 0.1 }, 0, 1),
+        signalUi:   newRegisterIdxUi("signal", { value: 0 }),
+        secondsUi:  newRegisterIdxUi("seconds", { value: 0.1 }, 0, 1),
+        originalUi: newRegisterIdxUi("original", { value: 0.5 }, 0, 1),
+        delayedUi:  newRegisterIdxUi("delayed", { value: 0.5 }, 0, 1),
     };
 }
 
@@ -882,6 +898,10 @@ export function compileEffectRack(e: EffectRack) {
                 allocateRegisterIdxIfNeeded(e, wave.frequencyUI, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, wave.frequencyMultUI, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, wave.offsetUI, remap, effectPos);
+
+                allocateRegisterIdxIfNeeded(e, wave.unisonCountUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, wave.unisionWidthUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, wave.unisonMixUi, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effectValue;
@@ -942,6 +962,8 @@ export function compileEffectRack(e: EffectRack) {
 
                 allocateRegisterIdxIfNeeded(e, delay.signalUi, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, delay.secondsUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, delay.originalUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, delay.delayedUi, remap, effectPos);
             } break;
             case EFFECT_RACK_ITEM__BIQUAD_FILTER: {
                 const filter = effectValue;
@@ -1103,6 +1125,16 @@ export function updateRegisters(
     }
 }
 
+export function evaluateWave(waveType: EffectRackOscillatorWaveType | number, t: number) {
+    switch (waveType) {
+        case OSC_WAVE__SIN:       return sin(t);
+        case OSC_WAVE__SQUARE:    return square(t);
+        case OSC_WAVE__TRIANGLE:  return triangle(t);
+        case OSC_WAVE__SAWTOOTH:  return sawtooth(t);
+        case OSC_WAVE__SAWTOOTH2: return sawtooth(t);
+    }
+    return 0;
+}
 
 // GOAT website: https://www.dspforaudioprogramming.com
 // Simplified my oscillator code so much damn.
@@ -1156,13 +1188,26 @@ export function computeEffectRackIteration(
                     const t = r(re, wave._t);
                     const t2 = t + r(re, wave.phaseUI._regIdx);
 
-                    switch (wave.waveType) {
-                        case OSC_WAVE__SIN:      value += sin(t2);      break;
-                        case OSC_WAVE__SQUARE:   value += square(t2);   break;
-                        case OSC_WAVE__TRIANGLE: value += triangle(t2); break;
-                        case OSC_WAVE__SAWTOOTH: value += sawtooth(t2); break;
-                        case OSC_WAVE__SAWTOOTH2: value -= sawtooth(t2); break;
+                    value = evaluateWave(wave.waveType, t2);
+
+                    const unisonCount = (r(re, wave.unisonCountUi._regIdx) - 1) / 2;
+                    const unisonWidth = r(re, wave.unisionWidthUi._regIdx);
+                    const unisonMix   = r(re, wave.unisonMixUi._regIdx);
+
+                    let unisonVoices = 0;
+                    let norm = 1;
+                    for (let i = 0; i < unisonCount; i++) {
+                        const angle = t2 * (1 + (i + 1) * unisonWidth) + (i + 1) / unisonCount;
+                        unisonVoices += evaluateWave(wave.waveType, angle);
+                        norm += 1;
                     }
+                    for (let i = 0; i < unisonCount; i++) {
+                        const angle = t2 / (1 + ((i + 1) * unisonWidth)) + (i + 1) / unisonCount;
+                        unisonVoices += evaluateWave(wave.waveType, angle);
+                        norm += 1;
+                    }
+
+                    value = value * unisonMix + (unisonVoices / norm) * (1 - unisonMix);
 
                     w(
                         re,
@@ -1304,8 +1349,10 @@ export function computeEffectRackIteration(
                 const delay = effectValue;
 
                 if (delay._sampleBuffer !== null) {
-                    const signal  = r(re, delay.signalUi._regIdx);
-                    const seconds = r(re, delay.secondsUi._regIdx);
+                    const signal      = r(re, delay.signalUi._regIdx);
+                    const seconds     = r(re, delay.secondsUi._regIdx);
+                    const mixOriginal = r(re, delay.originalUi._regIdx);
+                    const mixDelayed  = r(re, delay.delayedUi._regIdx);
 
                     let idx = r(re, delay._idx);
 
@@ -1316,18 +1363,22 @@ export function computeEffectRackIteration(
                         realLength = sampleBuffer.length; 
                     }
 
+                    let delayedValue;
+
                     if (realLength === 0) {
-                        value = signal;
+                        delayedValue = signal;
                     } else {
                         if (idx >= sampleBuffer.length) {
                             // Shouldn't happen, but dont want to take any chances...
                             idx = sampleBuffer.length - 1;
                         }
                         // value we wrote several thousand samples ago. lets grab it before writing to it.
-                        value = sampleBuffer[idx];
+                        delayedValue = sampleBuffer[idx];
                         sampleBuffer[idx] = signal;
                         idx = (idx + 1) % realLength;
                     }
+
+                    value = delayedValue * mixDelayed + signal * mixOriginal;
 
                     w(re, delay._idx, idx);
                 }
@@ -1668,22 +1719,26 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                     OSC_WAVE__SAWTOOTH2
                 ], "EffectRackOscillatorWaveType"),
 
-                amplitudeUI: regUiUnmarshaller,
-                phaseUI: regUiUnmarshaller,
-                frequencyUI: regUiUnmarshaller,
+                amplitudeUI:     regUiUnmarshaller,
+                phaseUI:         regUiUnmarshaller,
+                frequencyUI:     regUiUnmarshaller,
                 frequencyMultUI: regUiUnmarshaller,
-                offsetUI: regUiUnmarshaller,
+                offsetUI:        regUiUnmarshaller,
+
+                unisionWidthUi: regUiUnmarshaller,
+                unisonCountUi:  regUiUnmarshaller,
+                unisonMixUi:    regUiUnmarshaller,
             });
         } break;
         case EFFECT_RACK_ITEM__ENVELOPE: {
             value = unmarshalObject(o, newEffectRackEnvelope(), {
                 type: asIs,
 
-                signalUI: regUiUnmarshaller,
-                attackUI: regUiUnmarshaller,
-                decayUI: regUiUnmarshaller,
-                sustainUI: regUiUnmarshaller,
-                releaseUI: regUiUnmarshaller,
+                signalUI:     regUiUnmarshaller,
+                attackUI:     regUiUnmarshaller,
+                decayUI:      regUiUnmarshaller,
+                sustainUI:    regUiUnmarshaller,
+                releaseUI:    regUiUnmarshaller,
                 toModulateUI: regUiUnmarshaller,
             });
         } break;
@@ -1731,8 +1786,10 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
             value = unmarshalObject(o, newEffectRackDelay(), {
                 type: asIs,
 
-                signalUi: regUiUnmarshaller,
-                secondsUi: regUiUnmarshaller,
+                signalUi:   regUiUnmarshaller,
+                secondsUi:  regUiUnmarshaller,
+                originalUi: regUiUnmarshaller,
+                delayedUi:  regUiUnmarshaller,
             });
         } break;
         case EFFECT_RACK_ITEM__BIQUAD_FILTER: {

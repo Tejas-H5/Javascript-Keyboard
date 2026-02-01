@@ -1,6 +1,7 @@
-import { isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, setPlaybackSpeed, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { getCurrentPlaySettings, getPlaybackSpeed, isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, setPlaybackSpeed, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
 import {
+    FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxAfter,
     getChartDurationInBeats,
     getItemEndTime,
@@ -13,7 +14,7 @@ import {
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
 } from "src/state/sequencer-chart";
-import { getCurrentPlayingBeats, hasRangeSelection, setSequencerPlaybackSpeed, } from "src/state/sequencer-state";
+import { getCurrentPlayingBeats, hasRangeSelection, SequencerState, setSequencerPlaybackSpeed, } from "src/state/sequencer-state";
 import { unreachable } from "src/utils/assert";
 import { GlobalContext } from "src/views/app";
 
@@ -21,6 +22,12 @@ export function stopPlayback({ sequencer }: GlobalContext, stopOnCursor = false)
     clearTimeout(sequencer.playingTimeout);
     releaseAllKeys();
 
+    setSequencerStoppedPlaying(sequencer, stopOnCursor);
+
+    schedulePlayback({ keys: [], timeEnd: 0 });
+}
+
+export function setSequencerStoppedPlaying(sequencer: SequencerState, stopOnCursor = false) {
     if (stopOnCursor) {
         const playingBeats = getCurrentPlayingBeats(sequencer);
         sequencer.cursor = Math.floor(playingBeats);
@@ -32,7 +39,6 @@ export function stopPlayback({ sequencer }: GlobalContext, stopOnCursor = false)
     sequencer.startPlayingTime = 0;
     sequencer.isPlaying = false;
     sequencer.scheduledKeyPresses = [];
-    schedulePlayback([]);
 }
 
 export function playFromLastMeasure(ctx: GlobalContext, options: PlayOptions = {}) {
@@ -44,14 +50,11 @@ export function playFromLastMeasure(ctx: GlobalContext, options: PlayOptions = {
         return;
     }
 
-    // Play from the last measure till the end
+    // Play from the last measure till the cursor
     const cursorStart = sequencer.cursor;
     const lastMeasureStart = getLastMeasureBeats(chart, cursorStart);
 
-    // +1 for good luck - it's used to find a bound that must alawys include the last note,
-    // that we can play every note
-    const endBeats = getChartDurationInBeats(chart) + 1;
-    startPlaying(ctx, lastMeasureStart, endBeats, options);
+    startPlaying(ctx, lastMeasureStart, sequencer.cursor, options);
 }
 
 export function playFromCursor(ctx: GlobalContext, options: PlayOptions = {}) { 
@@ -63,7 +66,7 @@ export function playFromCursor(ctx: GlobalContext, options: PlayOptions = {}) {
     }
 
     const cursorStart = sequencer.cursor;
-    const endBeats = itemEnd(chart.timeline[chart.timeline.length - 1]);
+    const endBeats = itemEnd(chart.timeline[chart.timeline.length - 1]) + FRACTIONAL_UNITS_PER_BEAT;
     startPlaying(ctx, cursorStart, endBeats, options);
 }
 
@@ -132,6 +135,7 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
 
     const timeline = chart.timeline;
     const startTime = getTimeForBeats(chart, startBeats);
+    const endTime   = getTimeForBeats(chart, endBeats);
 
     // schedule the keys that need to be pressed, and then send them to the DSP loop to play them.
 
@@ -165,8 +169,11 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
     sequencer.isPlaying = true;
     sequencer.startBeats = startBeats;
 
-    updatePlaySettings(s => s.isUserDriven = isUserDriven);
-    schedulePlayback(scheduledKeyPresses);
+    const playSettings = getCurrentPlaySettings();
+    playSettings.isUserDriven = isUserDriven;
+    updatePlaySettings();
+
+    schedulePlayback({ keys: scheduledKeyPresses, timeEnd: endTime });
 }
 
 function pushNotePress(
@@ -205,6 +212,14 @@ export function previewNotes(ctx: GlobalContext, notes: NoteItem[]) {
         pushNotePress(scheduledKeyPresses, keyboard, note, minTime);
     }
 
-    updatePlaySettings(s => s.isUserDriven = false);
-    schedulePlayback(scheduledKeyPresses);
+    let endTime = 0;
+    if (scheduledKeyPresses.length > 0) {
+        endTime = scheduledKeyPresses[scheduledKeyPresses.length - 1].timeEnd;
+    }
+
+    const playSettings = getCurrentPlaySettings();
+    playSettings.isUserDriven = false;
+    updatePlaySettings();
+
+    schedulePlayback({ keys: scheduledKeyPresses, timeEnd: endTime });
 }

@@ -19,7 +19,8 @@ import {
     imMemo,
     imSet,
     inlineTypeId,
-    recursivelyEnumerateEntries
+    recursivelyEnumerateEntries,
+    rerenderImCache
 } from "./im-core";
 import { KeysState, newKeysState, updateKeysState } from "./key-state";
 
@@ -615,7 +616,7 @@ export function imOn<K extends keyof HTMLElementEventMap>(
                 // Buffering the events means that we will miss the opportunity to prevent the default event.
 
                 val.eventValue = e;
-                c[CACHE_RERENDER_FN]();
+                rerenderImCache(c);
             },
         };
         state = imSet(c, val);
@@ -942,7 +943,7 @@ export function imTrackSize(c: ImCache) {
                 }
 
                 if (self.resized === true) {
-                    c[CACHE_RERENDER_FN]();
+                    rerenderImCache(c);
                     self.resized = false;
                 }
             })

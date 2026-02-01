@@ -41,13 +41,13 @@ export type DebugFlags = {
 };
 
 export const debugFlags: DebugFlags = {
-    testEditView: OFF,
+    testEditView: ON,
     testLoadSave: OFF,
 
     testEditViewExport:  OFF,
     testEditViewImport:  OFF,
     testCopyModal:       OFF,
-    testChart:           "Good old days",
+    testChart:           "Geostationary orbit",
     debuUndoBuffer:      OFF,
     testChartSelectView: OFF,
 
@@ -61,7 +61,7 @@ export const debugFlags: DebugFlags = {
     testSoundLab: OFF,
     testSoundLabWaveEditor: ON,
     testSoundLabAllEffectRackEffects: OFF,
-    testSoundLabLoadPreset: "design",
+    testSoundLabLoadPreset: "edm pluck 4",
 
     testAsync: OFF,
     testAsyncALittle: OFF,

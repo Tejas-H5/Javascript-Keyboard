@@ -77,7 +77,7 @@ export function getDspLoopClassUrl(): string {
                 // so that the UI will update accordingly. It's not so important for when we release things though.
                 if (s.trackPlayback.shouldSendUiUpdateSignals) {
                     s.trackPlayback.shouldSendUiUpdateSignals = false;
-                    this.sendCurrentPlayingMessageBack(s.trackPlayback.shouldSendUiUpdateSignals);
+                    this.sendCurrentPlayingMessageBack(false);
                 }
 
                 return result;
@@ -86,8 +86,11 @@ export function getDspLoopClassUrl(): string {
             // This is expensive, so don't call too often
             sendCurrentPlayingMessageBack(signals = true) {
                 const payload = getMessageForMainThread(this.s, signals);
+
                 // @ts-expect-error this.port is valid on AudioWorkletProcessor
-                this.port.postMessage(payload);
+                const port = this.port;
+
+                port.postMessage(payload);
             }
 
             onMessage(e: DspLoopMessage) {

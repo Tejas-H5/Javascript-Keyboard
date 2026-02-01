@@ -14,6 +14,7 @@ import {
     getLastMeasureBeats,
     getNextMeasureBeats,
     getPlaybackDuration,
+    isReadonlyChart,
     newTimelineItemBpmChange,
     newTimelineItemMeasure,
     newTimelineItemNote,
@@ -384,7 +385,10 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
 
     recomputeState(sequencer);
 
-    if (imMemo(c, sequencer._currentChart._lastUpdated)) {
+    if (
+        sequencer._currentChart._lastUpdated !== sequencer._currentChart._lastUpdatedWithoutSave && 
+        !isReadonlyChart(sequencer._currentChart)
+    ) {
         s.chartSaveTimerSeconds = CHART_SAVE_DEBOUNCE_SECONDS;
     }
 

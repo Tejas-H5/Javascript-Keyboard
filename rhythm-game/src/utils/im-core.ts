@@ -1,4 +1,4 @@
-// IM-CORE 1.067
+// IM-CORE 1.068
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 // Majority of the last changes have just been updates to the documentation though
@@ -275,6 +275,10 @@ export function getFpsCounterState(c: ImCache): FpsCounterState {
     return c[CACHE_FPS_COUNTER_STATE];
 }
 
+export function rerenderImCache(c: ImCache) {
+    c[CACHE_RERENDER_FN]();
+}
+
 function noOp() {}
 
 export function imCacheEnd(c: ImCache) {
@@ -294,7 +298,7 @@ export function imCacheEnd(c: ImCache) {
     if (needsRerender === true) {
         // Other things need to rerender the cache long after we've done a render. Mainly, DOM UI events - 
         // once we get the event, we trigger a full rerender, and pull the event out of state and use it's result in the process.
-        c[CACHE_RERENDER_FN]();
+        rerenderImCache(c);
 
         // Some things may occur while we're rendering the framework that require is to immediately rerender
         // our components to not have a stale UI. Those events will set this flag to true, so that

@@ -14,6 +14,7 @@ export type SequencerChart = {
 
     _savedStatus: SequencerChartSavedStatus;
     _lastUpdated: number;
+    _lastUpdatedWithoutSave: number;
     _tempBuffer: TimelineItem[];
     _undoBuffer: { 
         enabled: boolean;
@@ -60,6 +61,7 @@ export function newChart(name: string = ""): SequencerChart {
 
         _savedStatus: CHART_STATUS_UNSAVED,
         _lastUpdated: 0,
+        _lastUpdatedWithoutSave: 0,
         _tempBuffer: [],
         _undoBuffer: { items: [], idx: -1, enabled: true }
     }
@@ -351,6 +353,10 @@ export function isNoteInFilter(notesFilter: Set<number> | null, item: TimelineIt
 
 
 export function sequencerChartInsertItems(chart: SequencerChart, itemsToInsert: TimelineItem[], notesFilter: Set<number> | null) {
+    if (isReadonlyChart(chart)) return;
+
+    chart._lastUpdated = Date.now();
+
     itemsToInsert = itemsToInsert.filter(item => !isDegenerateItem(item) && isNoteInFilter(notesFilter, item));
 
     if (itemsToInsert.length === 0) return;
@@ -437,6 +443,10 @@ function isDegenerateItem(item: TimelineItem) {
  * When we remove the items from the timeline, in theory, nothing else is referencing those items.
  */
 export function sequencerChartRemoveItems(chart: SequencerChart, items: TimelineItem[], notesFilter: Set<number> | null) {
+    if (isReadonlyChart(chart)) return;
+
+    chart._lastUpdated = Date.now();
+
     items = items.filter(item => isNoteInFilter(notesFilter, item));
 
     if (items.length === 0) return [];
@@ -475,7 +485,6 @@ function reindexTimeline(timeline: TimelineItem[]) {
 }
 
 export function sortAndIndexTimeline(chart: SequencerChart) {
-    chart._lastUpdated = Date.now();
     const timeline = chart.timeline;
 
     timeline.sort((a, b) => {

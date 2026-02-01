@@ -1,7 +1,7 @@
 import { COL, imAbsolute, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
-import { ImCache, imState, isFirstishRender } from "src/utils/im-core";
+import { ImCache, imState, isFirstishRender, rerenderImCache } from "src/utils/im-core";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
 
 export type ContextMenuState = {
@@ -94,14 +94,18 @@ export function imContextMenuItemEnd(c: ImCache) {
     } imLayoutEnd(c);
 }
 
-export function openContextMenu(s: ContextMenuState, x: number, y: number) {
+export function openContextMenu(c: ImCache, s: ContextMenuState, x: number, y: number) {
     s.open = true;
     s.position.x = x;
     s.position.y = y;
+
+    // Allows the context menu to measure and reposition itself if it's overflowing the window, 
+    // without the  1 frame delay. TODO: think of a better way to achieve this.
+    rerenderImCache(c);
 }
 
-export function openContextMenuAtMouse(s: ContextMenuState) {
+export function openContextMenuAtMouse(c: ImCache, s: ContextMenuState) {
     const mouse = getGlobalEventSystem().mouse;
-    openContextMenu(s, mouse.X, mouse.Y);
+    openContextMenu(c, s, mouse.X, mouse.Y);
 }
 

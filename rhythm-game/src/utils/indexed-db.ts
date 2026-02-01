@@ -63,7 +63,7 @@ export type MetadataPairTableDef<TData, TMetadata> = {
     data: SingleTableDefiniton<TData>; 
     metadata: SingleTableDefiniton<TMetadata>
 
-    getMetadata: (data: TData) => TMetadata;
+    toMetadata: (data: TData) => TMetadata;
     loadedMetadata: TMetadata[];
     loadedMetadataLoaded: boolean;
 };
@@ -378,7 +378,7 @@ export function newDataMetadataTablePairDefinition<TData, TMetadata>(
     return {
         data:           dataTable,
         metadata:       metadataTable,
-        getMetadata:    getMetadata,
+        toMetadata:    getMetadata,
         loadedMetadata: [],
         loadedMetadataLoaded: false,
     };
@@ -432,8 +432,9 @@ export function saveData<TData, TMetadata>(
 ): ACR {
     const id = newData[tables.data.keyPath] as ValidKey;
 
-    const newMetadata = tables.getMetadata(newData);
+    const newMetadata = tables.toMetadata(newData);
     const idx         = tables.loadedMetadata.findIndex(m => m[tables.metadata.keyPath] === id);
+
     assert(idx !== -1); // How tf did they get this metadata otherwise ?
 
     const existingDataResult     = asyncResult<TData>(onGet);
@@ -459,7 +460,15 @@ export function saveData<TData, TMetadata>(
         return putMany(tx, [
             writeRequest(tables.data, newData),
             writeRequest(tables.metadata, newMetadata),
-        ], cb);
+        ], (val, err) => {
+            if (!val) return cb(val, err);
+
+            for (const k in newMetadata) {
+                tables.loadedMetadata[idx][k] = newMetadata[k];
+            }
+
+            return cb(true);
+        });
     }
 }
 
@@ -469,7 +478,7 @@ export function createData<TData, TMetadata>(
     newData: TData,
     cb: ACB<TMetadata>,
 ): ACR {
-    const metadata = tables.getMetadata(newData);
+    const metadata = tables.toMetadata(newData);
     return createOne(tx, tables.metadata, metadata, (id, err) => {
         if (id === undefined || err) return cb(undefined, err);
 
@@ -486,10 +495,11 @@ export function createData<TData, TMetadata>(
                 .loadedMetadata
                 .findIndex(val => val[tables.metadata.keyPath] === metadata[tables.metadata.keyPath]);
 
-            if (idx === -1) {
-                tables.loadedMetadata.push(metadata);
+            if (idx !== -1) {
+                return cb(undefined, newError("Something else already created this data while we were creating it !!!"));
             }
 
+            tables.loadedMetadata.push(metadata);
             return cb(metadata);
         });
 
