@@ -293,7 +293,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 }
             }
 
-            if (!sequencer.isPlaying) {
+            if (!sequencer.playingId) {
                 previewNotes(ctx, s.notesToPlay);
             }
         }
@@ -330,7 +330,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             imLayoutBegin(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
 
             if (imIf(c) && !loadSaveModal._open) {
-                if (imIf(c) && sequencer.isPlaying) {
+                if (imIf(c) && sequencer.playingId) {
                     imLayoutBegin(c, ROW); imGap(c, 20, PX); {
                         imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
                             const speed = getPlaybackSpeed();

@@ -131,7 +131,7 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
 
                 handled = true;
             } else if (key === "Escape" || isLoadSavePressed) {
-                if (ctx.sequencer.isPlaying) {
+                if (ctx.sequencer.playingId) {
                     stopPlayback(ctx, true);
                 } else if (
                     s.chartBeforeOpenMeta &&

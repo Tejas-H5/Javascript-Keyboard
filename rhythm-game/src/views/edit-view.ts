@@ -231,19 +231,24 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
     }
 
     if (isPlayPausePressed) {
-        if (sequencer.isPlaying) {
-            stopPlayback(ctx, true);
-            return true;
-        }
+        let startedPlaying = false;
 
         const isUserDriven = ui.currentView === APP_VIEW_PLAY_CHART;
         if (shiftPressed) {
             playFromLastMeasure(ctx, { isUserDriven });
+            startedPlaying = true;
         } else {
-            playFromCursor(ctx, { isUserDriven });
+            if (sequencer.playingId) {
+                stopPlayback(ctx, true);
+            } else {
+                playFromCursor(ctx, { isUserDriven });
+                startedPlaying = true;
+            }
         }
 
-        setPlaybackSpeed(ctrlPressed ? 0.5 : 1);
+        if (startedPlaying) {
+            setPlaybackSpeed(ctrlPressed ? 0.5 : 1);
+        }
 
         return true;
     }
@@ -319,7 +324,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
     }
 
     if (key === "Escape") {
-        if (sequencer.isPlaying) {
+        if (sequencer.playingId) {
             stopPlayback(ctx);
             return true;
         }
@@ -386,9 +391,10 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
     recomputeState(sequencer);
 
     if (
-        sequencer._currentChart._lastUpdated !== sequencer._currentChart._lastUpdatedWithoutSave && 
+        sequencer._currentChart._lastUpdated !== sequencer._currentChart._lastUpdatedWithSave && 
         !isReadonlyChart(sequencer._currentChart)
     ) {
+        sequencer._currentChart._lastUpdatedWithSave = sequencer._currentChart._lastUpdated;
         s.chartSaveTimerSeconds = CHART_SAVE_DEBOUNCE_SECONDS;
     }
 

@@ -13,8 +13,9 @@ export type ScheduledKeyPress = {
 }
 
 export type ScheduledKeyPresses = {
-    keys: ScheduledKeyPress[];
-    timeEnd: number;
+    keys:      ScheduledKeyPress[];
+    timeEnd:   number;
+    playingId: number;
 }
 
 const audioCtx = new AudioContext()
@@ -75,7 +76,7 @@ let dspPort: MessagePort | undefined;
 const dspInfo: DspInfo = { 
     currentlyPlaying: [],
     scheduledPlaybackTime: 0,
-    isStopped: false,
+    stoppedId: 0,
     isPaused: false,
     sampleRate: 1,
 };
@@ -289,8 +290,8 @@ export async function initDspLoopInterface({
             rerender = true;
         }
 
-        if (data.isStopped !== undefined) {
-            dspInfo.isStopped = data.isStopped;
+        if (data.stoppedId !== undefined) {
+            dspInfo.stoppedId = data.stoppedId;
         }
 
         if (data.isPaused !== undefined) {

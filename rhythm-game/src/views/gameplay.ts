@@ -1033,7 +1033,7 @@ function updatePracticeMode(
         const thisMeasure = arrayAt(measures, practiceMode.nextMeasureIdx - 1);
         const nextMeasure = arrayAt(measures, practiceMode.nextMeasureIdx);
         let thisMeasureBeat = thisMeasure ? thisMeasure.start : 0;
-        let nextMeasureBeat = nextMeasure ? nextMeasure.start : measures[measures.length - 1].start;
+        let nextMeasureBeat = nextMeasure ? nextMeasure.start : getChartDurationInBeats(chart);
 
         practiceMode.maxScoreThisMeasure = getBestPossibleScore(chart, thisMeasureBeat, nextMeasureBeat);
     }

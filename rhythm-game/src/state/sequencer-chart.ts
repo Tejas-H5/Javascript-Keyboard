@@ -14,7 +14,7 @@ export type SequencerChart = {
 
     _savedStatus: SequencerChartSavedStatus;
     _lastUpdated: number;
-    _lastUpdatedWithoutSave: number;
+    _lastUpdatedWithSave: number;
     _tempBuffer: TimelineItem[];
     _undoBuffer: { 
         enabled: boolean;
@@ -61,7 +61,7 @@ export function newChart(name: string = ""): SequencerChart {
 
         _savedStatus: CHART_STATUS_UNSAVED,
         _lastUpdated: 0,
-        _lastUpdatedWithoutSave: 0,
+        _lastUpdatedWithSave: 0,
         _tempBuffer: [],
         _undoBuffer: { items: [], idx: -1, enabled: true }
     }
@@ -442,8 +442,8 @@ function isDegenerateItem(item: TimelineItem) {
  * {@link sequencerChartInsertItems}, which also copies items to the undo buffer. 
  * When we remove the items from the timeline, in theory, nothing else is referencing those items.
  */
-export function sequencerChartRemoveItems(chart: SequencerChart, items: TimelineItem[], notesFilter: Set<number> | null) {
-    if (isReadonlyChart(chart)) return;
+export function sequencerChartRemoveItems(chart: SequencerChart, items: TimelineItem[], notesFilter: Set<number> | null): TimelineItem[] {
+    if (isReadonlyChart(chart)) return[];
 
     chart._lastUpdated = Date.now();
 

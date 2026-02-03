@@ -19,7 +19,7 @@ import {
     TIMELINE_ITEM_MEASURE,
     undoEdit
 } from "src/state/sequencer-chart";
-import { SequencerState, setSequencerChart } from "src/state/sequencer-state";
+import { getNextPlayingId, SequencerState, setSequencerChart } from "src/state/sequencer-state";
 import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state";
 import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests";
 import { filterInPlace } from "src/utils/array-utils";
@@ -97,6 +97,7 @@ export function playKeyPressForUI(ctx: GlobalContext, normalizedPitch: number) {
     schedulePlayback({
         keys: [{ time: 0, timeEnd: 10, keyId: key.index, noteId: key.noteId, }],
         timeEnd: 10,
+        playingId: getNextPlayingId(),
     });
 }
 
@@ -309,7 +310,8 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
             case APP_VIEW_PLAY_CHART: {
                 playView.result = null;
 
-                assert(!!ctx.sequencer._currentChart);
+                const currentChart = ctx.sequencer._currentChart;
+                assert(!!currentChart);
                 ctx.gameplay = newGameplayState(ctx.keyboard, ctx.sequencer._currentChart)
 
                 // Testing results screen

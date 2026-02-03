@@ -9,7 +9,7 @@ import { lerp, max } from "src/utils/math-utils";
 import { getNoteFrequency } from "src/utils/music-theory-utils";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
 import { ScheduledKeyPress, ScheduledKeyPresses } from "./dsp-loop-interface";
-import { newEffectRack, newEffectRackRegisters, EffectRackRegisters, computeEffectRackIteration, serializeEffectRack, EffectRack, compileEffectRack }  from "./dsp-loop-effect-rack";
+import { newEffectRack, newEffectRackRegisters, EffectRackRegisters, computeEffectRackIteration, EffectRack, compileEffectRack }  from "./dsp-loop-effect-rack";
 
 type DspSynthParameters = {
     rack: EffectRack;
@@ -95,7 +95,7 @@ export type DspInfo = {
     // [keyId, signal strength, owner]
     currentlyPlaying: [keyId: number, signal: number, owner: number][];
     scheduledPlaybackTime: number; // the current time of the dsp, as last updated
-    isStopped: boolean;
+    stoppedId: number;
     isPaused: boolean;
     sampleRate: number;
 }
@@ -185,7 +185,7 @@ export function getMessageForMainThread(s: DspState, signals = true) {
 
     payload.scheduledPlaybackTime = s.trackPlayback.scheduledPlaybackTime;
     payload.isPaused              = s.trackPlayback.isPaused;
-    payload.isStopped             = s.trackPlayback.scheduleKeys === undefined;
+    payload.stoppedId             = s.trackPlayback.scheduleKeys === undefined ? s.trackPlayback.playingId : 0;
 
     return payload;
 }
@@ -208,7 +208,8 @@ export function newDspState(sampleRate: number): DspState {
         playSettings: newDspPlaySettings(),
         playingOscillators: [],
         trackPlayback: {
-            // set this to true to send a message back to the UI after all samples in the current loop are processed
+            // set this to non-zero to send a message back to the UI after all samples in the current loop are processed
+            playingId: 0,
             shouldSendUiUpdateSignals: false,
             scheduleKeys: undefined,
             scheduledKeysVolume: 1,
@@ -242,6 +243,7 @@ export type DspState = {
     playingOscillators: [number, PlayingOscillator][];
     trackPlayback: {
         shouldSendUiUpdateSignals: boolean;
+        playingId: number;
         scheduleKeys?: ScheduledKeyPresses;
         scheduledKeysVolume: number;
         scheduledKeysSpeed: number;
@@ -360,14 +362,21 @@ export function processSample(s: DspState, idx: number) {
 
         // stop playback once we've reached the last note or the scheduled end time, and
         // have finished playing all other notes
-        if (
-            (
-                trackPlayback.scheduledPlaybackCurrentIdx >= trackPlayback.scheduleKeys.keys.length ||
-                trackPlayback.scheduledPlaybackTime > trackPlayback.scheduleKeys.timeEnd
-            )
-            && trackPlayback.scheduedKeysCurrentlyPlaying.length === 0
-        ) {
-            stopPlayingScheduledKeys(s);
+        const playedAllScheduledKeys = trackPlayback.scheduledPlaybackCurrentIdx >= trackPlayback.scheduleKeys.keys.length;
+        if (playedAllScheduledKeys) {
+            const playedForScheduledDuration = trackPlayback.scheduledPlaybackTime > trackPlayback.scheduleKeys.timeEnd;
+            if (playedForScheduledDuration) {
+                const playedAllKeys = trackPlayback.scheduedKeysCurrentlyPlaying.length === 0;
+                if (playedAllKeys) {
+                    console.log(
+                        "stopped playing",
+                        trackPlayback.scheduledPlaybackCurrentIdx,
+                        trackPlayback.scheduledPlaybackTime,
+                        trackPlayback.scheduleKeys.timeEnd,
+                    );
+                    stopPlayingScheduledKeys(s);
+                }
+            }
         }
     }
 
@@ -539,6 +548,7 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
         if (e.scheduleKeys !== null && e.scheduleKeys.keys.length > 0) {
             console.log("new scheduled keys: ", e.scheduleKeys);
             trackPlayback.scheduleKeys = e.scheduleKeys;
+            trackPlayback.playingId = e.scheduleKeys.playingId;
             trackPlayback.isPaused = false;
             trackPlayback.scheduledPlaybackTime = 0;
             trackPlayback.scheduledPlaybackCurrentIdx = 0;

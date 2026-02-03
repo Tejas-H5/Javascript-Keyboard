@@ -28,6 +28,8 @@ export const EFFECT_RACK_ITEM__BIQUAD_FILTER_2 = 9;
 export const EFFECT_RACK_DELAY_MAX_DURATION_SECONDS = 1;
 export const EFFECT_RACK_ITEM__CONVOLUTION_FILTER_MAX_KERNEL_LENGTH = 1024; 
 export const EFFECT_RACK_REVERB_MAX_DURATION_SECONDS = 1;
+// These are very costly, esp. in JavaScript in a highly generic synth that won't benefit from compiler optimizations
+export const EFFECT_RACK_OSC_MAX_UNISON_VOICES = 16; 
 
 // export const EFFECT_RACK_DSP_INSTRUCTION_SET; this would be quite funny wouldnt it.
 
@@ -134,6 +136,7 @@ export type EffectRackOscillator = {
 
     // state:
     _t: RegisterIdx;
+    _unisonOscilators: BufferIdx;
 
     // It occurs to me that I cannot animate this ... yet ...
     waveType:    EffectRackOscillatorWaveType;
@@ -155,6 +158,7 @@ export function newEffectRackOscillator(): EffectRackOscillator {
         type: EFFECT_RACK_ITEM__OSCILLATOR,
 
         _t: asRegisterIdx(0),
+        _unisonOscilators: 0 as BufferIdx,
 
         waveType:    OSC_WAVE__SIN,
 
@@ -165,8 +169,8 @@ export function newEffectRackOscillator(): EffectRackOscillator {
         frequencyMultUI: newRegisterIdxUi("fmult",  { value: 1 }, 0, 1_000_000),
         offsetUI:        newRegisterIdxUi("offset", { value: 0 }, -2, 2), 
 
-        unisonCountUi:  newRegisterIdxUi("voices", { value: 1 }, 0, 100),
-        unisionWidthUi: newRegisterIdxUi("detune", { value: 0.1 }, 0, 1),
+        unisonCountUi:  newRegisterIdxUi("voices", { value: 1 }, 0, EFFECT_RACK_OSC_MAX_UNISON_VOICES),
+        unisionWidthUi: newRegisterIdxUi("detune", { value: 1 }, 0, 50000),
         unisonMixUi:    newRegisterIdxUi("mix", { value: 0.5 }, 0, 1),
     };
 }
@@ -891,7 +895,7 @@ export function compileEffectRack(e: EffectRack) {
             case EFFECT_RACK_ITEM__OSCILLATOR: {
                 const wave = effectValue;
                 wave._t = allocateRegisterIdx(e, 0, true);
-
+                wave._unisonOscilators = allocateBufferIdx(e, 0, EFFECT_RACK_OSC_MAX_UNISON_VOICES * 2);
 
                 allocateRegisterIdxIfNeeded(e, wave.phaseUI, remap, effectPos);
                 allocateRegisterIdxIfNeeded(e, wave.amplitudeUI, remap, effectPos);
@@ -1188,32 +1192,40 @@ export function computeEffectRackIteration(
                     const t = r(re, wave._t);
                     const t2 = t + r(re, wave.phaseUI._regIdx);
 
+                    const unisonOscillators = buff[wave._unisonOscilators].val;
+                    if (startedPressing) {
+                        for (let i = 0; i < unisonOscillators.length; i++) {
+                            unisonOscillators[i] = i / unisonOscillators.length;
+                        }
+                    }
+
                     value = evaluateWave(wave.waveType, t2);
 
-                    const unisonCount = (r(re, wave.unisonCountUi._regIdx) - 1) / 2;
-                    const unisonWidth = r(re, wave.unisionWidthUi._regIdx);
-                    const unisonMix   = r(re, wave.unisonMixUi._regIdx);
+                    const unisonCount    = (r(re, wave.unisonCountUi._regIdx) - 1);
+                    const unisonWidth    = r(re, wave.unisionWidthUi._regIdx);
+                    const unisonMix      = r(re, wave.unisonMixUi._regIdx);
+                    const totalFrequency = r(re, wave.frequencyUI._regIdx) * r(re, wave.frequencyMultUI._regIdx);
 
                     let unisonVoices = 0;
                     let norm = 1;
-                    for (let i = 0; i < unisonCount; i++) {
-                        const angle = t2 * (1 + (i + 1) * unisonWidth) + (i + 1) / unisonCount;
-                        unisonVoices += evaluateWave(wave.waveType, angle);
-                        norm += 1;
-                    }
-                    for (let i = 0; i < unisonCount; i++) {
-                        const angle = t2 / (1 + ((i + 1) * unisonWidth)) + (i + 1) / unisonCount;
-                        unisonVoices += evaluateWave(wave.waveType, angle);
-                        norm += 1;
-                    }
+                    if (unisonCount > 0) {
+                        norm = Math.log2(2 * unisonCount);
+                        for (let i = 1; i <= unisonCount; i++) {
+                            const angle = unisonOscillators[i];
+                            unisonVoices += evaluateWave(wave.waveType, angle);
 
+                            unisonOscillators[i] += dt * (totalFrequency - i * i * unisonWidth);
+                        }
+                        for (let i = 1; i <= unisonCount; i++) {
+                            const angle = unisonOscillators[i + EFFECT_RACK_OSC_MAX_UNISON_VOICES];
+                            unisonVoices += evaluateWave(wave.waveType, angle);
+
+                            unisonOscillators[i + EFFECT_RACK_OSC_MAX_UNISON_VOICES] += dt * (totalFrequency + i * i * unisonWidth);
+                        }
+                    }
                     value = value * unisonMix + (unisonVoices / norm) * (1 - unisonMix);
 
-                    w(
-                        re,
-                        wave._t,
-                        t + dt * r(re, wave.frequencyUI._regIdx) * r(re, wave.frequencyMultUI._regIdx)
-                    );
+                    w(re, wave._t, t + dt * totalFrequency);
                     value *= a;
                     value += r(re, wave.offsetUI._regIdx);
                 }

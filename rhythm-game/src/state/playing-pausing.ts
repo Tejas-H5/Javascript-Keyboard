@@ -1,9 +1,8 @@
-import { getCurrentPlaySettings, getPlaybackSpeed, isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, setPlaybackSpeed, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { getCurrentPlaySettings, isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, setPlaybackSpeed, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
 import {
     FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxAfter,
-    getChartDurationInBeats,
     getItemEndTime,
     getItemStartTime,
     getLastMeasureBeats,
@@ -12,9 +11,9 @@ import {
     NoteItem,
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
-    TIMELINE_ITEM_NOTE,
+    TIMELINE_ITEM_NOTE
 } from "src/state/sequencer-chart";
-import { getCurrentPlayingBeats, hasRangeSelection, SequencerState, setSequencerPlaybackSpeed, } from "src/state/sequencer-state";
+import { getCurrentPlayingBeats, getNextPlayingId, hasRangeSelection, SequencerState, setSequencerPlaybackSpeed, } from "src/state/sequencer-state";
 import { unreachable } from "src/utils/assert";
 import { GlobalContext } from "src/views/app";
 
@@ -24,7 +23,7 @@ export function stopPlayback({ sequencer }: GlobalContext, stopOnCursor = false)
 
     setSequencerStoppedPlaying(sequencer, stopOnCursor);
 
-    schedulePlayback({ keys: [], timeEnd: 0 });
+    schedulePlayback({ keys: [], timeEnd: 0, playingId: 0 });
 }
 
 export function setSequencerStoppedPlaying(sequencer: SequencerState, stopOnCursor = false) {
@@ -37,7 +36,7 @@ export function setSequencerStoppedPlaying(sequencer: SequencerState, stopOnCurs
     sequencer.reachedLastNote = false;
 
     sequencer.startPlayingTime = 0;
-    sequencer.isPlaying = false;
+    sequencer.playingId = 0;
     sequencer.scheduledKeyPresses = [];
 }
 
@@ -119,7 +118,7 @@ export function setGlobalPlaybackSpeed(ctx: GlobalContext, newSpeed: number) {
 export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: number, options: PlayOptions = {}) {
     const chart = ctx.sequencer._currentChart;
     if (endBeats === undefined) {
-        endBeats = getChartDurationInBeats(chart) + 1;
+        endBeats = Number.MAX_SAFE_INTEGER;
     }
 
     let { isUserDriven = false } = options;
@@ -166,14 +165,18 @@ export function startPlaying(ctx: GlobalContext, startBeats: number, endBeats?: 
 
     sequencer.startPlayingTime = performance.now();
     sequencer.pausedPlaybackTime = 0;
-    sequencer.isPlaying = true;
+    sequencer.playingId = getNextPlayingId();
     sequencer.startBeats = startBeats;
 
     const playSettings = getCurrentPlaySettings();
     playSettings.isUserDriven = isUserDriven;
     updatePlaySettings();
 
-    schedulePlayback({ keys: scheduledKeyPresses, timeEnd: endTime });
+    schedulePlayback({
+        keys: scheduledKeyPresses,
+        timeEnd: endTime - startTime,
+        playingId: sequencer.playingId
+    });
 }
 
 function pushNotePress(
@@ -221,5 +224,9 @@ export function previewNotes(ctx: GlobalContext, notes: NoteItem[]) {
     playSettings.isUserDriven = false;
     updatePlaySettings();
 
-    schedulePlayback({ keys: scheduledKeyPresses, timeEnd: endTime });
+    schedulePlayback({
+        keys: scheduledKeyPresses,
+        timeEnd: endTime,
+        playingId: getNextPlayingId(),
+    });
 }

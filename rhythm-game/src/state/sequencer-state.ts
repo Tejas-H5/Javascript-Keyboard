@@ -34,6 +34,16 @@ import { setSequencerStoppedPlaying } from "./playing-pausing";
 
 export const SEQUENCER_ROW_COLS = 8;
 
+// NOTE: probably schedulePlayback should return a PlayingId type.
+let playingId = 0;
+export function getNextPlayingId(): number {
+    let id = playingId++;
+    if (id > 10000000) {
+        id = 1;
+    }
+    return id;
+}
+
 export type SequencerState = {
     keyEditFilterModalOpen: boolean;
     notesFilter: Set<number>;
@@ -48,7 +58,11 @@ export type SequencerState = {
 
     currentHoveredTimelineItemIdx: number;
 
-    isPlaying: boolean;
+    // Used to handle a race condition between when the audio thread signals the main thread to stop playing, and
+    // when the main thread issues a new request to play something. Sometimes the stop signal comes in _after_ we have
+    // already started playing something new. If we simply say the id of the thing we stopped, then the main thread
+    // can simply check currentPlayId <= stoppedId, and if its not true, can just ignore the event because it has issued something new.
+    playingId: number;
     isPaused: boolean;
     playbackSpeed: number;
     startBeats: number;
@@ -294,7 +308,7 @@ export function newSequencerState(): SequencerState {
         cursor: 0,
         cursorSnap: FRACTIONAL_UNITS_PER_BEAT / 4,
 
-        isPlaying: false,
+        playingId: 0,
         isPaused: false,
         playbackSpeed: 1,
         startBeats: 0,
@@ -323,11 +337,17 @@ export function newSequencerState(): SequencerState {
 }
 
 export function syncPlayback(sequencer: SequencerState, dspInfo: DspInfo) {
-    if (!sequencer.isPlaying) {
+    if (!sequencer.playingId) {
         return;
     }
 
-    if (dspInfo.isStopped) {
+    if (dspInfo.stoppedId) {
+        if (dspInfo.stoppedId < sequencer.playingId) {
+            // We've started playing something else, this event can be ignored
+            console.log("[syncPlayback] ignored stop event");
+            return;
+        }
+
         setSequencerStoppedPlaying(sequencer);
         return;
     }
@@ -337,7 +357,7 @@ export function syncPlayback(sequencer: SequencerState, dspInfo: DspInfo) {
     sequencer.isPaused = dspInfo.isPaused;
     if (dspInfo.isPaused || (sequencer.playbackSpeed < 0.00001)) {
         sequencer.pausedPlaybackTime = dspInfo.scheduledPlaybackTime;
-    } else if (sequencer.isPlaying) {
+    } else if (sequencer.playingId) {
         // resync the current time with the DSP time. 
         // it's pretty imperceptible if we do it frequently enough, since it's only tens of ms.
         const difference = dspInfo.scheduledPlaybackTime - currentEstimatedScheduledTime;
@@ -346,7 +366,7 @@ export function syncPlayback(sequencer: SequencerState, dspInfo: DspInfo) {
 }
 
 function getCurrentPlayingTimeIntoScheduledKeys(state: SequencerState): number {
-    if (!state.isPlaying) return -10;
+    if (!state.playingId) return -10;
     return getCurrentPlayingTimeIntoScheduledKeysInternal(state);
 }
 
@@ -413,7 +433,7 @@ export function handleMovementAbsolute(
 }
 
 export function getSequencerPlaybackOrEditingCursor(sequencer: SequencerState) {
-    if (sequencer.isPlaying) {
+    if (sequencer.playingId) {
         // move to where we're currently playing at all times
         return getCurrentPlayingBeats(sequencer);
     } 
@@ -427,7 +447,7 @@ export function getSequencerPlaybackOrEditingCursor(sequencer: SequencerState) {
 
 
 export function getCurrentPlayingTimeIntoChart(sequencer: SequencerState): number {
-    if (!sequencer.isPlaying) {
+    if (!sequencer.playingId) {
         return -10;
     }
 
@@ -446,7 +466,7 @@ export function recomputeState(sequencer: SequencerState) {
 }
 
 export function isItemBeingPlayed(sequencer: SequencerState, item: TimelineItem): boolean {
-    if (!sequencer.isPlaying) {
+    if (sequencer.playingId === 0) {
         return false;
     }
 
