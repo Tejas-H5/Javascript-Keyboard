@@ -1664,11 +1664,13 @@ export function computeEffectRackIteration(
                 y1 = value;
 
                 if (Math.abs(w0) < 0.00001) {
-                    // zero the frequency. The filter tends towards -1 or 1 otherwise.
+                    // w0 is the zero frequency. The wave can get stuck at a particular amplitude, and
+                    // causes the filter to tend towards -1 or 1. The system can then never detect
+                    // that a key has been depressed. Using a derivative instead of the 0 signal also doesn't
+                    // seem to work very well.
                     y1 = 0.99 * y1;
                     y2 = 0.99 * y2;
                 }
-
 
                 w(re, filter._x1, x1);
                 w(re, filter._x2, x2);

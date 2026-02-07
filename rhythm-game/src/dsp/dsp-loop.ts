@@ -494,7 +494,8 @@ export function dspProcess(s: DspState, outputs: (Float32Array[][]) | (number[][
     {
         filterInPlace(s.playingOscillators, (osc) => {
             return osc[1].inputs.signal > OSC_GAIN_AWAKE_THRESHOLD ||
-                Math.abs(osc[1].state.value) > OSC_GAIN_AWAKE_THRESHOLD;
+                Math.abs(osc[1].state.value) > OSC_GAIN_AWAKE_THRESHOLD ||
+                Math.abs(osc[1].state.value - osc[1].state.lastValue) > OSC_GAIN_AWAKE_THRESHOLD;
         });
     }
 
