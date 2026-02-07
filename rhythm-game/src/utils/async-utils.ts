@@ -29,23 +29,42 @@
 // However, if I want my indexeddb abstraction to actually work alongside caching i.e not drop the transaction,
 // it will need to run instantly, i.e result in "Hello", "World". 
 //
-// But what I noticed when I was writing callback code is that it is somewhat similar to writing a good React UI component. 
-// It is easy to fall into similar pitfalls.
-// Assuming that writing good callback code is akin to writing good React UI code, and 'callback hell' 
-// is just the result of lack of discipline, there is no real reason to not just write callbacks (unless there 
-// is an easier alternative that is functionally the same, which promises are not as shown above).
+// The solution then, is to use callbacks. Ever time I have used them in the past, the code has always been
+// unreadable and unmaintainable. However, I was simply not as good a programmer at the time. Can I execute
+// callback-based programming better now? 
+// 
+// The answer is - surprisingly - yes. One of the main sources of misery with callbacks, is callback hell.
+// Each callback gets nested deeper and deeper. While this is the focal point of many async/await motivations,
+// I think the main problem with callbacks is that the error path and the normal path are split into two paths.
+// This means that every async call will double the number of callbacks that are required, which necessarily leads to complexity.
+// However, it is also possible to reuse the same callback for both the error path and the normal path,
+// which completely fixes this. 
 //
-// There are also a lot of limitations that callbacks have. 
-// Mainly, I can't do them in a for-loop. The for-loop can start them in parallel, but I can't do them sequentially.
-// I think I'll need to use deep recursion instead. And I'll pass on that.
+// Some other things like looping over things is also more cumbersome with callback-based code, so I've created some
+// helpers for that too.
+// It's also easy to forget to call a particular continuation, and just `return;` in a guard clause somewhere.
+// To make this harder to forget, I've added an `AsyncCallback` calback type that enforces a return type of
+// `AsyncCallbackResult` - this makes it much less likely to forget, but it is still possible.
+// It is a leaky abstraction in the exact same way as async/await is, and it heavily encourages
+// a style of programming that uses early returns. If you're dispatching an async action, 
+// chances are, you probably don't want any code to execute afterwards:
 //
-// Another source of callback hell is the then/catch thing. Splitting the error code from the result code
-// also causes the error while building the async DAG _and_ evaulating it synchronously as show above. 
-// I have found I can just combine the two into one, and the result is a lot more flexible.
+// ```ts
+// function asyncFunction(acb: ACB): ACR {
+//      // Placing the return here allows the reader to discard asyncFunction from their 'mental stack', 
+//      // and they can just focus on the callback logic after anotherAsyncFunction
+//      return anotherAsyncFunction((val, err) => {
+//          if (err) return acb(undefined, err);
 //
-// It actually occurs to me that I have no clue when a promise is actually scheduled to run...
-// Maybe this doesn't matter? Also if I want any hope of porting my utils/app to another language, 
-// it's probably best to not use promises...
+//          ... lots of processing
+// ```
+//
+// We are left with an indentation problem. I actually think this is fine.
+// Indentation does not look very nice, and it is something that programmers want to minimize.
+// They (me included) will rewrite entire functions to use early-returns where possible 
+// simply so that the code is less indented.
+// Within this callback paradigm, deeply indented callbacks are a sign of several async steps one
+// after another, and this is also something that we should aim to minimize where possible.
 
 import { filterInPlace } from "./array-utils";
 import { assert } from "./assert";
@@ -53,8 +72,8 @@ import { assert } from "./assert";
 /**
  * Also see {@link done}
  */
-export type AsyncCallback<T> = ((result: T | undefined, err?: unknown) => AsyncCallbackResult); 
-export type ACB<T> = AsyncCallback<T>;
+export type AsyncCallback<T = void> = ((result: T | undefined, err?: unknown) => AsyncCallbackResult); 
+export type ACB<T = void> = AsyncCallback<T>;
 export type ACR = AsyncCallbackResult;
 
 
@@ -187,34 +206,51 @@ export function parallelIterator<T>(
     return DONE;
 }
 
-export type AsyncResult<T> = { 
-    callback: AsyncCallback<T>;
-} & (
-    | {loaded: false; value: undefined; error: undefined;} 
-    | {loaded: true; value: T | undefined; error: any;} 
-);
+export type AsyncResult<T> = 
+    | { loaded: false; val: undefined; err: undefined; } 
+    | { loaded: true; val: T | undefined; err: any; };
 
-export function asyncResult<T = boolean>(continuation: () => AsyncCallbackResult): AsyncResult<T> {
-    const callback: AsyncCallback<T> = (value, err) => {
-        if (result.loaded) {
-            newError("Loaded the same result twice");
-            return CANCELLED;
-        }
+type AsyncFunction<T> = (cb: AsyncCallback<T>) => AsyncCallbackResult;
 
-        // @ts-expect-error it cannot understand my genius.
-        result.loaded = true; result.error = err; result.value = value;
-
-        return continuation();
-    }
-
+export function asyncResult<T>(asyncFn: AsyncFunction<T>, cb: ACB<AsyncResult<T>>): AsyncResult<T> {
     const result: AsyncResult<T> = {
-        callback: callback,
         loaded: false,
-        value: undefined,
-        error: undefined,
+        val: undefined,
+        err: undefined,
     };
 
+    asyncFn((val, err) => {
+        // @ts-expect-error it cannot understand my genius.
+        result.loaded = true; result.err = err; result.val = val;
+        return cb(result);
+    });
+
     return result;
+}
+
+export function asyncResultsAll<T extends unknown[]>(
+    asyncMethods: { [K in keyof T]: AsyncFunction<T[K]> },
+    resultsCallback: (results: { [K in keyof T]: AsyncResult<T[K]> }) => ACR,
+): ACR {
+    let finishedCount = 0;
+    const asyncResults = asyncMethods.map(fn => asyncResult(fn, onFinished));
+
+    return DISPATCHED_ELSEWHERE;
+
+    function onFinished(): ACR {
+        finishedCount += 1;
+        if (finishedCount !== asyncResults.length) {
+            return DONE;
+        }
+
+        // avoid double-calls
+        finishedCount += 1;
+
+        return resultsCallback(
+            // @ts-expect-error trust me bro
+            asyncResults
+        );
+    }
 }
 
 type TrackedAsyncAction = {

@@ -280,7 +280,6 @@ export async function initDspLoopInterface({
             data.currentlyPlaying
             && !areEqual(dspInfo.currentlyPlaying, data.currentlyPlaying)
         ) {
-            console.log(dspInfo.currentlyPlaying);
             dspInfo.currentlyPlaying = data.currentlyPlaying;
             rerender = true;
         }

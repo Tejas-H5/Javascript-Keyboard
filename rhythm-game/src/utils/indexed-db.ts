@@ -26,7 +26,7 @@ import {
     ACR,
     AsyncCallback,
     AsyncCallbackResult,
-    asyncResult,
+    asyncResultsAll,
     DISPATCHED_ELSEWHERE,
     DONE,
     newError,
@@ -437,22 +437,10 @@ export function saveData<TData, TMetadata>(
 
     assert(idx !== -1); // How tf did they get this metadata otherwise ?
 
-    const existingDataResult     = asyncResult<TData>(onGet);
-    const existingMetadataResult = asyncResult<TMetadata>(onGet);
-
-    getOne(tx, tables.data,     id, existingDataResult.callback);
-    getOne(tx, tables.metadata, id, existingMetadataResult.callback);
-
-    return DISPATCHED_ELSEWHERE;
-
-    function onGet() {
-        if (!existingDataResult.loaded || !existingMetadataResult.loaded) {
-            return DONE;
-        }
-
-        const existingData     = existingDataResult.value;
-        const existingMetadata = existingMetadataResult.value;
-
+    return asyncResultsAll<[TData, TMetadata]>([
+        cb => getOne(tx, tables.data,     id, cb),
+        cb => getOne(tx, tables.metadata, id, cb),
+    ], ([existingMetadata, existingData]) => {
         if (!existingData || !existingMetadata) {
             return cb(undefined, newError("Metadata or data doesn't already exist"));
         }
@@ -469,7 +457,7 @@ export function saveData<TData, TMetadata>(
 
             return cb(true);
         });
-    }
+    });
 }
 
 export function createData<TData, TMetadata>(

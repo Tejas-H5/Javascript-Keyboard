@@ -1556,7 +1556,8 @@ export function computeEffectRackIteration(
                 // const alpha = sinw0 / (2 * qOrBWOrS);
                 
                 // When BW
-                const alpha = sinw0 === 0 ? 0 : sinw0 * Math.sinh(Math.log(2) / 2 * qOrBWOrS * w0 / sinw0);
+                const angle = sinw0 === 0 ? 0 : (Math.log(2) / 2) * qOrBWOrS * (w0 / sinw0);
+                const alpha =  sinw0 * Math.sinh(angle);
 
                 // When S
                 // const alpha = sinw0/2 * Math.sqrt( (A + 1/A)*(1/qOrBWOrS - 1) + 2 );
@@ -1661,6 +1662,13 @@ export function computeEffectRackIteration(
 
                 y2 = y1;
                 y1 = value;
+
+                if (Math.abs(w0) < 0.00001) {
+                    // zero the frequency. The filter tends towards -1 or 1 otherwise.
+                    y1 = 0.99 * y1;
+                    y2 = 0.99 * y2;
+                }
+
 
                 w(re, filter._x1, x1);
                 w(re, filter._x2, x2);

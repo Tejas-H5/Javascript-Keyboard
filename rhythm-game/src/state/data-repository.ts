@@ -18,7 +18,6 @@ import {
 /////////////////////////////////////
 // Data repository core utils
 
-const tablesVersion = 4;
 
 function compressedChartToMetadata(compressedChart: SequencerChartCompressed): SequencerChartMetadata {
     return {
@@ -27,14 +26,17 @@ function compressedChartToMetadata(compressedChart: SequencerChartCompressed): S
     };
 }
 
-
-
 const tables = {
     chart: idb.newDataMetadataTablePairDefinition<SequencerChartCompressed, SequencerChartMetadata>(
         "chart", "i", "id", compressedChartToMetadata
     ),
-    effectsRackPresets: idb.newTableDefinition("effect_rack_presets", "id", idb.KEYGEN_AUTOINCREMENT),
+    // User-created presets.
+    effectsRackPresets:      idb.newTableDefinition("effect_rack_presets", "id", idb.KEYGEN_AUTOINCREMENT),
+    // System presets.
+    effectRackPresetsSystem: idb.newTableDefinition("effect_rack_presets_system", "id", idb.KEYGEN_AUTOINCREMENT),
 } as const satisfies idb.AllTables;
+
+const tablesVersion = 5;
 
 
 // This is actually the central place where we load/save all data. 
@@ -50,7 +52,14 @@ export type DataRepository = {
         allEffectRackPresets: EffectRackPreset[];
         groups: Map<string, EffectRackPreset[]>;
     };
+    effectRackPresetsSystem: {
+        autoSaved: EffectRackPreset | null;
+    };
 };
+
+const SYSTEM_PRESET_IDS = {
+    autoSaved: 1,
+}
 
 export function newDataRepository(cb: AsyncCallback<DataRepository>): ACR {
     return idb.openConnection("KeyboardRhythmGameIDB", tablesVersion, tables, {
@@ -75,6 +84,9 @@ export function newDataRepository(cb: AsyncCallback<DataRepository>): ACR {
                 allEffectRackPresets: [],
                 groups: new Map(),
                 loading: false,
+            },
+            effectRackPresetsSystem: {
+                autoSaved: null,
             }
         };
 
@@ -326,39 +338,60 @@ export function getLoadedPreset(repo: DataRepository, id: number): EffectRackPre
         .find(p => p.id === id);
 }
 
-export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCallback<void>) {
+export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: ACB): ACR {
     cb = toTrackedCallback(cb, "createEffectRackPreset");
 
     repo.effectRackPresets.allEffectRackPresets.push(preset);
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
-    idb.createOne(tx, tables.effectsRackPresets, preset, () => {
+    return idb.createOne(tx, tables.effectsRackPresets, preset, () => {
         recomputePresets(repo);
         return cb();
     });
 }
 
-export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCallback<void>) {
+export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: ACB): ACR {
     cb = toTrackedCallback(cb, "updateEffectRackPreset");
 
     assert(preset.id > 0);
     assert(repo.effectRackPresets.allEffectRackPresets.indexOf(preset) !== -1);
 
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
-    idb.putOne(tx, tables.effectsRackPresets, preset, () => {
+    return idb.putOne(tx, tables.effectsRackPresets, preset, () => {
         recomputePresets(repo);
         return cb();
     })
 }
 
-export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCallback<void>) {
+export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: ACB): ACR {
     cb = toTrackedCallback(cb, "deleteEffectRackPreset");
 
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
-    idb.deleteOne(tx, tables.effectsRackPresets, preset.id, () => {
+    return idb.deleteOne(tx, tables.effectsRackPresets, preset.id, () => {
         filterInPlace(repo.effectRackPresets.allEffectRackPresets, p => p !== preset);
         recomputePresets(repo);
         return cb();
     })
+}
+
+export function loadAutosavedEffectRackPreset(repo: DataRepository, cb: ACB<EffectRackPreset>): ACR {
+    if (repo.effectRackPresetsSystem.autoSaved) {
+        return cb(repo.effectRackPresetsSystem.autoSaved);
+    }
+
+    cb = toTrackedCallback(cb, "loadAutosavedEffectRackPreset");
+
+    const tx = repositoryReadTx(repo, [tables.effectRackPresetsSystem]);
+    return idb.getOne(tx, tables.effectRackPresetsSystem, SYSTEM_PRESET_IDS.autoSaved, cb);
+}
+
+export function updateAutosavedEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: ACB<boolean>): ACR {
+    cb = toTrackedCallback(cb, "updateAutosavedEffectRackPreset");
+
+    preset.id = SYSTEM_PRESET_IDS.autoSaved;
+    repo.effectRackPresetsSystem.autoSaved = preset;
+
+    const tx = repositoryWriteTx(repo, [tables.effectRackPresetsSystem]);
+    return idb.putOne(tx, tables.effectRackPresetsSystem, preset, cb);
 }
 
 function recomputePresets(repo: DataRepository) {

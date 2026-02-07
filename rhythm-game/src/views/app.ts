@@ -34,7 +34,7 @@ import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
 import { runSaveCurrentChartTask } from "./saving-chart";
-import { imEffectRackEditor } from "./sound-lab-effect-rack-editor";
+import { imEffectRackEditor, imSoundLab } from "./sound-lab-effect-rack-editor";
 import { imUpdateModal } from "./update-modal";
 
 export type GlobalContext = {
@@ -480,7 +480,7 @@ export function imApp(
             case APP_VIEW_CHART_SELECT: imChartSelect(c, ctx); break;
             case APP_VIEW_PLAY_CHART:   imPlayView(c, ctx);    break;
             case APP_VIEW_EDIT_CHART:   imEditView(c, ctx);    break;
-            case APP_VIEW_SOUND_LAB:    imEffectRackEditor(c, ctx); break;
+            case APP_VIEW_SOUND_LAB:    imSoundLab(c, ctx);    break;
             default: {
                 imElBegin(c, EL_H2); imStr(c, `TODO: implement ${ui.currentView} ...`); imElEnd(c, EL_H2);
             } break;

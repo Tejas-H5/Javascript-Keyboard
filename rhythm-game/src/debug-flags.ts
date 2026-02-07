@@ -41,7 +41,7 @@ export type DebugFlags = {
 };
 
 export const debugFlags: DebugFlags = {
-    testEditView: ON,
+    testEditView: OFF,
     testLoadSave: OFF,
 
     testEditViewExport:  OFF,
@@ -59,7 +59,7 @@ export const debugFlags: DebugFlags = {
     testFixDatabase: OFF,
 
     testSoundLab: OFF,
-    testSoundLabWaveEditor: ON,
+    testSoundLabWaveEditor: OFF,
     testSoundLabAllEffectRackEffects: OFF,
     testSoundLabLoadPreset: "edm pluck 4",
 

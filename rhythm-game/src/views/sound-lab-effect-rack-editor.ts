@@ -117,7 +117,7 @@ import {
     ValueRef
 } from "src/dsp/dsp-loop-effect-rack";
 import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { getLoadedPreset } from "src/state/data-repository";
+import { effectRackToPreset, getLoadedPreset, updateAutosavedEffectRackPreset } from "src/state/data-repository";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { arrayAt, arrayMove, copyArray, filterInPlace, removeItem, resizeObjectPool, resizeValuePool } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
@@ -155,6 +155,7 @@ import { drawSamples, imPlotBegin, imPlotEnd } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 import { imPresetsList, presetsListState, PresetsListState } from "./sound-lab-presets-list";
 import { cssVarsApp, getCurrentTheme } from "./styling";
+import { done } from "src/utils/async-utils";
 
 const MAX_NUM_FREQUENCIES = 16384;
 
@@ -294,6 +295,7 @@ export type EffectRackEditorState = {
     svgCtx: SvgContext | null;
 
     deferredAction: (() => void) | null;
+    autosaveDebounceSeconds: number;
 
     presetsListState: PresetsListState;
 };
@@ -382,6 +384,7 @@ export function newEffectRackEditorState(effectRack: EffectRack): EffectRackEdit
         highlightedValueRefNext: {},
 
         deferredAction: null,
+        autosaveDebounceSeconds: -1,
 
         svgCtx: null,
 
@@ -395,6 +398,8 @@ function onEdited(editor: EffectRackEditorState, wasUndoTraversed = false, editU
     editor.version++;
 
     compileEffectRack(editor.effectRack);
+
+    editor.autosaveDebounceSeconds = 1;
 
     if (editUndoActionId !== undefined) {
         // We actually want to write to the undo buffer immediately
@@ -439,13 +444,30 @@ function createConnection(editor: EffectRackEditorState, src: EffectId, dst: Reg
 
 const dragColour = newColor(0, 0, 0, 1);
 
-export function imEffectRackEditor(c: ImCache, ctx: GlobalContext) {
+export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     const settings = getCurrentPlaySettings();
 
     let editor = imGet(c, newEffectRackEditorState);
     if (!editor) {
         const rack = settings.parameters.rack;
         editor = imSet(c, newEffectRackEditorState(rack));
+    }
+
+    imEffectRackEditor(c, ctx, editor);
+}
+
+export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: EffectRackEditorState) {
+    const settings = getCurrentPlaySettings();
+
+    if (editor.autosaveDebounceSeconds > 0) {
+        const dt = getDeltaTimeSeconds(c);
+        editor.autosaveDebounceSeconds -= dt;
+        if (editor.autosaveDebounceSeconds <= 0) {
+            editor.autosaveDebounceSeconds = -1;
+
+            const preset = effectRackToPreset(editor.effectRack);
+            updateAutosavedEffectRackPreset(ctx.repo, preset, done);
+        }
     }
 
     if (imMemo(c, true)) {

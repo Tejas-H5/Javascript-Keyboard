@@ -250,6 +250,11 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
     }
 }
 
+// TODO: 
+// replace these with:
+// - [ ] Rhythm - frequency of the keys
+// - [ ] Melody - chord usage, total number of keys covered in the last 4 beat window
+// - [ ] Harmony - How many different 'tracks' there are. I don't know how to code this one yet. Some simple windowed 1d clustering.
 function imChartStatistics(
     c: ImCache,
     ctx: GlobalContext,

@@ -56,6 +56,7 @@ export type PlayingOscillator = {
         volume: number;
         manuallyPressed: boolean;
         value: number;
+        lastValue: number;
     };
     inputs: {
         noteId: number;
@@ -148,6 +149,7 @@ export function updateOscillator(
         startedPressing,
     );
 
+    state.lastValue = state.value;
     state.value = sampleValue;
 }
 
@@ -427,6 +429,7 @@ export function newPlayingOscilator(): PlayingOscillator {
             volume: 0,
             manuallyPressed: false,
             value: 0,
+            lastValue: 0,
         },
         inputs: { noteId: 0, signal: 0 },
     };
