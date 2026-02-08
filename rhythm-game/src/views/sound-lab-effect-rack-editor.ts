@@ -15,10 +15,8 @@ import {
     COL,
     DisplayType,
     EM,
-    imAbsolute,
     imAlign,
     imBg,
-    imFg,
     imFlex,
     imFlex1,
     imFlexWrap,
@@ -40,7 +38,7 @@ import {
 } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { DragAndDropState, imDragAndDrop, imDragHandle, imDragZoneBegin, imDragZoneEnd, imDropZoneForPrototyping } from "src/components/drag-and-drop";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL, LINE_VERTICAL_PADDING } from "src/components/im-line";
+import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { DspLoopMessage, dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
@@ -76,7 +74,6 @@ import {
     EFFECT_RACK_ITEM__REVERB_BAD,
     EFFECT_RACK_ITEM__SINC_FILTER,
     EFFECT_RACK_ITEM__SWITCH,
-    EffectId,
     EffectRack,
     EffectRackItem,
     EffectRackItemType,
@@ -165,6 +162,8 @@ const MOCK_SAMPLE_RATE = 44100;
 type DspMockHarnessState = {
     dsp: DspState;
     allSamples: number[]
+    allSamplesIdx: number;
+    allSamplesLen: number;
 
     allSamplesStartIdx:     number;
     allSamplesWindowLength: number;
@@ -193,6 +192,8 @@ export function dspMockHarnessState(): DspMockHarnessState {
         dsp: newDspState(MOCK_SAMPLE_RATE),
 
         allSamples: [0],
+        allSamplesIdx: 0,
+        allSamplesLen: 0,
         allSamplesStartIdx: 0,
         allSamplesWindowLength: 5000,
         allSamplesVisibleStart: 0,
@@ -307,7 +308,6 @@ type BindingSvgWires = {
         x: number;
         y: number;
         colour: CssColor;
-        signlRingbuffer: Ringbuffer;
     }>;
 
     drag: {
@@ -330,7 +330,11 @@ type BindingSvgWires = {
 export function newEffectRackEditorState(effectRack: EffectRack): EffectRackEditorState {
     const state: EffectRackEditorState = {
         effectRack: effectRack,
-        undoBuffer: newJSONUndoBuffer<EffectRackEditorState>(1000),
+        undoBuffer: newJSONUndoBuffer<EffectRack>(
+            1000,
+            serializeEffectRack,
+            deserializeEffectRack,
+        ),
 
         mockDspHarness: dspMockHarnessState(),
 
@@ -527,7 +531,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                         x: 0,
                         y: 0,
                         colour: newColor(0, 0, 0, 1),
-                        signlRingbuffer: newRingbuffer(10),
                     }
                     wires.outputPositions.set(outputId, outputUi);
                     wireUiChanged = true;
@@ -550,32 +553,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                 outputUi.colour = newColorFromHsv((i / editor.effectRack.effects.length) % 1, 1, 0.5)
                 i += 1;
             }
-        }
-
-        for (const [outputId, outputUi] of wires.outputPositions) {
-            const regOutput = rack._effectRackOutputIdToRegIdx.get(outputId);
-            if (regOutput === undefined) {
-                continue;
-            }
-
-            const rb = outputUi.signlRingbuffer;
-
-            for (const [num, osc] of editor.mockDspHarness.dsp.playingOscillators) {
-                // Only care about one of the playing oscillators for now.
-                const value = osc.state._effectRackRegisters.values[regOutput._idx];
-                pushValueToRingbuffer(rb, value);
-                break;
-            }
-
-
-            let metric = 0;
-            for (let i = 1; i < rb.buff.length; i++) {
-                const prev = rb.buff[i - 1];
-                const curr = rb.buff[i];
-                metric += Math.abs(prev - curr);
-            }
-            metric = 5 * metric / rb.buff.length;
-            rb.metric = metric;
         }
     }
 
@@ -684,7 +661,8 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                     state.frequencies = Array(numFrequencies).fill(0);
                     state.frequenciesReal = Array(numFrequencies).fill(0);
                     state.frequenciesIm = Array(numFrequencies).fill(0);
-                    state.allSamples.length = 0;
+                    state.allSamplesLen = 0;
+                    state.allSamplesIdx = 0;
 
                     state.autoPan = true;
                 }
@@ -700,7 +678,12 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
             state.messagesToSend.length = 0;
 
             // Only step the DSP if we have things playing
-            if (isPlaying && state.allSamples.length < 1_000_000) {
+            if (isPlaying) {
+                if (state.allSamples.length !== 1_000_000) {
+                    state.allSamples.length = 1_000_000;
+                    state.allSamples.fill(0);
+                }
+
                 const samples = state.output[0][0];
 
                 const dt = getDeltaTimeSeconds(c);
@@ -722,12 +705,13 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                 dspProcess(state.dsp, state.output);
 
                 for (const f of samples) {
-                    state.allSamples.push(f);
+                    state.allSamples[state.allSamplesIdx] = f;
+                    state.allSamplesIdx += 1;
+                    state.allSamplesLen = Math.max(state.allSamplesLen, state.allSamplesIdx + 1);
                 }
             }
         }
     }
-
 
     if (isFirstishRender(c)) {
         elSetStyle(c, "fontSize", "20px");
@@ -927,20 +911,17 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
                     } imIfEnd(c);
                 } imLayoutEnd(c);
 
-                imValueOrBindingEditor(c, editor, rack.effects.length, rack.output);
-            } imLayoutEnd(c);
-
-            imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 5, PX); imBg(c, cssVars.bg); imRelative(c); {
-                const percentage = 100 * editor.undoBuffer.fileVersionsJSONSizeMb / 5.0;
-                imLayoutBegin(c, BLOCK); imBg(c, cssVars.fg);
-                imAbsolute(c, 0, PX, 0, NA, 0, PX, 0, PX); imSize(c, percentage, PERCENT, 5, PX); {
+                imLayoutBegin(c, COL); {
+                    if (isFirstishRender(c)) elSetStyle(c, "borderTop", "1px solid " + cssVars.fg);
+                    if (isFirstishRender(c)) elSetStyle(c, "borderLeft", "1px solid " + cssVars.fg);
+                    if (isFirstishRender(c)) elSetStyle(c, "borderTopLeftRadius", "5px");
+                    if (isFirstishRender(c)) elSetStyle(c, "padding", "5px");
+                    imValueOrBindingEditor(c, editor, rack.effects.length, rack.output);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
 
-        imLine(c, LINE_VERTICAL_PADDING);
         imLine(c, LINE_VERTICAL);
-        imLine(c, LINE_VERTICAL_PADDING);
 
         imLayoutBegin(c, COL); imFlex(c, 2); {
             imLayoutBegin(c, COL); imFlex(c, 3); {
@@ -1086,32 +1067,14 @@ function imEffectRackEditorEffect(
 ) {
     const rack = editor.effectRack;
     const effect = rack.effects[effectPos];
-    const wires = editor.ui.wires;
-
-    const effectDisabled = (rack._debugEffectPos !== -1 && effectPos > rack._debugEffectPos); editor
 
     const z = imDragZoneBegin(c, effectsDnd, effectPos); {
         imLayoutBegin(c, COL); imFlex(c); {
             imLayoutBegin(c, ROW); imAlign(c);
             imPadding(c, 5, PX, 5, PX, 0, PX, 5, PX); imGap(c, 5, PX); {
-                imFg(c, effectDisabled ? cssVars.mg : "");
-
                 imDropZoneForPrototyping(c, effectsDnd, effectPos);
 
                 imVerticalText(c); imAlign(c); imGap(c, 10, PX); {
-                    imLayoutBegin(c, ROW); {
-                        const isDebugging = effectPos === rack._debugEffectPos;
-                        const ev = imCheckbox(c, isDebugging);
-                        if (ev) {
-                            if (ev.checked) {
-                                rack._debugEffectPos = effectPos;
-                            } else {
-                                rack._debugEffectPos = -1;
-                            }
-                            onEdited(editor);
-                        }
-                    } imLayoutEnd(c);
-
                     imLayoutBegin(c, ROW); {
                         imDragHandle(c, effectsDnd, effectPos);
 
@@ -1360,15 +1323,6 @@ function imEffectRackEditorEffect(
                                             if (imButtonIsClicked(c, "Compact", filterUi.compact)) {
                                                 filterUi.compact = !filterUi.compact;
                                             }
-
-                                            // Alternative: 'mystery checkboxes' that you only figure out what they do by clicking on them.
-                                            // Thought it was good idea because it compacts the space, but really I just forget which is which. 
-                                            // Not as good as my other usage above.
-                                            // const compactChanged = imCheckbox(c, filterUi.compact);
-                                            // if (compactChanged) filterUi.compact = compactChanged.checked;
-                                            //
-                                            // const analyzingChanged= imCheckbox(c, filterUi.analyzing);
-                                            // if (analyzingChanged) filterUi.analyzing = analyzingChanged.checked;
 
                                         } imLayoutEnd(c);
 
@@ -1983,7 +1937,7 @@ function imValueOrBindingEditor(
                     imLayoutBegin(c, ROW); {
                         imRegisterHighlightBg(c, editor, regIdxUi.valueRef.regIdx, regIdxUi.valueRef.regOutputId);
 
-                        const regOutput = rack._effectRackOutputIdToRegIdx.get(regIdxUi.valueRef.regOutputId);
+                        const regOutput = rack._effectRackOutputIdToRegOutput.get(regIdxUi.valueRef.regOutputId);
                         assert(regOutput !== undefined);
 
                         imResultName(c, regOutput, effectPos);
@@ -2100,14 +2054,12 @@ function imResultName(
 type Ringbuffer = {
     buff: number[];
     i: number;
-    metric: number;
 }
 
 function newRingbuffer(count: number): Ringbuffer {
     return {
         buff: new Array(count).fill(0),
         i: 0,
-        metric: 0,
     };
 }
 
@@ -2175,12 +2127,11 @@ function imWireDragEndpoint(
 
             imDomRootExistingBegin(c, editor.svgCtx.root); {
                 const color = outputUi.colour;
-                const signalValues = outputUi.signlRingbuffer;
 
                 imWire(
                     c,
                     srcX, srcY, dstX, dstY,
-                    color.r, color.g, color.b, 0.3 + (1 - 0.3) * signalValues.metric,
+                    color.r, color.g, color.b, 0.3 + (1 - 0.3) * 0.5,
                 );
             } imDomRootExistingEnd(c, editor.svgCtx.root);
         } imIfEnd(c);
@@ -2557,12 +2508,12 @@ function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
             } imPlotEnd(c);
 
             if (state.autoPan) {
-                state.allSamplesStartIdx = state.allSamples.length - 1 - state.allSamplesWindowLength
+                state.allSamplesStartIdx = state.allSamplesLen - 1 - state.allSamplesWindowLength
             }
 
             let [start, end, draggingStart, draggingEnd] = imRangeSlider(
                 c,
-                0, state.allSamples.length,
+                0, state.allSamplesLen,
                 state.allSamplesStartIdx, state.allSamplesStartIdx + state.allSamplesWindowLength, 1,
                 500,
             ).value;

@@ -22,7 +22,7 @@ type UndoBufferEntry = {
 };
 
 
-export type JSONUndoBuffer<_T> = {
+export type JSONUndoBuffer<T> = {
     fileVersionsJSON: UndoBufferEntry[];
     fileVersionsJSONSizeMb: number;
     maxVersions: number;
@@ -31,10 +31,25 @@ export type JSONUndoBuffer<_T> = {
 
     // NOTE: still some race conditions in here, but it's all good. xD
     timer: number;
+
+    serializeFn: (val: T) => string;
+    deserializeFn: (str: string) => T;
+
 };
 
+function jsonSerialize<T>(val: T) {
+    return JSON.stringify(val);
+}
 
-export function newJSONUndoBuffer<T>(maxVersions: number): JSONUndoBuffer<T> {
+function jsonDeserialize<T>(val: string): T {
+    return JSON.parse(val) as T;
+}
+
+export function newJSONUndoBuffer<T>(
+    maxVersions: number,
+    serializeFn: (val: T) => string = jsonSerialize,
+    deserializeFn: (str: string) => T = jsonDeserialize,
+): JSONUndoBuffer<T> {
     // 1 slot to store the initial version, 1 more to store the current version
     assert(maxVersions > 1);
 
@@ -44,6 +59,8 @@ export function newJSONUndoBuffer<T>(maxVersions: number): JSONUndoBuffer<T> {
         maxVersions: maxVersions,
         position: 0,
         timer: -1,
+        serializeFn,
+        deserializeFn,
     };
 }
 
@@ -69,7 +86,7 @@ export function writeToUndoBufferDebounced<T>(
 export function writeToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T, actionType?: number) {
     undoBuffer.timer = -1;
 
-    const currentProgramJSON = JSON.stringify(file);
+    const currentProgramJSON = undoBuffer.serializeFn(file)
     const entry: UndoBufferEntry = {
         json: currentProgramJSON,
         actionType,
@@ -136,10 +153,10 @@ export function undo<T>(undoBuffer: JSONUndoBuffer<T>, file: T): T {
 
 export function getCurrentFile<T>(undoBuffer: JSONUndoBuffer<T>): T {
     assert(!undoBufferIsEmpty(undoBuffer));
-    return JSON.parse(undoBuffer.fileVersionsJSON[undoBuffer.position].json);
+    return undoBuffer.deserializeFn(undoBuffer.fileVersionsJSON[undoBuffer.position].json);
 }
 
-export function undoBufferIsEmpty(undoBuffer: JSONUndoBuffer<unknown>): boolean {
+export function undoBufferIsEmpty<T>(undoBuffer: JSONUndoBuffer<T>): boolean {
     return undoBuffer.fileVersionsJSON.length === 0;
 }
 

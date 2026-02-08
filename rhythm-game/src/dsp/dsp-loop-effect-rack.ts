@@ -5,7 +5,7 @@
 // NOTE: All methods here should be exported, so that we can easily inject them into a string and create a URL that 
 // the web audio API dsp node can use.
 
-import { filterInPlace, resizeValuePool } from "src/utils/array-utils";
+import { filterInPlace } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { clamp, moveTowards } from "src/utils/math-utils";
 import { asArray, asArrayOrUndefined, asBooleanOrUndefined, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, asStringOrUndefined, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
@@ -30,7 +30,7 @@ export const EFFECT_RACK_DELAY_MAX_DURATION_SECONDS = 1;
 export const EFFECT_RACK_ITEM__CONVOLUTION_FILTER_MAX_KERNEL_LENGTH = 1024; 
 export const EFFECT_RACK_REVERB_MAX_DURATION_SECONDS = 1;
 // These are very costly, esp. in JavaScript in a highly generic synth that won't benefit from compiler optimizations
-export const EFFECT_RACK_OSC_MAX_UNISON_VOICES = 16; 
+export const EFFECT_RACK_OSC_MAX_UNISON_VOICES = 64; 
 
 // export const EFFECT_RACK_DSP_INSTRUCTION_SET; this would be quite funny wouldnt it.
 
@@ -52,12 +52,6 @@ export type EffectRackItemType
 // -1 -> No register assigned.
 export type RegisterIdx = number & { __RegisterIdx: void } ;
 export type BufferIdx   = number & { __BufferIdx: void } ;
-
-// The id of an effect. Not stable - when deleted, ids get remapped
-// such that they're always between 0..<effects.lengt (TODO: implement)
-// However, when moved around, ids stay the same. 
-// Allows using arrays isntead of hashmaps to store adjacent state.
-export type EffectId = number & { __EffectId: void } ;
 
 // I want these to be stable ids, so that we can move things around
 // and all the UI wires will remain connected to the same things.
@@ -683,10 +677,7 @@ export function newEffectRackSwitchCondition(): EffectRackSwitchCondition {
 }
 
 export type EffectRackItem = {
-    // TODO: needs cleanup?
-    id:    EffectId;
     value: EffectRackItemValue;
-
     _toDelete: boolean;
 };
 
@@ -710,21 +701,15 @@ export type EffectRack = {
     effectRackOutputIds: RegisterOutputId[];
     output: RegisterIdxUi;
 
-    _effectIdToEffectPos: number[];
-
-    _effectRackOutputIdToRegIdx: Map<RegisterOutputId, RegisterOutput>;
+    _effectRackOutputIdToRegOutput: Map<RegisterOutputId, RegisterOutput>;
 
     // Gets cloned as needed - the same effect rack can be reused with several keys,
     // each of which will have it's own registers array.
     _registersTemplate: EffectRackRegisters; 
-
-    _debugEffectPos: number;
 };
 
 export function newEffectRackItem(value: EffectRackItemValue): EffectRackItem {
     return {
-        // -1 ids will get assigned i the compilation step. Does need to be serialized tho.
-        id: -1 as EffectId,
         value: value,
 
         // TODO: deletion in the compile step.
@@ -747,9 +732,7 @@ export function newEffectRack(): EffectRack {
         effectRackOutputIds: [],
         output: newRegisterIdxUi("output", { value: 0 }),
 
-        _effectIdToEffectPos: [],
-        _effectRackOutputIdToRegIdx: new Map(),
-        _debugEffectPos: -1,
+        _effectRackOutputIdToRegOutput: new Map(),
         _registersTemplate: newEffectRackRegisters(),
     };
 }
@@ -813,7 +796,13 @@ export function allocateBufferIdx(e: EffectRack, maxDurationSeconds: number, sam
 
 export function allocateOutput(e: EffectRack, existingOutput: RegisterOutput, effectPos: number) {
     // 0 or less are all invalid ids that are requesting (re)allocation
-    if (existingOutput.id <= 0) {
+    let needsRealloc = existingOutput.id <= 0;
+    if (!needsRealloc) {
+        // This id has already been allocated
+        needsRealloc = e._effectRackOutputIdToRegOutput.has(existingOutput.id);
+    }
+
+    if (needsRealloc) {
         let i = 0 as RegisterOutputId;
         // Surely this will never come back to bite us ...
         while (true) {
@@ -829,27 +818,28 @@ export function allocateOutput(e: EffectRack, existingOutput: RegisterOutput, ef
     existingOutput._idx = allocateRegisterIdx(e, 0, true);
     existingOutput._effectPos = effectPos;
 
-    e._effectRackOutputIdToRegIdx.set(existingOutput.id, existingOutput);
+    e._effectRackOutputIdToRegOutput.set(existingOutput.id, existingOutput);
 }
 
 export function allocateRegisterIdxIfNeeded(
     e: EffectRack,
     regUi: RegisterIdxUi,
-    remap: (EffectId | undefined)[] | undefined,
-    effectPos: number,
 ): void {
     const v = regUi.valueRef;
 
     let regIdx: RegisterIdx | undefined;
 
     if (v.regOutputId !== undefined) {
-        const output = e._effectRackOutputIdToRegIdx.get(v.regOutputId);
-        assert(output !== undefined);
-        regIdx = output._idx;
+        const output = e._effectRackOutputIdToRegOutput.get(v.regOutputId);
+        if (output) {
+            regIdx = output._idx;
+        } else {
+            v.regOutputId = undefined;
+        }
     }
 
     if (regIdx === undefined) {
-        const atLeastOnePopulated = v.value !== undefined || v.regIdx !== undefined;
+        const atLeastOnePopulated = v.regOutputId !== undefined ||  v.value !== undefined || v.regIdx !== undefined;
         if (!atLeastOnePopulated) {
             v.value = regUi._defaultValue;
         }
@@ -882,78 +872,8 @@ export function allocateRegisterIdxIfNeeded(
  * Resets all effects, and allocates the register indices based on bindings and constants. 
  */
 export function compileEffectRack(e: EffectRack) {
-    // generate new ids as needed. also generate effectId->effectPos lookup
-    {
-        resizeValuePool(e._effectIdToEffectPos, e.effects.length, 0);
-        for (let effectPos = 0; effectPos < e.effects.length; effectPos++) {
-            const effect = e.effects[effectPos];
-
-            if (effect.id === -1) {
-                // needs a new id
-                // btw. the effect rack array can't be that long. because if it were, the dsp loop wouldn't be able to run it right now xD
-                let foundId = false;
-                for (let id = 0; id < e.effects.length; id++) {
-                    let taken = false;
-                    for (const effect of e.effects) {
-                        if (effect.id === id) {
-                            taken = true;
-                            break
-                        }
-                    }
-                    if (taken) continue;
-
-                    effect.id = id as EffectId;
-                    foundId = true;
-                    break;
-                }
-                assert(foundId);
-            }
-
-            assert(effect.id >= 0 && effect.id < e.effects.length);
-            e._effectIdToEffectPos[effect.id] = effectPos;
-        }
-
-        const allIds: boolean[] = Array(e.effects.length).fill(false);
-        for (const effect of e.effects) {
-            allIds[effect.id] = true;
-        }
-        for (const val of allIds) {
-            assert(val);
-        }
-    }
-
-    // delete effects that need deletion.
-    // they'll get remapped later.
-    // All this effort to keep the ids between 0..<effects.length, so that we never need to use Map. xd
-    // NOTE: We might not need this remap anymore, now that we are using effect output ids
-    let remap: (EffectId | undefined)[] | undefined;
-    {
-        let anyNeedDeletion = false;
-        for (const effect of e.effects) {
-            if (effect._toDelete) {
-                anyNeedDeletion = true;
-                break
-            }
-        }
-
-        if (anyNeedDeletion) {
-            remap = [];
-            resizeValuePool(remap, e.effects.length, 0 as EffectId);
-            let i2 = 0 as EffectId;
-            for (let i = 0; i < e.effects.length; i++) {
-                const effect = e.effects[i];
-                if (!effect._toDelete) {
-                    remap[effect.id] = i2;
-                    effect.id = i2;
-                    i2++;
-                } else {
-                    remap[effect.id] = undefined;
-                }
-            }
-
-            filterInPlace(e.effects, e => !e._toDelete);
-        }
-    }
+    // Delete anything that we want to delete
+    filterInPlace(e.effects, effect => !effect._toDelete);
 
     // re-allocate the things.
 
@@ -975,7 +895,7 @@ export function compileEffectRack(e: EffectRack) {
     // You can actually use the rack outputs to persist state between samples and stuff. 
     // People can figure it out themselves. probably.
     {
-        e._effectRackOutputIdToRegIdx.clear();
+        e._effectRackOutputIdToRegOutput.clear();
 
         for (let effectPos = 0; effectPos < e.effects.length; effectPos++) {
             const effectValue = e.effects[effectPos].value;
@@ -1031,11 +951,7 @@ export function compileEffectRack(e: EffectRack) {
     }
 
     // Also allocate the output
-    allocateRegisterIdxIfNeeded(e, e.output, remap, 0);
-
-    // ensure _debugEffectIdx is correct
-    if (e._debugEffectPos < -1) e._debugEffectPos = -1;
-    if (e._debugEffectPos >= e.effects.length) e._debugEffectPos = -1;
+    allocateRegisterIdxIfNeeded(e, e.output);
 
     // Walk the effects, allocate registers for all constants and bindings as needed
     for (let effectPos = 0; effectPos < e.effects.length; effectPos++) {
@@ -1049,27 +965,27 @@ export function compileEffectRack(e: EffectRack) {
                 const wave = effectValue;
                 wave._unisonOscilators = allocateBufferIdx(e, 0, EFFECT_RACK_OSC_MAX_UNISON_VOICES * 2);
 
-                allocateRegisterIdxIfNeeded(e, wave.phaseUI, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, wave.amplitudeUI, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, wave.frequencyUI, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, wave.frequencyMultUI, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, wave.offsetUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, wave.phaseUI);
+                allocateRegisterIdxIfNeeded(e, wave.amplitudeUI);
+                allocateRegisterIdxIfNeeded(e, wave.frequencyUI);
+                allocateRegisterIdxIfNeeded(e, wave.frequencyMultUI);
+                allocateRegisterIdxIfNeeded(e, wave.offsetUI);
 
-                allocateRegisterIdxIfNeeded(e, wave.unisonCountUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, wave.unisionWidthUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, wave.unisonMixUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, wave.unisonCountUi);
+                allocateRegisterIdxIfNeeded(e, wave.unisionWidthUi);
+                allocateRegisterIdxIfNeeded(e, wave.unisonMixUi);
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effectValue;
 
                 envelope._valueWhenReleased = allocateRegisterIdx(e, 0, true);
 
-                allocateRegisterIdxIfNeeded(e, envelope.amplitudeUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, envelope.signalUI, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, envelope.attackUI, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, envelope.decayUI, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, envelope.sustainUI, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, envelope.releaseUI, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, envelope.amplitudeUi);
+                allocateRegisterIdxIfNeeded(e, envelope.signalUI);
+                allocateRegisterIdxIfNeeded(e, envelope.attackUI);
+                allocateRegisterIdxIfNeeded(e, envelope.decayUI);
+                allocateRegisterIdxIfNeeded(e, envelope.sustainUI);
+                allocateRegisterIdxIfNeeded(e, envelope.releaseUI);
             } break;
             case EFFECT_RACK_ITEM__MATHS: {
                 const maths = effectValue;
@@ -1078,11 +994,11 @@ export function compileEffectRack(e: EffectRack) {
                     const term = maths.terms[i];
                     for (let i = 0; i < term.coefficients.length; i++) {
                         const c = term.coefficients[i];
-                        allocateRegisterIdxIfNeeded(e, c.valueUI, remap, effectPos);
+                        allocateRegisterIdxIfNeeded(e, c.valueUI);
                     }
                     for (let i = 0; i < term.coefficientsDivide.length; i++) {
                         const c = term.coefficientsDivide[i];
-                        allocateRegisterIdxIfNeeded(e, c.valueUI, remap, effectPos);
+                        allocateRegisterIdxIfNeeded(e, c.valueUI);
                     }
                 }
             } break;
@@ -1092,20 +1008,20 @@ export function compileEffectRack(e: EffectRack) {
                 for (let i = 0; i < switchEffect.conditions.length; i++) {
                     const cond = switchEffect.conditions[i];
 
-                    allocateRegisterIdxIfNeeded(e, cond.aUi, remap, effectPos);
-                    allocateRegisterIdxIfNeeded(e, cond.bUi, remap, effectPos);
-                    allocateRegisterIdxIfNeeded(e, cond.valUi, remap, effectPos);
+                    allocateRegisterIdxIfNeeded(e, cond.aUi);
+                    allocateRegisterIdxIfNeeded(e, cond.bUi);
+                    allocateRegisterIdxIfNeeded(e, cond.valUi);
                 }
 
-                allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, switchEffect.defaultUi);
             } break;
             case EFFECT_RACK_ITEM__NOISE: {
                 const noise = effectValue;
 
-                allocateRegisterIdxIfNeeded(e, noise.amplitudeUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, noise.amplitudeMultUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, noise.midpointUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, noise.anchorUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, noise.amplitudeUi);
+                allocateRegisterIdxIfNeeded(e, noise.amplitudeMultUi);
+                allocateRegisterIdxIfNeeded(e, noise.midpointUi);
+                allocateRegisterIdxIfNeeded(e, noise.anchorUi);
             } break;
             case EFFECT_RACK_ITEM__DELAY: {
                 const delay = effectValue;
@@ -1113,10 +1029,10 @@ export function compileEffectRack(e: EffectRack) {
                 delay._idx = allocateRegisterIdx(e, 0, true);
                 delay._sampleBuffer = allocateBufferIdx(e, 1, 0);
 
-                allocateRegisterIdxIfNeeded(e, delay.signalUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, delay.secondsUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, delay.originalUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, delay.delayedUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, delay.signalUi);
+                allocateRegisterIdxIfNeeded(e, delay.secondsUi);
+                allocateRegisterIdxIfNeeded(e, delay.originalUi);
+                allocateRegisterIdxIfNeeded(e, delay.delayedUi);
             } break;
             case EFFECT_RACK_ITEM__BIQUAD_FILTER: {
                 const filter = effectValue;
@@ -1124,13 +1040,13 @@ export function compileEffectRack(e: EffectRack) {
                 filter._z1 = allocateRegisterIdx(e, 0, true);
                 filter._z2 = allocateRegisterIdx(e, 0, true);
 
-                allocateRegisterIdxIfNeeded(e, filter.signalUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.signalUi);
 
-                allocateRegisterIdxIfNeeded(e, filter.a1Ui, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, filter.a2Ui, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, filter.b0Ui, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, filter.b1Ui, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, filter.b2Ui, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.a1Ui);
+                allocateRegisterIdxIfNeeded(e, filter.a2Ui);
+                allocateRegisterIdxIfNeeded(e, filter.b0Ui);
+                allocateRegisterIdxIfNeeded(e, filter.b1Ui);
+                allocateRegisterIdxIfNeeded(e, filter.b2Ui);
             } break;
             case EFFECT_RACK_ITEM__SINC_FILTER: {
                 const conv = effectValue;
@@ -1138,11 +1054,11 @@ export function compileEffectRack(e: EffectRack) {
                 conv._kernel    = allocateBufferIdx(e, 0, EFFECT_RACK_ITEM__CONVOLUTION_FILTER_MAX_KERNEL_LENGTH); 
                 conv._kernelIdx = allocateRegisterIdx(e, 0, true);
 
-                allocateRegisterIdxIfNeeded(e, conv.signalUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, conv.stopbandUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyMultUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, conv.gainUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, conv.signalUi);
+                allocateRegisterIdxIfNeeded(e, conv.stopbandUi);
+                allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyUi);
+                allocateRegisterIdxIfNeeded(e, conv.cutoffFrequencyMultUi);
+                allocateRegisterIdxIfNeeded(e, conv.gainUi);
             } break;
             case EFFECT_RACK_ITEM__REVERB_BAD: {
                 const reverb = effectValue;
@@ -1150,9 +1066,9 @@ export function compileEffectRack(e: EffectRack) {
                 reverb._kernel    = allocateBufferIdx(e, EFFECT_RACK_REVERB_MAX_DURATION_SECONDS, 0); 
                 reverb._kernelIdx = allocateRegisterIdx(e, 0, true);
 
-                allocateRegisterIdxIfNeeded(e, reverb.signalUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, reverb.decayUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, reverb.densityUi, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, reverb.signalUi);
+                allocateRegisterIdxIfNeeded(e, reverb.decayUi);
+                allocateRegisterIdxIfNeeded(e, reverb.densityUi);
             } break;
             case EFFECT_RACK_ITEM__BIQUAD_FILTER_2: {
                 const filter = effectValue;
@@ -1162,11 +1078,11 @@ export function compileEffectRack(e: EffectRack) {
                 filter._y1 = allocateRegisterIdx(e, 0, true);
                 filter._y2 = allocateRegisterIdx(e, 0, true);
 
-                allocateRegisterIdxIfNeeded(e, filter.signalUi, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, filter.f0, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, filter.fMult, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, filter.dbGain, remap, effectPos);
-                allocateRegisterIdxIfNeeded(e, filter.qOrBWOrS, remap, effectPos);
+                allocateRegisterIdxIfNeeded(e, filter.signalUi);
+                allocateRegisterIdxIfNeeded(e, filter.f0);
+                allocateRegisterIdxIfNeeded(e, filter.fMult);
+                allocateRegisterIdxIfNeeded(e, filter.dbGain);
+                allocateRegisterIdxIfNeeded(e, filter.qOrBWOrS);
             } break;
             default: unreachable(effectValue);
         }
@@ -1200,7 +1116,6 @@ export function newEffectRackRegisters(): EffectRackRegisters {
 export function copyEffectRackItem(item: EffectRackItem, disconnectObject = false): EffectRackItem {
     const jsonObj = JSON.parse(serializeToJSON(item));
     const val = unmarshalEffectRackItem(jsonObj, disconnectObject);
-    val.id = -1 as EffectId;
     return val;
 }
 
@@ -1320,9 +1235,6 @@ export function computeEffectRackIteration(
     re[REG_IDX_KEY_SIGNAL_RAW] = signal > 0.0000001 ? 1 : 0;
 
     let lastEffect = e.effects.length - 1;
-    if (e._debugEffectPos !== -1) {
-        lastEffect = e._debugEffectPos;
-    }
 
     const dt = 1 / sampleRate;
  
@@ -1367,12 +1279,12 @@ export function computeEffectRackIteration(
                             for (let i = 1; i <= unisonCount; i++) {
                                 const angle = unisonOscillators[i];
                                 unisonVoices += evaluateWave(wave.waveType, angle);
-                                unisonOscillators[i] += dt * (totalFrequency - i * i * unisonWidth);
+                                unisonOscillators[i] += dt * (totalFrequency - i * unisonWidth);
                             }
                             for (let i = 1; i <= unisonCount; i++) {
                                 const angle = unisonOscillators[i + EFFECT_RACK_OSC_MAX_UNISON_VOICES];
                                 unisonVoices += evaluateWave(wave.waveType, angle);
-                                unisonOscillators[i + EFFECT_RACK_OSC_MAX_UNISON_VOICES] += dt * (totalFrequency + i * i * unisonWidth);
+                                unisonOscillators[i + EFFECT_RACK_OSC_MAX_UNISON_VOICES] += dt * (totalFrequency + i * unisonWidth);
                             }
                         }
 
@@ -2079,7 +1991,6 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
 
     return unmarshalObject(oItem, newEffectRackItem(value), {
         value: asIs,
-        id: u => asNumber(u) as EffectId,
     });
 }
 
@@ -2122,12 +2033,3 @@ function unmarshalRegisterOutput(arg: unknown, defaultVal: RegisterOutput) {
     });
 }
 
-function unmarshalRegisterOutputDisconnect(arg: unknown, defaultVal: RegisterOutput) {
-    if (!arg) {
-        return defaultVal;
-    }
-
-    return unmarshalObject(arg, defaultVal, {
-        id: u => NIL_OUTPUT_ID,
-    });
-}
