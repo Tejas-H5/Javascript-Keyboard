@@ -1117,6 +1117,7 @@ function imEffectRackEditorEffect(
 
                                     imDspVisualGroupBegin(c, ROW); imGap(c, 20, PX); imAlign(c);  {
                                         imHeading(c, "unison");
+                                        imValueOrBindingEditor(c, editor, effectPos, osc.unisonPhaseOffsetUi);
                                         imValueOrBindingEditor(c, editor, effectPos, osc.unisonCountUi);
                                         imValueOrBindingEditor(c, editor, effectPos, osc.unisionWidthUi);
                                         imValueOrBindingEditor(c, editor, effectPos, osc.unisonMixUi);

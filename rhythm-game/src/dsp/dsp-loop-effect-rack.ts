@@ -172,13 +172,10 @@ export type EffectRackOscillator = {
     frequencyMultUI: RegisterIdxUi;
     offsetUI:        RegisterIdxUi;
 
-    // TODO: remove unison from here, make a second oscilator based on the note
-    // TBH this unision kinda ass. For some reason, it doesn't sound as good as if we just have multiple
-    // oscilators side by side and add them. We need to figure out why.
-    // Wishlist would be to sound like serum's unison. Like. How he make it sound like that 
-    unisonCountUi:  RegisterIdxUi;
-    unisionWidthUi: RegisterIdxUi;
-    unisonMixUi:    RegisterIdxUi;
+    unisonCountUi:       RegisterIdxUi;
+    unisionWidthUi:      RegisterIdxUi;
+    unisonMixUi:         RegisterIdxUi;
+    unisonPhaseOffsetUi: RegisterIdxUi;
 
     waveOut: RegisterOutput;
     tOut:    RegisterOutput;
@@ -199,9 +196,10 @@ export function newEffectRackOscillator(): EffectRackOscillator {
         frequencyMultUI: newRegisterIdxUi("fmult",  { value: 1 }, 0, 1_000_000),
         offsetUI:        newRegisterIdxUi("offset", { value: 0 }, -2, 2), 
 
-        unisonCountUi:  newRegisterIdxUi("voices", { value: 1 }, 0, EFFECT_RACK_OSC_MAX_UNISON_VOICES),
-        unisionWidthUi: newRegisterIdxUi("detune", { value: 1 }, 0, 50000),
-        unisonMixUi:    newRegisterIdxUi("mix", { value: 0.5 }, 0, 1),
+        unisonCountUi:       newRegisterIdxUi("voices", { value: 1 }, 0, EFFECT_RACK_OSC_MAX_UNISON_VOICES),
+        unisionWidthUi:      newRegisterIdxUi("detune", { value: 1 }, 0, 50000),
+        unisonMixUi:         newRegisterIdxUi("mix", { value: 0.5 }, 0, 1),
+        unisonPhaseOffsetUi: newRegisterIdxUi("phase", { value: 0 }),
 
         waveOut: newRegisterOutput("wave"),
         tOut:    newRegisterOutput("time"),
@@ -233,7 +231,7 @@ export function newEffectRackEnvelope(): EffectRackEnvelope {
     return {
         type: EFFECT_RACK_ITEM__ENVELOPE,
 
-        amplitudeUi: newRegisterIdxUi("amplitude",  { value: 1 }),
+        amplitudeUi: newRegisterIdxUi("amplitude",  { value: 1 }, 0),
         // This is what people call the 'gate' of the envelope. ____-----______ 
         signalUI:  newRegisterIdxUi("gate",  { regIdx: REG_IDX_KEY_SIGNAL }, 0, 1),
         attackUI:  newRegisterIdxUi("attack",  { value: 0.02 } , 0, 0.5),
@@ -974,6 +972,7 @@ export function compileEffectRack(e: EffectRack) {
                 allocateRegisterIdxIfNeeded(e, wave.unisonCountUi);
                 allocateRegisterIdxIfNeeded(e, wave.unisionWidthUi);
                 allocateRegisterIdxIfNeeded(e, wave.unisonMixUi);
+                allocateRegisterIdxIfNeeded(e, wave.unisonPhaseOffsetUi);
             } break;
             case EFFECT_RACK_ITEM__ENVELOPE: {
                 const envelope = effectValue;
@@ -1259,8 +1258,9 @@ export function computeEffectRackIteration(
 
                     const unisonOscillators = buff[wave._unisonOscilators].val;
                     if (startedPressing) {
+                        const phaseOffset = r(re, wave.unisonPhaseOffsetUi._regIdx);
                         for (let i = 0; i < unisonOscillators.length; i++) {
-                            unisonOscillators[i] = i / unisonOscillators.length;
+                            unisonOscillators[i] = phaseOffset * i;
                         }
                     }
 
@@ -1792,7 +1792,7 @@ function unmarshallEffectRack(jsonObj: unknown) {
 
 function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRackItem {
     const regUiUnmarshaller = disconnectObject ? unmarshalRegisterIdxUiDisconnect: unmarshalRegisterIdxUi;
-    const regOutputUnmarshaller = disconnectObject ? unmarshalRegisterOutputDisconnect : unmarshalRegisterOutput;
+    const regOutputUnmarshaller = unmarshalRegisterOutput; // compile step handles duplicate ids already
 
     const oItem = asObject(u);
     const o = asObject(oItem["value"]);
@@ -1829,9 +1829,10 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                 frequencyMultUI: regUiUnmarshaller,
                 offsetUI:        regUiUnmarshaller,
 
-                unisionWidthUi: regUiUnmarshaller,
-                unisonCountUi:  regUiUnmarshaller,
-                unisonMixUi:    regUiUnmarshaller,
+                unisionWidthUi:      regUiUnmarshaller,
+                unisonCountUi:       regUiUnmarshaller,
+                unisonMixUi:         regUiUnmarshaller,
+                unisonPhaseOffsetUi: regUiUnmarshaller,
 
                 waveOut: regOutputUnmarshaller,
                 tOut:    regOutputUnmarshaller,
