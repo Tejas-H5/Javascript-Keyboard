@@ -23,6 +23,7 @@ export const EFFECT_RACK_ITEM__BIQUAD_FILTER   = 6;  // TODO: consider removing
 export const EFFECT_RACK_ITEM__SINC_FILTER     = 7;  // TODO: consider removing once EFFECT_RACK_ITEM__BIQUAD_FILTER_2 is working
 export const EFFECT_RACK_ITEM__REVERB_BAD      = 8;
 export const EFFECT_RACK_ITEM__BIQUAD_FILTER_2 = 9;
+export const EFFECT_RACK_ITEM__WAVE_TABLE      = 10;
 
 // Delay effect uses a crap tonne of memmory, so we're limiting how long it can be.
 // While simple, it is suprisingly OP - you can use it to double waveforms repeatedly.
@@ -46,6 +47,7 @@ export type EffectRackItemType
     | typeof EFFECT_RACK_ITEM__SINC_FILTER
     | typeof EFFECT_RACK_ITEM__REVERB_BAD
     | typeof EFFECT_RACK_ITEM__BIQUAD_FILTER_2
+    | typeof EFFECT_RACK_ITEM__WAVE_TABLE
     ;
 
 // If we're using a RegisterIndex without reading from or writing to a register, then we're using it wrong.
@@ -469,6 +471,58 @@ export function newEffectRackBiquadFilter2(): EffectRackBiquadFilter2 {
     };
 }
 
+export type EffectRackWaveTable = {
+    type: typeof EFFECT_RACK_ITEM__WAVE_TABLE;
+
+    items: EffectRackWaveTableItem[];
+
+    gainUi: RegisterIdxUi;
+    wavePosUi: RegisterIdxUi;
+    falloffUi: RegisterIdxUi;
+
+    totalOut: RegisterOutput;
+}
+
+export function newEffectRackWaveTable(): EffectRackWaveTable {
+    return {
+        type: EFFECT_RACK_ITEM__WAVE_TABLE,
+        items: [newEffectRackWaveTableItem()],
+
+        gainUi:    newRegisterIdxUi("gain", { value: 1 }),
+        wavePosUi: newRegisterIdxUi("wave pos", { value: 0 }),
+        falloffUi: newRegisterIdxUi("falloff", { value: 0 }),
+
+        totalOut: newRegisterOutput("wave"),
+    };
+}
+
+
+export type EffectRackWaveTableItem = {
+    waveType:    EffectRackOscillatorWaveType;
+
+    amplitudeUi:     RegisterIdxUi;
+    frequencyUi:     RegisterIdxUi;
+    frequencyMultUi: RegisterIdxUi;
+    phaseUi:         RegisterIdxUi;
+
+    _t: RegisterIdx;
+    waveOut: RegisterOutput;
+}
+
+export function newEffectRackWaveTableItem(): EffectRackWaveTableItem {
+    return {
+        waveType: OSC_WAVE__SIN,
+
+        amplitudeUi:     newRegisterIdxUi("amp", { value: 1 }),
+        frequencyUi:     newRegisterIdxUi("f", { regIdx: REG_IDX_KEY_FREQUENCY }),
+        frequencyMultUi: newRegisterIdxUi("fmult", { value: 1 }),
+        phaseUi:         newRegisterIdxUi("phase", { value: 0 }),
+
+        _t: 0 as RegisterIdx,
+        waveOut: newRegisterOutput("wave"),
+    };
+}
+
 export const BIQUAD2_TYPE__LOWPASS    = 0;
 export const BIQUAD2_TYPE__HIGHPASS   = 1;
 export const BIQUAD2_TYPE__BANDPASS_1 = 2; // constant skirt gain, peak gain = Q
@@ -690,6 +744,7 @@ type EffectRackItemValue
     | EffectRackSincFilter
     | EffectRackReverbBadImplementation
     | EffectRackBiquadFilter2
+    | EffectRackWaveTable
     ;
 
 export type EffectRack = {
@@ -943,6 +998,14 @@ export function compileEffectRack(e: EffectRack) {
                     const filter = effectValue;
                     allocateOutput(e, filter.filterOut, effectPos);
                 } break;
+                case EFFECT_RACK_ITEM__WAVE_TABLE: {
+                    const table = effectValue;
+
+                    for (const item of table.items) {
+                        allocateOutput(e, item.waveOut, effectPos);
+                    }
+                    allocateOutput(e, table.totalOut, effectPos);
+                } break;
                 default: unreachable(effectValue);
             }
         }
@@ -1082,6 +1145,21 @@ export function compileEffectRack(e: EffectRack) {
                 allocateRegisterIdxIfNeeded(e, filter.fMult);
                 allocateRegisterIdxIfNeeded(e, filter.dbGain);
                 allocateRegisterIdxIfNeeded(e, filter.qOrBWOrS);
+            } break;
+            case EFFECT_RACK_ITEM__WAVE_TABLE: {
+                const table = effectValue;
+
+                for (const item of table.items) {
+                    allocateRegisterIdxIfNeeded(e, item.amplitudeUi);
+                    allocateRegisterIdxIfNeeded(e, item.frequencyUi);
+                    allocateRegisterIdxIfNeeded(e, item.frequencyMultUi);
+                    allocateRegisterIdxIfNeeded(e, item.phaseUi);
+                    item._t = allocateRegisterIdx(e, 0, true);
+                }
+
+                allocateRegisterIdxIfNeeded(e, table.gainUi);
+                allocateRegisterIdxIfNeeded(e, table.wavePosUi);
+                allocateRegisterIdxIfNeeded(e, table.falloffUi);
             } break;
             default: unreachable(effectValue);
         }
@@ -1758,6 +1836,45 @@ export function computeEffectRackIteration(
                 
                 w(re, filter.filterOut._idx, value);
             } break;
+            case EFFECT_RACK_ITEM__WAVE_TABLE: {
+                const table = effectValue;
+
+                const gain    = r(re, table.gainUi._regIdx);
+                const wavePos = r(re, table.wavePosUi._regIdx) % table.items.length;
+                const falloff = r(re, table.falloffUi._regIdx);
+
+                let total = 0;
+                let signal = 0;
+                for (let i = 0; i < table.items.length; i++) {
+                    const item = table.items[i];
+
+                    let mask = 1 - falloff * Math.abs(i - wavePos);
+                    if (mask <= 0) {
+                        continue;
+                    }
+
+                    const amplitude     = r(re, item.amplitudeUi._regIdx);
+                    const frequency     = r(re, item.frequencyUi._regIdx);
+                    const frequencyMult = r(re, item.frequencyMultUi._regIdx);
+                    const phase         = r(re, item.phaseUi._regIdx);
+
+                    const tItem = r(re, item._t);
+                    w(re, item._t, tItem + dt);
+
+                    const t       = phase + frequency * frequencyMult * tItem;
+                    const waveOut = amplitude * evaluateWave(item.waveType, t);
+                    w(re, item.waveOut._idx, waveOut);
+
+                    total  += waveOut * mask;
+                    signal += 1;
+                }
+
+                if (signal > 0) {
+                    total /= signal;
+                }
+
+                w(re, table.totalOut._idx, total * gain);
+            } break;
             default: unreachable(effectValue);
         }
     }
@@ -1807,6 +1924,7 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
         EFFECT_RACK_ITEM__SINC_FILTER,
         EFFECT_RACK_ITEM__REVERB_BAD,
         EFFECT_RACK_ITEM__BIQUAD_FILTER_2,
+        EFFECT_RACK_ITEM__WAVE_TABLE,
     ], "EffectRackItemType");
 
     let value: EffectRackItemValue | undefined;
@@ -1985,6 +2103,34 @@ function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRa
                 qOrBWOrS:   regUiUnmarshaller,
 
                 filterOut: regOutputUnmarshaller,
+            });
+        } break;
+        case EFFECT_RACK_ITEM__WAVE_TABLE: {
+            value = unmarshalObject(o, newEffectRackWaveTable(), {
+                type: asIs,
+
+                items: u => asArray(u).map(u => unmarshalObject(u, newEffectRackWaveTableItem(), {
+                    waveType: u => asEnum<EffectRackOscillatorWaveType>(u, [
+                        OSC_WAVE__SIN,
+                        OSC_WAVE__SQUARE,
+                        OSC_WAVE__SAWTOOTH,
+                        OSC_WAVE__TRIANGLE,
+                        OSC_WAVE__SAWTOOTH2
+                    ], "EffectRackOscillatorWaveType"),
+
+                    amplitudeUi:     regUiUnmarshaller,
+                    frequencyUi:     regUiUnmarshaller,
+                    frequencyMultUi: regUiUnmarshaller,
+                    phaseUi:         regUiUnmarshaller,
+
+                    waveOut: regOutputUnmarshaller,
+                })),
+
+                gainUi:    regUiUnmarshaller,
+                wavePosUi: regUiUnmarshaller,
+                falloffUi: regUiUnmarshaller,
+
+                totalOut: regOutputUnmarshaller,
             });
         } break;
         default: unreachable(type);

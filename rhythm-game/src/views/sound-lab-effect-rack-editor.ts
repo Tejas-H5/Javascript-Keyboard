@@ -25,6 +25,7 @@ import {
     imLayoutBegin,
     imLayoutEnd,
     imNoWrap,
+    imOpacity,
     imPadding,
     imRelative,
     imSize,
@@ -74,6 +75,7 @@ import {
     EFFECT_RACK_ITEM__REVERB_BAD,
     EFFECT_RACK_ITEM__SINC_FILTER,
     EFFECT_RACK_ITEM__SWITCH,
+    EFFECT_RACK_ITEM__WAVE_TABLE,
     EffectRack,
     EffectRackItem,
     EffectRackItemType,
@@ -100,6 +102,8 @@ import {
     newEffectRackReverbBadImpl,
     newEffectRackSwitch,
     newEffectRackSwitchCondition,
+    newEffectRackWaveTable,
+    newEffectRackWaveTableItem,
     OSC_WAVE__SAWTOOTH,
     OSC_WAVE__SAWTOOTH2,
     OSC_WAVE__SIN,
@@ -1042,6 +1046,7 @@ function getEffectTypeShortName(type: EffectRackItemType): string {
         case EFFECT_RACK_ITEM__BIQUAD_FILTER_2: return  "BIQUAD2";
         case EFFECT_RACK_ITEM__SINC_FILTER:   return  "SINC";
         case EFFECT_RACK_ITEM__REVERB_BAD:    return  "REVERB";
+        case EFFECT_RACK_ITEM__WAVE_TABLE:    return  "WAVETABL";
         default: unreachable(type);
     }
 }
@@ -1125,8 +1130,8 @@ function imEffectRackEditorEffect(
                                 } imDspVisualGroupEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
-                                    imRegisterOutput(c, editor, effect, effectPos, osc.waveOut);
-                                    imRegisterOutput(c, editor, effect, effectPos, osc.tOut);
+                                    imRegisterOutput(c, editor, effectPos, osc.waveOut);
+                                    imRegisterOutput(c, editor, effectPos, osc.tOut);
                                 } imDspVisualGroupEnd(c);
                             } break;
                             case EFFECT_RACK_ITEM__ENVELOPE: {
@@ -1142,8 +1147,8 @@ function imEffectRackEditorEffect(
                                 } imDspVisualGroupEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
-                                    imRegisterOutput(c, editor, effect, effectPos, envelope.valueOut);
-                                    imRegisterOutput(c, editor, effect, effectPos, envelope.stageOut);
+                                    imRegisterOutput(c, editor, effectPos, envelope.valueOut);
+                                    imRegisterOutput(c, editor, effectPos, envelope.stageOut);
                                 } imDspVisualGroupEnd(c);
                             } break;
                             case EFFECT_RACK_ITEM__MATHS: {
@@ -1182,7 +1187,7 @@ function imEffectRackEditorEffect(
 
                                                         imDspVisualGroupBegin(c, COL); {
                                                             term.termOut._name = "";
-                                                            imRegisterOutput(c, editor, effect, effectPos, term.termOut);
+                                                            imRegisterOutput(c, editor, effectPos, term.termOut);
                                                         } imDspVisualGroupEnd(c);
                                                     } imLayoutEnd(c);
 
@@ -1203,7 +1208,7 @@ function imEffectRackEditorEffect(
                                 } imLayoutEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
-                                    imRegisterOutput(c, editor, effect, effectPos, math.sumOut);
+                                    imRegisterOutput(c, editor, effectPos, math.sumOut);
                                 } imDspVisualGroupEnd(c);
                             } break;
                             case EFFECT_RACK_ITEM__SWITCH: {
@@ -1253,7 +1258,7 @@ function imEffectRackEditorEffect(
                                 } imLayoutEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
-                                    imRegisterOutput(c, editor, effect, effectPos, switchEffect.valueOut);
+                                    imRegisterOutput(c, editor, effectPos, switchEffect.valueOut);
                                 } imDspVisualGroupEnd(c);
                             } break;
                             case EFFECT_RACK_ITEM__NOISE: {
@@ -1269,7 +1274,7 @@ function imEffectRackEditorEffect(
                                 } imDspVisualGroupEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
-                                    imRegisterOutput(c, editor, effect, effectPos, noise.noiseOut);
+                                    imRegisterOutput(c, editor, effectPos, noise.noiseOut);
                                 } imDspVisualGroupEnd(c);
                             } break;
                             case EFFECT_RACK_ITEM__DELAY: {
@@ -1299,7 +1304,7 @@ function imEffectRackEditorEffect(
                                 } imLayoutEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
-                                    imRegisterOutput(c, editor, effect, effectPos, delay.delayedOut);
+                                    imRegisterOutput(c, editor, effectPos, delay.delayedOut);
                                 } imDspVisualGroupEnd(c);
                             } break;
                             case EFFECT_RACK_ITEM__BIQUAD_FILTER: {
@@ -1429,7 +1434,7 @@ function imEffectRackEditorEffect(
                                 } imLayoutEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
-                                    imRegisterOutput(c, editor, effect, effectPos, filter.filterOut);
+                                    imRegisterOutput(c, editor, effectPos, filter.filterOut);
                                 } imDspVisualGroupEnd(c);
                             } break;
                             case EFFECT_RACK_ITEM__SINC_FILTER: {
@@ -1501,7 +1506,7 @@ function imEffectRackEditorEffect(
                                 } imLayoutEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
-                                    imRegisterOutput(c, editor, effect, effectPos, conv.filterOut);
+                                    imRegisterOutput(c, editor,  effectPos, conv.filterOut);
                                 } imDspVisualGroupEnd(c);
                             } break;
                             case EFFECT_RACK_ITEM__REVERB_BAD: {
@@ -1576,7 +1581,71 @@ function imEffectRackEditorEffect(
                                 } imLayoutEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
-                                    imRegisterOutput(c, editor, effect, effectPos, filter.filterOut);
+                                    imRegisterOutput(c, editor, effectPos, filter.filterOut);
+                                } imDspVisualGroupEnd(c);
+                            } break;
+                            case EFFECT_RACK_ITEM__WAVE_TABLE: {
+                                const table = effectValue;
+                                let wavePos = table.wavePosUi.valueRef.value;
+                                const falloff = table.falloffUi.valueRef.value;
+
+                                imLayoutBegin(c, COL); imAlign(c, STRETCH); imGap(c, 10, PX); imFlex(c); {
+                                    imFor(c); for (let i = 0; i < table.items.length; i++) {
+                                        const item = table.items[i];
+                                        imDspVisualGroupBegin(c, ROW); imFlex(c); imAlign(c); {
+                                            if (imIf(c) && falloff !== undefined && wavePos !== undefined) {
+                                                wavePos = wavePos % table.items.length;
+                                                if (wavePos < 0) {
+                                                    wavePos = table.items.length + wavePos;
+                                                }
+
+                                                imLayoutBegin(c, BLOCK); imSize(c, 30, PX, 30, PX); imBg(c, cssVars.fg); {
+                                                    let mask = 1 - falloff * Math.abs(i - wavePos);
+                                                    if (mask < 0) mask = 0;
+                                                    imOpacity(c, mask);
+                                                } imLayoutEnd(c);
+                                            } imIfEnd(c);
+
+                                            imFlex1(c);
+
+                                            const ev = imSelectChoice(c, item.waveType, allWaveTypes, getEffectRackOscillatorWaveTypeName);
+                                            if (ev) {
+                                                item.waveType = ev.choice;
+                                                onEdited(editor);
+                                            }
+
+                                            imValueOrBindingEditor(c, editor, effectPos, item.amplitudeUi);
+                                            imValueOrBindingEditor(c, editor, effectPos, item.frequencyUi);
+                                            imValueOrBindingEditor(c, editor, effectPos, item.frequencyMultUi);
+                                            imValueOrBindingEditor(c, editor, effectPos, item.phaseUi);
+
+                                            imRegisterOutput(c, editor, effectPos, item.waveOut);
+
+                                            if (imButtonIsClicked(c, "x")) {
+                                                editor.deferredAction = () => {
+                                                    filterInPlace(table.items, otherItem => otherItem !== item);
+                                                    onEdited(editor);
+                                                };
+                                            }
+                                        } imDspVisualGroupEnd(c);
+                                    } imForEnd(c);
+
+                                    if (imButtonIsClicked(c, "+")) {
+                                        editor.deferredAction = () => {
+                                            table.items.push(newEffectRackWaveTableItem());
+                                            onEdited(editor);
+                                        };
+                                    }
+
+                                    imDspVisualGroupBegin(c, ROW); imGap(c, 10, PX); {
+                                        imValueOrBindingEditor(c, editor, effectPos, table.gainUi);
+                                        imValueOrBindingEditor(c, editor, effectPos, table.falloffUi);
+                                        imValueOrBindingEditor(c, editor, effectPos, table.wavePosUi);
+                                    } imDspVisualGroupEnd(c);
+                                } imLayoutEnd(c);
+
+                                imDspVisualGroupBegin(c, ROW); {
+                                    imRegisterOutput(c, editor, effectPos, table.totalOut);
                                 } imDspVisualGroupEnd(c);
                             } break;
                             default: unreachable(effectValue);
@@ -1604,7 +1673,6 @@ function imEffectRackEditorEffect(
 function imRegisterOutput(
     c: ImCache,
     editor: EffectRackEditorState,
-    effect: EffectRackItem,
     effectPos: number,
     output: RegisterOutput,
 ) {
@@ -2342,6 +2410,13 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
                 imStr(c, "+ Oscillator");
                 if (elHasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackOscillator());
+                }
+            } imContextMenuItemEnd(c);
+
+            imEditorContextMenuItemBegin(c); {
+                imStr(c, "+ Wave-Table");
+                if (elHasMousePress(c)) {
+                    toAdd = newEffectRackItem(newEffectRackWaveTable());
                 }
             } imContextMenuItemEnd(c);
 
