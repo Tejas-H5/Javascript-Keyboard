@@ -452,6 +452,9 @@ export function unmarshalObject<T extends object>(
         const um = unmarshallers[key];
 
         assert(!!um);
+
+        // NOTE: if the unmarshaller returns `undefined`, we DON'T use the default value.
+        // This is on purpose - it has the right to override the default value to undefined like that
         // @ts-expect-error this is also fine
         defaultT[key] = um(
             o[key],

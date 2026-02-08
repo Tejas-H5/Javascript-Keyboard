@@ -1,6 +1,6 @@
-// IM-DOM 1.63
+// IM-DOM 1.64
 
-import { imFixedXY, imSize, PX } from "src/components/core/layout";
+import { imFixedXY, imSize, imZIndex, PX } from "src/components/core/layout";
 import { assert } from "src/utils/assert";
 import {
     __GetEntries,
@@ -286,11 +286,12 @@ export type SvgContext = {
  * NOTE: large svg-based scenes are very hard and cumbersone to code. 
  * This could very well be because this SvgContext isnt fully formed.
  */
-export function imSvgContext(c: ImCache): SvgContext {
+export function imSvgContext(c: ImCache, zIndex = 1000000): SvgContext {
     const el = elGet(c);
     const elRect = el.getBoundingClientRect();
 
     const svgRoot = imElSvgBegin(c, EL_SVG); imFinalizeDeferred(c); 
+    imZIndex(c, zIndex);
     let ctx = imGet(c, imSvgContext);
     if (ctx === undefined) {
         ctx = { 
@@ -412,6 +413,8 @@ export function addDebugLabelToAppender(c: ImCache, str: string | undefined) {
     appender.label = str;
 }
 
+// Use this whenever you expect to render to a particular dom node from a place in the code that
+// would otherwise not have access to this dom node.
 export function imDomRootExistingBegin(c: ImCache, existing: DomAppender<any>) {
     // If you want to re-push this DOM node to the immediate mode stack, use imFinalizeDeferred(c).
     // I.e imElBegin(c, EL_BLAH); imFinalizeDeferred(c); ...

@@ -30,7 +30,6 @@ export type DebugFlags = {
     testFixDatabase: Flag;
 
     testSoundLab: Flag;
-    testSoundLabWaveEditor: Flag;
     testSoundLabAllEffectRackEffects: Flag;
     testSoundLabLoadPreset: string;
 
@@ -58,8 +57,7 @@ export const debugFlags: DebugFlags = {
 
     testFixDatabase: OFF,
 
-    testSoundLab: OFF,
-    testSoundLabWaveEditor: OFF,
+    testSoundLab: ON,
     testSoundLabAllEffectRackEffects: OFF,
     testSoundLabLoadPreset: "edm pluck 4",
 

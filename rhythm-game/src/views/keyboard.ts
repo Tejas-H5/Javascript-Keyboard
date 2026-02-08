@@ -155,7 +155,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                             // need to iterate over all the notes within the approach window, 
                             // could need multiple approach squares for this key.
                             const sequencer = ctx.sequencer;
-                            if (imIf(c) && sequencer.isPlaying) {
+                            if (imIf(c) && !sequencer.isPaused) {
                                 const currentTime = getCurrentPlayingTimeIntoChart(sequencer);
 
                                 const scheduledKeyPresses = ctx.sequencer.scheduledKeyPresses;

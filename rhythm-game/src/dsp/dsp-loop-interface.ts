@@ -37,9 +37,11 @@ export function applyPlaySettingsDefaults(playSettings: DSPPlaySettings) {
     const oscItem = newEffectRackItem(osc);
     rack.effects.push(oscItem);
 
-    // Need to compile before we have ids we can use
+    // compile to allocate register Ids
     compileEffectRack(rack);
-    osc.amplitudeUI.valueRef = { effectId: envItem.id };
+
+    osc.amplitudeUI.valueRef = { regOutputId: env.valueOut.id };
+    rack.output.valueRef     = { regOutputId: osc.waveOut.id };
 
     // Rest are for testing purposes
     if (
