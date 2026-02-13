@@ -1,5 +1,5 @@
 import { getAllBundledCharts, getAllBundledChartsMetadata } from "src/assets/bundled-charts";
-import { EffectRack, serializeEffectRack } from "src/dsp/dsp-loop-effect-rack";
+import { EffectRack, serializeEffectRack } from "src/state/effect-rack";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { AsyncCb, AsyncDone, AsyncCallback, AsyncCallbackResult, DONE, newError, parallelIterator, toTrackedCallback } from "src/utils/async-utils";

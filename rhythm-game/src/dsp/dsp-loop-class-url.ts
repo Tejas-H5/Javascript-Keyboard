@@ -1,6 +1,6 @@
 import { newFunctionUrl } from "src/utils/web-workers";
 
-import * as dspLoopEffectRack from "./dsp-loop-effect-rack";
+import * as dspLoopEffectRack from "../state/effect-rack";
 import * as dspLoop from "./dsp-loop";
 import * as random from "src/utils/random";
 import * as assertions from "src/utils/assert";

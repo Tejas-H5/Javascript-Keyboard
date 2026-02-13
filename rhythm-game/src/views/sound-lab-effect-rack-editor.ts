@@ -117,7 +117,7 @@ import {
     SWITCH_OP_GT,
     SWITCH_OP_LT,
     ValueRef
-} from "src/dsp/dsp-loop-effect-rack";
+} from "src/state/effect-rack";
 import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { effectRackToPreset, getLoadedPreset, updateAutosavedEffectRackPreset } from "src/state/data-repository";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
@@ -816,14 +816,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
             imLayoutBegin(c, COL); imFlex(c); {
                 const sc = imState(c, newScrollContainer);
                 imScrollContainerBegin(c, sc); {
-
-                    imDomRootExistingBegin(c, svgCtx.root); {
-                        if (isFirstishRender(c)) {
-                            // Dont want to be able to touch the SVG actually.
-                            // It's just for the wires visual.
-                            elSetStyle(c, "pointerEvents", "none");
-                        }
-                    } imDomRootExistingEnd(c, svgCtx.root);
 
                     // The wire we are currently dragging
                     if (imIf(c) && wires.drag.registerOutputId !== undefined || wires.drag.registerInput !== undefined) {

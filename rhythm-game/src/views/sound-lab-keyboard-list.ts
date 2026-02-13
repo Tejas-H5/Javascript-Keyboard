@@ -19,7 +19,7 @@ import {
 import { cn, cssVars } from "src/components/core/stylesheets";
 import {
     serializeEffectRack
-} from "src/dsp/dsp-loop-effect-rack";
+} from "src/state/effect-rack";
 import {
     createEffectRackPreset,
     DEFAULT_GROUP_NAME,

@@ -84,22 +84,27 @@ function newKey(k: string): InstrumentKey {
 
 export const BASE_NOTE = 28;
 
+export const KEYBOARD_LAYOUT: string[] = [
+    "1234567890-=",
+    "qwertyuiop[]",
+    "asdfghjkl;'↵",
+    "zxcvbnm,./",
+];
+
+export const KEYBOARD_LAYOUT_FLAT = KEYBOARD_LAYOUT.join("");
+
 export function newKeyboardState(): KeyboardState {
     const keys: InstrumentKey[][] = [];
     const flatKeys: InstrumentKey[] = [];
     let maxNoteIdx = 0;
 
+    const pianoKeys = KEYBOARD_LAYOUT
+        .map(line => line.split("").map(newKey));
+
     // initialize keys
     {
         // piano rows
         {
-            const pianoKeys: InstrumentKey[][] = [
-                "1234567890-=".split("").map(newKey),
-                "qwertyuiop[]".split("").map(newKey),
-                "asdfghjkl;'↵".split("").map(newKey),
-                "zxcvbnm,./".split("").map(newKey),
-            ];
-
             keys.push(...pianoKeys);
 
             let noteIndexOffset = 0;

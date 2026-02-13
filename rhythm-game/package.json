@@ -10,10 +10,8 @@
     "build-samples": "python audioProcessing/buildSamples.py"
   },
   "devDependencies": {
-    "typescript": "^5.5.3",
-    "vite": "^5.4.1"
-  },
-  "dependencies": {
-    "vite-plugin-singlefile": "^2.0.2"
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-singlefile": "^2.3.0"
   }
 }

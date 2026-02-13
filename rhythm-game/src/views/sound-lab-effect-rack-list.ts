@@ -19,7 +19,7 @@ import {
 import { cn, cssVars } from "src/components/core/stylesheets";
 import {
     serializeEffectRack
-} from "src/dsp/dsp-loop-effect-rack";
+} from "src/state/effect-rack";
 import {
     createEffectRackPreset,
     DEFAULT_GROUP_NAME,
@@ -101,8 +101,6 @@ export function imEffectRackList(
     // UI could be better but for now I don't care too much.
     imLayoutBegin(c, COL); imFlex(c); {
         imLayoutBegin(c, ROW); imGap(c, 5, PX); imFlexWrap(c); {
-            imHeading(c, "Presets");
-
             imFlex1(c);
 
             let selectedPreset = getLoadedPreset(ctx.repo, s.selectedId);

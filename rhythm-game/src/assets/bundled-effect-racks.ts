@@ -1,4 +1,4 @@
-import { deserializeEffectRack } from "src/dsp/dsp-loop-effect-rack";
+import { deserializeEffectRack } from "src/state/effect-rack";
 
 // TODO: incorporate!
 

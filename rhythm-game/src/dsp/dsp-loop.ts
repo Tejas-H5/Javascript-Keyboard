@@ -9,7 +9,7 @@ import { lerp, max } from "src/utils/math-utils";
 import { getNoteFrequency } from "src/utils/music-theory-utils";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random";
 import { ScheduledKeyPress, ScheduledKeyPresses } from "./dsp-loop-interface";
-import { newEffectRack, newEffectRackRegisters, EffectRackRegisters, computeEffectRackIteration, EffectRack, compileEffectRack }  from "./dsp-loop-effect-rack";
+import { newEffectRack, newEffectRackRegisters, EffectRackRegisters, computeEffectRackIteration, EffectRack, compileEffectRack }  from "../state/effect-rack";
 
 type DspSynthParameters = {
     rack: EffectRack;

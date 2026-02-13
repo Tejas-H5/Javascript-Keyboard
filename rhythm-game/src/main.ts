@@ -1,7 +1,7 @@
 import { getCurrentPlaySettings, getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
 import { BLOCK, imLayoutBegin, imLayoutEnd } from "./components/core/layout";
 import { debugFlags } from "./debug-flags";
-import { deserializeEffectRack } from "./dsp/dsp-loop-effect-rack";
+import { deserializeEffectRack } from "./state/effect-rack";
 import { cleanupChartRepo, loadAllEffectRackPresets, loadAutosavedEffectRackPreset, loadChartMetadataList, newDataRepository } from "./state/data-repository";
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state";
 import { NAME_OPERATION_COPY } from "./state/ui-state";
