@@ -22,8 +22,8 @@
 import { filterInPlace } from "./array-utils";
 import { assert } from "./assert";
 import {
-    ACB,
-    ACR,
+    AsyncCb,
+    AsyncDone,
     AsyncCallback,
     AsyncCallbackResult,
     asyncResultsAll,
@@ -103,8 +103,8 @@ export function openConnection(
         // https://developer.mozilla.org/en-US/docs/Web/API/IDBDatabase/close_event
         onUnexpectedlyClosed: (ev: Event) => void,
     },
-    cb: ACB<IDBDatabase>,
-): ACR {
+    cb: AsyncCb<IDBDatabase>,
+): AsyncDone {
     const openRequest = window.indexedDB.open(name, version);
 
     openRequest.onupgradeneeded = () => {
@@ -339,7 +339,7 @@ export function createOne<T>(
     table: SingleTableDefiniton<T>,
     value: T,
     cb: AsyncCallback<ValidKey>
-): ACR {
+): AsyncDone {
     const store = tx.raw.objectStore(table.name);
 
     const payload: T = { ...value };
@@ -428,8 +428,8 @@ export function saveData<TData, TMetadata>(
     tx:      WriteTransaction,
     tables:  MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb:      ACB<boolean>,
-): ACR {
+    cb:      AsyncCb<boolean>,
+): AsyncDone {
     const id = newData[tables.data.keyPath] as ValidKey;
 
     const newMetadata = tables.toMetadata(newData);
@@ -464,8 +464,8 @@ export function createData<TData, TMetadata>(
     tx: WriteTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb: ACB<TMetadata>,
-): ACR {
+    cb: AsyncCb<TMetadata>,
+): AsyncDone {
     const metadata = tables.toMetadata(newData);
     return createOne(tx, tables.metadata, metadata, (id, err) => {
         if (id === undefined || err) return cb(undefined, err);
@@ -499,8 +499,8 @@ export function deleteData<TData, TMetadata>(
     tx:     WriteTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
     id:     ValidKey,
-    cb:     ACB<void>
-): ACR {
+    cb:     AsyncCb<void>
+): AsyncDone {
     return deleteMany(tx, [
         { table: tables.metadata, id: id },
         { table: tables.data, id: id },

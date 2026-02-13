@@ -73,8 +73,8 @@ import { assert } from "./assert";
  * Also see {@link done}
  */
 export type AsyncCallback<T = void> = ((result: T | undefined, err?: unknown) => AsyncCallbackResult); 
-export type ACB<T = void> = AsyncCallback<T>;
-export type ACR = AsyncCallbackResult;
+export type AsyncCb<T = void> = AsyncCallback<T>;
+export type AsyncDone = AsyncCallbackResult;
 
 
 /**
@@ -138,7 +138,7 @@ export function done<T>(_val: T | undefined, _err?: any) {
     return DONE;
 }
 
-export function toAsyncCallback<T>(p: Promise<T>, cb: AsyncCallback<T>): ACR {
+export function toAsyncCallback<T>(p: Promise<T>, cb: AsyncCallback<T>): AsyncDone {
     p
         .then(val => cb(val))
         .catch(err => {
@@ -212,7 +212,7 @@ export type AsyncResult<T> =
 
 type AsyncFunction<T> = (cb: AsyncCallback<T>) => AsyncCallbackResult;
 
-export function asyncResult<T>(asyncFn: AsyncFunction<T>, cb: ACB<AsyncResult<T>>): AsyncResult<T> {
+export function asyncResult<T>(asyncFn: AsyncFunction<T>, cb: AsyncCb<AsyncResult<T>>): AsyncResult<T> {
     const result: AsyncResult<T> = {
         loaded: false,
         val: undefined,
@@ -230,14 +230,14 @@ export function asyncResult<T>(asyncFn: AsyncFunction<T>, cb: ACB<AsyncResult<T>
 
 export function asyncResultsAll<T extends unknown[]>(
     asyncMethods: { [K in keyof T]: AsyncFunction<T[K]> },
-    resultsCallback: (results: { [K in keyof T]: AsyncResult<T[K]> }) => ACR,
-): ACR {
+    resultsCallback: (results: { [K in keyof T]: AsyncResult<T[K]> }) => AsyncDone,
+): AsyncDone {
     let finishedCount = 0;
     const asyncResults = asyncMethods.map(fn => asyncResult(fn, onFinished));
 
     return DISPATCHED_ELSEWHERE;
 
-    function onFinished(): ACR {
+    function onFinished(): AsyncDone {
         finishedCount += 1;
         if (finishedCount !== asyncResults.length) {
             return DONE;
@@ -310,9 +310,9 @@ export function untrackAsyncAction(
     action.t1 = performance.now();
 }
 
-export function toTrackedCallback<T>(cbIn: ACB<T>, actionName: string): ACB<T> {
+export function toTrackedCallback<T>(cbIn: AsyncCb<T>, actionName: string): AsyncCb<T> {
     const action = trackAsyncAction(actionName);
-    const cb: ACB<T> = (val, err) => {
+    const cb: AsyncCb<T> = (val, err) => {
         untrackAsyncAction(action, val, err);
         return cbIn(val, err);
     }

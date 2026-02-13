@@ -6,7 +6,7 @@ import { cleanupChartRepo, loadAllEffectRackPresets, loadAutosavedEffectRackPres
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state";
 import { NAME_OPERATION_COPY } from "./state/ui-state";
 import { assert } from "./utils/assert";
-import { ACB, ACR, done, toAsyncCallback } from "./utils/async-utils";
+import { AsyncCb, AsyncDone, done, toAsyncCallback } from "./utils/async-utils";
 import { initCssbStyles } from "./utils/cssb";
 import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imTry, imTryEnd, isFirstishRender, USE_REQUEST_ANIMATION_FRAME } from "./utils/im-core";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imElBegin, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
@@ -16,7 +16,7 @@ import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpda
 
 let globalContext: GlobalContext | undefined;
 
-function initGlobalContext(cb: ACB<void>): ACR {
+function initGlobalContext(cb: AsyncCb<void>): AsyncDone {
     // Our code only works after we've established a connection with our
     // IndexedDB instance, and the audio context has loaded.
 
@@ -57,7 +57,7 @@ function initGlobalContext(cb: ACB<void>): ACR {
 
                 return onDatabaseCleaned();
 
-                function onDatabaseCleaned(): ACR {
+                function onDatabaseCleaned(): AsyncDone {
                     if (debugFlags.testSoundLab) {
                         setViewSoundLab(ctx);
 

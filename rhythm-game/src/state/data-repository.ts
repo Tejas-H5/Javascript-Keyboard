@@ -2,7 +2,7 @@ import { getAllBundledCharts, getAllBundledChartsMetadata } from "src/assets/bun
 import { EffectRack, serializeEffectRack } from "src/dsp/dsp-loop-effect-rack";
 import { filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
-import { ACB, ACR, AsyncCallback, AsyncCallbackResult, DONE, newError, parallelIterator, toTrackedCallback } from "src/utils/async-utils";
+import { AsyncCb, AsyncDone, AsyncCallback, AsyncCallbackResult, DONE, newError, parallelIterator, toTrackedCallback } from "src/utils/async-utils";
 import * as idb from "src/utils/indexed-db";
 import {
     CHART_STATUS_READONLY,
@@ -61,7 +61,7 @@ const SYSTEM_PRESET_IDS = {
     autoSaved: 1,
 }
 
-export function newDataRepository(cb: AsyncCallback<DataRepository>): ACR {
+export function newDataRepository(cb: AsyncCallback<DataRepository>): AsyncDone {
     return idb.openConnection("KeyboardRhythmGameIDB", tablesVersion, tables, {
         onBlocked(event: IDBVersionChangeEvent) {
             console.error("IDB blocked!", { event });
@@ -71,7 +71,7 @@ export function newDataRepository(cb: AsyncCallback<DataRepository>): ACR {
         }
     }, onConnected);
 
-    function onConnected(db: IDBDatabase | undefined, err: any): ACR {
+    function onConnected(db: IDBDatabase | undefined, err: any): AsyncDone {
         if (err || !db) return cb(undefined, err);
 
         const repo: DataRepository = {
@@ -109,7 +109,7 @@ function repositoryWriteTx(repo: DataRepository, tables: idb.AnyTableDef[]) {
 /////////////////////////////////////
 // Charts
 
-export function loadChartMetadataList(repo: DataRepository, cb: ACB<SequencerChartMetadata[]>): ACR {
+export function loadChartMetadataList(repo: DataRepository, cb: AsyncCb<SequencerChartMetadata[]>): AsyncDone {
     const tx = repositoryReadTx(repo, [tables.chart]);
     return loadChartMetadataListTx(repo, tx, cb);
 }
@@ -119,7 +119,7 @@ export function loadChartMetadataList(repo: DataRepository, cb: ACB<SequencerCha
  * From then onwards, all mutations get optimistically forked into a cache and the database, 
  * so subsequent calls should be relatively instant.
  */
-export function loadChartMetadataListTx(repo: DataRepository, tx: idb.ReadTransaction, cb: ACB<SequencerChartMetadata[]>): ACR {
+export function loadChartMetadataListTx(repo: DataRepository, tx: idb.ReadTransaction, cb: AsyncCb<SequencerChartMetadata[]>): AsyncDone {
     repo.charts.loading = true;
 
     return idb.getAllMetadata(tx, tables.chart, (charts) => {
@@ -143,7 +143,7 @@ function updateAvailableMetadata(repo: DataRepository, metadata: SequencerChartM
     });
 }
 
-export function cleanupChartRepo(repo: DataRepository, cb: AsyncCallback<void>): ACR {
+export function cleanupChartRepo(repo: DataRepository, cb: AsyncCallback<void>): AsyncDone {
     let cleanedUp: any[] = [];
 
     const tx = repositoryWriteTx(repo, [tables.chart]);
@@ -226,7 +226,7 @@ export function queryChart(
     });
 }
 
-export function saveChart(repo: DataRepository, chart: SequencerChart, cb: ACB<boolean>): ACR {
+export function saveChart(repo: DataRepository, chart: SequencerChart, cb: AsyncCb<boolean>): AsyncDone {
     cb = toTrackedCallback(cb, "saveChart");
 
     if (isBundledChartId(chart.id)) {
@@ -254,7 +254,7 @@ export function saveChart(repo: DataRepository, chart: SequencerChart, cb: ACB<b
 }
 
 // Creates a chart, returns it's id
-export function createChart(repo: DataRepository, chart: SequencerChart, cb: ACB<boolean>): ACR {
+export function createChart(repo: DataRepository, chart: SequencerChart, cb: AsyncCb<boolean>): AsyncDone {
     cb = toTrackedCallback(cb, "createChart");
 
     chart.name = chart.name.trim();
@@ -277,7 +277,7 @@ export function createChart(repo: DataRepository, chart: SequencerChart, cb: ACB
     });
 }
 
-export function deleteChart(repo: DataRepository, chartToDelete: SequencerChart, cb: ACB<void>): ACR {
+export function deleteChart(repo: DataRepository, chartToDelete: SequencerChart, cb: AsyncCb<void>): AsyncDone {
     cb = toTrackedCallback(cb, "deleteChart");
 
     if (chartToDelete._savedStatus === CHART_STATUS_READONLY) {
@@ -318,7 +318,7 @@ export function effectRackToPreset(effectRack: EffectRack): EffectRackPreset {
     };
 }
 
-export function loadAllEffectRackPresets(repo: DataRepository, cb: ACB<EffectRackPreset[]>): ACR {
+export function loadAllEffectRackPresets(repo: DataRepository, cb: AsyncCb<EffectRackPreset[]>): AsyncDone {
     const tx = repositoryReadTx(repo, [tables.effectsRackPresets])
     return idb.getAll(tx, tables.effectsRackPresets, (effects, err) => {
         if (!effects) {
@@ -338,7 +338,7 @@ export function getLoadedPreset(repo: DataRepository, id: number): EffectRackPre
         .find(p => p.id === id);
 }
 
-export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: ACB): ACR {
+export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb): AsyncDone {
     cb = toTrackedCallback(cb, "createEffectRackPreset");
 
     repo.effectRackPresets.allEffectRackPresets.push(preset);
@@ -349,7 +349,7 @@ export function createEffectRackPreset(repo: DataRepository, preset: EffectRackP
     });
 }
 
-export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: ACB): ACR {
+export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb): AsyncDone {
     cb = toTrackedCallback(cb, "updateEffectRackPreset");
 
     assert(preset.id > 0);
@@ -362,7 +362,7 @@ export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackP
     })
 }
 
-export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: ACB): ACR {
+export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb): AsyncDone {
     cb = toTrackedCallback(cb, "deleteEffectRackPreset");
 
     const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
@@ -373,7 +373,7 @@ export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackP
     })
 }
 
-export function loadAutosavedEffectRackPreset(repo: DataRepository, cb: ACB<EffectRackPreset>): ACR {
+export function loadAutosavedEffectRackPreset(repo: DataRepository, cb: AsyncCb<EffectRackPreset>): AsyncDone {
     if (repo.effectRackPresetsSystem.autoSaved) {
         return cb(repo.effectRackPresetsSystem.autoSaved);
     }
@@ -384,7 +384,7 @@ export function loadAutosavedEffectRackPreset(repo: DataRepository, cb: ACB<Effe
     return idb.getOne(tx, tables.effectRackPresetsSystem, SYSTEM_PRESET_IDS.autoSaved, cb);
 }
 
-export function updateAutosavedEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: ACB<boolean>): ACR {
+export function updateAutosavedEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb<boolean>): AsyncDone {
     cb = toTrackedCallback(cb, "updateAutosavedEffectRackPreset");
 
     preset.id = SYSTEM_PRESET_IDS.autoSaved;

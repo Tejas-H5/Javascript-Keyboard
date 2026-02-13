@@ -8,7 +8,7 @@ import { createChart, saveChart } from "src/state/data-repository";
 import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
 import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "src/state/ui-state";
 import { unreachable } from "src/utils/assert";
-import { ACB, ACR, CANCELLED, done, newError, toTrackedCallback } from "src/utils/async-utils";
+import { AsyncCb, AsyncDone, CANCELLED, done, newError, toTrackedCallback } from "src/utils/async-utils";
 import { ImCache, imIf, imIfElse, imIfEnd, isFirstishRender } from "src/utils/im-core";
 import { elSetStyle, imStr } from "src/utils/im-dom";
 import { GlobalContext } from "./app";
@@ -103,7 +103,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     ctx.handled = true;
 }
 
-function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, cbIn: ACB<boolean>): ACR {
+function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, cbIn: AsyncCb<boolean>): AsyncDone {
     if (s.isUpdating) return CANCELLED;
 
     // Figure out the message, clear the message
@@ -122,7 +122,7 @@ function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, 
         }
     }
 
-    let cb: ACB<boolean> = (val, err) => {
+    let cb: AsyncCb<boolean> = (val, err) => {
         s.message = "";
         ctx.ui.updateModal = null;
         return cbIn(val, err);
