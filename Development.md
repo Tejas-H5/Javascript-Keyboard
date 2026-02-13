@@ -9,19 +9,12 @@
 
 Same as above, but use `npm run build` to build a static HTML file with everything.
 
-# 
-
 # Project structure
 
 ```
 .github/
     contains CI/CD pipeline info
 rhythm-game/    -- The frontend typescript code.
-    audioProcessing/
-        python code that is use to generate assets. 
-        can be ran with npm run build-samples.
-        you'll need to pip-install the dependencies as needed.
-
     dist/       -- this is where we build the final static page
         index.html  -- the frontend entry point
 
@@ -32,8 +25,6 @@ rhythm-game/    -- The frontend typescript code.
             UI components that can be copy-pasted to other simlar projects go here
         utils/
             Utils that can be copy-pasted to other simlar projects go here
-        samples/
-            samples are converted into number arrays by a python script, and then put here.
         dsp/                        -- All code that runs on a custom Audio Worklet node goes here
         state/          -- All app-specific domain logic goes here.
         views/          -- All ui components that require the GlobalContext in order to work go here
@@ -47,3 +38,5 @@ Development.md
 Readme.md
     Documents the project's intentions/features/etc
 ```
+
+NOTE: all drum samples etc. will be procedurally generated, so there are no more wav files or python scripts here

@@ -86,7 +86,7 @@ export function selectPreset(s: PresetsListState, id: number) {
     s.renaming = false;
 }
 
-export function imPresetsList(
+export function imEffectRackList(
     c: ImCache,
     ctx: GlobalContext,
     s: PresetsListState,
@@ -107,7 +107,7 @@ export function imPresetsList(
 
             let selectedPreset = getLoadedPreset(ctx.repo, s.selectedId);
 
-            if (imButtonIsClicked(c, "Update preset", false, !!selectedPreset) && selectedPreset) {
+            if (imButtonIsClicked(c, "Overwrite", false, !!selectedPreset) && selectedPreset) {
                 selectedPreset.serialized = serializeEffectRack(editor.effectRack);
                 updateEffectRackPreset(ctx.repo, selectedPreset, done);
             }
@@ -121,7 +121,7 @@ export function imPresetsList(
                 selectPreset(s, 0);
             }
 
-            if (imButtonIsClicked(c, "Create new preset")) {
+            if (imButtonIsClicked(c, "New")) {
                 const preset = effectRackToPreset(editor.effectRack);
                 createEffectRackPreset(ctx.repo, preset, () => {
                     s.openGroup = DEFAULT_GROUP_NAME;

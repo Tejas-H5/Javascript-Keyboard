@@ -99,3 +99,24 @@
 //     waitFor([out], ([out]) => done(out));
 // }
 //
+//
+// type Ringbuffer = {
+//     buff: number[];
+//     i: number;
+// }
+//
+// function newRingbuffer(count: number): Ringbuffer {
+//     return {
+//         buff: new Array(count).fill(0),
+//         i: 0,
+//     };
+// }
+//
+// function pushValueToRingbuffer(rb: Ringbuffer, val: number) {
+//     rb.buff[rb.i] = val;
+//     rb.i += 1;
+//     if (rb.i >= rb.buff.length) {
+//         rb.i = 0;
+//     }
+// }
+//

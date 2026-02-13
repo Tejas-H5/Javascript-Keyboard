@@ -34,7 +34,7 @@ import { imPlayView } from "src/views/play-view";
 import { imStartupView } from "src/views/startup-view";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
 import { runSaveCurrentChartTask } from "./saving-chart";
-import { imEffectRackEditor, imSoundLab } from "./sound-lab-effect-rack-editor";
+import { imSoundLab, } from "./sound-lab";
 import { imUpdateModal } from "./update-modal";
 
 export type GlobalContext = {

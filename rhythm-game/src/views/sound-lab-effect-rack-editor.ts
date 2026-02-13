@@ -156,7 +156,7 @@ import { imExportModal, imImportModal } from "./import-export-modals";
 import { imKeyboard } from "./keyboard";
 import { drawSamples, imPlotBegin, imPlotEnd } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
-import { imPresetsList, presetsListState, PresetsListState } from "./sound-lab-presets-list";
+import { imEffectRackList, presetsListState, PresetsListState } from "./sound-lab-effect-rack-list";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
 const MAX_NUM_FREQUENCIES = 16384;
@@ -288,9 +288,8 @@ export type EffectRackEditorState = {
 
     ui: {
         modal: number;
-        presetsPanel: boolean;
-
         wires: BindingSvgWires;
+        touchedAnyWidgetCounter: number;
     };
 
     version: number;
@@ -366,7 +365,6 @@ export function newEffectRackEditorState(effectRack: EffectRack): EffectRackEdit
 
         ui: {
             modal: MODAL_NONE,
-            presetsPanel: false,
 
             wires: {
                 outputPositions: new Map(),
@@ -379,6 +377,8 @@ export function newEffectRackEditorState(effectRack: EffectRack): EffectRackEdit
                     toRegisterInput: false,
                 }
             },
+
+            touchedAnyWidgetCounter: 0,
         },
 
         version: 0,
@@ -447,17 +447,6 @@ function createConnection(editor: EffectRackEditorState, src: RegisterOutputId, 
 
 const dragColour = newColor(0, 0, 0, 1);
 
-export function imSoundLab(c: ImCache, ctx: GlobalContext) {
-    const settings = getCurrentPlaySettings();
-
-    let editor = imGet(c, newEffectRackEditorState);
-    if (!editor) {
-        const rack = settings.parameters.rack;
-        editor = imSet(c, newEffectRackEditorState(rack));
-    }
-
-    imEffectRackEditor(c, ctx, editor);
-}
 
 export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: EffectRackEditorState) {
     const rack = editor.effectRack;
@@ -717,10 +706,6 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
         }
     }
 
-    if (isFirstishRender(c)) {
-        elSetStyle(c, "fontSize", "20px");
-    }
-
     if (imIf(c) && editor.ui.modal === MODAL_EXPORT) {
         imExportModal(c, editor.effectRack, serializeEffectRack);
 
@@ -769,209 +754,156 @@ export function imEffectRackEditor(c: ImCache, ctx: GlobalContext, editor: Effec
 
     } imIfEnd(c);
 
-    imLayoutBegin(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
+    const svgCtx = editor.svgCtx;
+    assert(!!svgCtx);
+
+    imLayoutBegin(c, COL); imFlex(c); {
+        if (isFirstishRender(c)) elSetStyle(c, "fontSize", "20px");
         if (isFirstishRender(c)) elSetClass(c, cnEffectRackEditor);
-        if (isFirstishRender(c)) {
-            // Should be the default for web apps tbh. Only on documents, would you ever want to select the text ...
-            elSetClass(c, cn.userSelectNone);
-        }
 
-        const svgCtx  = imSvgContext(c);
-        editor.svgCtx = svgCtx;
+        imLayoutBegin(c, COL); imFlex(c); {
+            imLayoutBegin(c, ROW); imAlign(c); {
+                imLayoutBegin(c, ROW); imGap(c, 10, PX); {
+                    if (imButtonIsClicked(c, "Import")) {
+                        editor.ui.modal = MODAL_IMPORT;
+                    }
 
-        imLayoutBegin(c, COL); imFlex(c, 4); {
-            imLayoutBegin(c, COL); imFlex(c, 2); {
-                imLayoutBegin(c, ROW); imAlign(c); {
-                    imLayoutBegin(c, ROW); imGap(c, 10, PX); {
-                        if (imButtonIsClicked(c, "Import")) {
-                            editor.ui.modal = MODAL_IMPORT;
-                        }
+                    if (imButtonIsClicked(c, "Export")) {
+                        editor.ui.modal = MODAL_EXPORT;
+                    }
 
-                        if (imButtonIsClicked(c, "Export")) {
-                            editor.ui.modal = MODAL_EXPORT;
-                        }
+                    if (imButtonIsClicked(c, "Reset")) {
+                        editor.deferredAction = () => {
+                            const playSettings = getCurrentPlaySettings();
 
-                        if (imButtonIsClicked(c, "Reset")) {
-                            editor.deferredAction = () => {
-                                const playSettings = getCurrentPlaySettings();
+                            applyPlaySettingsDefaults(playSettings);
+                            updatePlaySettings();
 
-                                applyPlaySettingsDefaults(playSettings);
-                                updatePlaySettings();
+                            editor.effectRack = playSettings.parameters.rack;
 
-                                editor.effectRack = playSettings.parameters.rack;
-
-                                onEdited(editor);
-                            }
-                        }
-                    } imLayoutEnd(c);
-
-                    imFlex1(c);
-
-                    imHeadingBegin(c); {
-                        imStr(c, "Effect rack");
-
-                        let selectedPreset = getLoadedPreset(ctx.repo, editor.presetsListState.selectedId);
-
-                        if (imIf(c) && selectedPreset) {
-                            imStr(c, " - "); 
-                            imStr(c, selectedPreset.name);
-                        } imIfEnd(c);
-
-                    } imHeadingEnd(c);
-
-                    imFlex1(c);
-
-                    imLayoutBegin(c, ROW); imGap(c, 10, PX); {
-                        if (imButtonIsClicked(c, "Undo", false, canUndo(editor.undoBuffer))) {
-                            editor.deferredAction = () => editorUndo(editor);
-                        }
-
-                        if (imButtonIsClicked(c, "Redo", false, canRedo(editor.undoBuffer))) {
-                            editor.deferredAction = () => editorRedo(editor);
-                        }
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
-
-                imLayoutBegin(c, COL); imFlex(c); {
-                    const sc = imState(c, newScrollContainer);
-                    imScrollContainerBegin(c, sc); {
-
-                        imDomRootExistingBegin(c, svgCtx.root); {
-                            if (isFirstishRender(c)) {
-                                // Dont want to be able to touch the SVG actually.
-                                // It's just for the wires visual.
-                                elSetStyle(c, "pointerEvents", "none");
-                            }
-                        } imDomRootExistingEnd(c, svgCtx.root);
-
-                        // The wire we are currently dragging
-                        if (imIf(c) && wires.drag.registerOutputId !== undefined || wires.drag.registerInput !== undefined) {
-                            imDomRootExistingBegin(c, editor.svgCtx.root); {
-                                const mouse = getGlobalEventSystem().mouse;
-                                let srcX = mouse.X, srcY = mouse.Y;
-                                let dstX = mouse.X, dstY = mouse.Y;
-
-                                if (wires.drag.toRegisterInput && wires.drag.registerOutputId !== undefined) {
-                                    const outputUi = wires.outputPositions.get(wires.drag.registerOutputId);
-                                    assert(outputUi !== undefined);
-
-                                    srcX = outputUi.x;
-                                    srcY = outputUi.y;
-                                } else {
-                                    dstX = wires.drag.registerInputClientX;
-                                    dstY = wires.drag.registerInputClientY;
-                                }
-
-                                imWire(
-                                    c,
-                                    srcX, srcY, dstX, dstY,
-                                    dragColour.r, dragColour.g, dragColour.b, 1,
-                                );
-                            } imDomRootExistingEnd(c, editor.svgCtx.root);
-                        } imIfEnd(c);
-
-                        const effectsDnd = imDragAndDrop(c);
-                        if (effectsDnd.moved) {
-                            const { a, b } = effectsDnd.moved;
-                            arrayMove(editor.effectRack.effects, a, b);
                             onEdited(editor);
                         }
+                    }
+                } imLayoutEnd(c);
 
-                        imFor(c); for (let effectPos = 0; effectPos < rack.effects.length; effectPos++) {
-                            const effect = rack.effects[effectPos];
+                imFlex1(c);
 
-                            imKeyedBegin(c, effect); {
-                                imEffectRackEditorEffect(c, editor, effectPos, effectsDnd);
-                            } imKeyedEnd(c);
-                        } imForEnd(c);
+                imHeadingBegin(c); {
+                    imStr(c, "Effect rack");
 
-                        imLayoutBegin(c, ROW); imJustify(c); {
-                            imDropZoneForPrototyping(c, effectsDnd, rack.effects.length);
-                            imInsertButton(c, editor, rack.effects.length - 1);
-                        } imLayoutEnd(c);
+                    let selectedPreset = getLoadedPreset(ctx.repo, editor.presetsListState.selectedId);
 
-                    } imScrollContainerEnd(c);
+                    if (imIf(c) && selectedPreset) {
+                        imStr(c, " - ");
+                        imStr(c, selectedPreset.name);
+                    } imIfEnd(c);
+
+                } imHeadingEnd(c);
+
+                imFlex1(c);
+
+                imLayoutBegin(c, ROW); imGap(c, 10, PX); {
+                    if (imButtonIsClicked(c, "Undo", false, canUndo(editor.undoBuffer))) {
+                        editor.deferredAction = () => editorUndo(editor);
+                    }
+
+                    if (imButtonIsClicked(c, "Redo", false, canRedo(editor.undoBuffer))) {
+                        editor.deferredAction = () => editorRedo(editor);
+                    }
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
 
-            imLayoutBegin(c, ROW); {
-                const s = editor.compileStats;
-                const samplesPerMs = s.numSamples / s.computeSamplesTime;
-                imLayoutBegin(c, ROW); imAlign(c); imFlex(c); {
-                    if (imIf(c) && s.completed) {
-                        imStr(c, "Compiled in ");
-                        imStr(c, s.compileTime.toFixed(3))
-                        imStr(c, "ms, ");
-                        imStr(c, "Ran in ");
-                        imStr(c, samplesPerMs.toFixed(3))
-                        imStr(c, s.numSamples); imStr(c, " computed over "); imStr(c, s.framesRequired);
-                        imStr(c, " frames. Expect glitching if over "); imStr(c, s.maxFramesRequired);
-                        // want to compute ~ 0.1 seconds ahead of time
-                        // const wantedSamplesPerMs = (dspInfo.sampleRate / 10);
-                        // imStr(c, " (budget = " + wantedSamplesPerMs.toFixed(3) + ")");
-                    } else {
-                        imIfElse(c);
-                        imStr(c, "...");
-                    } imIfEnd(c);
-                } imLayoutEnd(c);
+            imLayoutBegin(c, COL); imFlex(c); {
+                const sc = imState(c, newScrollContainer);
+                imScrollContainerBegin(c, sc); {
 
-                imLayoutBegin(c, COL); {
-                    if (isFirstishRender(c)) elSetStyle(c, "borderTop", "1px solid " + cssVars.fg);
-                    if (isFirstishRender(c)) elSetStyle(c, "borderLeft", "1px solid " + cssVars.fg);
-                    if (isFirstishRender(c)) elSetStyle(c, "borderTopLeftRadius", "5px");
-                    if (isFirstishRender(c)) elSetStyle(c, "padding", "5px");
-                    imValueOrBindingEditor(c, editor, rack.effects.length, rack.output);
-                } imLayoutEnd(c);
+                    imDomRootExistingBegin(c, svgCtx.root); {
+                        if (isFirstishRender(c)) {
+                            // Dont want to be able to touch the SVG actually.
+                            // It's just for the wires visual.
+                            elSetStyle(c, "pointerEvents", "none");
+                        }
+                    } imDomRootExistingEnd(c, svgCtx.root);
+
+                    // The wire we are currently dragging
+                    if (imIf(c) && wires.drag.registerOutputId !== undefined || wires.drag.registerInput !== undefined) {
+                        imDomRootExistingBegin(c, svgCtx.root); {
+                            const mouse = getGlobalEventSystem().mouse;
+                            let srcX = mouse.X, srcY = mouse.Y;
+                            let dstX = mouse.X, dstY = mouse.Y;
+
+                            if (wires.drag.toRegisterInput && wires.drag.registerOutputId !== undefined) {
+                                const outputUi = wires.outputPositions.get(wires.drag.registerOutputId);
+                                assert(outputUi !== undefined);
+
+                                srcX = outputUi.x;
+                                srcY = outputUi.y;
+                            } else {
+                                dstX = wires.drag.registerInputClientX;
+                                dstY = wires.drag.registerInputClientY;
+                            }
+
+                            imWire(
+                                c,
+                                srcX, srcY, dstX, dstY,
+                                dragColour.r, dragColour.g, dragColour.b, 1,
+                            );
+                        } imDomRootExistingEnd(c, svgCtx.root);
+                    } imIfEnd(c);
+
+                    const effectsDnd = imDragAndDrop(c);
+                    if (effectsDnd.moved) {
+                        const { a, b } = effectsDnd.moved;
+                        arrayMove(editor.effectRack.effects, a, b);
+                        onEdited(editor);
+                    }
+
+                    imFor(c); for (let effectPos = 0; effectPos < rack.effects.length; effectPos++) {
+                        const effect = rack.effects[effectPos];
+
+                        imKeyedBegin(c, effect); {
+                            imEffectRackEditorEffect(c, editor, effectPos, effectsDnd);
+                        } imKeyedEnd(c);
+                    } imForEnd(c);
+
+                    imLayoutBegin(c, ROW); imJustify(c); {
+                        imDropZoneForPrototyping(c, effectsDnd, rack.effects.length);
+                        imInsertButton(c, editor, rack.effects.length - 1);
+                    } imLayoutEnd(c);
+
+                } imScrollContainerEnd(c);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
 
-        imLine(c, LINE_VERTICAL);
-
-        imLayoutBegin(c, COL); imFlex(c, 2); {
-            imLayoutBegin(c, COL); imFlex(c, 3); {
-                imLine(c, LINE_HORIZONTAL, 2);
-
-                imLayoutBegin(c, ROW); imGap(c, 5, PX); {
-                    if (imButtonIsClicked(c, "Wave preview", !editor.ui.presetsPanel)) {
-                        editor.ui.presetsPanel = false;
-                    }
-
-                    if (imButtonIsClicked(c, "Presets", editor.ui.presetsPanel)) {
-                        editor.ui.presetsPanel = true;
-                    }
-                } imLayoutEnd(c);
-
-                if (imIf(c) && editor.ui.presetsPanel) {
-                    imLayoutBegin(c, COL); imFlex(c); {
-                        imPresetsList(c, ctx, editor.presetsListState, editor);
-                    } imLayoutEnd(c);
+        imLayoutBegin(c, ROW); {
+            const s = editor.compileStats;
+            const samplesPerMs = s.numSamples / s.computeSamplesTime;
+            imLayoutBegin(c, ROW); imAlign(c); imFlex(c); {
+                if (imIf(c) && s.completed) {
+                    imStr(c, "Compiled in ");
+                    imStr(c, s.compileTime.toFixed(3))
+                    imStr(c, "ms, ");
+                    imStr(c, "Ran in ");
+                    imStr(c, samplesPerMs.toFixed(3))
+                    imStr(c, s.numSamples); imStr(c, " computed over "); imStr(c, s.framesRequired);
+                    imStr(c, " frames. Expect glitching if over "); imStr(c, s.maxFramesRequired);
+                    // want to compute ~ 0.1 seconds ahead of time
+                    // const wantedSamplesPerMs = (dspInfo.sampleRate / 10);
+                    // imStr(c, " (budget = " + wantedSamplesPerMs.toFixed(3) + ")");
                 } else {
                     imIfElse(c);
-
-                    imLayoutBegin(c, ROW); imHeading(c, "Waveform preview"); imLayoutEnd(c);
-
-                    imLayoutBegin(c, COL); imFlex(c); {
-                        const s = editor.signalPreview;
-                        imOscilloscope(c, s.oscilloscope, s.samples);
-                        imSampleRangeSlider(c, s.signalPressRange, s.samples.length, "Signal: ");
-                    } imLayoutEnd(c);
-
-                    // May seem useless rn, but I want to eventually assign different effect rack presets to 
-                    // different keys or key ranges, and that is when this will become handy.
-                    imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imFlex(c, 1); {
-                        imKeyboard(c, ctx);
-                    } imLayoutEnd(c);
+                    imStr(c, "...");
                 } imIfEnd(c);
             } imLayoutEnd(c);
 
-            imLayoutBegin(c, ROW); imHeading(c, "Actual waveform"); imLayoutEnd(c);
-
-            imLayoutBegin(c, COL); imFlex(c, 2); {
-                imOscilloscope2(c, editor.mockDspHarness)
+            imLayoutBegin(c, COL); {
+                if (isFirstishRender(c)) elSetStyle(c, "borderTop", "1px solid " + cssVars.fg);
+                if (isFirstishRender(c)) elSetStyle(c, "borderLeft", "1px solid " + cssVars.fg);
+                if (isFirstishRender(c)) elSetStyle(c, "borderTopLeftRadius", "5px");
+                if (isFirstishRender(c)) elSetStyle(c, "padding", "5px");
+                imValueOrBindingEditor(c, editor, rack.effects.length, rack.output);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
-
-        editor.svgCtx = null;
     } imLayoutEnd(c);
 
     if (editor.deferredAction) {
@@ -1049,6 +981,18 @@ function getEffectTypeShortName(type: EffectRackItemType): string {
         case EFFECT_RACK_ITEM__WAVE_TABLE:    return  "WAVETABL";
         default: unreachable(type);
     }
+}
+
+export function imEffectRackEditorWaveformPreview(c: ImCache, ctx: GlobalContext, editor: EffectRackEditorState) {
+    imLayoutBegin(c, COL); imFlex(c); {
+        const s = editor.signalPreview;
+        imOscilloscope(c, s.oscilloscope, s.samples);
+        imSampleRangeSlider(c, s.signalPressRange, s.samples.length, "Signal: ");
+    } imLayoutEnd(c);
+}
+
+export function imEffectRackActualWaveform(c: ImCache, ctx: GlobalContext, editor: EffectRackEditorState) {
+    imOscilloscope2(c, editor.mockDspHarness)
 }
 
 
@@ -1989,10 +1933,7 @@ function imValueOrBindingEditor(
                     if (dragEvent) {
                         regIdxUi.valueRef.value = dragEvent.val;
                         onEdited(editor);
-
-                        // Specifically when we're tweaking values, we probably want to see the preview waveform and not
-                        // the list of presets.
-                        editor.ui.presetsPanel = false;
+                        editor.ui.touchedAnyWidgetCounter++;
                     }
                 } else if (imIfElse(c) && regIdxUi.valueRef.regIdx !== undefined && !isOutput) {
                     imLayoutBegin(c, ROW); {
@@ -2119,31 +2060,10 @@ function imResultName(
     } imIfEnd(c);
 }
 
-
-type Ringbuffer = {
-    buff: number[];
-    i: number;
-}
-
-function newRingbuffer(count: number): Ringbuffer {
-    return {
-        buff: new Array(count).fill(0),
-        i: 0,
-    };
-}
-
-function pushValueToRingbuffer(rb: Ringbuffer, val: number) {
-    rb.buff[rb.i] = val;
-    rb.i += 1;
-    if (rb.i >= rb.buff.length) {
-        rb.i = 0;
-    }
-}
-
 function imWireDragEndpoint(
     c: ImCache,
     editor: EffectRackEditorState,
-    reg: RegisterIdxUi | null, // if null, it's an output
+    reg: RegisterIdxUi | null,        // if null, it's an output
     regOutput: RegisterOutput | null, // if null, it's an input,
 ) {
     const wires = editor.ui.wires;
@@ -2505,8 +2425,6 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
 // Got like this because the 'sound lab' and 'effect rack editor' were two separate widgets for a while, 
 // then I decided they shouldn't be. but I can;t be bothered consolidating these two yet.
 function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
-    const isNewFrame = imMemo(c, getRenderCount(c));
-
     const visibleStartChanged = imMemo(c, state.allSamplesVisibleStart);
     const visibleEndChanged = imMemo(c, state.allSamplesVisibleEnd);
     const numFrequencies = Math.min(state.allSamplesWindowLength, MAX_NUM_FREQUENCIES);
