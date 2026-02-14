@@ -23,7 +23,7 @@ export type InstrumentKey = {
         dark: string;
     };
 
-    // this is the 'id'
+    // this is the index from 0 -> flatKeys.length - 1
     index: number;
     remainingDuration: number;
 }

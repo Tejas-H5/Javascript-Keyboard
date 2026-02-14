@@ -37,12 +37,14 @@ import {
     SPACE_EVENLY,
     STRETCH
 } from "src/components/core/layout";
-import { cn, cssVars } from "src/components/core/stylesheets";
+import { cssVars } from "src/components/core/stylesheets";
 import { DragAndDropState, imDragAndDrop, imDragHandle, imDragZoneBegin, imDragZoneEnd, imDropZoneForPrototyping } from "src/components/drag-and-drop";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
+import { imLine, LINE_VERTICAL } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { DspLoopMessage, dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
+import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
+import { effectRackToPreset, getLoadedPreset, updateAutosavedEffectRackPreset } from "src/state/data-repository";
 import {
     asRegisterIdx,
     BIQUAD2_TYPE__ALLPASS,
@@ -118,8 +120,6 @@ import {
     SWITCH_OP_LT,
     ValueRef
 } from "src/state/effect-rack";
-import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { effectRackToPreset, getLoadedPreset, updateAutosavedEffectRackPreset } from "src/state/data-repository";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { arrayAt, arrayMove, copyArray, filterInPlace, removeItem } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
@@ -130,7 +130,6 @@ import { fft, fftToReal, resizeNumberArrayPowerOf2 } from "src/utils/fft";
 import {
     getDeltaTimeSeconds,
     getFpsCounterState,
-    getRenderCount,
     ImCache,
     imFor,
     imForEnd,
@@ -147,16 +146,15 @@ import {
     imSwitchEnd,
     isFirstishRender
 } from "src/utils/im-core";
-import { EL_B, EL_I, EL_SVG_PATH, elHasMouseOver, elHasMousePress, elSetAttr, elSetClass, elSetStyle, getGlobalEventSystem, imDomRootExistingBegin, imDomRootExistingEnd, imElBegin, imElEnd, imElSvgBegin, imElSvgEnd, imStr, imStrFmt, imSvgContext, SvgContext } from "src/utils/im-dom";
+import { EL_B, EL_I, EL_SVG_PATH, elHasMouseOver, elHasMousePress, elSetAttr, elSetClass, elSetStyle, getGlobalEventSystem, imDomRootExistingBegin, imDomRootExistingEnd, imElBegin, imElEnd, imElSvgBegin, imElSvgEnd, imStr, imStrFmt, SvgContext } from "src/utils/im-dom";
 import { arrayMax, arrayMin } from "src/utils/math-utils";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
 import { canRedo, canUndo, JSONUndoBuffer, newJSONUndoBuffer, redo, stepUndoBufferTimer, undo, undoBufferIsEmpty, writeToUndoBuffer, writeToUndoBufferDebounced } from "src/utils/undo-buffer-json";
 import { GlobalContext, setViewChartSelect } from "./app";
 import { imExportModal, imImportModal } from "./import-export-modals";
-import { imKeyboard } from "./keyboard";
 import { drawSamples, imPlotBegin, imPlotEnd } from "./plotting";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
-import { imEffectRackList, presetsListState, PresetsListState } from "./sound-lab-effect-rack-list";
+import { presetsListState, PresetsListState } from "./sound-lab-effect-rack-list";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
 const MAX_NUM_FREQUENCIES = 16384;

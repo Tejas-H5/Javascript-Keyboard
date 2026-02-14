@@ -4,23 +4,24 @@ import {
     pressKey,
     releaseKey
 } from "src/dsp/dsp-loop-interface";
+import { KeyboardConfig } from "src/state/keyboard-config";
 import { InstrumentKey } from "src/state/keyboard-state";
 import { timelineHasNoteAtPosition } from "src/state/sequencer-chart";
 import {
     getCurrentPlayingTimeIntoChart,
 } from "src/state/sequencer-state";
-import { APP_VIEW_EDIT_CHART, newUiState } from "src/state/ui-state";
+import { APP_VIEW_EDIT_CHART } from "src/state/ui-state";
+import { filterInPlace } from "src/utils/array-utils";
+import { assert } from "src/utils/assert";
+import { CssColor } from "src/utils/colour";
 import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, inlineTypeId, isFirstishRender } from "src/utils/im-core";
 import { elGet, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
+import { lerp } from "src/utils/math-utils";
 import { GlobalContext } from "./app";
 import { cssVarsApp } from "./styling";
-import { filterInPlace } from "src/utils/array-utils";
-import { lerp } from "src/utils/math-utils";
-import { isKeyHeld } from "src/utils/key-state";
 
 
-// TODO: KEYBOARD_OFFSETS
-const offsets = [
+const KEYBOARD_OFFSETS = [
     0,
     0.25,
     0.5,
@@ -33,7 +34,9 @@ type KeyboardUiState = {
     keysReleased: InstrumentKey[]
     keysHeld: InstrumentKey[]
 
-    selection: Set<InstrumentKey> | undefined;
+    selection: Set<number> | undefined;
+    config:    KeyboardConfig | undefined;
+    slotColors: CssColor[] | undefined;
 };
 
 function newKeyboardUiState(): KeyboardUiState {
@@ -43,7 +46,9 @@ function newKeyboardUiState(): KeyboardUiState {
         keysHeld: [],
 
         // Passed in externally
-        selection: undefined,
+        selection:  undefined,
+        config:     undefined,
+        slotColors: undefined,
     };
 }
 
@@ -59,7 +64,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
     let maxOffset = 0;
     for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
         const keyRow = keyboard.keys[rowIdx];
-        let computedOffset = offsets[rowIdx] + keyRow.length + 1;
+        let computedOffset = KEYBOARD_OFFSETS[rowIdx] + keyRow.length + 1;
         maxOffset = Math.max(maxOffset, computedOffset);
     }
 
@@ -82,7 +87,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
         imLayoutBegin(c, COL); imFlex(c); {
             imFor(c); for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
                 const keyRow      = keyboard.keys[rowIdx];
-                const startOffset = offsets[rowIdx];
+                const startOffset = KEYBOARD_OFFSETS[rowIdx];
 
                 imLayoutBegin(c, ROW); imGap(c, 5, PX); imJustify(c, START); {
                     imLayoutBegin(c, BLOCK); imSize(c, startOffset * keySize, PX, 0, NA); imLayoutEnd(c);
@@ -97,7 +102,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                         if (!s) s = imSet(c, { pressed: false });
 
                         const signal = getCurrentOscillatorGain(key.index);
-                        const isSelected = state.selection && state.selection.has(key);
+                        const isSelected = state.selection && state.selection.has(key.index);
                         const PRESS_EFFECT = 5;
 
                         const sequencer  = ctx.sequencer;
@@ -134,14 +139,13 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                                 elSetStyle(c, "transform", `translate(${pressEffect}px, ${pressEffect}px)`);
                             }
 
-
                             const isPressing = keyboard.hasClicked && elHasMouseOver(c) && mouse.leftMouseButton;
                             const isPressingChanged = imMemo(c, isPressing);
 
-                            // UI uses this for key presses
+                            // UI uses this for key presses.
+                            // I actually don't think we should select the keys with the keyboard.
                             {
-                                const actualKeyboard = getGlobalEventSystem().keyboard;
-                                if (isPressing || isKeyHeld(actualKeyboard.keys, key.keyboardKeyNormalized)) {
+                                if (isPressing) {
                                     if (!state.keysHeld.includes(key)) {
                                         state.keysPressed.push(key);
                                         state.keysHeld.push(key);
@@ -172,12 +176,20 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                             } imLayoutEnd(c);
                             // letter bg
                             imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-                                if (imMemo(c, signal) | imMemo(c, isSelected)) {
-                                    if (isSelected) {
-                                        elSetStyle(c, "backgroundColor", `rgba(0, 0, 255, ${lerp(0.3, 1, signal)})`);
-                                    } else {
-                                        elSetStyle(c, "backgroundColor", `rgba(0, 0, 0, ${signal})`);
-                                    }
+                                let color;
+                                if (state.config && state.slotColors) {
+                                    const keySlot = state.config.keymaps[key.index];
+                                    const slotColor = state.slotColors[keySlot]; assert(!!slotColor);
+                                    slotColor.a = lerp(0.4, 1, signal);
+                                    color = slotColor.toCssString();
+                                } else {
+                                    color = `rgba(0, 0, 0, ${signal})`;
+                                }
+
+                                elSetStyle(c, "backgroundColor", color);
+
+                                if (imMemo(c, isSelected)) {
+                                    elSetStyle(c, "border", !isSelected ? "" : "3px solid " + cssVarsApp.fg);
                                 }
                             } imLayoutEnd(c);
                             // letter text
@@ -197,6 +209,19 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
 
                                 imStr(c, key.noteText);
                             } imLayoutEnd(c);
+
+                            if (imIf(c) && state.config) {
+                                // slot text
+                                imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, NA, 5, PX, 8, PX); {
+                                    if (imMemo(c, keySize)) {
+                                        elSetStyle(c, "fontSize", (keySize / 4) + "px");
+                                        elSetStyle(c, "paddingRight", (keySize / 10) + "px");
+                                    }
+
+                                    imStr(c, "s");
+                                    imStr(c, state.config.keymaps[key.index]);
+                                } imLayoutEnd(c);
+                            } imIfEnd(c);
 
                             // approach square(s)
                             // need to iterate over all the notes within the approach window, 

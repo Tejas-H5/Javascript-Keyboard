@@ -3,13 +3,14 @@
 // Maybe in the future, it will go back to being just a tiny editor again. 
 
 import { imButtonIsClicked } from "src/components/button.ts";
-import { COL, imAlign, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imScrollOverflow, PX, ROW, START } from "src/components/core/layout.ts";
+import { COL, imAlign, imBg, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imScrollOverflow, PX, ROW, START } from "src/components/core/layout.ts";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
 import { pressKey } from "src/dsp/dsp-loop-interface.ts";
 import { KeyboardConfig } from "src/state/keyboard-config.ts";
-import { getKeyForKeyboardKey, InstrumentKey } from "src/state/keyboard-state.ts";
-import { ImCache, imFor, imForEnd, imIf, imIfEnd, imState } from "src/utils/im-core.ts";
-import { imStr } from "src/utils/im-dom.ts";
+import { getKeyForKeyboardKey, KEYBOARD_LAYOUT_FLAT } from "src/state/keyboard-state.ts";
+import { CssColor, newColorFromHsv } from "src/utils/colour.ts";
+import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core.ts";
+import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom.ts";
 import { JSONUndoBuffer, newJSONUndoBuffer } from "src/utils/undo-buffer-json.ts";
 import { GlobalContext } from "./app.ts";
 import { imKeyboard } from "./keyboard.ts";
@@ -26,7 +27,8 @@ export type KeyboardConfigEditorState = {
     reassigningSlotIdx: number;
     reassigningPresetLookup: string;
     
-    selectedKeys: Set<InstrumentKey>;
+    selectedKeys: Set<number>;
+    slotColours: CssColor[];
 };
 
 export function newKeyboardConfigEditorState(config: KeyboardConfig): KeyboardConfigEditorState {
@@ -40,11 +42,35 @@ export function newKeyboardConfigEditorState(config: KeyboardConfig): KeyboardCo
         reassigningPresetLookup: "",
 
         selectedKeys: new Set(),
+        slotColours: [],
     };
 }
 
-export function imKeyboardConfigEditor(c: ImCache, ctx: GlobalContext, editor: KeyboardConfigEditorState) {
+export function imKeyboardConfigEditor(
+    c: ImCache,
+    ctx: GlobalContext,
+    editor: KeyboardConfigEditorState
+) {
     const presetListState = imState(c, presetsListState);
+
+    const numSlots        = editor.keyboardConfig.synthSlots.length;
+    const numSlotsChanged = imMemo(c, numSlots);
+
+    // allocate colour slots
+    {
+        const oldLen = editor.slotColours.length;
+        const newLen = editor.keyboardConfig.synthSlots.length;
+        if (oldLen !== newLen) {
+            editor.slotColours.length = newLen;
+        }
+
+        let start = oldLen - 1;
+        if (numSlotsChanged) start = 0;
+        for (let i = start; i < newLen; i++) {
+            editor.keyboardConfig.synthSlots.length;
+            editor.slotColours[i] = newColorFromHsv(i / (numSlots + 1), 1, 0.8)
+        }
+    }
 
     imLayoutBegin(c, COL); imFlex(c); {
         imHeadingBegin(c); {
@@ -54,21 +80,36 @@ export function imKeyboardConfigEditor(c: ImCache, ctx: GlobalContext, editor: K
         imLine(c, LINE_HORIZONTAL, 1);
 
         imLayoutBegin(c, COL); imFlex(c); {
-            imLayoutBegin(c, ROW); imFlex(c); imGap(c, 5, PX); {
+            imLayoutBegin(c, ROW); imFlex(c); {
                 const isReassigningSomething = editor.reassigningSlotIdx !== -1;
 
                 imLayoutBegin(c, COL); imFlex(c); imAlign(c, START); imScrollOverflow(c); {
-                    imFor(c); for (let slotIdx = 0; slotIdx < editor.keyboardConfig.synths.length; slotIdx++) {
-                        const preset = editor.keyboardConfig.synths[slotIdx];
+                    imFor(c); for (let slotIdx = 0; slotIdx < editor.keyboardConfig.synthSlots.length; slotIdx++) {
+                        const preset = editor.keyboardConfig.synthSlots[slotIdx];
+                        const presetColor = editor.slotColours[slotIdx];
                         const isReassigning = editor.reassigningSlotIdx === slotIdx
 
                         if (isReassigningSomething && !isReassigning) continue;
 
                         imLayoutBegin(c, COL); {
-                            imLayoutBegin(c, ROW); imGap(c, 10, PX); imAlign(c); { 
+                            imLayoutBegin(c, ROW); imGap(c, 10, PX); imAlign(c); imBg(c, presetColor.toCssString()); { 
                                 imLayoutBegin(c, ROW); imFlex(c); imAlign(c); imGap(c, 10, PX); {
-                                    imStr(c, slotIdx);
+                                    if (isFirstishRender(c)) elSetStyle(c, "padding", "0 5px");
 
+                                    if (imIf(c) && editor.selectedKeys.size > 0) {
+                                        if (imButtonIsClicked(c, "Assign to " + slotIdx)) {
+                                            for (const index of editor.selectedKeys) {
+                                                editor.keyboardConfig.keymaps[index] = slotIdx;
+                                            }
+                                        }
+                                    } else {
+                                        imIfElse(c);
+
+                                    } imIfEnd(c);
+
+
+                                    imStr(c, "s");
+                                    imStr(c, slotIdx);
                                     imStr(c, " -> ");
 
                                     imLayoutBegin(c, ROW); imJustify(c); imFlex(c); {
@@ -78,7 +119,7 @@ export function imKeyboardConfigEditor(c: ImCache, ctx: GlobalContext, editor: K
                                     if (imIf(c) && !isReassigningSomething) {
                                         if (imButtonIsClicked(c, "-")) {
                                             editor.deferredAction = () => {
-                                                editor.keyboardConfig.synths.splice(slotIdx, 1);
+                                                editor.keyboardConfig.synthSlots.splice(slotIdx, 1);
                                             }
                                         }
                                     } imIfEnd(c);
@@ -97,7 +138,7 @@ export function imKeyboardConfigEditor(c: ImCache, ctx: GlobalContext, editor: K
                                 const ev = imEffectRackList(c, ctx, presetListState);
                                 if (ev) {
                                     if (ev.selection) {
-                                        editor.keyboardConfig.synths[slotIdx] = { ...ev.selection };
+                                        editor.keyboardConfig.synthSlots[slotIdx] = { ...ev.selection };
                                     }
                                 }
 
@@ -114,7 +155,7 @@ export function imKeyboardConfigEditor(c: ImCache, ctx: GlobalContext, editor: K
                     } imForEnd(c);
 
                     if (imButtonIsClicked(c, "+")) {
-                        editor.keyboardConfig.synths.push(null);
+                        editor.keyboardConfig.synthSlots.push(null);
                     }
                 } imLayoutEnd(c);
 
@@ -127,13 +168,25 @@ export function imKeyboardConfigEditor(c: ImCache, ctx: GlobalContext, editor: K
             } imLayoutEnd(c);
 
             imLayoutBegin(c, ROW); imFlex(c); imAlign(c); {
+                if (imButtonIsClicked(c, "Clear", false, editor.selectedKeys.size > 0)) {
+                    editor.selectedKeys.clear();
+                }
+            } imLayoutEnd(c);
+
+            imLayoutBegin(c, ROW); imFlex(c); imAlign(c); {
                 const ui = imKeyboard(c, ctx);
-                ui.selection = editor.selectedKeys;
-                for (const key of ui.keysPressed) {
-                    if (!editor.selectedKeys.has(key)) {
-                        editor.selectedKeys.add(key);
-                    } else {
-                        editor.selectedKeys.delete(key);
+                ui.selection  = editor.selectedKeys;
+                ui.config     = editor.keyboardConfig;
+                ui.slotColors = editor.slotColours;
+
+                // Click+drag to start and finish a new selection
+                {
+                    const mouse = getGlobalEventSystem().mouse;
+                    if (elHasMousePress(c) && mouse.leftMouseButton) {
+                        editor.selectedKeys.clear();
+                    }
+                    for (const key of ui.keysPressed) {
+                        editor.selectedKeys.add(key.index);
                     }
                 }
             } imLayoutEnd(c);
