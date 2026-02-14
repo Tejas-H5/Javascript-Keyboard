@@ -1,4 +1,4 @@
-// IM-CORE 1.068
+// IM-CORE 1.07
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 // Majority of the last changes have just been updates to the documentation though
@@ -92,20 +92,25 @@ export const CACHE_CONTEXTS                     = 4;
 export const CACHE_ROOT_ENTRIES                 = 5;
 export const CACHE_NEEDS_RERENDER               = 6;
 export const CACHE_RERENDER_FN                  = 7;
-export const CACHE_IS_RENDERING                 = 8;
-export const CACHE_IS_EVENT_RERENDER            = 9;
-export const CACHE_RENDER_COUNT                 = 10;
-export const CACHE_ANIMATE_FN                   = 11;
-export const CACHE_ANIMATION_ID                 = 12;
-export const CACHE_ANIMATION_TIME_LAST          = 13;
-export const CACHE_ANIMATION_TIME               = 14;
-export const CACHE_ANIMATION_DELTA_TIME_SECONDS = 15;
-export const CACHE_ITEMS_ITERATED               = 16;
-export const CACHE_ITEMS_ITERATED_LAST_FRAME    = 17; // Useful performance metric
-export const CACHE_TOTAL_DESTRUCTORS            = 18; // Useful memory leak indicator
-export const CACHE_TOTAL_MAP_ENTRIES            = 19; // Useful memory leak indicator
-export const CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME = 20; // Useful memory leak indicator
-export const CACHE_ENTRIES_START                = 21;
+export const CACHE_RERENDER_FN_INNER            = 8;
+export const CACHE_SELF_REFERENCE               = 9;
+export const CACHE_IS_RENDERING                 = 10;
+export const CACHE_IS_EVENT_RERENDER            = 11;
+export const CACHE_RENDER_COUNT                 = 12;
+export const CACHE_ANIMATE_FN                   = 13;
+export const CACHE_ANIMATION_ID                 = 14;
+export const CACHE_ANIMATION_TIME_LAST          = 15;
+export const CACHE_ANIMATION_TIME               = 16;
+export const CACHE_ANIMATION_DELTA_TIME_SECONDS = 17;
+export const CACHE_ITEMS_ITERATED               = 18;
+export const CACHE_ITEMS_ITERATED_LAST_FRAME    = 19; // Useful performance metric
+export const CACHE_TOTAL_DESTRUCTORS            = 20; // Useful memory leak indicator
+export const CACHE_TOTAL_MAP_ENTRIES            = 21; // Useful memory leak indicator
+export const CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME = 22; // Useful memory leak indicator
+export const CACHE_HMR_ENABLED                  = 23; 
+export const CACHE_HMR_STATE_INCOMPATIBLE       = 24;
+export const CACHE_RENDER_FN_CHANGES            = 25;
+export const CACHE_ENTRIES_START                = 26;
 
 
 export const REMOVE_LEVEL_NONE = 1;
@@ -198,7 +203,38 @@ export function imCacheBegin(
         c[CACHE_RENDER_COUNT] = 0;
         c[CACHE_FPS_COUNTER_STATE] = newFpsCounterState();
 
-        c[CACHE_RERENDER_FN] = () => {
+        c[CACHE_SELF_REFERENCE] = c;
+
+        // Deltatime should naturally reach 0 on 'rerenders'. Not sure how it will work for manual rendering.
+        c[CACHE_ANIMATION_TIME] = 0;
+        c[CACHE_ANIMATION_TIME_LAST] = 0;
+
+        if ((flags & USE_MANUAL_RERENDERING) !== 0) {
+            // Nothing - for now
+        } else if ((flags & USE_REQUEST_ANIMATION_FRAME) !== 0) {
+            c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 0;
+            c[CACHE_ANIMATION_ID] = 0;
+        } else {
+            throw new Error("Invalid flags");
+        }
+
+        c[CACHE_HMR_ENABLED]            = false;
+        c[CACHE_HMR_STATE_INCOMPATIBLE] = false;
+        c[CACHE_RENDER_FN_CHANGES]      = 0;
+    }
+
+    if (c[CACHE_RERENDER_FN_INNER] !== renderFn) {
+        c[CACHE_RERENDER_FN_INNER] = renderFn;
+
+        // In a production APP, this should remain 1.
+        // In a dev environment with HMR enabled, it should be incrementing each
+        // time HMR causes the render function to reload.
+        const id = c[CACHE_RENDER_FN_CHANGES] + 1;
+        c[CACHE_RENDER_FN_CHANGES] = id;
+
+        cancelAnimationFrame(c[CACHE_ANIMATION_ID]);
+
+        c[CACHE_RERENDER_FN] = (c: ImCache) => {
             // I've found a significant speedup by writing code like
             // if (x === false) or if (x === true) instaed of if (!x) or if (x).
             // You won't need to do this in 99.9999% of your code, but it
@@ -210,33 +246,38 @@ export function imCacheBegin(
                 c[CACHE_IS_EVENT_RERENDER] = true;
                 try {
                     renderFn(c);
-                } catch(e) {
+                } catch (e) {
                     console.error(e);
                 }
                 c[CACHE_IS_EVENT_RERENDER] = false;
             }
-        };
+        }
 
-        // Deltatime should naturally reach 0 on 'rerenders'. Not sure how it will work for manual rendering.
-        c[CACHE_ANIMATION_TIME] = 0;
-        c[CACHE_ANIMATION_TIME_LAST] = 0;
 
         if ((flags & USE_MANUAL_RERENDERING) !== 0) {
-            c[CACHE_ANIMATE_FN] = noOp;
+            c[CACHE_ANIMATE_FN]   = noOp;
             c[CACHE_ANIMATION_ID] = null;
         } else if ((flags & USE_REQUEST_ANIMATION_FRAME) !== 0) {
-            c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 0;
-            c[CACHE_ANIMATE_FN] = (t: number) => {
+            const animateFn = (t: number) => {
                 if (c[CACHE_IS_RENDERING] === true) {
                     // This will make debugging a lot easier. Otherwise the animation will play while
-                    // we're breakpointed. xD
+                    // we're breakpointed. Firefox moment. xD
+                    return;
+                }
+
+                if (c[CACHE_RERENDER_FN_INNER] !== renderFn) {
                     return;
                 }
 
                 c[CACHE_ANIMATION_TIME] = t;
+
                 renderFn(c);
-            };
-            c[CACHE_ANIMATION_ID] = 0;
+
+                // we actually _want_ this to go stale
+                requestAnimationFrame(animateFn);
+            }
+            c[CACHE_ANIMATE_FN]   = animateFn;
+            c[CACHE_ANIMATION_ID] = requestAnimationFrame(animateFn);
         } else {
             throw new Error("Invalid flags");
         }
@@ -275,8 +316,10 @@ export function getFpsCounterState(c: ImCache): FpsCounterState {
     return c[CACHE_FPS_COUNTER_STATE];
 }
 
+// Enqueues a cache rerender. 
+// Usually to process an event without waiting for the next animation frame
 export function rerenderImCache(c: ImCache) {
-    c[CACHE_RERENDER_FN]();
+    c[CACHE_RERENDER_FN](c[CACHE_SELF_REFERENCE]);
 }
 
 function noOp() {}
@@ -304,16 +347,16 @@ export function imCacheEnd(c: ImCache) {
         // our components to not have a stale UI. Those events will set this flag to true, so that
         // We can eventually reach here, and do a full rerender.
         c[CACHE_NEEDS_RERENDER] = false;
-    } else if (c[CACHE_ANIMATE_FN] !== noOp) {
-        // paranoid about starting multiple animations side by side, which kills performance and introduces various bugs.
-        // cancelling the prior animation should do it
-        cancelAnimationFrame(c[CACHE_ANIMATION_ID]);
-        c[CACHE_ANIMATION_ID] = requestAnimationFrame(c[CACHE_ANIMATE_FN]);
     }
 
     if (c[CACHE_IS_EVENT_RERENDER] === false) {
         fpsMarkRenderingEnd(c[CACHE_FPS_COUNTER_STATE]);
     }
+}
+
+export function imCacheStopImmediately(c: ImCache) {
+    cancelAnimationFrame(c[CACHE_ANIMATION_ID]);
+    c[CACHE_RERENDER_FN] = noOp;
 }
 
 const INTERNAL_TYPE_NORMAL_BLOCK = 1;
@@ -428,9 +471,23 @@ export function imGet<T>(
 
     if (idx < entries.length) {
         if (entries[idx] !== typeId) {
-            const errorMessage = "Expected to populate this cache entry with a different type. Your begin/end pairs probably aren't lining up right";
-            console.error(errorMessage, entries[idx], typeId);
-            throw new Error(errorMessage);
+            let isError = true;
+            if (c[CACHE_HMR_ENABLED] === true) {
+                // During HMR, all function references get replaced. 
+                // Instead of throwing, we can try comparing thier names instead:
+                if (entries[idx].name !== undefined && entries[idx].name === typeId.name) {
+                    console.log("[imjs] patching typeId " + typeId.name);
+                    entries[idx] = typeId;
+                    isError = false;
+                }
+            }
+
+            if (isError) {
+                c[CACHE_HMR_STATE_INCOMPATIBLE] = true;
+                const errorMessage = "Expected to populate this cache entry with a different type. Your begin/end pairs probably aren't lining up right";
+                console.error(errorMessage, entries[idx], typeId);
+                throw new Error(errorMessage);
+            }
         }
     } else if (idx === entries.length) {
         entries.push(typeId);
@@ -718,6 +775,7 @@ export function imBlockEnd(c: ImCache, internalType: number = INTERNAL_TYPE_NORM
             entries[ENTRIES_LAST_IDX] = idx;
         } else if (idx !== ENTRIES_ITEMS_START - 2) {
             // This was not the first render...
+            c[CACHE_HMR_STATE_INCOMPATIBLE] = true;
             throw new Error("You should be rendering the same number of things in every render cycle");
         }
     }
@@ -1176,4 +1234,129 @@ export function globalStateStackPop<T>(gss: T[], item: T): T {
     gss.pop();
 
     return currentItem;
+}
+
+
+// Basically, HMR works like this. At least, for Vite it definitely does.
+//
+// [module 1] --needs hot-reload-> accept([module 2])
+// [module 2] --needs hot-reload-> accept([module 3])
+// [module 3] --needs hot-reload-> accept([module 4])
+// ....
+//
+// each older module needs to accept the new module. This only happens once per-module.
+// The module needs to pass along the very first module in the chain for state retention 
+// to work. I anticipate a similar API for other bundlers.
+export type HmrState = {
+    imMain: (c: ImCache) => void;
+    cGlobal: ImCache;
+    timeout: number;
+    accept: (newModule: any, onInvalidate: (() => void) | undefined) => void;
+};
+
+
+/**
+ * HMR core function. See {@link HmrState} for an explanation of HMR.
+ * Here is how you would use it with Vite (IS_PROD env variable not included):
+ * ```ts
+ * export let hmr: HmrState | undefined;
+ * 
+ * if (IS_PROD) {
+ *     imMain([]);
+ * } else {
+ *     hmr = startRenderingWithHMR(imMain);
+ *     if (import.meta.hot) {
+ *         import.meta.hot.accept((newModule) => {
+ *             hmr!.accept(newModule, import.meta.hot?.invalidate);
+ *         });
+ *     }
+ * }
+ * ```
+ * Other bundlers will require slightly differnt code. 
+ * You could put your own invalidator that does fancier logic.
+ *
+ * NOTE: doing HMR properly can significantly increase the complexity of your app, for very little cost. 
+ * Don't reach for this till making tiny changes to styling or whatever is really slow.
+ */
+export function startRenderingWithHMR(
+    renderFn: (c: ImCache) => void,
+    cGlobal: ImCache = [],
+): HmrState {
+    // The previous module has this long to prevent the next module from initializing a
+    // fresh copy of itself.
+    const HMR_TIMEOUT = 100;
+    const timeout = setTimeout(() => {
+        console.log("[hmr] the first state has been initialized");
+        renderFn(cGlobal);
+    }, HMR_TIMEOUT);
+
+    const hmr: HmrState = {
+        imMain: renderFn,
+        cGlobal: cGlobal,
+        timeout: timeout,
+        accept: (newModule, onInvalidate) => {
+            if (!newModule) return;
+            const newHmr = newModule.hmr;
+            if (!newHmr) {
+                console.warn("[hmr] The new module did not export the previous HMR state in a variable called 'hmr', invalidating...");
+                onInvalidate?.();
+                return;
+            }
+
+            // But it works though
+            const HMR_HACK_TIMEOUT = 30;
+            setTimeout(() => {
+                let err;
+                try {
+                    // Stop new module entrypoint, and pass our state forwards
+                    clearTimeout(newHmr.timeout);
+                    newHmr.cGlobal = hmr.cGlobal;
+
+                    console.log("[hmr] Attempting to patch the new render function...");
+                    hmr.cGlobal[CACHE_HMR_ENABLED] = true;
+                    newModule.hmr.imMain(hmr.cGlobal);
+                } catch (e) {
+                    err = e;
+                }
+
+                // NOTE: CACHE_HMR_ENABLED is now a flag that gets set to true once, and stays that way.
+                // I had wanted it to be a gate that I turn on and then turn off here, but that won't work - 
+                // a `requestAnimationFrame` invoked 2 frames later will throw errors R.E patching
+                // of typeIds, which is somewhat unexpected.
+                // If I debug with breakpoints however, it does work as expected. This indicates that
+                // the functions must get asyncronously patched some time after HMR actually
+                // runs this accept callback. For now, I have noticed that I can also get it to work
+                // as expected when I use HMR_HACK_TIMEOUT - it must have a similar effect to putting
+                // in a breakpoint.
+
+                let invalidate = false;
+                if (err) {
+                    console.log("[hmr] Couldn't hot-reload: ", err);
+                    invalidate = true;
+                } else if (hmr.cGlobal[CACHE_HMR_STATE_INCOMPATIBLE]) {
+                    console.log("[hmr] Couldn't hot-reload - the new component state layout is no longer compatible with the previous state");
+                    invalidate = true;
+                }
+
+                if (invalidate) {
+                    imCacheStopImmediately(hmr.cGlobal);
+                    try {
+                        onInvalidate?.();
+                    } catch (e) {
+                        console.error("[hmr] failed to invalidate: ", e);
+                        window.location.reload();
+                    }
+                } else {
+                    console.log("[hmr] Reloaded x" + hmr.cGlobal[CACHE_RENDER_FN_CHANGES]);
+                }
+
+            }, HMR_HACK_TIMEOUT);
+        }
+    };
+
+    return hmr;
+}
+
+
+export function hmrAccept() {
 }

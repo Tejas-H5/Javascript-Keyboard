@@ -1,17 +1,17 @@
-import { newColorFromHsv } from "src/utils/colour";
-import { getNoteText } from "src/utils/music-theory-utils";
+import { newColorFromHsv } from "src/utils/colour.ts";
+import { getNormalizedKey, NormalizedKey } from "src/utils/key-state";
+import { getNoteText } from "src/utils/music-theory-utils.ts";
 
 export type KeyboardState = {
     keys: InstrumentKey[][];
     flatKeys: InstrumentKey[];
-    settings: {
-    };
     hasClicked: boolean;
     maxNoteIdx: number;
 };
 
 export type InstrumentKey = {
     keyboardKey: string;
+    keyboardKeyNormalized: NormalizedKey;
     text: string;
     noteText: string;
     noteId: number;
@@ -65,8 +65,10 @@ export function getKeyForKeyboardKey(state: KeyboardState, key: string): Instrum
 }
 
 function newKey(k: string): InstrumentKey {
+    const key = k === "↵" ? "Enter" : k.toLowerCase();
     return {
-        keyboardKey: k === "↵" ? "enter" : k.toLowerCase(),
+        keyboardKey: key,
+        keyboardKeyNormalized: getNormalizedKey(key),
         text: k[0].toUpperCase() + k.substring(1),
         noteText: "",
         index: -1,
@@ -141,8 +143,6 @@ export function newKeyboardState(): KeyboardState {
     return {
         keys,
         flatKeys,
-        settings: {
-        },
         hasClicked: false,
         maxNoteIdx,
     };

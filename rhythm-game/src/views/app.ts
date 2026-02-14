@@ -1,14 +1,14 @@
-import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX } from "src/components/core/layout";
-import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter";
-import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
-import { debugFlags } from "src/debug-flags";
-import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { DataRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/data-repository";
-import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state";
+import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX } from "src/components/core/layout.ts";
+import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter.ts";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
+import { debugFlags } from "src/debug-flags.ts";
+import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface.ts";
+import { DataRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/data-repository.ts";
+import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state.ts";
 import {
     startPlaying,
     stopPlayback
-} from "src/state/playing-pausing";
+} from "src/state/playing-pausing.ts";
 import {
     copyTimelineItem,
     FRACTIONAL_UNITS_PER_BEAT,
@@ -18,24 +18,24 @@ import {
     sequencerChartInsertItems,
     TIMELINE_ITEM_MEASURE,
     undoEdit
-} from "src/state/sequencer-chart";
-import { getNextPlayingId, SequencerState, setSequencerChart } from "src/state/sequencer-state";
-import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state";
-import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests";
-import { filterInPlace } from "src/utils/array-utils";
-import { assert, unreachable } from "src/utils/assert";
-import { AsyncCallback, AsyncCallbackResult, done, DONE, getTrackedAsyncActions } from "src/utils/async-utils";
-import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils";
-import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core";
-import { EL_H2, getGlobalEventSystem, imElBegin, imElEnd, imStr } from "src/utils/im-dom";
-import { imChartSelect } from "src/views/chart-select";
-import { imEditView } from "src/views/edit-view";
-import { imPlayView } from "src/views/play-view";
-import { imStartupView } from "src/views/startup-view";
-import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay";
-import { runSaveCurrentChartTask } from "./saving-chart";
-import { imSoundLab } from "./sound-lab";
-import { imUpdateModal } from "./update-modal";
+} from "src/state/sequencer-chart.ts";
+import { getNextPlayingId, SequencerState, setSequencerChart } from "src/state/sequencer-state.ts";
+import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state.ts";
+import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests.ts";
+import { filterInPlace } from "src/utils/array-utils.ts";
+import { assert, unreachable } from "src/utils/assert.ts";
+import { AsyncCallback, AsyncCallbackResult, done, DONE, getTrackedAsyncActions } from "src/utils/async-utils.ts";
+import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils.ts";
+import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core.ts";
+import { EL_H2, getGlobalEventSystem, imElBegin, imElEnd, imStr } from "src/utils/im-dom.ts";
+import { imChartSelect } from "src/views/chart-select.ts";
+import { imEditView } from "src/views/edit-view.ts";
+import { imPlayView } from "src/views/play-view.ts";
+import { imStartupView } from "src/views/startup-view.ts";
+import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay.ts";
+import { runSaveCurrentChartTask } from "./saving-chart.ts";
+import { imSoundLab } from "./sound-lab.ts";
+import { imUpdateModal } from "./update-modal.ts";
 
 export type GlobalContext = {
     keyboard:  KeyboardState;

@@ -4,15 +4,19 @@ import {
     pressKey,
     releaseKey
 } from "src/dsp/dsp-loop-interface";
+import { InstrumentKey } from "src/state/keyboard-state";
 import { timelineHasNoteAtPosition } from "src/state/sequencer-chart";
 import {
     getCurrentPlayingTimeIntoChart,
 } from "src/state/sequencer-state";
-import { APP_VIEW_EDIT_CHART } from "src/state/ui-state";
-import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, inlineTypeId, isFirstishRender } from "src/utils/im-core";
+import { APP_VIEW_EDIT_CHART, newUiState } from "src/state/ui-state";
+import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, inlineTypeId, isFirstishRender } from "src/utils/im-core";
 import { elGet, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
 import { GlobalContext } from "./app";
 import { cssVarsApp } from "./styling";
+import { filterInPlace } from "src/utils/array-utils";
+import { lerp } from "src/utils/math-utils";
+import { isKeyHeld } from "src/utils/key-state";
 
 
 // TODO: KEYBOARD_OFFSETS
@@ -24,9 +28,32 @@ const offsets = [
     1.0,
 ];
 
-export function imKeyboard(c: ImCache, ctx: GlobalContext) {
+type KeyboardUiState = {
+    keysPressed: InstrumentKey[]
+    keysReleased: InstrumentKey[]
+    keysHeld: InstrumentKey[]
+
+    selection: Set<InstrumentKey> | undefined;
+};
+
+function newKeyboardUiState(): KeyboardUiState {
+    return {
+        keysPressed: [],
+        keysReleased: [],
+        keysHeld: [],
+
+        // Passed in externally
+        selection: undefined,
+    };
+}
+
+export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
+    const state = imState(c, newKeyboardUiState);
+    state.keysPressed.length  = 0;
+    state.keysReleased.length = 0;
+
     const keyboard = ctx.keyboard;
-    const keys = keyboard.keys;
+    const keys     = keyboard.keys;
 
     const parent = elGet(c);
     let maxOffset = 0;
@@ -48,13 +75,13 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
             keyboard.hasClicked = false;
         }
 
-        const width = parent.clientWidth;
-        const height = parent.clientHeight;
+        const width   = parent.clientWidth;
+        const height  = parent.clientHeight;
         const keySize = Math.min(width / maxOffset, height / (keyboard.keys.length));
 
         imLayoutBegin(c, COL); imFlex(c); {
             imFor(c); for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
-                const keyRow = keyboard.keys[rowIdx];
+                const keyRow      = keyboard.keys[rowIdx];
                 const startOffset = offsets[rowIdx];
 
                 imLayoutBegin(c, ROW); imGap(c, 5, PX); imJustify(c, START); {
@@ -70,10 +97,10 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                         if (!s) s = imSet(c, { pressed: false });
 
                         const signal = getCurrentOscillatorGain(key.index);
+                        const isSelected = state.selection && state.selection.has(key);
                         const PRESS_EFFECT = 5;
 
-                        const sequencer = ctx.sequencer;
-
+                        const sequencer  = ctx.sequencer;
                         const isEditView = ctx.ui.currentView === APP_VIEW_EDIT_CHART;
 
                         const hasNote = isEditView && timelineHasNoteAtPosition(
@@ -111,6 +138,22 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                             const isPressing = keyboard.hasClicked && elHasMouseOver(c) && mouse.leftMouseButton;
                             const isPressingChanged = imMemo(c, isPressing);
 
+                            // UI uses this for key presses
+                            {
+                                const actualKeyboard = getGlobalEventSystem().keyboard;
+                                if (isPressing || isKeyHeld(actualKeyboard.keys, key.keyboardKeyNormalized)) {
+                                    if (!state.keysHeld.includes(key)) {
+                                        state.keysPressed.push(key);
+                                        state.keysHeld.push(key);
+                                    }
+                                } else {
+                                    if (state.keysHeld.includes(key)) {
+                                        state.keysReleased.push(key);
+                                        filterInPlace(state.keysHeld, k => k !== key);
+                                    }
+                                }
+                            }
+
                             if (isPressingChanged) {
                                 if (isPressing) {
                                     s.pressed = true;
@@ -129,8 +172,12 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
                             } imLayoutEnd(c);
                             // letter bg
                             imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-                                if (imMemo(c, signal)) {
-                                    elSetStyle(c, "backgroundColor", `rgba(0, 0, 0, ${signal})`);
+                                if (imMemo(c, signal) | imMemo(c, isSelected)) {
+                                    if (isSelected) {
+                                        elSetStyle(c, "backgroundColor", `rgba(0, 0, 255, ${lerp(0.3, 1, signal)})`);
+                                    } else {
+                                        elSetStyle(c, "backgroundColor", `rgba(0, 0, 0, ${signal})`);
+                                    }
                                 }
                             } imLayoutEnd(c);
                             // letter text
@@ -203,4 +250,6 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext) {
             } imForEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
+
+    return state;
 }

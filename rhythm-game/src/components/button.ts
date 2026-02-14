@@ -1,8 +1,8 @@
-import { DisplayType, imAlign, imLayoutBegin, imLayoutEnd, imNoWrap, INLINE, ROW } from "src/components/core/layout";
-import { newCssBuilder } from "src/utils/cssb";
-import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core";
-import { elHasMousePress, elSetClass, imStr } from "src/utils/im-dom";
-import { cssVars } from "./core/stylesheets";
+import { DisplayType, imAlign, imLayoutBegin, imLayoutEnd, imNoWrap, INLINE, ROW } from "src/components/core/layout.ts";
+import { newCssBuilder } from "src/utils/cssb.ts";
+import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core.ts";
+import { elHasMousePress, elSetClass, imStr } from "src/utils/im-dom.ts";
+import { cssVars } from "./core/stylesheets.ts";
 
 const cssb = newCssBuilder();
 

@@ -23,6 +23,7 @@ export function initCssbStyles(stylesRoot?: HTMLElement) {
         const styleNode = newStyleElement();
         styleNode.setAttribute("type", "text/css");
         styleNode.textContent = "\n\n" + text + "\n\n";
+        styleNode.classList.add("cssbuilderstyle");
         stylesRoot.append(styleNode);
     }
 }

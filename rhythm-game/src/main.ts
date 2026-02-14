@@ -1,16 +1,15 @@
-import { getCurrentPlaySettings, getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface";
-import { BLOCK, imLayoutBegin, imLayoutEnd } from "./components/core/layout";
-import { debugFlags } from "./debug-flags";
-import { deserializeEffectRack } from "./state/effect-rack";
-import { cleanupChartRepo, loadAllEffectRackPresets, loadAutosavedEffectRackPreset, loadChartMetadataList, newDataRepository } from "./state/data-repository";
-import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state";
-import { NAME_OPERATION_COPY } from "./state/ui-state";
-import { assert } from "./utils/assert";
-import { AsyncCb, AsyncDone, done, toAsyncCallback } from "./utils/async-utils";
-import { initCssbStyles } from "./utils/cssb";
-import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imTry, imTryEnd, isFirstishRender, USE_REQUEST_ANIMATION_FRAME } from "./utils/im-core";
-import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imElBegin, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom";
-import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app";
+import { getCurrentPlaySettings, getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface.ts";
+import { BLOCK, imLayoutBegin, imLayoutEnd } from "./components/core/layout.ts";
+import { debugFlags } from "./debug-flags.ts";
+import { cleanupChartRepo, loadAllEffectRackPresets, loadAutosavedEffectRackPreset, loadChartMetadataList, newDataRepository } from "./state/data-repository.ts";
+import { deserializeEffectRack } from "./state/effect-rack.ts";
+import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state.ts";
+import { NAME_OPERATION_COPY } from "./state/ui-state.ts";
+import { assert } from "./utils/assert.ts";
+import { AsyncCb, AsyncDone, done, toAsyncCallback } from "./utils/async-utils.ts";
+import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imTry, imTryEnd, isFirstishRender, USE_REQUEST_ANIMATION_FRAME } from "./utils/im-core.ts";
+import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imElBegin, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom.ts";
+import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app.ts";
 
 "use strict"
 
@@ -162,7 +161,7 @@ function imMainInner(c: ImCache) {
     } imEndIf(c);
 }
 
-function imMain(c: ImCache) {
+export function imMain(c: ImCache) {
     imCacheBegin(c, imMain, USE_REQUEST_ANIMATION_FRAME); {
         imDomRootBegin(c, document.body); {
             const ev = imGlobalEventSystemBegin(c); {
@@ -172,7 +171,3 @@ function imMain(c: ImCache) {
     } imCacheEnd(c);
 }
 
-const cGlobal: ImCache = [];
-imMain(cGlobal);
-
-initCssbStyles();

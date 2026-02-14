@@ -1,5 +1,5 @@
-import { CssColor, newColorFromHex } from "src/utils/colour";
-import { newCssBuilder, setCssVars } from "src/utils/cssb";
+import { CssColor, newColorFromHex } from "src/utils/colour.ts";
+import { newCssBuilder, setCssVars } from "src/utils/cssb.ts";
 
 export type ComponentsCoreTheme = {
     bg:  CssColor;

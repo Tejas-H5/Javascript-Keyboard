@@ -1,7 +1,7 @@
-import { newCssBuilder } from 'src/utils/cssb';
-import { ImCache, imGet, imMemo, imSet, inlineTypeId, isFirstishRender } from 'src/utils/im-core';
-import { EL_DIV, elSetClass, elSetStyle, imElBegin, imElEnd } from 'src/utils/im-dom';
-import { cn, cssVars } from "./stylesheets";
+import { newCssBuilder } from "src/utils/cssb.ts";
+import { ImCache, imGet, imMemo, imSet, inlineTypeId, isFirstishRender } from "src/utils/im-core.ts";
+import { EL_DIV, elSetClass, elSetStyle, imElBegin, imElEnd } from "src/utils/im-dom.ts";
+import { cn, cssVars } from "./stylesheets.ts";
 
 const cssb = newCssBuilder();
 

@@ -1,9 +1,9 @@
-import { getAllBundledCharts, getAllBundledChartsMetadata } from "src/assets/bundled-charts";
-import { EffectRack, serializeEffectRack } from "src/state/effect-rack";
-import { filterInPlace } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
-import { AsyncCb, AsyncDone, AsyncCallback, AsyncCallbackResult, DONE, newError, parallelIterator, toTrackedCallback } from "src/utils/async-utils";
-import * as idb from "src/utils/indexed-db";
+import { getAllBundledCharts, getAllBundledChartsMetadata } from "src/assets/bundled-charts.ts";
+import { EffectRack, serializeEffectRack } from "src/state/effect-rack.ts";
+import { filterInPlace } from "src/utils/array-utils.ts";
+import { assert } from "src/utils/assert.ts";
+import { AsyncCb, AsyncDone, AsyncCallback, AsyncCallbackResult, DONE, newError, parallelIterator, toTrackedCallback } from "src/utils/async-utils.ts";
+import * as idb from "src/utils/indexed-db.ts";
 import {
     CHART_STATUS_READONLY,
     CHART_STATUS_SAVED,
@@ -13,7 +13,7 @@ import {
     SequencerChart,
     SequencerChartCompressed,
     uncompressChart
-} from "./sequencer-chart";
+} from "./sequencer-chart.ts";
 
 /////////////////////////////////////
 // Data repository core utils

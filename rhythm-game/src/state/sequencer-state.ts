@@ -1,5 +1,5 @@
-import { DspInfo } from "src/dsp/dsp-loop";
-import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface";
+import { DspInfo } from "src/dsp/dsp-loop.ts";
+import { ScheduledKeyPress } from "src/dsp/dsp-loop-interface.ts";
 import {
     CHART_STATUS_READONLY,
     CommandItem,
@@ -27,10 +27,10 @@ import {
     TimelineItem,
     TimelineItemBpmChange,
     transposeItems,
-} from "src/state/sequencer-chart";
-import { unreachable } from "src/utils/assert";
-import { GlobalContext } from "src/views/app";
-import { setSequencerStoppedPlaying } from "./playing-pausing";
+} from "src/state/sequencer-chart.ts";
+import { unreachable } from "src/utils/assert.ts";
+import { GlobalContext } from "src/views/app.ts";
+import { setSequencerStoppedPlaying } from "./playing-pausing.ts";
 
 export const SEQUENCER_ROW_COLS = 8;
 

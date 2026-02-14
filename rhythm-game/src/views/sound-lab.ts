@@ -4,6 +4,8 @@ import {
     imAlign,
     imBg,
     imFlex,
+    imFlex1,
+    imFlexWrap,
     imGap,
     imJustify,
     imLayoutBegin,
@@ -32,12 +34,15 @@ import {
 import { elSetClass, elSetStyle, imDomRootExistingBegin, imDomRootExistingEnd, imStr, imSvgContext } from "src/utils/im-dom";
 import { GlobalContext } from "./app";
 import { imKeyboard } from "./keyboard";
-import { imEffectRackList } from "./sound-lab-effect-rack-list";
+import { imEffectRackList, selectPreset, startRenamingPreset } from "./sound-lab-effect-rack-list";
 
-import { EffectRackEditorState, imEffectRackActualWaveform, imEffectRackEditor, imEffectRackEditorWaveformPreview, imHeading, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
+import { editorImport, EffectRackEditorState, imEffectRackActualWaveform, imEffectRackEditor, imEffectRackEditorWaveformPreview, imHeading, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
 import { debugFlags } from "src/debug-flags";
 import { imKeyboardConfigEditor, newKeyboardConfigEditorState } from "./sound-lab-keyboard-editor";
 import { newKeyboardConfig } from "src/state/keyboard-config";
+import { createEffectRackPreset, DEFAULT_GROUP_NAME, deleteEffectRackPreset, effectRackToPreset, getLoadedPreset, loadAllEffectRackPresets, updateEffectRackPreset } from "src/state/data-repository";
+import { DONE, done } from "src/utils/async-utils";
+import { serializeEffectRack } from "src/state/effect-rack";
 
 export const LAB_EDITING_EFFECT_RACK     = 0;
 export const LAB_EDITING_KEYBOARD_CONFIG = 1;
@@ -59,6 +64,10 @@ function newSoundLabState(): SoundLabState {
 }
 
 export function imSoundLab(c: ImCache, ctx: GlobalContext) {
+    if (imMemo(c, true)) {
+        loadAllEffectRackPresets(ctx.repo, done);
+    }
+
     const settings = getCurrentPlaySettings();
 
     const lab = imState(c, newSoundLabState);
@@ -143,7 +152,49 @@ function imSoundLabRightPanel(
 
                 imHeading(c, "Presets");
 
-                imEffectRackList(c, ctx, editor.presetsListState, editor);
+                imLayoutBegin(c, ROW); imGap(c, 5, PX); imFlexWrap(c); {
+                    imFlex1(c);
+
+                    const presetsList = editor.presetsListState;
+
+                    let selectedPreset = getLoadedPreset(ctx.repo, presetsList.selectedId);
+
+                    if (imButtonIsClicked(c, "Overwrite", false, !!selectedPreset) && selectedPreset) {
+                        selectedPreset.serialized = serializeEffectRack(editor.effectRack);
+                        updateEffectRackPreset(ctx.repo, selectedPreset, done);
+                    }
+
+                    if (imButtonIsClicked(c, "Rename", false, !!selectedPreset) && selectedPreset) {
+                        startRenamingPreset(ctx, presetsList, selectedPreset);
+                    }
+
+                    if (imButtonIsClicked(c, "Delete", false, !!selectedPreset) && selectedPreset) {
+                        deleteEffectRackPreset(ctx.repo, selectedPreset, done);
+                        selectPreset(presetsList, 0);
+                    }
+
+                    if (imButtonIsClicked(c, "New")) {
+                        const preset = effectRackToPreset(editor.effectRack);
+                        createEffectRackPreset(ctx.repo, preset, () => {
+                            presetsList.openGroup = DEFAULT_GROUP_NAME;
+                            startRenamingPreset(ctx, presetsList, preset)
+                            return DONE;
+                        });
+                    }
+                } imLayoutEnd(c);
+
+                const ev = imEffectRackList(c, ctx, editor.presetsListState);
+                if (ev) {
+                    if (ev.selection) {
+                        editorImport(editor, ev.selection.serialized);
+                    }
+
+                    if (ev.rename) {
+                        const { preset, newName } = ev.rename;
+                        preset.name = newName;
+                        updateEffectRackPreset(ctx.repo, preset, done);
+                    }
+                }
             } imLayoutEnd(c);
         } else {
             imIfElse(c);

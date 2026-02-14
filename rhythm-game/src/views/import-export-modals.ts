@@ -1,5 +1,5 @@
-import { imModalBegin, imModalEnd } from "src/app-components/modal";
-import { imButtonIsClicked } from "src/components/button";
+import { imModalBegin, imModalEnd } from "src/app-components/modal.ts";
+import { imButtonIsClicked } from "src/components/button.ts";
 import {
     BLOCK,
     COL,
@@ -14,9 +14,9 @@ import {
     PERCENT,
     PX,
     ROW
-} from "src/components/core/layout";
-import { cssVars } from "src/components/core/stylesheets";
-import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
+} from "src/components/core/layout.ts";
+import { cssVars } from "src/components/core/stylesheets.ts";
+import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area.ts";
 import {
     ImCache,
     imGetInline,
@@ -26,9 +26,9 @@ import {
     imSet,
     imState,
     isFirstishRender
-} from "src/utils/im-core";
-import { EL_B, EV_INPUT, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom";
-import { cssVarsApp } from "./styling";
+} from "src/utils/im-core.ts";
+import { EL_B, EV_INPUT, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom.ts";
+import { cssVarsApp } from "./styling.ts";
 
 export type ImportEvent = {
     previewUpdated?: boolean;

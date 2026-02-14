@@ -1,4 +1,4 @@
-import { imButtonIsClicked } from "src/components/button";
+import { imButtonIsClicked } from "src/components/button.ts";
 import {
     BLOCK,
     COL,
@@ -23,17 +23,17 @@ import {
     ROW,
     START,
     STRETCH
-} from "src/components/core/layout";
-import { cn, cssVars } from "src/components/core/stylesheets";
-import { imLine, LINE_VERTICAL } from "src/components/im-line";
-import { debugFlags } from "src/debug-flags";
-import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setPlaybackTime } from "src/dsp/dsp-loop-interface";
+} from "src/components/core/layout.ts";
+import { cn, cssVars } from "src/components/core/stylesheets.ts";
+import { imLine, LINE_VERTICAL } from "src/components/im-line.ts";
+import { debugFlags } from "src/debug-flags.ts";
+import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setPlaybackTime } from "src/dsp/dsp-loop-interface.ts";
 import {
     getKeyForKeyboardKey,
     InstrumentKey,
     KeyboardState
-} from "src/state/keyboard-state";
-import { pausePlayback, resumePlayback } from "src/state/playing-pausing";
+} from "src/state/keyboard-state.ts";
+import { pausePlayback, resumePlayback } from "src/state/playing-pausing.ts";
 import {
     CommandItem,
     FRACTIONAL_UNITS_PER_BEAT,
@@ -46,20 +46,20 @@ import {
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
     TimelineItemMeasure
-} from "src/state/sequencer-chart";
+} from "src/state/sequencer-chart.ts";
 import {
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
     NoteMapEntry
-} from "src/state/sequencer-state";
-import { arrayAt } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
-import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
-import { EL_B, elSetClass, elSetStyle, imElBegin, imElEnd, imStr, imTrackSize, Stringifyable } from "src/utils/im-dom";
-import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils";
-import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app";
-import { cssVarsApp, getCurrentTheme } from "./styling";
+} from "src/state/sequencer-state.ts";
+import { arrayAt } from "src/utils/array-utils.ts";
+import { assert } from "src/utils/assert.ts";
+import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour.ts";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core.ts";
+import { EL_B, elSetClass, elSetStyle, imElBegin, imElEnd, imStr, imTrackSize, Stringifyable } from "src/utils/im-dom.ts";
+import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils.ts";
+import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
+import { cssVarsApp, getCurrentTheme } from "./styling.ts";
 
 const SIGNAL_LOOKAHEAD_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
 const GAMEPLAY_BEATS_VIEWPORT  = 3 * FRACTIONAL_UNITS_PER_BEAT;

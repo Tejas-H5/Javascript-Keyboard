@@ -1,4 +1,4 @@
-import { imButtonIsClicked } from "src/components/button";
+import { imButtonIsClicked } from "src/components/button.ts";
 import {
     BLOCK,
     COL,
@@ -22,22 +22,22 @@ import {
     PX,
     REM,
     ROW
-} from "src/components/core/layout";
-import { cn, cssVars } from "src/components/core/stylesheets";
-import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area";
-import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
-import { imSliderInput } from "src/components/slider";
-import { imTextInputBegin, imTextInputEnd } from "src/components/text-input";
-import { debugFlags } from "src/debug-flags";
-import { getCurrentOscillatorGainForOwner, getPlaybackSpeed, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface";
+} from "src/components/core/layout.ts";
+import { cn, cssVars } from "src/components/core/stylesheets.ts";
+import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area.ts";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
+import { imSliderInput } from "src/components/slider.ts";
+import { imTextInputBegin, imTextInputEnd } from "src/components/text-input.ts";
+import { debugFlags } from "src/debug-flags.ts";
+import { getCurrentOscillatorGainForOwner, getPlaybackSpeed, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface.ts";
 import {
     getKeyForKeyboardKey,
     getKeyForNote,
     getMusicNoteText,
     InstrumentKey,
     KeyboardState,
-} from "src/state/keyboard-state";
-import { previewNotes, setGlobalPlaybackSpeed } from "src/state/playing-pausing";
+} from "src/state/keyboard-state.ts";
+import { previewNotes, setGlobalPlaybackSpeed } from "src/state/playing-pausing.ts";
 import {
     CommandItem,
     compressChart,
@@ -62,7 +62,7 @@ import {
     TimelineItemBpmChange,
     TimelineItemMeasure,
     timelineItemToString
-} from "src/state/sequencer-chart";
+} from "src/state/sequencer-chart.ts";
 import {
     getSelectionStartEndIndexes,
     getSequencerPlaybackOrEditingCursor,
@@ -73,19 +73,19 @@ import {
     NoteMapEntry,
     SequencerState,
     setCursorSnap
-} from "src/state/sequencer-state";
-import { filteredCopy } from "src/utils/array-utils";
-import { assert, unreachable } from "src/utils/assert";
-import { copyToClipboard } from "src/utils/clipboard";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core";
-import { EL_B, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom";
-import { clamp, inverseLerp, lerp } from "src/utils/math-utils";
-import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8";
-import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, } from "./app";
-import { isSavingAnyChart } from "./saving-chart";
-import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view";
-import { cssVarsApp } from "./styling";
-import { isKeyHeld, KEY_SHIFT } from "src/utils/key-state";
+} from "src/state/sequencer-state.ts";
+import { filteredCopy } from "src/utils/array-utils.ts";
+import { assert, unreachable } from "src/utils/assert.ts";
+import { copyToClipboard } from "src/utils/clipboard.ts";
+import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core.ts";
+import { EL_B, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom.ts";
+import { clamp, inverseLerp, lerp } from "src/utils/math-utils.ts";
+import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8.ts";
+import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, } from "./app.ts";
+import { isSavingAnyChart } from "./saving-chart.ts";
+import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view.ts";
+import { cssVarsApp } from "./styling.ts";
+import { isKeyHeld, KEY_SHIFT } from "src/utils/key-state.ts";
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {

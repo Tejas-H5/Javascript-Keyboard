@@ -1,19 +1,5 @@
-import {
-    COL,
-    imAbsolute,
-    imAlign,
-    imBg,
-    imFixed,
-    imJustify,
-    imLayoutBegin,
-    imLayoutEnd,
-    imZIndex,
-    PX,
-    ROW
-} from "src/components/core/layout";
-import {
-    ImCache
-} from "src/utils/im-core";
+import {COL, imAbsolute, imAlign, imBg, imFixed, imJustify, imLayoutBegin, imLayoutEnd, imZIndex, PX, ROW} from "src/components/core/layout.ts";
+import {ImCache} from "src/utils/im-core.ts";
 
 export function imModalBegin(c: ImCache, zIndex = 100) {
     imLayoutBegin(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, zIndex); {

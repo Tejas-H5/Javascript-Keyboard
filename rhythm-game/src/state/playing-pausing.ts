@@ -1,5 +1,5 @@
-import { getCurrentPlaySettings, isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, setPlaybackSpeed, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { getKeyForNote, KeyboardState } from "src/state/keyboard-state";
+import { getCurrentPlaySettings, isAnythingPlaying, releaseAllKeys, ScheduledKeyPress, schedulePlayback, setPlaybackSpeed, updatePlaySettings } from "src/dsp/dsp-loop-interface.ts";
+import { getKeyForNote, KeyboardState } from "src/state/keyboard-state.ts";
 import {
     FRACTIONAL_UNITS_PER_BEAT,
     getBeatIdxAfter,
@@ -12,10 +12,10 @@ import {
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE
-} from "src/state/sequencer-chart";
-import { getCurrentPlayingBeats, getNextPlayingId, hasRangeSelection, SequencerState, setSequencerPlaybackSpeed, } from "src/state/sequencer-state";
-import { unreachable } from "src/utils/assert";
-import { GlobalContext } from "src/views/app";
+} from "src/state/sequencer-chart.ts";
+import { getCurrentPlayingBeats, getNextPlayingId, hasRangeSelection, SequencerState, setSequencerPlaybackSpeed, } from "src/state/sequencer-state.ts";
+import { unreachable } from "src/utils/assert.ts";
+import { GlobalContext } from "src/views/app.ts";
 
 export function stopPlayback({ sequencer }: GlobalContext, stopOnCursor = false) {
     clearTimeout(sequencer.playingTimeout);

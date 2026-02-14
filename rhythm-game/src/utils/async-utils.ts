@@ -100,7 +100,7 @@ export type AsyncDone = AsyncCallbackResult;
 export type AsyncCallbackResult = number & { readonly __AsyncCallbackResult: unique symbol };
 // hopefully, `return undefined;` can be optimized by the compiler to do tail recursion, since its not really returning anything,
 // and we can still get our compiler error
-export const DONE = undefined as unknown as AsyncCallbackResult;
+export const DONE = undefined as unknown as AsyncDone;
 // Some other alternatives to 'DONE' to make intent more clear
 export const CANCELLED = DONE; // This action was cancelled. We aren't calling the user's callback on purpose.
 export const DISPATCHED_ELSEWHERE = DONE; // This action dispatched callbacks in an unusual way. You'll need to review it's correctness.

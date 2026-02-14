@@ -4,7 +4,6 @@ import { imFixedXY, imSize, imZIndex, PX } from "src/components/core/layout";
 import { assert } from "src/utils/assert";
 import {
     __GetEntries,
-    CACHE_RERENDER_FN,
     cacheEntriesAddDestructor,
     getEntriesParent,
     getEntriesParentFromEntries,
@@ -748,7 +747,7 @@ function findParents(el: ValidElement, elements: Set<ValidElement>) {
 }
 
 
-export function newImGlobalEventSystem(rerenderFn: () => void): ImGlobalEventSystem {
+export function newImGlobalEventSystem(c: ImCache): ImGlobalEventSystem {
     const keyboard: ImKeyboardState = {
         keyDown: null,
         keyUp: null,
@@ -804,7 +803,7 @@ export function newImGlobalEventSystem(rerenderFn: () => void): ImGlobalEventSys
     }
 
     const eventSystem: ImGlobalEventSystem = {
-        rerender: rerenderFn,
+        rerender: () => rerenderImCache(c),
         keyboard,
         mouse,
         blur: false,
@@ -906,7 +905,7 @@ const gssEventSystems: ImGlobalEventSystem[] = [];
 export function imGlobalEventSystemBegin(c: ImCache): ImGlobalEventSystem {
     let state = imGet(c, newImGlobalEventSystem);
     if (state === undefined) {
-        const eventSystem = newImGlobalEventSystem(c[CACHE_RERENDER_FN]);
+        const eventSystem = newImGlobalEventSystem(c);
         addDocumentAndWindowEventListeners(eventSystem);
         cacheEntriesAddDestructor(c, () => removeDocumentAndWindowEventListeners(eventSystem));
         state = imSet(c, eventSystem);

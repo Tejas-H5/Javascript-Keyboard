@@ -1,7 +1,7 @@
-import { ImCache, imGet, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
-import { elGet, elHasMouseOver, elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
-import { COL, imBg, imFlex, imLayoutBegin, imLayoutEnd } from "./core/layout";
-import { cssVars } from "./core/stylesheets";
+import { ImCache, imGet, imMemo, imSet, isFirstishRender } from "src/utils/im-core.ts";
+import { elGet, elHasMouseOver, elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom.ts";
+import { COL, imBg, imFlex, imLayoutBegin, imLayoutEnd } from "./core/layout.ts";
+import { cssVars } from "./core/stylesheets.ts";
 
 export type DragAndDropState =  {
     move: { a: number; b: number; } | null;

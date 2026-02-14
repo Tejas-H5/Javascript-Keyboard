@@ -1,8 +1,8 @@
-import { BLOCK, imBg, imFg, imFixed, imFixedXY, imLayoutBegin, imLayoutEnd, imOpacity, imSize, PX } from "src/components/core/layout";
-import { cssVars } from "src/components/core/stylesheets";
-import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core";
-import { elHasMousePress, elSetStyle, EV_CONTEXTMENU, getGlobalEventSystem, imOn } from "src/utils/im-dom";
-import { clamp, deltaAngle, gridsnapRound, lerp01 } from "src/utils/math-utils";
+import { BLOCK, imBg, imFg, imFixed, imFixedXY, imLayoutBegin, imLayoutEnd, imOpacity, imSize, PX } from "src/components/core/layout.ts";
+import { cssVars } from "src/components/core/stylesheets.ts";
+import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core.ts";
+import { elHasMousePress, elSetStyle, EV_CONTEXTMENU, getGlobalEventSystem, imOn } from "src/utils/im-dom.ts";
+import { clamp, deltaAngle, gridsnapRound, lerp01 } from "src/utils/math-utils.ts";
 
 export type CompactLinearDragSlideInteractionState = {
     isDragging: boolean;

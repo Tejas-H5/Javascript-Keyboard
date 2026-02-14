@@ -1,8 +1,8 @@
-import { ImCache, imGet, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
-import { elHasMousePress, elSetStyle, getGlobalEventSystem, imTrackSize } from "src/utils/im-dom";
-import { clamp } from "src/utils/math-utils";
-import { cssVarsApp } from "src/views/styling";
-import { BLOCK, imLayoutBegin, imLayoutEnd } from "./core/layout";
+import { ImCache, imGet, imMemo, imSet, isFirstishRender } from "src/utils/im-core.ts";
+import { elHasMousePress, elSetStyle, getGlobalEventSystem, imTrackSize } from "src/utils/im-dom.ts";
+import { clamp } from "src/utils/math-utils.ts";
+import { cssVarsApp } from "src/views/styling.ts";
+import { BLOCK, imLayoutBegin, imLayoutEnd } from "./core/layout.ts";
 
 
 type RangeSliderHandle = {

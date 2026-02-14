@@ -1,13 +1,13 @@
-import { newFunctionUrl } from "src/utils/web-workers";
+import { newFunctionUrl } from "src/utils/web-workers.ts";
 
-import * as dspLoopEffectRack from "../state/effect-rack";
-import * as dspLoop from "./dsp-loop";
-import * as random from "src/utils/random";
-import * as assertions from "src/utils/assert";
-import * as math from "src/utils/math-utils";
-import * as music from "src/utils/music-theory-utils";
-import * as turnBasedWaves from "src/utils/turn-based-waves";
-import * as arrayUtils from "src/utils/array-utils";
+import * as dspLoopEffectRack from "../state/effect-rack.ts";
+import * as dspLoop from "./dsp-loop.ts";
+import * as random from "src/utils/random.ts";
+import * as assertions from "src/utils/assert.ts";
+import * as math from "src/utils/math-utils.ts";
+import * as music from "src/utils/music-theory-utils.ts";
+import * as turnBasedWaves from "src/utils/turn-based-waves.ts";
+import * as arrayUtils from "src/utils/array-utils.ts";
 
 import {
     DspLoopMessage,

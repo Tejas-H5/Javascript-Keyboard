@@ -1,8 +1,8 @@
-import { getDeltaTimeSeconds, ImCache, imIf, imIfElse, imIfEnd, imMemo, imState } from "src/utils/im-core";
-import { BLOCK, COL, imAlign, imBg, imFg, imLayoutBegin, imLayoutEnd, imPadding, imRelative, imSize, NA, PERCENT, PX, REM, STRETCH } from "src/components/core/layout";
-import { imStr } from "src/utils/im-dom";
-import { imLink } from "src/components/im-link";
-import { cssVars } from "src/components/core/stylesheets";
+import { getDeltaTimeSeconds, ImCache, imIf, imIfElse, imIfEnd, imMemo, imState } from "src/utils/im-core.ts";
+import { BLOCK, COL, imAlign, imBg, imFg, imLayoutBegin, imLayoutEnd, imPadding, imRelative, imSize, NA, PERCENT, PX, REM, STRETCH } from "src/components/core/layout.ts";
+import { imStr } from "src/utils/im-dom.ts";
+import { imLink } from "src/components/im-link.ts";
+import { cssVars } from "src/components/core/stylesheets.ts";
 
 function newInfiniteLoadState() {
     return { t: 0 };

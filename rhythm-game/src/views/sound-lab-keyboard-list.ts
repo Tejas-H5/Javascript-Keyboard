@@ -27,7 +27,6 @@ import {
     EffectRackPreset,
     effectRackToPreset,
     getLoadedPreset,
-    loadAllEffectRackPresets,
     updateEffectRackPreset
 } from "src/state/data-repository";
 import { assert } from "src/utils/assert";
@@ -92,10 +91,6 @@ export function imEffectRackList(
     s: PresetsListState,
     editor: EffectRackEditorState
 ) {
-    if (imMemo(c, true)) {
-        loadAllEffectRackPresets(ctx.repo, done);
-    }
-
     const loading = ctx.repo.effectRackPresets.loading;
 
     // UI could be better but for now I don't care too much.

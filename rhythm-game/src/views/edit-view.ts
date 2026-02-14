@@ -1,11 +1,11 @@
-import { imFlex, imLayoutBegin, imLayoutEnd, ROW } from "src/components/core/layout";
-import { pressKey, setPlaybackSpeed } from "src/dsp/dsp-loop-interface";
-import { getKeyForKeyboardKey } from "src/state/keyboard-state";
+import { imFlex, imLayoutBegin, imLayoutEnd, ROW } from "src/components/core/layout.ts";
+import { pressKey, setPlaybackSpeed } from "src/dsp/dsp-loop-interface.ts";
+import { getKeyForKeyboardKey } from "src/state/keyboard-state.ts";
 import {
     playFromCursor,
     playFromLastMeasure,
     stopPlayback
-} from "src/state/playing-pausing";
+} from "src/state/playing-pausing.ts";
 import {
     FRACTIONAL_UNITS_PER_BEAT,
     getBpm,
@@ -21,7 +21,7 @@ import {
     sequencerChartInsertItems,
     sequencerChartRemoveItems,
     timelineMeasureAtBeatsIdx
-} from "src/state/sequencer-chart";
+} from "src/state/sequencer-chart.ts";
 import {
     clearRangeSelection,
     deleteRange,
@@ -36,16 +36,16 @@ import {
     shiftItemsAfterCursor,
     shiftSelectedItems,
     transposeSelectedItems
-} from "src/state/sequencer-state";
-import { APP_VIEW_PLAY_CHART, EditViewState } from "src/state/ui-state";
+} from "src/state/sequencer-state.ts";
+import { APP_VIEW_PLAY_CHART, EditViewState } from "src/state/ui-state.ts";
 import {
     getDeltaTimeSeconds,
     ImCache,
     imEndIf,
     imIf,
     imMemo
-} from "src/utils/im-core";
-import { imSequencer } from "src/views/edit-view-sequencer";
+} from "src/utils/im-core.ts";
+import { imSequencer } from "src/views/edit-view-sequencer.ts";
 import {
     copyNotesToTempStore,
     GlobalContext,
@@ -54,9 +54,9 @@ import {
     setLoadSaveModalOpen,
     setViewChartSelect,
     undoSequencerEdit
-} from "./app";
-import { runSaveCurrentChartTask } from "./saving-chart";
-import { imLoadSaveSidebar } from "./edit-view-load-save-sidebar";
+} from "./app.ts";
+import { runSaveCurrentChartTask } from "./saving-chart.ts";
+import { imLoadSaveSidebar } from "./edit-view-load-save-sidebar.ts";
 
 const OVERPLAY_MS = 1000;
 

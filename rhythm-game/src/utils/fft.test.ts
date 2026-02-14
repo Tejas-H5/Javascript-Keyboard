@@ -1,5 +1,5 @@
-import { fft, resizeNumberArrayPowerOf2 } from "./fft";
-import { expect, test } from "./testing";
+import { fft, resizeNumberArrayPowerOf2 } from "./fft.ts";
+import { expect, test } from "./testing.ts";
 
 // used to determine the correctness of the fft
 export function slowFt(signal: number[], dstX: number[], dstY: number[]) {

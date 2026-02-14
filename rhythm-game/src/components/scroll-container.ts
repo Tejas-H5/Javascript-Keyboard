@@ -1,6 +1,6 @@
-import { getDeltaTimeSeconds, ImCache } from "src/utils/im-core";
-import { COL, imFlex, imLayoutBegin, imLayoutEnd, imRelative, imScrollOverflow, ROW } from "./core/layout";
-import { getScrollVHEx } from "src/utils/dom-utils";
+import { getDeltaTimeSeconds, ImCache } from "src/utils/im-core.ts";
+import { COL, imFlex, imLayoutBegin, imLayoutEnd, imRelative, imScrollOverflow, ROW } from "./core/layout.ts";
+import { getScrollVHEx } from "src/utils/dom-utils.ts";
 
 
 // NOTE: if all we need is idx, let's just inline it.

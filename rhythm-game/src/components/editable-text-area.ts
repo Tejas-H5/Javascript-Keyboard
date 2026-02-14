@@ -1,9 +1,9 @@
-import { newCssBuilder } from "src/utils/cssb";
-import { setInputValue } from "src/utils/dom-utils";
-import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core";
-import { EL_TEXTAREA, elSetAttr, elSetClass, elSetStyle, elSetTextSafetyRemoved, imElBegin, imElEnd } from "src/utils/im-dom";
-import { BLOCK, imLayoutBegin, imLayoutEnd, INLINE } from "./core/layout";
-import { cn, cssVars } from "./core/stylesheets";
+import { newCssBuilder } from "src/utils/cssb.ts";
+import { setInputValue } from "src/utils/dom-utils.ts";
+import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core.ts";
+import { EL_TEXTAREA, elSetAttr, elSetClass, elSetStyle, elSetTextSafetyRemoved, imElBegin, imElEnd } from "src/utils/im-dom.ts";
+import { BLOCK, imLayoutBegin, imLayoutEnd, INLINE } from "./core/layout.ts";
+import { cn, cssVars } from "./core/stylesheets.ts";
 
 export function getLineBeforePos(text: string, pos: number): string {
     const i = getLineStartPos(text, pos);

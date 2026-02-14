@@ -1,6 +1,6 @@
-import { imLayoutBegin, ROW } from "src/components/core/layout";
-import { ImCache, isFirstishRender } from "src/utils/im-core";
-import { elSetStyle } from "src/utils/im-dom";
+import { imLayoutBegin, ROW } from "src/components/core/layout.ts";
+import { ImCache, isFirstishRender } from "src/utils/im-core.ts";
+import { elSetStyle } from "src/utils/im-dom.ts";
 
 export function imVerticalText(c: ImCache) {
     imLayoutBegin(c, ROW); {

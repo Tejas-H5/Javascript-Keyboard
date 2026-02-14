@@ -1,17 +1,17 @@
-import { imTextInputOneLine } from "src/app-components/text-input-one-line";
-import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imLayoutBegin, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout";
-import { deleteChart } from "src/state/data-repository";
+import { imTextInputOneLine } from "src/app-components/text-input-one-line.ts";
+import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imLayoutBegin, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout.ts";
+import { deleteChart } from "src/state/data-repository.ts";
 import {
     playAll,
     stopPlayback
-} from "src/state/playing-pausing";
+} from "src/state/playing-pausing.ts";
 import {
     CHART_STATUS_READONLY,
     isBundledChartId,
     newChart
-} from "src/state/sequencer-chart";
-import { getCurrentChart } from "src/state/sequencer-state";
-import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME } from "src/state/ui-state";
+} from "src/state/sequencer-chart.ts";
+import { getCurrentChart } from "src/state/sequencer-state.ts";
+import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME } from "src/state/ui-state.ts";
 import {
     ImCache,
     imElse,
@@ -21,21 +21,21 @@ import {
     imIf,
     imIfElse,
     imIfEnd
-} from "src/utils/im-core";
+} from "src/utils/im-core.ts";
 import {
     imStr
-} from "src/utils/im-dom";
+} from "src/utils/im-dom.ts";
 import {
     GlobalContext,
     openChartUpdateModal,
     setCurrentChartMeta,
     setLoadSaveModalClosed
-} from "./app";
-import { moveChartSelection } from "./chart-select";
-import { cssVarsApp } from "./styling";
-import { done, DONE } from "src/utils/async-utils";
-import { arrayAt } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
+} from "./app.ts";
+import { moveChartSelection } from "./chart-select.ts";
+import { cssVarsApp } from "./styling.ts";
+import { done, DONE } from "src/utils/async-utils.ts";
+import { arrayAt } from "src/utils/array-utils.ts";
+import { assert } from "src/utils/assert.ts";
 
 
 export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
@@ -58,7 +58,8 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                     if (ev) {
                         if (ev.newName !== undefined) {
                             chart.name = ev.newName;
-                        } else if (ev.submit || ev.cancel) {
+                        } 
+                        if (ev.submit || ev.cancel) {
                             s.isRenaming = false;
                         }
                     }

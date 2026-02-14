@@ -1,8 +1,8 @@
-import { BLOCK, imBg, imLayoutBegin, imLayoutEnd, imOpacity, imSize, NA, PERCENT, PX } from "src/components/core/layout";
-import { newCssBuilder } from "src/utils/cssb";
-import { ImCache, isFirstishRender } from "src/utils/im-core";
-import { elSetClass } from "src/utils/im-dom";
-import { cssVars } from "./core/stylesheets";
+import { BLOCK, imBg, imLayoutBegin, imLayoutEnd, imOpacity, imSize, NA, PERCENT, PX } from "src/components/core/layout.ts";
+import { newCssBuilder } from "src/utils/cssb.ts";
+import { ImCache, isFirstishRender } from "src/utils/im-core.ts";
+import { elSetClass } from "src/utils/im-dom.ts";
+import { cssVars } from "./core/stylesheets.ts";
 
 const cssb = newCssBuilder();
 const cnLine = cssb.cn("line", [

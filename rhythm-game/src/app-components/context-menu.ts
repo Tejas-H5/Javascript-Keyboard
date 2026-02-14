@@ -1,8 +1,8 @@
-import { COL, imAbsolute, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout";
-import { cssVars } from "src/components/core/stylesheets";
-import { imLine, LINE_HORIZONTAL } from "src/components/im-line";
-import { ImCache, imState, isFirstishRender, rerenderImCache } from "src/utils/im-core";
-import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom";
+import { COL, imAbsolute, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout.ts";
+import { cssVars } from "src/components/core/stylesheets.ts";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
+import { ImCache, imState, isFirstishRender, rerenderImCache } from "src/utils/im-core.ts";
+import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom.ts";
 
 export type ContextMenuState = {
     open: boolean;

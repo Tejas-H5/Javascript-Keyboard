@@ -10,7 +10,7 @@ type PressedSymbols<T extends string> = {
 };
 
 export type KeysState = {
-    keys:    PressedSymbols<Key>;
+    keys:    PressedSymbols<NormalizedKey>;
     letters: PressedSymbols<string>;
 };
 
@@ -41,9 +41,9 @@ const EV_BLUR     = 4;
 // https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values
 // There are a LOT of them. So I won't bother holding state for every possible key like usual
 // TODO: try using keyCode if available, then fall back on key
-export type Key = string & { __Key: void };
+export type NormalizedKey = string & { __Key: void };
 
-export function getNormalizedKey(key: string): Key {
+export function getNormalizedKey(key: string): NormalizedKey {
     if (key.length === 1) {
         key = key.toUpperCase();
 
@@ -72,7 +72,7 @@ export function getNormalizedKey(key: string): Key {
         }
     }
 
-    return key as Key;
+    return key as NormalizedKey;
 }
 
 function updatePressedSymbols<T extends string>(
@@ -164,7 +164,7 @@ export function updateKeysState(
     }
 }
 
-export function isKeyPressed(keysState: KeysState, key: Key): boolean {
+export function isKeyPressed(keysState: KeysState, key: NormalizedKey): boolean {
     const keys = keysState.keys;
     for (let i = 0; i < keys.pressed.length; i++) {
         if (keys.pressed[i] === key) return true;
@@ -172,7 +172,7 @@ export function isKeyPressed(keysState: KeysState, key: Key): boolean {
     return false;
 }
 
-export function isKeyRepeated(keysState: KeysState, key: Key): boolean {
+export function isKeyRepeated(keysState: KeysState, key: NormalizedKey): boolean {
     const keys = keysState.keys;
     for (let i = 0; i < keys.repeated.length; i++) {
         if (keys.repeated[i] === key) return true;
@@ -180,13 +180,13 @@ export function isKeyRepeated(keysState: KeysState, key: Key): boolean {
     return false;
 }
 
-export function isKeyPressedOrRepeated(keysState: KeysState, key: Key): boolean {
+export function isKeyPressedOrRepeated(keysState: KeysState, key: NormalizedKey): boolean {
     if (isKeyPressed(keysState, key)) return true;
     if (isKeyRepeated(keysState, key)) return true;
     return false;
 }
 
-export function isKeyReleased(keysState: KeysState, key: Key): boolean {
+export function isKeyReleased(keysState: KeysState, key: NormalizedKey): boolean {
     const keys = keysState.keys;
     for (let i = 0; i < keys.released.length; i++) {
         if (keys.released[i] === key) return true;
@@ -194,7 +194,7 @@ export function isKeyReleased(keysState: KeysState, key: Key): boolean {
     return false;
 }
 
-export function isKeyHeld(keysState: KeysState, key: Key): boolean {
+export function isKeyHeld(keysState: KeysState, key: NormalizedKey): boolean {
     const keys = keysState.keys;
     for (let i = 0; i < keys.held.length; i++) {
         if (keys.held[i] === key) return true;

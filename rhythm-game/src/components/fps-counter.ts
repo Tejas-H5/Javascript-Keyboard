@@ -7,9 +7,9 @@ import {
     getFpsCounterState,
     imSet,
     inlineTypeId
-} from "src/utils/im-core";
-import { imStr } from "src/utils/im-dom";
-import { BLOCK, imLayoutBegin, imLayoutEnd } from "./core/layout";
+} from "src/utils/im-core.ts";
+import { imStr } from "src/utils/im-dom.ts";
+import { BLOCK, imLayoutBegin, imLayoutEnd } from "./core/layout.ts";
 
 export function imFpsCounterSimple(c: ImCache) {
     const fpsCounter = getFpsCounterState(c);

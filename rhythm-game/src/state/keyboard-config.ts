@@ -1,5 +1,5 @@
-import { EffectRackPreset } from "./data-repository";
-import { KEYBOARD_LAYOUT_FLAT } from "./keyboard-state";
+import { EffectRackPreset } from "./data-repository.ts";
+import { KEYBOARD_LAYOUT_FLAT } from "./keyboard-state.ts";
 
 export type KeyboardConfig = {
     synths: (EffectRackPreset | null)[];

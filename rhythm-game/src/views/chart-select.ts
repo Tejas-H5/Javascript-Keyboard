@@ -1,18 +1,18 @@
-import { imVerticalText } from "src/app-components/misc";
-import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imFlex1, imGap, imJustify, imLayoutBegin, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout";
-import { cssVars } from "src/components/core/stylesheets";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
-import { InstrumentKey } from "src/state/keyboard-state";
-import { CHART_STATUS_READONLY, getChartDurationInBeats, isBundledChartId, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart";
-import { getCurrentChartOrNullIfLoading } from "src/state/sequencer-state";
-import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "src/state/ui-state";
-import { assert } from "src/utils/assert";
-import { AsyncCallback, AsyncCallbackResult, done } from "src/utils/async-utils";
-import { scrollIntoViewVH } from "src/utils/dom-utils";
-import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core";
-import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imElBegin, imElEnd, imStr } from "src/utils/im-dom";
-import { arrayMax, clamp, lerp } from "src/utils/math-utils";
+import { imVerticalText } from "src/app-components/misc.ts";
+import { imButtonIsClicked } from "src/components/button.ts";
+import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imFlex1, imGap, imJustify, imLayoutBegin, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout.ts";
+import { cssVars } from "src/components/core/stylesheets.ts";
+import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
+import { InstrumentKey } from "src/state/keyboard-state.ts";
+import { CHART_STATUS_READONLY, getChartDurationInBeats, isBundledChartId, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart.ts";
+import { getCurrentChartOrNullIfLoading } from "src/state/sequencer-state.ts";
+import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "src/state/ui-state.ts";
+import { assert } from "src/utils/assert.ts";
+import { AsyncCallback, AsyncCallbackResult, done } from "src/utils/async-utils.ts";
+import { scrollIntoViewVH } from "src/utils/dom-utils.ts";
+import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core.ts";
+import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imElBegin, imElEnd, imStr } from "src/utils/im-dom.ts";
+import { arrayMax, clamp, lerp } from "src/utils/math-utils.ts";
 import {
     GlobalContext,
     openChartUpdateModal,
@@ -22,8 +22,8 @@ import {
     setViewPlayCurrentChart,
     setViewSoundLab,
     setViewStartScreen
-} from "./app";
-import { cssVarsApp } from "./styling";
+} from "./app.ts";
+import { cssVarsApp } from "./styling.ts";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
     if (!ctx.keyPressState) return false;

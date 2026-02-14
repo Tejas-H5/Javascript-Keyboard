@@ -5,12 +5,12 @@
 // NOTE: All methods here should be exported, so that we can easily inject them into a string and create a URL that 
 // the web audio API dsp node can use.
 
-import { filterInPlace } from "src/utils/array-utils";
-import { assert, unreachable } from "src/utils/assert";
-import { clamp, moveTowards } from "src/utils/math-utils";
-import { asArray, asArrayOrUndefined, asBooleanOrUndefined, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, asStringOrUndefined, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils";
-import { deepEquals } from "src/utils/testing";
-import { cos, sawtooth, sin, square, triangle } from "src/utils/turn-based-waves";
+import { filterInPlace } from "src/utils/array-utils.ts";
+import { assert, unreachable } from "src/utils/assert.ts";
+import { clamp, moveTowards } from "src/utils/math-utils.ts";
+import { asArray, asArrayOrUndefined, asBooleanOrUndefined, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, asStringOrUndefined, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils.ts";
+import { deepEquals } from "src/utils/testing.ts";
+import { cos, sawtooth, sin, square, triangle } from "src/utils/turn-based-waves.ts";
 
 // TODO: _VALUE__
 export const EFFECT_RACK_ITEM__OSCILLATOR      = 0;

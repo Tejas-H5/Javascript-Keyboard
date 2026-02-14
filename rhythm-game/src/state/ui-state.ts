@@ -1,9 +1,9 @@
-import { SequencerChart, TimelineItem } from "src/state/sequencer-chart";
-import { GlobalContext } from "src/views/app";
-import { GameplayState } from "src/views/gameplay";
-import { SequencerChartMetadata } from "./data-repository";
-import { newUnitTestsState, UnitTestsState } from "./unit-tests";
-import { debugFlags } from "src/debug-flags";
+import { SequencerChart, TimelineItem } from "src/state/sequencer-chart.ts";
+import { GlobalContext } from "src/views/app.ts";
+import { GameplayState } from "src/views/gameplay.ts";
+import { SequencerChartMetadata } from "./data-repository.ts";
+import { newUnitTestsState, UnitTestsState } from "./unit-tests.ts";
+import { debugFlags } from "src/debug-flags.ts";
 
 export const APP_VIEW_STARTUP = 1;
 export const APP_VIEW_CHART_SELECT = 2;

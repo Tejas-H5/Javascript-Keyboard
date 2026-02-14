@@ -1,8 +1,8 @@
-import { arrayAt, filterInPlace, findLastIndexOf } from "src/utils/array-utils";
-import { assert, unreachable } from "src/utils/assert";
-import { beatsToMs, msToBeats } from "src/utils/music-theory-utils";
-import { numbersToVariableLengthBase64, variableLengthBase64ToNumbers } from "src/utils/vlbase64";
-import { getMusicNoteText } from "./keyboard-state";
+import { arrayAt, filterInPlace, findLastIndexOf } from "src/utils/array-utils.ts";
+import { assert, unreachable } from "src/utils/assert.ts";
+import { beatsToMs, msToBeats } from "src/utils/music-theory-utils.ts";
+import { numbersToVariableLengthBase64, variableLengthBase64ToNumbers } from "src/utils/vlbase64.ts";
+import { getMusicNoteText } from "./keyboard-state.ts";
 
 export type SequencerChart = {
     id: number;

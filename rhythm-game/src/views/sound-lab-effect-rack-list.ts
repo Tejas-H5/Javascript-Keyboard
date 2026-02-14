@@ -27,7 +27,6 @@ import {
     EffectRackPreset,
     effectRackToPreset,
     getLoadedPreset,
-    loadAllEffectRackPresets,
     updateEffectRackPreset
 } from "src/state/data-repository";
 import { assert } from "src/utils/assert";
@@ -86,49 +85,22 @@ export function selectPreset(s: PresetsListState, id: number) {
     s.renaming = false;
 }
 
+export type PresetSelectionEvent = {
+    selection?: EffectRackPreset;
+    rename?:    { preset: EffectRackPreset; newName: string };
+}
+
 export function imEffectRackList(
     c: ImCache,
     ctx: GlobalContext,
     s: PresetsListState,
-    editor: EffectRackEditorState
-) {
-    if (imMemo(c, true)) {
-        loadAllEffectRackPresets(ctx.repo, done);
-    }
+): PresetSelectionEvent | null {
+    let result: PresetSelectionEvent | null = null;
 
     const loading = ctx.repo.effectRackPresets.loading;
 
     // UI could be better but for now I don't care too much.
     imLayoutBegin(c, COL); imFlex(c); {
-        imLayoutBegin(c, ROW); imGap(c, 5, PX); imFlexWrap(c); {
-            imFlex1(c);
-
-            let selectedPreset = getLoadedPreset(ctx.repo, s.selectedId);
-
-            if (imButtonIsClicked(c, "Overwrite", false, !!selectedPreset) && selectedPreset) {
-                selectedPreset.serialized = serializeEffectRack(editor.effectRack);
-                updateEffectRackPreset(ctx.repo, selectedPreset, done);
-            }
-
-            if (imButtonIsClicked(c, "Rename", false, !!selectedPreset) && selectedPreset) {
-                startRenamingPreset(ctx, s, selectedPreset);
-            }
-
-            if (imButtonIsClicked(c, "Delete", false, !!selectedPreset) && selectedPreset) {
-                deleteEffectRackPreset(ctx.repo, selectedPreset, done);
-                selectPreset(s, 0);
-            }
-
-            if (imButtonIsClicked(c, "New")) {
-                const preset = effectRackToPreset(editor.effectRack);
-                createEffectRackPreset(ctx.repo, preset, () => {
-                    s.openGroup = DEFAULT_GROUP_NAME;
-                    startRenamingPreset(ctx, s, preset)
-                    return DONE;
-                });
-            }
-        } imLayoutEnd(c);
-
         if (imIf(c) && loading) {
             imLayoutBegin(c, COL); imFlex(c, 2); {
                 imStr(c, "Loading...");
@@ -145,7 +117,7 @@ export function imEffectRackList(
             imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c); {
                 imFor(c); for (const [groupName, group] of ctx.repo.effectRackPresets.groups) {
                     const open = s.openGroup === groupName;
-                    
+
                     imKeyedBegin(c, groupName); {
                         imLayoutBegin(c, BLOCK); {
                             imLayoutBegin(c, ROW); imAlign(c); {
@@ -164,7 +136,10 @@ export function imEffectRackList(
                             } imLayoutEnd(c);
 
                             if (imIf(c) && open) {
-                                imPresetsArray(c, ctx, s, editor, group);
+                                const itemEv = imPresetsArray(c, ctx, s, group);
+                                if (!result && itemEv) {
+                                    result = itemEv;
+                                }
                             } imIfEnd(c);
                         } imLayoutEnd(c);
                     } imKeyedEnd(c);
@@ -172,16 +147,17 @@ export function imEffectRackList(
             } imLayoutEnd(c);
         } imIfEnd(c);
     } imLayoutEnd(c);
-}
 
+    return result;
+}
 
 function imPresetsArray(
     c: ImCache,
     ctx: GlobalContext,
     s: PresetsListState,
-    editor: EffectRackEditorState,
-    presets: EffectRackPreset[]
-) {
+    presets: EffectRackPreset[],
+): PresetSelectionEvent | null {
+    let result: PresetSelectionEvent | null = null;
 
     imFor(c); for (const preset of presets) {
         const selected = preset.id === s.selectedId;
@@ -200,7 +176,7 @@ function imPresetsArray(
                     } else {
                         try {
                             selectPreset(s, preset.id);
-                            editorImport(editor, preset.serialized);
+                            result = { selection: preset };
                             s.error = "";
                         } catch (err) {
                             s.error = "" + err;
@@ -217,17 +193,13 @@ function imPresetsArray(
                         }
 
                         if (ev.submit) {
-                            preset.name = s.newName;
                             stopRenaming(ctx, s);
-
-                            updateEffectRackPreset(ctx.repo, preset, done);
-
+                            result = { rename: { preset: preset, newName: s.newName } };
                             ctx.handled = true;
                         }
 
                         if (ev.cancel) {
                             stopRenaming(ctx, s);
-                            editor.ui.modal = 0;
                             ctx.handled = true;
                         }
                     }
@@ -246,5 +218,7 @@ function imPresetsArray(
 
         } imKeyedEnd(c);
     } imForEnd(c);
+
+    return result;
 }
 
