@@ -1,6 +1,7 @@
 import { newColorFromHsv } from "src/utils/colour.ts";
 import { getNormalizedKey, NormalizedKey } from "src/utils/key-state";
 import { getNoteText } from "src/utils/music-theory-utils.ts";
+import { KEYBOARD_LAYOUT } from "./keyboard-config";
 
 export type KeyboardState = {
     keys: InstrumentKey[][];
@@ -61,7 +62,7 @@ function getLowerCase(key: string) {
 }
 
 export function getKeyForKeyboardKey(state: KeyboardState, key: string): InstrumentKey | undefined {
-    return state.flatKeys.find(k => k.keyboardKey === getLowerCase(key));
+    return state.flatKeys.find(k => k.keyboardKeyNormalized === getNormalizedKey(key));
 }
 
 function newKey(k: string): InstrumentKey {
@@ -85,15 +86,6 @@ function newKey(k: string): InstrumentKey {
 }
 
 export const BASE_NOTE = 28;
-
-export const KEYBOARD_LAYOUT: string[] = [
-    "1234567890-=",
-    "qwertyuiop[]",
-    "asdfghjkl;'↵",
-    "zxcvbnm,./",
-];
-
-export const KEYBOARD_LAYOUT_FLAT = KEYBOARD_LAYOUT.join("");
 
 export function newKeyboardState(): KeyboardState {
     const keys: InstrumentKey[][] = [];

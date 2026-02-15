@@ -195,7 +195,7 @@ function pushNotePress(
     scheduledKeyPresses.push({
         time: getItemStartTime(item) - startPlaybackFromTime,
         timeEnd: getItemEndTime(item) - startPlaybackFromTime,
-        keyId: key.index,
+        keyIndex: key.index,
         noteId: item.noteId,
     });
 }

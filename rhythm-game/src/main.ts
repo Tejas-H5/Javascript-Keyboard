@@ -38,12 +38,13 @@ function initGlobalContext(cb: AsyncCb<void>): AsyncDone {
             // Load the autosaved synth, so that it is applied immediately
             return loadAutosavedEffectRackPreset(repo, preset => {
                 if (preset) {
-                    const settings = getCurrentPlaySettings();
-                    try {
-                        settings.parameters.rack = deserializeEffectRack(preset.serialized);
-                    } catch (err) {
-                        console.error(err, "Oh no! anyway");
-                    }
+                    // TODO: autosaved keyboard
+                    // const settings = getCurrentPlaySettings();
+                    // try {
+                    //     settings.parameters.rack = deserializeEffectRack(preset.serialized);
+                    // } catch (err) {
+                    //     console.error(err, "Oh no! anyway");
+                    // }
                 }
 
                 const newSequencer = newSequencerState();
@@ -65,11 +66,11 @@ function initGlobalContext(cb: AsyncCb<void>): AsyncDone {
                         return loadAllEffectRackPresets(ctx.repo, (presets) => {
                             if (!presets) return cb();
 
-                            const preset = presets.find(p => p.name === debugFlags.testSoundLabLoadPreset);
-                            if (preset) {
-                                const playSetings = getCurrentPlaySettings();
-                                playSetings.parameters.rack = deserializeEffectRack(preset.serialized);
-                            }
+                            // const preset = presets.find(p => p.name === debugFlags.testSoundLabLoadPreset);
+                            // if (preset) {
+                            //     const playSetings = getCurrentPlaySettings();
+                            //     playSetings.parameters.rack = deserializeEffectRack(preset.serialized);
+                            // }
 
                             return cb();
                         });

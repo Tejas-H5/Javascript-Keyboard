@@ -1,5 +1,6 @@
 import { newFunctionUrl } from "src/utils/web-workers.ts";
 
+// Try to avoid adding stuff here - these imports will need to start exporting everything when you do
 import * as dspLoopEffectRack from "../state/effect-rack.ts";
 import * as dspLoop from "./dsp-loop.ts";
 import * as random from "src/utils/random.ts";
@@ -8,6 +9,9 @@ import * as math from "src/utils/math-utils.ts";
 import * as music from "src/utils/music-theory-utils.ts";
 import * as turnBasedWaves from "src/utils/turn-based-waves.ts";
 import * as arrayUtils from "src/utils/array-utils.ts";
+import * as keyboardConfig from "src/state/keyboard-config.ts"
+import * as serializationUtils from "src/utils/serialization-utils.ts";
+import * as debug from "src/debug-flags.ts"
 
 import {
     DspLoopMessage,
@@ -44,6 +48,9 @@ export function getDspLoopClassUrl(): string {
         music,
         turnBasedWaves,
         arrayUtils,
+        keyboardConfig,
+        serializationUtils,
+        debug,
     ], [
     ], function register() {
 

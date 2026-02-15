@@ -3,11 +3,11 @@
 // Maybe in the future, it will go back to being just a tiny editor again. 
 
 import { imButtonIsClicked } from "src/components/button.ts";
-import { COL, imAlign, imBg, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imScrollOverflow, PX, ROW, START } from "src/components/core/layout.ts";
+import { COL, imAlign, imBg, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imScrollOverflow, INLINE_BLOCK, PX, ROW, START } from "src/components/core/layout.ts";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
 import { pressKey } from "src/dsp/dsp-loop-interface.ts";
-import { KeyboardConfig } from "src/state/keyboard-config.ts";
-import { getKeyForKeyboardKey, KEYBOARD_LAYOUT_FLAT } from "src/state/keyboard-state.ts";
+import { effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, keyboardConfigDeleteSlot } from "src/state/keyboard-config.ts";
+import { getKeyForKeyboardKey } from "src/state/keyboard-state.ts";
 import { CssColor, newColorFromHsv } from "src/utils/colour.ts";
 import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core.ts";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom.ts";
@@ -15,7 +15,10 @@ import { JSONUndoBuffer, newJSONUndoBuffer } from "src/utils/undo-buffer-json.ts
 import { GlobalContext } from "./app.ts";
 import { imKeyboard } from "./keyboard.ts";
 import { imHeadingBegin, imHeadingEnd } from "./sound-lab-effect-rack-editor.ts";
-import { imEffectRackList, presetsListState } from "./sound-lab-effect-rack-list.ts";
+import { imEffectRackList, newPresetsListState } from "./sound-lab-effect-rack-list.ts";
+import { arrayAt } from "src/utils/array-utils.ts";
+import { assert } from "src/utils/assert.ts";
+import { imTextInputOneLine } from "src/app-components/text-input-one-line.ts";
 
 // I won't assume anything for now
 export type KeyboardConfigEditorState = {
@@ -25,11 +28,18 @@ export type KeyboardConfigEditorState = {
     deferredAction: (() => void) | undefined;
 
     reassigningSlotIdx: number;
-    reassigningPresetLookup: string;
     
     selectedKeys: Set<number>;
     slotColours: CssColor[];
+
+    isRenamingSlotIdx: number;
+
+    version: number;
 };
+
+function onEdited(editor: KeyboardConfigEditorState) {
+    editor.version += 1;
+}
 
 export function newKeyboardConfigEditorState(config: KeyboardConfig): KeyboardConfigEditorState {
     return {
@@ -39,27 +49,38 @@ export function newKeyboardConfigEditorState(config: KeyboardConfig): KeyboardCo
         deferredAction: undefined,
 
         reassigningSlotIdx: -1,
-        reassigningPresetLookup: "",
 
         selectedKeys: new Set(),
         slotColours: [],
+
+        isRenamingSlotIdx: -1,
+
+        version: 0,
     };
 }
+
+type KeyboardConfigEditorEvent = null | {
+    editSlot?: { slotIdx: number };
+};
 
 export function imKeyboardConfigEditor(
     c: ImCache,
     ctx: GlobalContext,
-    editor: KeyboardConfigEditorState
-) {
-    const presetListState = imState(c, presetsListState);
+    editor: KeyboardConfigEditorState,
+): KeyboardConfigEditorEvent {
+    let result: KeyboardConfigEditorEvent = null;
 
-    const numSlots        = editor.keyboardConfig.synthSlots.length;
+    const config = editor.keyboardConfig;
+
+    const presetListState = imState(c, newPresetsListState);
+    const numSlots        = config.synthSlots.length;
     const numSlotsChanged = imMemo(c, numSlots);
+
 
     // allocate colour slots
     {
         const oldLen = editor.slotColours.length;
-        const newLen = editor.keyboardConfig.synthSlots.length;
+        const newLen = config.synthSlots.length;
         if (oldLen !== newLen) {
             editor.slotColours.length = newLen;
         }
@@ -67,25 +88,49 @@ export function imKeyboardConfigEditor(
         let start = oldLen - 1;
         if (numSlotsChanged) start = 0;
         for (let i = start; i < newLen; i++) {
-            editor.keyboardConfig.synthSlots.length;
+            config.synthSlots.length;
             editor.slotColours[i] = newColorFromHsv(i / (numSlots + 1), 1, 0.8)
         }
     }
 
+
     imLayoutBegin(c, COL); imFlex(c); {
         imHeadingBegin(c); {
-            imStr(c, "Keyboard 22");
+            imStr(c, "Keyboard - ");
+
+            imLayoutBegin(c, INLINE_BLOCK); {
+                const ev = imTextInputOneLine(c, config.name, undefined, false);
+                if (ev) {
+                    if (ev.newName !== undefined) {
+                        config.name = ev.newName;
+                        onEdited(editor);
+                    }
+                    if (ev.submit || ev.cancel) {
+                    }
+                }
+            } imLayoutEnd(c);
         } imHeadingEnd(c);
 
         imLine(c, LINE_HORIZONTAL, 1);
 
         imLayoutBegin(c, COL); imFlex(c); {
+
+            imKeyboardConfigEditorKeyboard(c, ctx, editor, true);
+
+            imLayoutBegin(c, ROW); imAlign(c); imGap(c, 20, PX); {
+                imStr(c, "Slide mouse over the keys to select them");
+
+                if (imButtonIsClicked(c, "Deselect", false, editor.selectedKeys.size > 0)) {
+                    editor.selectedKeys.clear();
+                }
+            } imLayoutEnd(c);
+
             imLayoutBegin(c, ROW); imFlex(c); {
                 const isReassigningSomething = editor.reassigningSlotIdx !== -1;
 
-                imLayoutBegin(c, COL); imFlex(c); imAlign(c, START); imScrollOverflow(c); {
-                    imFor(c); for (let slotIdx = 0; slotIdx < editor.keyboardConfig.synthSlots.length; slotIdx++) {
-                        const preset = editor.keyboardConfig.synthSlots[slotIdx];
+                imLayoutBegin(c, COL); imFlex(c, 1.8); imAlign(c, START); imScrollOverflow(c); {
+                    imFor(c); for (let slotIdx = 0; slotIdx < config.synthSlots.length; slotIdx++) {
+                        const preset = config.synthSlots[slotIdx];
                         const presetColor = editor.slotColours[slotIdx];
                         const isReassigning = editor.reassigningSlotIdx === slotIdx
 
@@ -96,39 +141,51 @@ export function imKeyboardConfigEditor(
                                 imLayoutBegin(c, ROW); imFlex(c); imAlign(c); imGap(c, 10, PX); {
                                     if (isFirstishRender(c)) elSetStyle(c, "padding", "0 5px");
 
-                                    if (imIf(c) && editor.selectedKeys.size > 0) {
-                                        if (imButtonIsClicked(c, "Assign to " + slotIdx)) {
-                                            for (const index of editor.selectedKeys) {
-                                                editor.keyboardConfig.keymaps[index] = slotIdx;
-                                            }
-                                        }
-                                    } else {
-                                        imIfElse(c);
-
-                                    } imIfEnd(c);
-
-
                                     imStr(c, "s");
                                     imStr(c, slotIdx);
                                     imStr(c, " -> ");
 
                                     imLayoutBegin(c, ROW); imJustify(c); imFlex(c); {
-                                        imStr(c, preset ? preset.name : "Nothing");
-                                    } imLayoutEnd(c);
+                                        const isRenaming = editor.isRenamingSlotIdx === slotIdx;
 
-                                    if (imIf(c) && !isReassigningSomething) {
-                                        if (imButtonIsClicked(c, "-")) {
-                                            editor.deferredAction = () => {
-                                                editor.keyboardConfig.synthSlots.splice(slotIdx, 1);
+                                        const ev = imTextInputOneLine(c, preset.name, undefined, isRenaming);
+                                        if (ev) {
+                                            if (ev.newName !== undefined) {
+                                                preset.name = ev.newName;
+                                                onEdited(editor);
+                                            }
+                                            if (ev.submit || ev.cancel) {
+                                                editor.isRenamingSlotIdx = -1;
                                             }
                                         }
-                                    } imIfEnd(c);
+                                    } imLayoutEnd(c);
+
+
+                                    if (imButtonIsClicked(c, "Assign to " + slotIdx, false, editor.selectedKeys.size > 0)) {
+                                        for (const index of editor.selectedKeys) {
+                                            config.keymaps[index] = slotIdx;
+                                        }
+                                        onEdited(editor);
+                                    }
 
                                     if (imButtonIsClicked(c, !isReassigning ? "Reassign" : "Done", isReassigning)) {
                                         if (isReassigning) {
                                             editor.reassigningSlotIdx = -1;
                                         } else {
                                             editor.reassigningSlotIdx = slotIdx;
+                                        }
+                                        onEdited(editor);
+                                    }
+
+                                    if (imButtonIsClicked(c, "Edit effect rack", false, !isReassigningSomething)) {
+                                        result = { editSlot: { slotIdx } }
+                                    }
+
+                                    if (imButtonIsClicked(c, "-")) {
+                                        editor.reassigningSlotIdx = -1;
+                                        editor.deferredAction = () => {
+                                            keyboardConfigDeleteSlot(config, slotIdx);
+                                            onEdited(editor);
                                         }
                                     }
                                 } imLayoutEnd(c);
@@ -138,15 +195,24 @@ export function imKeyboardConfigEditor(
                                 const ev = imEffectRackList(c, ctx, presetListState);
                                 if (ev) {
                                     if (ev.selection) {
-                                        editor.keyboardConfig.synthSlots[slotIdx] = { ...ev.selection };
+                                        assert(slotIdx < config.synthSlots.length);
+                                        config.synthSlots[slotIdx] = { ...ev.selection };
+                                        onEdited(editor);
                                     }
                                 }
 
                                 if (!ctx.handled) {
                                     if (ctx.keyPressState) {
                                         const { key } = ctx.keyPressState;
+
                                         if (key === "Escape") {
-                                            editor.reassigningSlotIdx = -1;
+                                            if (editor.isRenamingSlotIdx !== -1) {
+                                                editor.reassigningSlotIdx = -1;
+                                                ctx.handled = true;
+                                            } else if (editor.isRenamingSlotIdx !== -1) {
+                                                editor.isRenamingSlotIdx = -1;
+                                                ctx.handled = true;
+                                            }
                                         }
                                     }
                                 }
@@ -154,41 +220,19 @@ export function imKeyboardConfigEditor(
                         } imLayoutEnd(c);
                     } imForEnd(c);
 
-                    if (imButtonIsClicked(c, "+")) {
-                        editor.keyboardConfig.synthSlots.push(null);
-                    }
+                    if (imIf(c) && !isReassigningSomething) {
+                        if (imButtonIsClicked(c, "+")) {
+                            const newPreset = effectRackToPreset(getDefaultSineWaveEffectRack());
+                            config.synthSlots.push(newPreset);
+                            const slotIdx =  config.synthSlots.length - 1;
+                            editor.isRenamingSlotIdx = slotIdx
+                            for (const index of editor.selectedKeys) {
+                                config.keymaps[index] = slotIdx;
+                            }
+                            onEdited(editor);
+                        }
+                    } imIfEnd(c);
                 } imLayoutEnd(c);
-
-                imLine(c, LINE_VERTICAL, 1);
-
-                imLayoutBegin(c, COL); imFlex(c); imAlign(c); imJustify(c); {
-                    // TODO: put actual UI here
-                    imStr(c, "Try playing something, or clicking the keys with the mouse");
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
-
-            imLayoutBegin(c, ROW); imFlex(c); imAlign(c); {
-                if (imButtonIsClicked(c, "Clear", false, editor.selectedKeys.size > 0)) {
-                    editor.selectedKeys.clear();
-                }
-            } imLayoutEnd(c);
-
-            imLayoutBegin(c, ROW); imFlex(c); imAlign(c); {
-                const ui = imKeyboard(c, ctx);
-                ui.selection  = editor.selectedKeys;
-                ui.config     = editor.keyboardConfig;
-                ui.slotColors = editor.slotColours;
-
-                // Click+drag to start and finish a new selection
-                {
-                    const mouse = getGlobalEventSystem().mouse;
-                    if (elHasMousePress(c) && mouse.leftMouseButton) {
-                        editor.selectedKeys.clear();
-                    }
-                    for (const key of ui.keysPressed) {
-                        editor.selectedKeys.add(key.index);
-                    }
-                }
             } imLayoutEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
@@ -237,4 +281,30 @@ export function imKeyboardConfigEditor(
             }
         }
     }
+
+    return result;
+}
+
+export function imKeyboardConfigEditorKeyboard(
+    c: ImCache,
+    ctx: GlobalContext,
+    editor: KeyboardConfigEditorState,
+    allowSelection: boolean
+) {
+    imLayoutBegin(c, ROW); imFlex(c); imAlign(c); {
+        const ui = imKeyboard(c, ctx);
+        ui.selection = editor.selectedKeys;
+        ui.config = editor.keyboardConfig;
+        ui.slotColours = editor.slotColours;
+
+        if (allowSelection) {
+            const mouse = getGlobalEventSystem().mouse;
+            if (elHasMousePress(c) && mouse.leftMouseButton) {
+                editor.selectedKeys.clear();
+            }
+            for (const key of ui.keysPressed) {
+                editor.selectedKeys.add(key.index);
+            }
+        }
+    } imLayoutEnd(c);
 }

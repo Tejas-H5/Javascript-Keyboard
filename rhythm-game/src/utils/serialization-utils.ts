@@ -328,7 +328,7 @@ export function serializeToJSON(val: Record<string, unknown>) {
 }
 
 
-function getJSONSerializable(val: unknown): unknown {
+export function getJSONSerializable(val: unknown): unknown {
     if (val === undefined) {
         // or rather, they shouldn't
         throw new Error("undefined values can't be serialized");

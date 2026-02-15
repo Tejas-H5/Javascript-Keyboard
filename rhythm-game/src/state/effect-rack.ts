@@ -8,9 +8,22 @@
 import { filterInPlace } from "src/utils/array-utils.ts";
 import { assert, unreachable } from "src/utils/assert.ts";
 import { clamp, moveTowards } from "src/utils/math-utils.ts";
-import { asArray, asArrayOrUndefined, asBooleanOrUndefined, asEnum, asIs, asNumber, asNumberOrUndefined, asObject, asStringOrUndefined, serializeToJSON, unmarshalObject } from "src/utils/serialization-utils.ts";
+import {
+    asArray,
+    asArrayOrUndefined,
+    asBooleanOrUndefined,
+    asEnum,
+    asIs,
+    asNumber,
+    asNumberOrUndefined,
+    asObject,
+    asStringOrUndefined,
+    serializeToJSON,
+    unmarshalObject
+} from "src/utils/serialization-utils.ts";
 import { deepEquals } from "src/utils/testing.ts";
 import { cos, sawtooth, sin, square, triangle } from "src/utils/turn-based-waves.ts";
+import { EffectRackPreset } from "./keyboard-config";
 
 // TODO: _VALUE__
 export const EFFECT_RACK_ITEM__OSCILLATOR      = 0;
@@ -1897,7 +1910,7 @@ export function deserializeEffectRack(json: string): EffectRack {
 }
 
 // Literally serializing the fields 1 by 1. The shit I do for hidden classes. literal astrology. Im a believer, however.
-function unmarshallEffectRack(jsonObj: unknown) {
+export function unmarshallEffectRack(jsonObj: unknown) {
     return unmarshalObject(jsonObj, newEffectRack(), {
         name:    u => asStringOrUndefined(u) ?? "",
         id:      u => asNumberOrUndefined(u) ?? 0,
@@ -1907,7 +1920,7 @@ function unmarshallEffectRack(jsonObj: unknown) {
     });
 }
 
-function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRackItem {
+export function unmarshalEffectRackItem(u: unknown, disconnectObject = false): EffectRackItem {
     const regUiUnmarshaller = disconnectObject ? unmarshalRegisterIdxUiDisconnect: unmarshalRegisterIdxUi;
     const regOutputUnmarshaller = unmarshalRegisterOutput; // compile step handles duplicate ids already
 
@@ -2146,7 +2159,7 @@ assert(deepEquals(
     deserializeEffectRack(serializeEffectRack(newEffectRack()))
 ).mismatches.length === 0);
 
-function unmarshalRegisterIdxUi(arg: unknown, defaultVal: RegisterIdxUi) {
+export function unmarshalRegisterIdxUi(arg: unknown, defaultVal: RegisterIdxUi) {
     if (!arg) {
         return defaultVal;
     }
@@ -2160,7 +2173,7 @@ function unmarshalRegisterIdxUi(arg: unknown, defaultVal: RegisterIdxUi) {
     });
 }
 
-function unmarshalRegisterIdxUiDisconnect(arg: unknown, defaultVal: RegisterIdxUi) {
+export function unmarshalRegisterIdxUiDisconnect(arg: unknown, defaultVal: RegisterIdxUi) {
     return unmarshalObject(arg, defaultVal, {
         valueRef: (u, valueRef) => unmarshalObject<ValueRef>(u, valueRef, {
             value: u => asNumberOrUndefined(u),
@@ -2170,7 +2183,7 @@ function unmarshalRegisterIdxUiDisconnect(arg: unknown, defaultVal: RegisterIdxU
     });
 }
 
-function unmarshalRegisterOutput(arg: unknown, defaultVal: RegisterOutput) {
+export function unmarshalRegisterOutput(arg: unknown, defaultVal: RegisterOutput) {
     if (!arg) {
         return defaultVal;
     }

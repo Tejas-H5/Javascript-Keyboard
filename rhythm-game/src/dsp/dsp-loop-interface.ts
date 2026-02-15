@@ -1,13 +1,12 @@
-import { debugFlags } from "src/debug-flags.ts";
-import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings } from "./dsp-loop.ts";
+import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, newKeyboardConfig } from "src/state/keyboard-config.ts";
 import { getDspLoopClassUrl } from "./dsp-loop-class-url.ts";
-import { compileEffectRack, newEffectRack, newEffectRackBiquadFilter, newEffectRackDelay, newEffectRackEnvelope, newEffectRackItem, newEffectRackMaths, newEffectRackMathsItemCoefficient, newEffectRackMathsItemTerm, newEffectRackNoise, newEffectRackOscillator, newEffectRackSwitch, serializeEffectRack } from "../state/effect-rack.ts";
+import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings } from "./dsp-loop.ts";
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
     time: number;
     // Used to know which keyboard key is being played by the DSP.
-    keyId: number;
+    keyIndex: number;
     timeEnd: number;
     noteId: number;
 }
@@ -24,53 +23,17 @@ const playSettings = newDspPlaySettings();
 
 applyPlaySettingsDefaults(playSettings);
 
+
+export function newKeyboardConfigOnePreset(effectRack: EffectRackPreset): KeyboardConfig {
+    const config = newKeyboardConfig();
+    config.synthSlots[0] = effectRack;
+    return config;
+}
+
 export function applyPlaySettingsDefaults(playSettings: DSPPlaySettings) {
-    const rack = newEffectRack();
-    playSettings.parameters.rack = rack;
-
-    // Good default
-    const env = newEffectRackEnvelope();
-    const envItem = newEffectRackItem(env);
-    rack.effects.push(envItem);
-
-    const osc = newEffectRackOscillator();
-    const oscItem = newEffectRackItem(osc);
-    rack.effects.push(oscItem);
-
-    // compile to allocate register Ids
-    compileEffectRack(rack);
-
-    osc.amplitudeUI.valueRef = { regOutputId: env.valueOut.id };
-    rack.output.valueRef     = { regOutputId: osc.waveOut.id };
-
-    // Rest are for testing purposes
-    if (
-        debugFlags.testSoundLab &&
-        debugFlags.testSoundLabAllEffectRackEffects
-    ) {
-        const maths = newEffectRackMaths();
-        rack.effects.push(newEffectRackItem(maths));
-        rack.effects.push(newEffectRackItem(newEffectRackBiquadFilter()));
-
-        {
-            const term = newEffectRackMathsItemTerm();
-            maths.terms.push(term);
-            term.coefficients.push(newEffectRackMathsItemCoefficient());
-            term.coefficients.push(newEffectRackMathsItemCoefficient());
-        }
-        {
-            const term = newEffectRackMathsItemTerm();
-            maths.terms.push(term);
-            term.coefficients.push(newEffectRackMathsItemCoefficient());
-            term.coefficients.push(newEffectRackMathsItemCoefficient());
-        }
-
-        rack.effects.push(newEffectRackItem(newEffectRackSwitch()));
-        rack.effects.push(newEffectRackItem(newEffectRackNoise()));
-        rack.effects.push(newEffectRackItem(newEffectRackDelay()));
-    }
-
-    compileEffectRack(rack);
+    playSettings.parameters.keyboardConfig = newKeyboardConfigOnePreset(
+        effectRackToPreset(getDefaultSineWaveEffectRack())
+    );
 }
 
 

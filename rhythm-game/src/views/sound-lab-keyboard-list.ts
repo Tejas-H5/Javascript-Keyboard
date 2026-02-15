@@ -24,8 +24,6 @@ import {
     createEffectRackPreset,
     DEFAULT_GROUP_NAME,
     deleteEffectRackPreset,
-    EffectRackPreset,
-    effectRackToPreset,
     getLoadedPreset,
     updateEffectRackPreset
 } from "src/state/data-repository";
@@ -47,6 +45,7 @@ import { elHasMousePress, elSetClass, elSetStyle, imStr } from "src/utils/im-dom
 import { utf16ByteLength } from "src/utils/utf8";
 import { GlobalContext } from "./app";
 import { editorImport, EffectRackEditorState, imHeading } from "./sound-lab-effect-rack-editor";
+import { EffectRackPreset, effectRackToPreset } from "src/state/keyboard-config";
 
 
 export type PresetsListState = {

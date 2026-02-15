@@ -95,7 +95,7 @@ export function playKeyPressForUI(ctx: GlobalContext, normalizedPitch: number) {
     updatePlaySettings();
 
     schedulePlayback({
-        keys: [{ time: 0, timeEnd: 10, keyId: key.index, noteId: key.noteId, }],
+        keys: [{ time: 0, timeEnd: 10, keyIndex: key.index, noteId: key.noteId, }],
         timeEnd: 10,
         playingId: getNextPlayingId(),
     });

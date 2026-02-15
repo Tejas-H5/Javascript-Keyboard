@@ -1,4 +1,4 @@
-// IM-CORE 1.07
+// IM-CORE 1.071
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 // Majority of the last changes have just been updates to the documentation though
@@ -436,6 +436,37 @@ function __imPop(c: ImCache): ImCacheEntries {
 }
 
 
+/**
+ * Allows you to get/set state inline without using lambdas, when used with {@link imSet}:
+ * ```ts
+ * const s = imGet(c, fn) ?? imSet(c, { blah });
+ * ```
+ *
+ * {@link typeId} is a function reference that we use to check that susbequent state access is for the 
+ * correct state. This is required, because state is indexed by the position where `imGet` is called,
+ * and conditional rendering/etc can easily break this order. I've not looked at React sourcecode, but
+ * I imagine it is very similar to the rule of hooks that they have.
+ *
+ * The type of the value is assumed to have the return type of the `typeId` function that was specified.
+ * It does not necessarily need to actually be constructed by that function. 
+ * See {@link imGetInline} - it does not make this assumption, and allows you to use typeIds
+ * purely as an ID.
+ *
+ * You might need to refresh the state more often:
+ *
+ * ```ts
+ * const depChanged = imMemo(c, dep);
+ *
+ * let s = imGet(c, fn);
+ * if (!s || depChanged) {
+ *      s = imSet(c, someConstructorFn(dep));
+ * };
+ * ```
+ *
+ * All calls to `imGet` must be followed by `imSet` the very first time, to populate the initial state.
+ * An assertion will throw if this is not the case.
+ * NOTE: This function is a fundamental primitive that most of the other methods in this framework are built with.
+ */
 export function imGet<T>(
     c: ImCache,
     typeId: TypeId<T>,
@@ -501,24 +532,27 @@ export function imGet<T>(
 }
 
 /**
- * Allows you to get/set state inline without using lambdas:
- * ```ts
- * let s; s = imGetInline(c, fn);
- * if (!s) s = imSet(c, { blah });
- * ```ts
+ * Because sometimes you just want to set it to `undefined`
+ */
+export function imSetRequired(c: ImCache): boolean {
+    return c[CACHE_CURRENT_WAITING_FOR_SET];
+}
+
+/**
+ * Allows you to get/set state inline. Unlike {@link imGet},
+ * the type returned by {@link typeIdInline} is not necessarily
+ * the type being stored.
  *
- * Or more concise:
- *
- * let s; s = imGetInline(c, fn) ?? imSet(c, { blah });
  * ```ts
+ * const = imGetInline(c, fn) ?? imSet(c, { blah });
  * ```
- * NOTE: undefined return type is a lie! Will also return whatever you set with imSet.
- * But we want typescript to infer the value of `x = imGet(c) ?? imSet(c, val)` to always be the type of val.
  */
 export function imGetInline(
     c: ImCache,
     typeIdInline: TypeId<unknown>,
 ): undefined {
+    // NOTE: undefined return type is a lie! Will also return whatever you set with imSet.
+    // But we want typescript to infer the value of `x = imGet(c) ?? imSet(c, val)` to always be the type of val.
     return imGet(c, inlineTypeId(typeIdInline));
 }
 
@@ -801,6 +835,7 @@ export function __imBlockDerivedBegin(c: ImCache, internalType: number): ImCache
 // } imDivEnd(c);
 // ```
 // Each of those methods that 'augment' the call to `imDiv` may have their own initialization logic.
+// TODO: When HMR updates the render function, we should recursively set entries[ENTRIES_COMPLETED_ONE_RENDER] = false, so it can return true one more time.
 export function isFirstishRender(c: ImCache): boolean {
     const entries = c[CACHE_CURRENT_ENTRIES];
     return entries[ENTRIES_COMPLETED_ONE_RENDER] === false;

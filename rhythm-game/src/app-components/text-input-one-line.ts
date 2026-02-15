@@ -23,7 +23,7 @@ export function imTextInputOneLine(
         value: currentName,
         placeholder: placeholder,
     }); imFlex(c); {
-        if (imMemo(c, hasFocus)) {
+        if (imMemo(c, hasFocus) && hasFocus) {
             setTimeout(() => {
                 input.root.focus();
                 input.root.select();
@@ -34,11 +34,11 @@ export function imTextInputOneLine(
 
         const inputEvent = imOn(c, EV_INPUT);
         const blur = imOn(c, EV_BLUR);
-        const keyboard = getGlobalEventSystem().keyboard;
 
         if (inputEvent) {
             val = { newName: input.root.value };
         } else if (isFocused) {
+            const keyboard = getGlobalEventSystem().keyboard;
             if (keyboard.keyDown?.key === "Enter" || blur) {
                 val = { submit: true, newName: input.root.value }
             } else if (isFocused && keyboard.keyDown?.key === "Escape") {

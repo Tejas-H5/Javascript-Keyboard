@@ -8,29 +8,13 @@ import {
     imFg,
     imFlex,
     imFlex1,
-    imFlexWrap,
-    imGap,
     imLayoutBegin,
     imLayoutEnd,
     imScrollOverflow,
-    PX,
     ROW
 } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
-import {
-    serializeEffectRack
-} from "src/state/effect-rack";
-import {
-    createEffectRackPreset,
-    DEFAULT_GROUP_NAME,
-    deleteEffectRackPreset,
-    EffectRackPreset,
-    effectRackToPreset,
-    getLoadedPreset,
-    updateEffectRackPreset
-} from "src/state/data-repository";
 import { assert } from "src/utils/assert";
-import { DONE, done } from "src/utils/async-utils";
 import {
     ImCache,
     imFor,
@@ -40,13 +24,12 @@ import {
     imIfEnd,
     imKeyedBegin,
     imKeyedEnd,
-    imMemo,
     isFirstishRender
 } from "src/utils/im-core";
 import { elHasMousePress, elSetClass, elSetStyle, imStr } from "src/utils/im-dom";
 import { utf16ByteLength } from "src/utils/utf8";
 import { GlobalContext } from "./app";
-import { editorImport, EffectRackEditorState, imHeading } from "./sound-lab-effect-rack-editor";
+import { EffectRackPreset } from "src/state/keyboard-config";
 
 
 export type PresetsListState = {
@@ -58,7 +41,7 @@ export type PresetsListState = {
     openGroup: string;
 };
 
-export function presetsListState(): PresetsListState {
+export function newPresetsListState(): PresetsListState {
     return {
         selectedId: 0,
         renaming: false,

@@ -11,7 +11,7 @@ import {
     getCurrentPlayingTimeIntoChart,
 } from "src/state/sequencer-state";
 import { APP_VIEW_EDIT_CHART } from "src/state/ui-state";
-import { filterInPlace } from "src/utils/array-utils";
+import { arrayAt, filterInPlace } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
 import { CssColor } from "src/utils/colour";
 import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, inlineTypeId, isFirstishRender } from "src/utils/im-core";
@@ -30,13 +30,13 @@ const KEYBOARD_OFFSETS = [
 ];
 
 type KeyboardUiState = {
-    keysPressed: InstrumentKey[]
+    keysPressed:  InstrumentKey[]
     keysReleased: InstrumentKey[]
-    keysHeld: InstrumentKey[]
+    keysHeld:     InstrumentKey[]
 
-    selection: Set<number> | undefined;
-    config:    KeyboardConfig | undefined;
-    slotColors: CssColor[] | undefined;
+    selection:    Set<number> | undefined;
+    config:       KeyboardConfig | undefined;
+    slotColours:  CssColor[] | undefined;
 };
 
 function newKeyboardUiState(): KeyboardUiState {
@@ -48,7 +48,7 @@ function newKeyboardUiState(): KeyboardUiState {
         // Passed in externally
         selection:  undefined,
         config:     undefined,
-        slotColors: undefined,
+        slotColours: undefined,
     };
 }
 
@@ -177,12 +177,16 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                             // letter bg
                             imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
                                 let color;
-                                if (state.config && state.slotColors) {
+
+                                if (state.config && state.slotColours) {
                                     const keySlot = state.config.keymaps[key.index];
-                                    const slotColor = state.slotColors[keySlot]; assert(!!slotColor);
-                                    slotColor.a = lerp(0.4, 1, signal);
-                                    color = slotColor.toCssString();
-                                } else {
+                                    const slotColor = arrayAt(state.slotColours, keySlot);
+                                    if (slotColor) {
+                                        color = slotColor.toCssString(lerp(0.4, 1, signal));
+                                    }
+                                }
+
+                                if (!color) {
                                     color = `rgba(0, 0, 0, ${signal})`;
                                 }
 
@@ -233,7 +237,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                                 const scheduledKeyPresses = ctx.sequencer.scheduledKeyPresses;
                                 imFor(c); for (let i = 0; i < scheduledKeyPresses.length; i++) {
                                     const scheduledPress = scheduledKeyPresses[i];
-                                    if (scheduledPress.keyId !== key.index) {
+                                    if (scheduledPress.keyIndex !== key.index) {
                                         continue;
                                     }
 

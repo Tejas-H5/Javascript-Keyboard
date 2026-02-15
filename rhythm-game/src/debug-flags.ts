@@ -1,12 +1,12 @@
 export const IS_PROD = import.meta.env.PROD;
 
-const ON_EVERYWHERE = 1;
-const ON = IS_PROD ? 0 : 1;
-const OFF = 0;
+export const ON_EVERYWHERE = 1;
+export const ON = IS_PROD ? 0 : 1;
+export const OFF = 0;
 
 type Flag = 0 | 1;
 
-function getSpeed(val: number) {
+export function getSpeed(val: number) {
     if (IS_PROD) return 1;
     return val;
 }

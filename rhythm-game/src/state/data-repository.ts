@@ -14,6 +14,7 @@ import {
     SequencerChartCompressed,
     uncompressChart
 } from "./sequencer-chart.ts";
+import { EffectRackPreset } from "./keyboard-config.ts";
 
 /////////////////////////////////////
 // Data repository core utils
@@ -303,20 +304,6 @@ export function findChartMetadata(repo: DataRepository, id: number): SequencerCh
 
 /////////////////////////////////////
 // Effects rack presets
-
-export type EffectRackPreset = {
-    id: number;
-    name: string;
-    serialized: string;
-};
-
-export function effectRackToPreset(effectRack: EffectRack): EffectRackPreset {
-    return {
-        id: 0,
-        name: "Unnamed",
-        serialized: serializeEffectRack(effectRack),
-    };
-}
 
 export function loadAllEffectRackPresets(repo: DataRepository, cb: AsyncCb<EffectRackPreset[]>): AsyncDone {
     const tx = repositoryReadTx(repo, [tables.effectsRackPresets])

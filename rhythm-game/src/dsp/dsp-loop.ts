@@ -1,18 +1,19 @@
-// NOTE: this file will be imported dynamically and registered as a module in the
+// NOTE: this file will be imported dynamically and regitered a a module in the
 // web audio API to later be used by an audio worklet node. Don't put random shit in here,
 // put it in dsp-loop-interface.ts instead.
 // It seems like it's OK to import types though.
 
-import { filterInPlace } from "src/utils/array-utils.ts";
+import { KeyboardConfig, newKeyboardConfig, presetToEffectRack } from "src/state/keyboard-config.ts";
+import { arrayAt, filterInPlace } from "src/utils/array-utils.ts";
 import { assert } from "src/utils/assert.ts";
 import { lerp, max } from "src/utils/math-utils.ts";
 import { getNoteFrequency } from "src/utils/music-theory-utils.ts";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random.ts";
+import { compileEffectRack, computeEffectRackIteration, deserializeEffectRack, EffectRack, EffectRackRegisters, newEffectRackRegisters } from "../state/effect-rack.ts";
 import { ScheduledKeyPress, ScheduledKeyPresses } from "./dsp-loop-interface.ts";
-import { newEffectRack, newEffectRackRegisters, EffectRackRegisters, computeEffectRackIteration, EffectRack, compileEffectRack }  from "../state/effect-rack.ts";
 
 type DspSynthParameters = {
-    rack: EffectRack;
+    keyboardConfig: KeyboardConfig;
 }
 
 export type DSPPlaySettings = {
@@ -38,7 +39,7 @@ export function newDspPlaySettings(): DSPPlaySettings {
         sustain: 0.5,
         isUserDriven: false,
         parameters: {
-            rack: newEffectRack(),
+            keyboardConfig: newKeyboardConfig(),
         },
     };
 }
@@ -47,6 +48,7 @@ export type PlayingOscillator = {
     state: {
         _lastNoteIndex: number;
         _frequency: number;
+        _effectRack: EffectRack | null;
         _effectRackRegisters: EffectRackRegisters;
 
         prevSignal: number;
@@ -80,15 +82,15 @@ export type PlayingSampleFile = {
 };
 
 export type DspLoopMessage = 1337 | {
-    playSettings?:                     Partial<DSPPlaySettings>;
-    setOscilatorSignal?:               [number, PlayingOscillator["inputs"]];
-    clearAllOscilatorSignals?:         true;
+    playSettings?: Partial<DSPPlaySettings>;
+    setOscilatorSignal?: [number, PlayingOscillator["inputs"]];
+    clearAllOscilatorSignals?: true;
 
-    scheduleKeys?:    ScheduledKeyPresses | null;
+    scheduleKeys?: ScheduledKeyPresses | null;
     newPlaybackTime?: number;
 
-    scheduleKeysVolume?:               number;
-    scheduleKeysSpeed?:                number;
+    scheduleKeysVolume?: number;
+    scheduleKeysSpeed?: number;
 };
 
 
@@ -138,16 +140,16 @@ export function updateOscillator(
     const f = state._frequency;
     let sampleValue = 0;
 
-    // TODO: fix how we're using the gain here
-    // the gain is indicative of how much the key is 'pressed down', not the actual attack/decay envelope.
-    sampleValue = computeEffectRackIteration(
-        parameters.rack,
-        osc.state._effectRackRegisters,
-        f,
-        osc.inputs.signal,
-        sampleRate,
-        startedPressing,
-    );
+    if (osc.state._effectRack) {
+        sampleValue = computeEffectRackIteration(
+            osc.state._effectRack,
+            osc.state._effectRackRegisters,
+            f,
+            osc.inputs.signal,
+            sampleRate,
+            startedPressing,
+        );
+    }
 
     state.lastValue = state.value;
     state.value = sampleValue;
@@ -186,8 +188,8 @@ export function getMessageForMainThread(s: DspState, signals = true) {
     }
 
     payload.scheduledPlaybackTime = s.trackPlayback.scheduledPlaybackTime;
-    payload.isPaused              = s.trackPlayback.isPaused;
-    payload.stoppedId             = s.trackPlayback.scheduleKeys === undefined ? s.trackPlayback.playingId : 0;
+    payload.isPaused = s.trackPlayback.isPaused;
+    payload.stoppedId = s.trackPlayback.scheduleKeys === undefined ? s.trackPlayback.playingId : 0;
 
     return payload;
 }
@@ -208,6 +210,7 @@ export function newDspState(sampleRate: number): DspState {
         rng: newRandomNumberGenerator(),
         sampleRate: sampleRate,
         playSettings: newDspPlaySettings(),
+        compiledEffectRacks: [],
         playingOscillators: [],
         trackPlayback: {
             // set this to non-zero to send a message back to the UI after all samples in the current loop are processed
@@ -241,8 +244,12 @@ export function newDspState(sampleRate: number): DspState {
 export type DspState = {
     rng: RandomNumberGenerator;
     sampleRate: number;
+
     playSettings: DSPPlaySettings;
+    compiledEffectRacks: (EffectRack | null)[];
+
     playingOscillators: [number, PlayingOscillator][];
+
     trackPlayback: {
         shouldSendUiUpdateSignals: boolean;
         playingId: number;
@@ -301,7 +308,7 @@ export function processSample(s: DspState, idx: number) {
                     continue;
                 }
 
-                const osc = getPlayingOscillator(s, nextItem.keyId);
+                const osc = getPlayingOscillator(s, nextItem.keyIndex);
 
                 if (
                     !osc ||
@@ -310,13 +317,13 @@ export function processSample(s: DspState, idx: number) {
                     // This oscilator is not playing
                     allUserNotes = false;
                     break;
-                } 
+                }
 
                 if (!osc.state.manuallyPressed) {
                     // This oscillator wasn't scheduled by the user
                     allUserNotes = false;
                     break;
-                } 
+                }
             }
 
             // Pause playback as required
@@ -350,7 +357,7 @@ export function processSample(s: DspState, idx: number) {
                 // maybe in the future, we'll want some keys to be user driven and others
                 // to be automated. 
 
-                const osc = getOrCreatePlayingOscillator(s, nextItem.keyId);
+                const osc = getOrCreatePlayingOscillator(s, nextItem.keyIndex);
                 if (osc.inputs.noteId !== nextItem.noteId || osc.inputs.signal !== 1) {
                     osc.inputs.noteId = nextItem.noteId;
                     osc.inputs.signal = 1;
@@ -387,7 +394,7 @@ export function processSample(s: DspState, idx: number) {
         for (let i = 0; i < currentlyPlaying.length; i++) {
             const scheduled = currentlyPlaying[i];
             if (scheduled.timeEnd < trackPlayback.scheduledPlaybackTime) {
-                const osc = getOrCreatePlayingOscillator(s, scheduled.keyId);
+                const osc = getOrCreatePlayingOscillator(s, scheduled.keyIndex);
 
                 if (!s.playSettings.isUserDriven) {
                     // Only automate the release of keys a user has actually pressed. 
@@ -416,11 +423,12 @@ export function processSample(s: DspState, idx: number) {
     return sample;
 }
 
-export function newPlayingOscilator(): PlayingOscillator {
+export function newPlayingOscilator(effectRack: EffectRack | null): PlayingOscillator {
     return {
         state: {
             _lastNoteIndex: -1,
             _frequency: 0,
+            _effectRack: effectRack,
             _effectRackRegisters: newEffectRackRegisters(),
             prevSignal: 0,
             time: 0,
@@ -435,8 +443,8 @@ export function newPlayingOscilator(): PlayingOscillator {
     };
 }
 
-export function getOrCreatePlayingOscillator(s: DspState, id: number): PlayingOscillator {
-    const osc = getPlayingOscillator(s, id);
+export function getOrCreatePlayingOscillator(s: DspState, keyIdx: number): PlayingOscillator {
+    const osc = getPlayingOscillator(s, keyIdx);
     if (osc) {
         return osc;
     }
@@ -444,8 +452,11 @@ export function getOrCreatePlayingOscillator(s: DspState, id: number): PlayingOs
     // TODO: consider pooling?
     // TODO: yes we should, now that each oscilator retains far more state than before. 
     // or even just caching by key id.
-    const newOsc = newPlayingOscilator();
-    s.playingOscillators.push([id, newOsc]);
+    const keyboardConfig = s.playSettings.parameters.keyboardConfig;
+    const keySlotIdx = keyboardConfig.keymaps[keyIdx];
+    const synthIdx = arrayAt(keyboardConfig.keymaps, keyIdx) ?? 0;
+    const newOsc = newPlayingOscilator(s.compiledEffectRacks[synthIdx]);
+    s.playingOscillators.push([keyIdx, newOsc]);
     newOsc.state.time = 0;
     // Keep every single oscilator in-phase to avoid interference artifacts
     if (s.playingOscillators.length > 0) {
@@ -459,7 +470,7 @@ export function stopPlayingScheduledKeys(s: DspState) {
     const trackPlayback = s.trackPlayback;
 
     for (const currentlyPlaying of trackPlayback.scheduedKeysCurrentlyPlaying) {
-        const osc = getOrCreatePlayingOscillator(s, currentlyPlaying.keyId);
+        const osc = getOrCreatePlayingOscillator(s, currentlyPlaying.keyIndex);
         osc.inputs.signal = 0;
     }
     trackPlayback.scheduedKeysCurrentlyPlaying.length = 0;
@@ -506,7 +517,7 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
     assert(e !== 1337);
 
     if (e.playSettings) {
-        const rack = s.playSettings.parameters.rack;
+        const oldConfig = s.playSettings.parameters;
 
         for (const k in e.playSettings) {
             if (!(k in s.playSettings)) {
@@ -521,14 +532,26 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
             }
         }
 
-        if (s.playSettings.parameters.rack !== rack) {
-            compileEffectRack(s.playSettings.parameters.rack);
+        if (oldConfig !== s.playSettings.parameters) {
+            const toCompile = s.playSettings.parameters.keyboardConfig.synthSlots;
+            s.compiledEffectRacks.length = toCompile.length;
+            for (let i = 0; i < toCompile.length; i++) {
+                const ithSlot = toCompile[i];
+                if (!ithSlot) {
+                    s.compiledEffectRacks[i] = null;
+                    continue
+                }
+
+                const effectRack = presetToEffectRack(ithSlot);
+                compileEffectRack(effectRack);
+                s.compiledEffectRacks[i] = effectRack;
+            }
         }
     }
 
     if (e.setOscilatorSignal) {
-        const [id, inputs] = e.setOscilatorSignal;
-        const osc = getOrCreatePlayingOscillator(s, id);
+        const [keyIdx, inputs] = e.setOscilatorSignal;
+        const osc = getOrCreatePlayingOscillator(s, keyIdx);
 
         const prevSignal = osc.inputs.signal;
         osc.inputs = inputs;
