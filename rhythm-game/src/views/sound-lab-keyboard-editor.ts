@@ -96,7 +96,6 @@ export function imKeyboardConfigEditor(
         }
     }
 
-
     imLayoutBegin(c, COL); imFlex(c); {
         imLayoutBegin(c, ROW); imJustify(c); {
 
