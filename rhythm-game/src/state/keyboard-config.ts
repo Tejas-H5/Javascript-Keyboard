@@ -11,13 +11,15 @@ export const KEYBOARD_LAYOUT: string[] = [
 export const KEYBOARD_LAYOUT_FLAT = KEYBOARD_LAYOUT.join("");
 
 export type KeyboardConfig = {
-    name: string;
+    id:         number;
+    name:       string;
     synthSlots: EffectRackPreset[];
-    keymaps: number[];
+    keymaps:    number[];
 };
 
 export function newKeyboardConfig(): KeyboardConfig {
     return {
+        id: -1,
         name: "Unnamed",
         synthSlots: [
             effectRackToPreset(getDefaultSineWaveEffectRack())

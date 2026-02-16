@@ -22,7 +22,7 @@ import {
 import { elSetClass, elSetStyle, imDomRootExistingBegin, imDomRootExistingEnd, imStr, imSvgContext } from "src/utils/im-dom";
 import { GlobalContext, setViewChartSelect } from "./app";
 
-import { loadAllEffectRackPresets } from "src/state/data-repository";
+import { loadAllEffectRackPresets, updateAutosavedKeyboard } from "src/state/data-repository";
 import { KeyboardConfig } from "src/state/keyboard-config";
 import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
@@ -41,11 +41,13 @@ export type SoundLabEditingRef = {
 
 export type SoundLabState = {
     currentlyEditing: SoundLabEditingRef;
+    autosaveKeyboardTimeout: number;
 };
 
 function newSoundLabState(editing: SoundLabEditingRef): SoundLabState {
     return {
         currentlyEditing: editing,
+        autosaveKeyboardTimeout: 0,
     };
 }
 
@@ -89,6 +91,13 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
             settings.parameters.keyboardConfig = lab.currentlyEditing.keyboardConfig;
             updatePlaySettings();
         }
+
+        const AUTOSAVE_DEBOUNCE = 500;
+        clearTimeout(lab.autosaveKeyboardTimeout);
+        lab.autosaveKeyboardTimeout = setTimeout(() => {
+            updateAutosavedKeyboard(ctx.repo, lab.currentlyEditing.keyboardConfig, done);
+            console.log("Autosaved keyboard");
+        }, AUTOSAVE_DEBOUNCE);
 
         console.log("Got updated keyboard");
     }

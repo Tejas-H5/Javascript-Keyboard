@@ -14,7 +14,7 @@ import {
     SequencerChartCompressed,
     uncompressChart
 } from "./sequencer-chart.ts";
-import { EffectRackPreset } from "./keyboard-config.ts";
+import { EffectRackPreset, KeyboardConfig } from "./keyboard-config.ts";
 
 /////////////////////////////////////
 // Data repository core utils
@@ -33,11 +33,17 @@ const tables = {
     ),
     // User-created presets.
     effectsRackPresets:      idb.newTableDefinition("effect_rack_presets", "id", idb.KEYGEN_AUTOINCREMENT),
-    // System presets.
     effectRackPresetsSystem: idb.newTableDefinition("effect_rack_presets_system", "id", idb.KEYGEN_AUTOINCREMENT),
+
+    keyboardPresets: idb.newDataMetadataTablePairDefinition<KeyboardConfig, KeyboardConfigMetadata>(
+        "keyboard", "id", "id", keyboardConfigToMetadata,
+    ),
+    keyboardPresetsSystem: idb.newDataMetadataTablePairDefinition<KeyboardConfig, KeyboardConfigMetadata>(
+        "keyboard", "id", "id", keyboardConfigToMetadata,
+    ),
 } as const satisfies idb.AllTables;
 
-const tablesVersion = 5;
+const tablesVersion = 7;
 
 
 // This is actually the central place where we load/save all data. 
@@ -381,6 +387,19 @@ export function updateAutosavedEffectRackPreset(repo: DataRepository, preset: Ef
     return idb.putOne(tx, tables.effectRackPresetsSystem, preset, cb);
 }
 
+export function updateAutosavedKeyboard(repo: DataRepository, keyboard: KeyboardConfig, cb: AsyncCb<boolean>): AsyncDone {
+    cb = toTrackedCallback(cb, "updateAutosavedKeyboard");
+    keyboard.id = SYSTEM_PRESET_IDS.autoSaved;
+    const tx = repositoryWriteTx(repo, [tables.keyboardPresetsSystem]);
+    return idb.saveData(tx, tables.keyboardPresetsSystem, keyboard, cb);
+}
+
+export function loadAutosavedKeyboard(repo: DataRepository, cb: AsyncCb<KeyboardConfig>): AsyncDone {
+    cb = toTrackedCallback(cb, "loadAutosavedKeyboard");
+    const tx = repositoryReadTx(repo, [tables.effectRackPresetsSystem]);
+    return idb.getData(tx, tables.keyboardPresetsSystem, SYSTEM_PRESET_IDS.autoSaved, cb);
+}
+
 function recomputePresets(repo: DataRepository) {
     const presets = repo.effectRackPresets.allEffectRackPresets;
     presets.sort((a, b) => a.name.localeCompare(b.name));
@@ -422,3 +441,15 @@ export function forEachPresetGroup(preset: EffectRackPreset, iter: (group: strin
 }
 
 export const DEFAULT_GROUP_NAME = "ungrouped";
+
+type KeyboardConfigMetadata = {
+    id: number;
+    name: string;
+};
+
+function keyboardConfigToMetadata(config: KeyboardConfig): KeyboardConfigMetadata {
+    return {
+        id: config.id,
+        name: config.name,
+    }
+}

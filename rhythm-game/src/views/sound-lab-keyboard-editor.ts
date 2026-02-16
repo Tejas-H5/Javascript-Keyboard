@@ -2,28 +2,25 @@
 // NOTE: this is currently the 'sound lab'
 // Maybe in the future, it will go back to being just a tiny editor again. 
 
+import { imTextInputOneLine } from "src/app-components/text-input-one-line.ts";
 import { imButtonIsClicked } from "src/components/button.ts";
 import { COL, imAlign, imBg, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imScrollOverflow, INLINE_BLOCK, PX, ROW, START } from "src/components/core/layout.ts";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
+import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
 import { pressKey } from "src/dsp/dsp-loop-interface.ts";
 import { effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, keyboardConfigDeleteSlot } from "src/state/keyboard-config.ts";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state.ts";
+import { assert } from "src/utils/assert.ts";
 import { CssColor, newColorFromHsv } from "src/utils/colour.ts";
-import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core.ts";
+import { ImCache, imFor, imForEnd, imIf, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core.ts";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom.ts";
-import { JSONUndoBuffer, newJSONUndoBuffer } from "src/utils/undo-buffer-json.ts";
 import { GlobalContext } from "./app.ts";
 import { imKeyboard } from "./keyboard.ts";
 import { imHeadingBegin, imHeadingEnd } from "./sound-lab-effect-rack-editor.ts";
 import { imEffectRackList, newPresetsListState } from "./sound-lab-effect-rack-list.ts";
-import { arrayAt } from "src/utils/array-utils.ts";
-import { assert } from "src/utils/assert.ts";
-import { imTextInputOneLine } from "src/app-components/text-input-one-line.ts";
 
-// I won't assume anything for now
+// No undo for now. Doesn't seem like we need it
 export type KeyboardConfigEditorState = {
     keyboardConfig: KeyboardConfig;
-    undoBuffer: JSONUndoBuffer<KeyboardConfig>;
 
     deferredAction: (() => void) | undefined;
 
@@ -35,6 +32,10 @@ export type KeyboardConfigEditorState = {
     isRenamingSlotIdx: number;
 
     version: number;
+
+    ui: {
+        presets: boolean;
+    }
 };
 
 function onEdited(editor: KeyboardConfigEditorState) {
@@ -44,8 +45,6 @@ function onEdited(editor: KeyboardConfigEditorState) {
 export function newKeyboardConfigEditorState(config: KeyboardConfig): KeyboardConfigEditorState {
     return {
         keyboardConfig: config,
-        undoBuffer: newJSONUndoBuffer<KeyboardConfig>(1000),
-
         deferredAction: undefined,
 
         reassigningSlotIdx: -1,
@@ -56,6 +55,10 @@ export function newKeyboardConfigEditorState(config: KeyboardConfig): KeyboardCo
         isRenamingSlotIdx: -1,
 
         version: 0,
+
+        ui: {
+            presets: false,
+        }
     };
 }
 
@@ -95,21 +98,29 @@ export function imKeyboardConfigEditor(
 
 
     imLayoutBegin(c, COL); imFlex(c); {
-        imHeadingBegin(c); {
-            imStr(c, "Keyboard - ");
+        imLayoutBegin(c, ROW); imJustify(c); {
 
-            imLayoutBegin(c, INLINE_BLOCK); {
-                const ev = imTextInputOneLine(c, config.name, undefined, false);
-                if (ev) {
-                    if (ev.newName !== undefined) {
-                        config.name = ev.newName;
-                        onEdited(editor);
+            imHeadingBegin(c); imFlex(c); imJustify(c); {
+                imStr(c, "Keyboard - ");
+
+                imLayoutBegin(c, INLINE_BLOCK); {
+                    const ev = imTextInputOneLine(c, config.name, undefined, false);
+                    if (ev) {
+                        if (ev.newName !== undefined) {
+                            config.name = ev.newName;
+                            onEdited(editor);
+                        }
+                        if (ev.submit || ev.cancel) {
+                        }
                     }
-                    if (ev.submit || ev.cancel) {
-                    }
-                }
-            } imLayoutEnd(c);
-        } imHeadingEnd(c);
+                } imLayoutEnd(c);
+
+            } imHeadingEnd(c);
+
+            if (imButtonIsClicked(c, "Presets", editor.ui.presets)) {
+                editor.ui.presets = !editor.ui.presets;
+            }
+        } imLayoutEnd(c);
 
         imLine(c, LINE_HORIZONTAL, 1);
 

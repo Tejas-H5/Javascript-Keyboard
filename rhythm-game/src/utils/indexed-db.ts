@@ -229,13 +229,18 @@ export function getOne<T>(
     key: ValidKey,
     cb: AsyncCallback<T>
 ): AsyncCallbackResult {
-    const store = tx.raw.objectStore(table.name);
-    const txGetRequest: IDBRequest<T> = store.get(key);
-    txGetRequest.onsuccess = () => cb(txGetRequest.result);
-    txGetRequest.onerror   = (err) => {
-        logError(err);
-        cb(undefined, err);
+    try {
+        const store = tx.raw.objectStore(table.name);
+        const txGetRequest: IDBRequest<T> = store.get(key);
+        txGetRequest.onsuccess = () => cb(txGetRequest.result);
+        txGetRequest.onerror = (err) => {
+            logError(err);
+            cb(undefined, err);
+        }
+    } catch (err) {
+        return cb(undefined, err);
     }
+
     return DONE;
 }
 
@@ -435,7 +440,9 @@ export function saveData<TData, TMetadata>(
     const newMetadata = tables.toMetadata(newData);
     const idx         = tables.loadedMetadata.findIndex(m => m[tables.metadata.keyPath] === id);
 
-    assert(idx !== -1); // How tf did they get this metadata otherwise ?
+    if (idx === -1) {
+        return cb(undefined, newError("Metadata was not present in loaded metadata list. Only metadata we have first loaded can be saved."));
+    }
 
     return asyncResultsAll<[TData, TMetadata]>([
         cb => getOne(tx, tables.data,     id, cb),
