@@ -108,27 +108,35 @@ export function imPadding(
     bottom: number, bottomType: SizeUnits, 
     left: number,   leftType: SizeUnits,
 ) {
-    let val = imGet(c, newPaddingState);
-    if (val === undefined) val = imSet(c, newPaddingState());
+    imPaddingRL(c, right, rightType, left, leftType);
+    imPaddingTB(c, top, topType, bottom, bottomType);
+}
 
-    if (val.left !== left || val.leftType !== leftType) {
-        val.left = left; val.leftType = leftType;
-        elSetStyle(c, "paddingLeft", getSize(left, leftType));
-    }
-
-    if (val.right !== right || val.rightType !== rightType) {
-        val.right = right; val.rightType = rightType;
-        elSetStyle(c, "paddingRight", getSize(right, rightType));
-    }
-
-    if (val.top !== top || val.topType !== topType) {
-        val.top = top; val.topType = topType;
+export function imPaddingTB(
+    c: ImCache,
+    top: number,    topType: SizeUnits,
+    bottom: number, bottomType: SizeUnits, 
+) {
+    if (imMemo(c, top) | imMemo(c, topType)) {
         elSetStyle(c, "paddingTop", getSize(top, topType));
     }
 
-    if (val.bottom !== bottom || val.bottomType !== bottomType) {
-        val.bottom = bottom; val.bottomType = bottomType;
+    if (imMemo(c, bottom) | imMemo(c, bottomType)) {
         elSetStyle(c, "paddingBottom", getSize(bottom, bottomType));
+    }
+}
+
+export function imPaddingRL(
+    c: ImCache,
+    right: number,  rightType: SizeUnits, 
+    left: number,   leftType: SizeUnits,
+) {
+    if (imMemo(c, right) | imMemo(c, rightType)) {
+        elSetStyle(c, "paddingRight", getSize(left, leftType));
+    }
+
+    if (imMemo(c, left) | imMemo(c, leftType)) {
+        elSetStyle(c, "paddingLeft", getSize(left, leftType));
     }
 }
 
