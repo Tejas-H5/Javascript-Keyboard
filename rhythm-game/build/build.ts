@@ -17,7 +17,7 @@ const PORT = 5174;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
-const BASE_DIR   = path.join(__dirname, "/../");
+const BASE_DIR   = path.join(__dirname, "../");
 
 const TEMPLATE_PATH = path.join(BASE_DIR, "/template.html");
 const OUTPUT_FILE   = path.join(BASE_DIR, "/dist/index.html");
@@ -70,6 +70,7 @@ if (config === "build") {
 			setup(build) {
 				build.onEnd((result) => {
 					const outputText = getOutputHtml(result);
+					fs.mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
 					fs.writeFile(OUTPUT_FILE, outputText);
 				});
 			},
