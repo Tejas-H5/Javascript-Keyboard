@@ -3,12 +3,12 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2025",
-    "outDir": "dist",
+    "outDir": "../build/dist",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true
     "types": ["node"],
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "**/*.spec.ts"]
+  "include": ["../build/src/**/*.ts"],
+  "exclude": ["../build/node_modules", "../build/**/*.spec.ts"]
 }

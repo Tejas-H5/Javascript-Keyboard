@@ -1,4 +1,4 @@
-export const IS_PROD = import.meta.env.PROD;
+export const IS_PROD = import.meta.env.IS_PROD;
 
 export const ON_EVERYWHERE = 1;
 export const ON = IS_PROD ? 0 : 1;

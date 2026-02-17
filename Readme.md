@@ -20,7 +20,7 @@ NOTE: I have no idea if this can work or not, or how hard it would be, or how lo
 
 ## Architecture
 
-This codebase is a web project that uses vite to run the dev server, and to create the final production bundle. 
+This codebase is a web project that uses esbuild to run the dev server, and to create the final production bundle. 
 A custom immediate-mode framework has been used for all of the UI () - it has been vendored manually, so it may be out of sync
 with the source of truth. (It is also my own framework).
 A custom HTML Audio API worklet node has been used for the audio output loop.
