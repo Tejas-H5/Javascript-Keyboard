@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node ./build/build.ts devserver",
-    "build": "(tsc --project ./tsconfig.json) && (node ./build/build.ts build)"
+	"dev":   "node ./build/build.ts dev",
+	"build": "node ./build/build.ts build"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",

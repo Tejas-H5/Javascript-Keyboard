@@ -3,17 +3,37 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'url';
 import * as http from "http";
+import { ChildProcess, spawn } from "node:child_process"
+
+// Internal version: 0.0.3
+//
+// "dev"    runs a development server that rebuilds and restarts 
+//			 your website whenever a change is made.
+//
+// "build"  builds the final artifact.
+//
+// Dependencies:
+//	- tsc must be installed and present on the PATH
+
+/** Add these scripts to your package.json
+	"dev": "node ./build/build.ts dev",
+	"build": "node ./build/build.ts build"
+*/
 
 const config = process.argv[2];
 
-if (config !== "devserver" && config !== "build") {
+if (config !== "dev" && config !== "build") {
 	throw new Error(
-		"Got " + config + " instead of 'devserver' or 'build'"
+		"Got " + config + " instead of 'dev' or 'build'"
 	);
 }
 
 const HOST = "localhost";
 const PORT = 5174;
+
+const IMPORT_META_ENV = {
+	IS_PROD: config === "build",
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -21,7 +41,7 @@ const BASE_DIR   = path.join(__dirname, "../");
 
 const TEMPLATE_PATH = path.join(BASE_DIR, "/template.html");
 const OUTPUT_FILE   = path.join(BASE_DIR, "/dist/index.html");
-const ENTRYPOINT    = path.join(BASE_DIR, "/src/entrypoint.ts");
+const ENTRYPOINT    = path.join(BASE_DIR, "/src/main.ts");
 
 const templateString = await fs.readFile(TEMPLATE_PATH, "utf8");
 
@@ -31,12 +51,20 @@ if (!templateEnd) {
 	throw new Error(`Target (${target}) was not found anywhere in the template`);
 }
 
+function getLogPrefix() {
+	return "[" + config + "]";
+}
+
 function log(...messages: any[]) {
-	console.log("[dev-server]", ...messages);
+	console.log(getLogPrefix(), ...messages);
+}
+
+function logTrace(...messages: any[]) {
+	// console.log(getLogPrefix(), ...messages);
 }
 
 function logError(...messages: any[]) {
-	console.error("[dev-server]", ...messages);
+	console.error(getLogPrefix(), ...messages);
 }
 
 const commonBuildOptions: esbuild.BuildOptions = {
@@ -44,10 +72,63 @@ const commonBuildOptions: esbuild.BuildOptions = {
 	bundle: true,
 	treeShaking: true,
 	sourceRoot: path.join(__dirname, '/../src'),
-	define: {
-		"import.meta.env.IS_PROD": JSON.stringify(config === "build"),
-	},
+	define: Object.fromEntries(
+		Object
+			.entries(IMPORT_META_ENV)
+			.map(([k, v]) => [k, JSON.stringify(v)])
+	),
 	write: false,
+}
+
+let tscProcessLast: ChildProcess | undefined;
+async function runTscAndGetErrors() {
+	const sb: string[] = [];
+	const sbErr: string[] = [];
+
+	if (tscProcessLast) {
+		tscProcessLast.kill();
+		log("Cancelled last linting run.");
+	}
+
+	if (config === "dev") {
+		console.clear();
+	}
+
+	log("Linting ... ");
+
+	const tscProcess = spawn("tsc", {
+		shell: true,
+		cwd: BASE_DIR,
+	}).on("error", err => { throw err });
+	tscProcessLast = tscProcess;
+
+	for await (const data of tscProcess.stdout) {
+		sb.push(data);
+		logTrace(`stdout chunk: ${data}`);
+	}
+
+	for await (const data of tscProcess.stderr) {
+		sbErr.push(data);
+		logTrace(`stderr chunk: ${data}`);
+	}
+
+	await new Promise<void>((resolve) => {
+		tscProcess.on('close', (code) => {
+			tscProcessLast = undefined;
+			logTrace(`child process exited with code ${code}`);
+			resolve();
+		});
+	});
+
+	if (tscProcess.killed) {
+		sb.push("....... Process was killed");
+	}
+
+	return {
+		killed: tscProcess.killed,
+		result: sb.join("\n"),
+		error: sbErr.join("\n")
+	};
 }
 
 function getOutputHtml(result: esbuild.BuildResult) {
@@ -63,6 +144,14 @@ function getOutputHtml(result: esbuild.BuildResult) {
 
 if (config === "build") {
 	log("Building...");
+
+	const { result, error } = await runTscAndGetErrors();
+	if (error.length > 0 || result.length > 0) {
+		// Pipeline should fail
+		if (result) throw new Error(result);
+		throw new Error(error);
+	}
+
 	await esbuild.build({
 		...commonBuildOptions,
 		plugins: [{
@@ -78,6 +167,8 @@ if (config === "build") {
 	});
 	log("Built");
 } else {
+
+
 	function newServer() {
 		let currentFile = templateStart + `console.log("Hello there")`;
 
@@ -94,11 +185,11 @@ if (config === "build") {
 				res.write(`data: refreshUrself\n\n`);
 
 				clients.add(res);
-				log("clients: ", clients.size);
+				logTrace("clients: ", clients.size);
 
 				req.on("close", () => {
 					clients.delete(res);
-					log("clients: ", clients.size);
+					logTrace("clients: ", clients.size);
 					res.end();
 				});
 				return;
@@ -127,7 +218,7 @@ if (config === "build") {
 				client.write(`event: change\n`);
 				client.write(`data: true\n\n`);
 			}
-			log("refreshed x", clients.size);
+			logTrace("refreshed x", clients.size);
 		}
 
 		return {
@@ -151,6 +242,15 @@ if (config === "build") {
 					const outputText = getOutputHtml(result);
 					setCurrentFile(outputText);
 					broadcastRefreshMessage();
+					runTscAndGetErrors()
+						.then((result) => {
+							if (result.killed) return;
+							if (result.result.length === 0) {
+								log("Type errors: None!");
+							} else {
+								log("Type errors: \n\n" + result.result);
+							}
+						});
 				});
 			},
 		}],

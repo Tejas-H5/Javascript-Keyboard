@@ -181,3 +181,4 @@ export function imMain(c: ImCache) {
     } imCacheEnd(c);
 }
 
+const x: number = "x";
