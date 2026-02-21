@@ -22,10 +22,10 @@
 import { filterInPlace } from "./array-utils";
 import { assert } from "./assert";
 import {
-    AsyncCb,
-    AsyncDone,
     AsyncCallback,
     AsyncCallbackResult,
+    AsyncCb,
+    AsyncDone,
     asyncResultsAll,
     DISPATCHED_ELSEWHERE,
     DONE,
@@ -34,12 +34,19 @@ import {
     toAsyncCallback
 } from "./async-utils";
 
+export function bytesToMegabytes(bytes: number) {
+    return bytes / 1024 / 1024;
+}
+
 // NOTE: You'll need to use this to monitor your indexed database usage.
 // For some use-cases on some browsers (chrome and not firefox, surprisingly), 
 // it will grow infinitely, and you won't realize till your storage takes up 15GB for the tab,
 // at which point the tab can no longer open, so you can't debug it even if you wanted to.
-export function getEstimatedDataUsage(cb: AsyncCallback<StorageEstimate>) {
-    toAsyncCallback(navigator.storage.estimate(), cb);
+function getEstimatedDataUsage(cb: AsyncCallback<number | undefined>): AsyncDone {
+    return toAsyncCallback(navigator.storage.estimate().then(val => {
+        if (!val.usage) return undefined;
+        return bytesToMegabytes(val.usage);
+    }), cb);
 }
 
 export type SingleTableDefiniton<T> = {
@@ -48,8 +55,12 @@ export type SingleTableDefiniton<T> = {
     keyGen:  KeyGenerator;
 };
 
-function logError(err: any) {
-    console.error("[idb] - an error occurred: " + err);
+function log(...messages: any[]) {
+    console.log("[idb]", messages);
+}
+
+function logError(...messages: any[]) {
+    console.error("[idb]", messages);
 }
 
 // You would typically just put a bunch of schemas into a table, and use that to refer to the various stores.
@@ -107,12 +118,31 @@ export function openConnection(
 ): AsyncDone {
     const openRequest = window.indexedDB.open(name, version);
 
+    getEstimatedDataUsage(mb => {
+        if (!mb) return DONE;
+
+        if (mb > 5 * 1024) {
+            logError("Your program is using over 5GB of storage. It won't be openable anymore if it starts using over 15 gb.");
+        } else if (mb > 1024) {
+            logError("Your program is using over 1GB of storage. There may be a bug somewhere");
+        }
+
+        return DONE;
+    });
+
     openRequest.onupgradeneeded = () => {
-        console.log("Upgrading IndexedDB", name, version)
+        log("Upgrading IndexedDB", name, version)
 
         const idb = openRequest.result;
 
+        const processedTableNames = new Set<string>();
+
         function processTableDef(table: SingleTableDefiniton<any>) {
+            if (processedTableNames.has(table.name)) {
+                throw new Error("You repeated the same table name twice");
+            }
+            processedTableNames.add(table.name);
+
             let autoIncrement = undefined;
             if (table.keyGen === KEYGEN_AUTOINCREMENT) {
                 autoIncrement = true;
@@ -125,15 +155,16 @@ export function openConnection(
                     keyPath: table.keyPath,
                     autoIncrement: autoIncrement,
                 });
+                log("Created object store", table);
             } catch (error) {
                 if (error instanceof DOMException && error.name === "ConstraintError") {
                     // this error just means the table already exists - it can be ignored
+                    log("Created object store", table);
                 } else {
                     throw error;
                 }
             }
 
-            console.log("Created object store", table);
         }
 
         // Don't delete object stores. 
@@ -190,10 +221,10 @@ export function newReadTransaction(idb: IDBDatabase, tables: AnyTableDef[]): Rea
 
     const transaction = idb.transaction(tableNames, "readonly");
     transaction.onerror = function(err) {
-        console.log('[read-tx] - ERROR', err);
+        log('[read-tx] - ERROR', err);
     };
     transaction.oncomplete = function() {
-        console.log('[read-tx] - DONE');
+        log('[read-tx] - DONE');
     };
 
     const tx: TransactionData = { raw: transaction, };
@@ -207,10 +238,10 @@ export function newWriteTransaction(idb: IDBDatabase, tables: AnyTableDef[]): Wr
 
     const transaction = idb.transaction(tableNames, "readwrite", { durability: "strict" });
     transaction.onerror = function(err) {
-        console.log('[write-tx] - ERROR', err);
+        log('[write-tx] - ERROR', err);
     };
     transaction.oncomplete = function() {
-        console.log('[write-tx] - DONE');
+        log('[write-tx] - DONE');
     };
 
     const tx: TransactionData = { raw: transaction };
@@ -222,6 +253,12 @@ export function abortTransaction(tx: ReadTransaction | WriteTransaction) {
 }
 
 export type ValidKey = string | number;
+
+export function keyIsNil(key: ValidKey): boolean {
+    if (typeof key === "number") return key <= 0;
+    if (typeof key === "string") return key.length === 0;
+    throw new Error("Invalid key: " + key);
+}
 
 export function getOne<T>(
     tx: ReadTransaction,
@@ -293,6 +330,7 @@ export function writeRequest<T>(
     return { table, value };
 }
 
+/** See {@link putOne} */
 export function putMany(
     tx: WriteTransaction,
     writes: WriteRequest<any>[],
@@ -403,7 +441,7 @@ export function getAllMetadata<TData, TMetadata>(
         return cb(tables.loadedMetadata);
     }
 
-    console.log("[getAllMetadata] - cache miss", tables);
+    log("[getAllMetadata] - cache miss", tables);
 
     return getAll(tx, tables.metadata, (metadataList, err) => {
         if (!metadataList || err) {
@@ -429,27 +467,30 @@ export function getData<TData, TMedatada>(
     return getOne(tx, tables.data, id, cb);
 }
 
-export function saveData<TData, TMetadata>(
+/**
+ * Updates one _Existing_ data/metadata pair
+ */
+export function updateData<TData, TMetadata>(
     tx:      WriteTransaction,
     tables:  MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
     cb:      AsyncCb<boolean>,
 ): AsyncDone {
-    const id = newData[tables.data.keyPath] as ValidKey;
-
-    const newMetadata = tables.toMetadata(newData);
-    const idx         = tables.loadedMetadata.findIndex(m => m[tables.metadata.keyPath] === id);
-
+    const id  = newData[tables.data.keyPath] as ValidKey;
+    const idx = tables.loadedMetadata.findIndex(m => m[tables.metadata.keyPath] === id);
     if (idx === -1) {
-        return cb(undefined, newError("Metadata was not present in loaded metadata list. Only metadata we have first loaded can be saved."));
+        return cb(undefined, newError("Metadata was not present in loaded metadata list. Only metadata we have first loaded can be updated."));
     }
 
+    const target      = tables.loadedMetadata[idx];
+    const newMetadata = tables.toMetadata(newData);
+
     return asyncResultsAll<[TData, TMetadata]>([
-        cb => getOne(tx, tables.data,     id, cb),
+        cb => getOne(tx, tables.data, id, cb),
         cb => getOne(tx, tables.metadata, id, cb),
     ], ([existingMetadata, existingData]) => {
         if (!existingData || !existingMetadata) {
-            return cb(undefined, newError("Metadata or data doesn't already exist"));
+            return cb(undefined, newError("Metadata or data with this ID doesn't already exist"));
         }
 
         return putMany(tx, [
@@ -458,20 +499,47 @@ export function saveData<TData, TMetadata>(
         ], (val, err) => {
             if (!val) return cb(val, err);
 
-            for (const k in newMetadata) {
-                tables.loadedMetadata[idx][k] = newMetadata[k];
+            if (target[tables.metadata.keyPath] !== newMetadata[tables.metadata.keyPath]) {
+                return cb(val, newError("Target changed from under us somehow"));
             }
+            tables.loadedMetadata[idx] = newMetadata;
 
             return cb(true);
         });
     });
 }
 
+/**
+ * saveData   -> Create or save data, don't care what ID it gets
+ * updateData -> Update existing data we already created, ID is irrelevant
+ * createData -> Create new data, want a new ID and don't care what it is
+ * putData    -> Create or save data, to this very specific ID.
+ */
+
+/**
+ * If the id is nil, creates a new data/metadata pair.
+ * Else, updates the existing data/metadata pair.
+ */
+export function saveData<TData, TMetadata>(
+    tx:      WriteTransaction,
+    tables:  MetadataPairTableDef<TData, TMetadata>,
+    newData: TData,
+    cb:      AsyncCb<boolean>,
+): AsyncDone {
+    const id  = newData[tables.data.keyPath] as ValidKey;
+
+    if (keyIsNil(id)) {
+        return createData(tx, tables, newData, () => cb(true));
+    }
+
+    return updateData(tx, tables, newData, cb);
+}
+
 export function createData<TData, TMetadata>(
     tx: WriteTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb: AsyncCb<TMetadata>,
+    cb: AsyncCb<TData>,
 ): AsyncDone {
     const metadata = tables.toMetadata(newData);
     return createOne(tx, tables.metadata, metadata, (id, err) => {
@@ -495,11 +563,41 @@ export function createData<TData, TMetadata>(
             }
 
             tables.loadedMetadata.push(metadata);
-            return cb(metadata);
+            return cb(newData);
         });
 
         return DONE;
     })
+}
+
+export function putData<TData, TMetadata>(
+    tx: WriteTransaction,
+    tables: MetadataPairTableDef<TData, TMetadata>,
+    newData: TData,
+    cb: AsyncCb<boolean>,
+    id: ValidKey,
+): AsyncDone {
+    assert(typeof newData[tables.data.keyPath] === typeof id);
+
+    // @ts-expect-error it is not smart enough to notice the assert above
+    newData[tables.data.keyPath] = id;
+    const newMetadata = tables.toMetadata(newData);
+
+    return putMany(tx, [
+        writeRequest(tables.data, newData),
+        writeRequest(tables.metadata, newMetadata),
+    ], (_, err) => {
+        if (err) return cb(undefined, err);
+
+        const idx = tables.loadedMetadata.findIndex(m => m[tables.metadata.keyPath] === id);
+        if (idx === -1) {
+            tables.loadedMetadata.push(newMetadata);
+        } else {
+            tables.loadedMetadata[idx] = newMetadata;
+        }
+
+        return cb(true);
+    });
 }
 
 export function deleteData<TData, TMetadata>(

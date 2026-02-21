@@ -3,7 +3,7 @@ import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-co
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
 import { debugFlags } from "src/debug-flags.ts";
 import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface.ts";
-import { DataRepository, loadChartMetadataList, queryChart, SequencerChartMetadata } from "src/state/data-repository.ts";
+import { DataRepository, loadChartMetadataList, loadChart, SequencerChartMetadata } from "src/state/data-repository.ts";
 import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state.ts";
 import {
     startPlaying,
@@ -116,7 +116,7 @@ export function setCurrentChartMeta(
     chartSelect.currentChartLoadingId = metadata.id;
     chartSelect.currentChartMeta      = metadata;
 
-    return queryChart(ctx.repo, metadata.id, (chart, err) => {
+    return loadChart(ctx.repo, metadata.id, (chart, err) => {
         if (!chart) return DONE;
 
         if (chart.id !== chartSelect.currentChartLoadingId) {
@@ -539,7 +539,7 @@ export function imDiagnosticInfo(c: ImCache, ctx: GlobalContext | undefined) {
             const asyncActions = getTrackedAsyncActions();
             imFor(c); for (const slot of asyncActions.values()) {
                 imFor(c); for (const action of slot) {
-                    imLayoutBegin(c, BLOCK); imBg(c, `rgba(0, 255, 255, 1)`); {
+                    imLayoutBegin(c, BLOCK); imBg(c, action.error ? `rgba(255, 0, 0, 0.5)` : `rgba(0, 255, 255, 1)`); {
                         const t1 = action.t1 ?? performance.now();
                         const ms = t1 - action.t0;
                         imStr(c, Math.round(ms));

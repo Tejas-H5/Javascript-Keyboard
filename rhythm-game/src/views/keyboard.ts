@@ -12,7 +12,6 @@ import {
 } from "src/state/sequencer-state";
 import { APP_VIEW_EDIT_CHART } from "src/state/ui-state";
 import { arrayAt, filterInPlace } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
 import { CssColor } from "src/utils/colour";
 import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, inlineTypeId, isFirstishRender } from "src/utils/im-core";
 import { elGet, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
@@ -37,6 +36,7 @@ type KeyboardUiState = {
     selection:    Set<number> | undefined;
     config:       KeyboardConfig | undefined;
     slotColours:  CssColor[] | undefined;
+    isolateSlotIdx:  number;
 };
 
 function newKeyboardUiState(): KeyboardUiState {
@@ -49,6 +49,7 @@ function newKeyboardUiState(): KeyboardUiState {
         selection:  undefined,
         config:     undefined,
         slotColours: undefined,
+        isolateSlotIdx: -1,
     };
 }
 
@@ -180,7 +181,11 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
 
                                 if (state.config && state.slotColours) {
                                     const keySlot = state.config.keymaps[key.index];
-                                    const slotColor = arrayAt(state.slotColours, keySlot);
+                                    let slotIdx = keySlot;
+                                    if (state.isolateSlotIdx !== -1) {
+                                        slotIdx = state.isolateSlotIdx;
+                                    }
+                                    const slotColor = arrayAt(state.slotColours, slotIdx);
                                     if (slotColor) {
                                         color = slotColor.toCssString(lerp(0.4, 1, signal));
                                     }

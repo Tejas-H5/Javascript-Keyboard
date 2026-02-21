@@ -1,4 +1,4 @@
-// IM-CORE 1.071
+// IM-CORE 1.072
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 // Majority of the last changes have just been updates to the documentation though
@@ -532,7 +532,15 @@ export function imGet<T>(
 }
 
 /**
- * Because sometimes you just want to set it to `undefined`
+ * When you have code like this:
+ * ```ts
+ * if (!imGet(c) || valueChanged) imSet(c, value);
+ * ```
+ * When value could be undefined, it will trigger every frame. You can use imSetRequired instead.
+ * This code will check "allocated or nah" instead of "is the value we have undefined?", which is more correct.
+ * ```ts
+ * if (imSetRequired(c) || valueChanged) imSet(c, value);
+ * ```
  */
 export function imSetRequired(c: ImCache): boolean {
     return c[CACHE_CURRENT_WAITING_FOR_SET];
@@ -1045,11 +1053,10 @@ export const MEMO_FIRST_RENDER = 2;
  */
 export const MEMO_FIRST_RENDER_CONDITIONAL = 3;
 
-export const MEMO_FIRST_RENDER_EVER = 4;
 
 export type ImMemoResult
     = typeof MEMO_NOT_CHANGED
-    | typeof MEMO_FIRST_RENDER_EVER
+    | typeof MEMO_FIRST_RENDER
     | typeof MEMO_CHANGED
     | typeof MEMO_FIRST_RENDER_CONDITIONAL;
 
@@ -1122,7 +1129,7 @@ export function imMemo(c: ImCache, val: unknown): ImMemoResult {
     if (lastVal !== val) {
         imSet(c, val);
         if (lastVal === IM_MEMO_FIRST_EVER) {
-            result = MEMO_FIRST_RENDER_EVER;
+            result = MEMO_FIRST_RENDER;
         } else {
             result = MEMO_CHANGED;
         }

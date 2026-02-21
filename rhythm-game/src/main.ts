@@ -1,7 +1,7 @@
 import { getCurrentPlaySettings, getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface.ts";
 import { BLOCK, imLayoutBegin, imLayoutEnd } from "./components/core/layout.ts";
 import { debugFlags } from "./debug-flags.ts";
-import { cleanupChartRepo, loadAllEffectRackPresets, loadAutosavedEffectRackPreset, loadAutosavedKeyboard, loadChartMetadataList, newDataRepository } from "./state/data-repository.ts";
+import { cleanupChartRepo, loadAllEffectRackPresets, loadAutosavedEffectRackPreset, loadChartMetadataList, newDataRepository } from "./state/data-repository.ts";
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state.ts";
 import { NAME_OPERATION_COPY } from "./state/ui-state.ts";
 import { assert } from "./utils/assert.ts";
@@ -32,98 +32,75 @@ function initGlobalContext(cb: AsyncCb<void>): AsyncDone {
 
     return toAsyncCallback(dspInitialized, () => {
         return newDataRepository((repo, err) => {
-            if (!repo) return cb(repo, err);
+            if (!repo) return cb(undefined, err);
 
-            const settings = getCurrentPlaySettings();
+            const newSequencer = newSequencerState();
+            const ctx = newGlobalContext(repo, newSequencer);
+            globalContext = ctx;
 
-            return loadAutosavedKeyboard(repo, (keyboardPreset, error) => {
-                if (keyboardPreset) {
-                    settings.parameters.keyboardConfig = keyboardPreset;
-                } else {
-                    console.error("error loading keyboard", error, "Oh no! anyway");
-                }
+            if (debugFlags.testFixDatabase) {
+                return cleanupChartRepo(ctx.repo, () => onDatabaseCleaned(ctx));
+            }
 
-                // Load the autosaved synth, so that it is applied immediately
-                return loadAutosavedEffectRackPreset(repo, preset => {
-                    if (preset) {
-                        // TODO: autosaved keyboard
-                        // const settings = getCurrentPlaySettings();
-                        // try {
-                        //     settings.parameters.rack = deserializeEffectRack(preset.serialized);
-                        // } catch (err) {
-                        //     console.error(err, "Oh no! anyway");
-                        // }
-                    }
+            return onDatabaseCleaned(ctx);
+        });
 
-                    const newSequencer = newSequencerState();
-                    const ctx = newGlobalContext(repo, newSequencer);
-                    globalContext = ctx;
+        function onDatabaseCleaned(ctx: GlobalContext): AsyncDone {
+            if (debugFlags.testSoundLab) {
+                setViewSoundLab(ctx);
 
-                    if (debugFlags.testFixDatabase) {
-                        return cleanupChartRepo(ctx.repo, onDatabaseCleaned);
-                    }
+                if (!debugFlags.testSoundLabLoadPreset) return cb();
 
-                    return onDatabaseCleaned();
+                return loadAllEffectRackPresets(ctx.repo, (presets) => {
+                    if (!presets) return cb();
 
-                    function onDatabaseCleaned(): AsyncDone {
-                        if (debugFlags.testSoundLab) {
-                            setViewSoundLab(ctx);
+                    // const preset = presets.find(p => p.name === debugFlags.testSoundLabLoadPreset);
+                    // if (preset) {
+                    //     const playSetings = getCurrentPlaySettings();
+                    //     playSetings.parameters.rack = deserializeEffectRack(preset.serialized);
+                    // }
 
-                            if (!debugFlags.testSoundLabLoadPreset) return cb();
+                    return cb();
+                });
+            }
 
-                            return loadAllEffectRackPresets(ctx.repo, (presets) => {
-                                if (!presets) return cb();
+            if (
+                debugFlags.testEditView ||
+                debugFlags.testGameplay ||
+                debugFlags.testChartSelectView ||
+                debugFlags.testCopyModal
+            ) {
+                return loadChartMetadataList(ctx.repo, (charts, err) => {
+                    if (!charts) return cb(undefined, err);
 
-                                // const preset = presets.find(p => p.name === debugFlags.testSoundLabLoadPreset);
-                                // if (preset) {
-                                //     const playSetings = getCurrentPlaySettings();
-                                //     playSetings.parameters.rack = deserializeEffectRack(preset.serialized);
-                                // }
+                    const meta = charts.find(c => c.name === debugFlags.testChart);
+                    assert(!!meta);
 
-                                return cb();
-                            });
+                    return setCurrentChartMeta(ctx, meta, () => {
+                        const chart = getCurrentChart(ctx);
+
+                        if (debugFlags.testEditView) {
+                            setViewEditChart(ctx);
+                            if (debugFlags.testLoadSave) {
+                                setLoadSaveModalOpen(ctx);
+                            }
+                        } else if (debugFlags.testGameplay) {
+                            setViewPlayCurrentChart(ctx);
+                        } else if (debugFlags.testChartSelectView) {
+                            setViewChartSelect(ctx);
                         }
 
-                        if (
-                            debugFlags.testEditView ||
-                            debugFlags.testGameplay ||
-                            debugFlags.testChartSelectView ||
-                            debugFlags.testCopyModal
-                        ) {
-                            return loadChartMetadataList(ctx.repo, (charts, err) => {
-                                if (!charts) return cb(undefined, err);
-
-                                const meta = charts.find(c => c.name === debugFlags.testChart);
-                                assert(!!meta);
-
-                                return setCurrentChartMeta(ctx, meta, () => {
-                                    const chart = getCurrentChart(ctx);
-
-                                    if (debugFlags.testEditView) {
-                                        setViewEditChart(ctx);
-                                        if (debugFlags.testLoadSave) {
-                                            setLoadSaveModalOpen(ctx);
-                                        }
-                                    } else if (debugFlags.testGameplay) {
-                                        setViewPlayCurrentChart(ctx);
-                                    } else if (debugFlags.testChartSelectView) {
-                                        setViewChartSelect(ctx);
-                                    }
-
-                                    if (debugFlags.testCopyModal) {
-                                        openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
-                                    }
-
-                                    return cb();
-                                });
-                            });
+                        if (debugFlags.testCopyModal) {
+                            openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
                         }
 
                         return cb();
-                    }
+                    });
                 });
-            });
-        });
+            }
+
+            return cb();
+        }
     });
 }
 
@@ -180,5 +157,3 @@ export function imMain(c: ImCache) {
         } imDomRootEnd(c, document.body);
     } imCacheEnd(c);
 }
-
-const x: number = "x";

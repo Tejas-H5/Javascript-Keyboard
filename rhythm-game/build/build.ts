@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import * as http from "http";
 import { ChildProcess, spawn } from "node:child_process"
 
-// Internal version: 0.0.3
+// Internal version: 0.0.4
 //
 // "dev"    runs a development server that rebuilds and restarts 
 //			 your website whenever a change is made.
@@ -41,7 +41,7 @@ const BASE_DIR   = path.join(__dirname, "../");
 
 const TEMPLATE_PATH = path.join(BASE_DIR, "/template.html");
 const OUTPUT_FILE   = path.join(BASE_DIR, "/dist/index.html");
-const ENTRYPOINT    = path.join(BASE_DIR, "/src/main.ts");
+const ENTRYPOINT    = path.join(BASE_DIR, "/src/entrypoint.ts");
 
 const templateString = await fs.readFile(TEMPLATE_PATH, "utf8");
 
@@ -75,7 +75,7 @@ const commonBuildOptions: esbuild.BuildOptions = {
 	define: Object.fromEntries(
 		Object
 			.entries(IMPORT_META_ENV)
-			.map(([k, v]) => [k, JSON.stringify(v)])
+			.map(([k, v]) => ["import.meta.env." + k, JSON.stringify(v)])
 	),
 	write: false,
 }

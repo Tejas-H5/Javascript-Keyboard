@@ -1,5 +1,4 @@
 import { getAllBundledCharts, getAllBundledChartsMetadata } from "src/assets/bundled-charts.ts";
-import { EffectRack, serializeEffectRack } from "src/state/effect-rack.ts";
 import { filterInPlace } from "src/utils/array-utils.ts";
 import { assert } from "src/utils/assert.ts";
 import { AsyncCb, AsyncDone, AsyncCallback, AsyncCallbackResult, DONE, newError, parallelIterator, toTrackedCallback } from "src/utils/async-utils.ts";
@@ -39,11 +38,11 @@ const tables = {
         "keyboard", "id", "id", keyboardConfigToMetadata,
     ),
     keyboardPresetsSystem: idb.newDataMetadataTablePairDefinition<KeyboardConfig, KeyboardConfigMetadata>(
-        "keyboard", "id", "id", keyboardConfigToMetadata,
+        "keyboard_system", "id", "id", keyboardConfigToMetadata,
     ),
 } as const satisfies idb.AllTables;
 
-const tablesVersion = 7;
+const tablesVersion = 8;
 
 
 // This is actually the central place where we load/save all data. 
@@ -62,6 +61,7 @@ export type DataRepository = {
     effectRackPresetsSystem: {
         autoSaved: EffectRackPreset | null;
     };
+    tables: typeof tables;
 };
 
 const SYSTEM_PRESET_IDS = {
@@ -94,7 +94,8 @@ export function newDataRepository(cb: AsyncCallback<DataRepository>): AsyncDone 
             },
             effectRackPresetsSystem: {
                 autoSaved: null,
-            }
+            },
+            tables: tables,
         };
 
         updateAvailableMetadata(repo, []);
@@ -199,7 +200,7 @@ export function cleanupChartRepo(repo: DataRepository, cb: AsyncCallback<void>):
 
 export type SequencerChartMetadata = Pick<SequencerChart, "id" | "name">;
 
-export function queryChart(
+export function loadChart(
     repo: DataRepository,
     id: number,
     cb: AsyncCallback<SequencerChart>,
@@ -269,8 +270,8 @@ export function createChart(repo: DataRepository, chart: SequencerChart, cb: Asy
     const tx = repositoryWriteTx(repo, [tables.chart]);
 
     const data = compressChart(chart);
-    return idb.createData(tx, tables.chart, data, (id, err) => {
-        if (!id || err) return cb(false, err);
+    return idb.createData(tx, tables.chart, data, (val, err) => {
+        if (!val || err) return cb(false, err);
 
         assert(data.i > 0);
         chart.id = data.i;
@@ -331,7 +332,11 @@ export function getLoadedPreset(repo: DataRepository, id: number): EffectRackPre
         .find(p => p.id === id);
 }
 
-export function createEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb): AsyncDone {
+export function createEffectRackPreset(
+    repo: DataRepository,
+    preset: EffectRackPreset,
+    cb: AsyncCb
+): AsyncDone {
     cb = toTrackedCallback(cb, "createEffectRackPreset");
 
     repo.effectRackPresets.allEffectRackPresets.push(preset);
@@ -366,17 +371,6 @@ export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackP
     })
 }
 
-export function loadAutosavedEffectRackPreset(repo: DataRepository, cb: AsyncCb<EffectRackPreset>): AsyncDone {
-    if (repo.effectRackPresetsSystem.autoSaved) {
-        return cb(repo.effectRackPresetsSystem.autoSaved);
-    }
-
-    cb = toTrackedCallback(cb, "loadAutosavedEffectRackPreset");
-
-    const tx = repositoryReadTx(repo, [tables.effectRackPresetsSystem]);
-    return idb.getOne(tx, tables.effectRackPresetsSystem, SYSTEM_PRESET_IDS.autoSaved, cb);
-}
-
 export function updateAutosavedEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb<boolean>): AsyncDone {
     cb = toTrackedCallback(cb, "updateAutosavedEffectRackPreset");
 
@@ -385,19 +379,6 @@ export function updateAutosavedEffectRackPreset(repo: DataRepository, preset: Ef
 
     const tx = repositoryWriteTx(repo, [tables.effectRackPresetsSystem]);
     return idb.putOne(tx, tables.effectRackPresetsSystem, preset, cb);
-}
-
-export function updateAutosavedKeyboard(repo: DataRepository, keyboard: KeyboardConfig, cb: AsyncCb<boolean>): AsyncDone {
-    cb = toTrackedCallback(cb, "updateAutosavedKeyboard");
-    keyboard.id = SYSTEM_PRESET_IDS.autoSaved;
-    const tx = repositoryWriteTx(repo, [tables.keyboardPresetsSystem]);
-    return idb.saveData(tx, tables.keyboardPresetsSystem, keyboard, cb);
-}
-
-export function loadAutosavedKeyboard(repo: DataRepository, cb: AsyncCb<KeyboardConfig>): AsyncDone {
-    cb = toTrackedCallback(cb, "loadAutosavedKeyboard");
-    const tx = repositoryReadTx(repo, [tables.effectRackPresetsSystem]);
-    return idb.getData(tx, tables.keyboardPresetsSystem, SYSTEM_PRESET_IDS.autoSaved, cb);
 }
 
 function recomputePresets(repo: DataRepository) {
@@ -442,14 +423,68 @@ export function forEachPresetGroup(preset: EffectRackPreset, iter: (group: strin
 
 export const DEFAULT_GROUP_NAME = "ungrouped";
 
-type KeyboardConfigMetadata = {
+/////////////////////////////////////
+// Keyboard Configs
+
+export function loadAllKeyboardConfigPresets(repo: DataRepository, cb: AsyncCb<KeyboardConfigMetadata[]>): AsyncDone {
+    const tx = repositoryReadTx(repo, [tables.keyboardPresets]);
+    return idb.getAllMetadata(tx, tables.keyboardPresets, cb);
+}
+
+export function updateAutosavedKeyboard(repo: DataRepository, keyboard: KeyboardConfig, cb: AsyncCb<boolean>): AsyncDone {
+    cb = toTrackedCallback(cb, "updateAutosavedKeyboard");
+    const tx = repositoryWriteTx(repo, [tables.keyboardPresetsSystem]);
+    return idb.putData(
+        tx,
+        tables.keyboardPresetsSystem,
+        keyboard,
+        cb,
+        SYSTEM_PRESET_IDS.autoSaved
+    );
+}
+
+// TODO: debounced, keyed on id
+export function saveKeyboardConfig(
+    repo: DataRepository,
+    config: KeyboardConfig,
+    cb: AsyncCb<boolean>,
+): AsyncDone {
+    cb = toTrackedCallback(cb, "saveKeyboardConfig");
+    const tx = repositoryWriteTx(repo, [tables.keyboardPresets]);
+    return idb.updateData(tx, tables.keyboardPresets, config, cb);
+}
+
+export function createKeyboardConfigPreset(
+    repo: DataRepository,
+    preset: KeyboardConfig,
+    cb: AsyncCb<KeyboardConfig>,
+): AsyncDone {
+    cb = toTrackedCallback(cb, "createKeyboardConfigPreset");
+    const tx = repositoryWriteTx(repo, [tables.keyboardPresets]);
+    return idb.createData(tx, tables.keyboardPresets, preset, cb);
+}
+
+export function loadKeyboardConfig(
+    repo: DataRepository,
+    metadata: KeyboardConfigMetadata,
+    cb: AsyncCb<KeyboardConfig>,
+): AsyncDone {
+    cb = toTrackedCallback(cb, "loadKeyboardConfig");
+    const tx = repositoryReadTx(repo, [tables.keyboardPresets]);
+    return idb.getData(tx, tables.keyboardPresets, metadata.id, cb);
+}
+
+export type KeyboardConfigMetadata = {
     id: number;
     name: string;
 };
 
-function keyboardConfigToMetadata(config: KeyboardConfig): KeyboardConfigMetadata {
+export function keyboardConfigToMetadata(config: KeyboardConfig): KeyboardConfigMetadata {
     return {
         id: config.id,
         name: config.name,
     }
 }
+
+/////////////////////////////////////
+// Next section

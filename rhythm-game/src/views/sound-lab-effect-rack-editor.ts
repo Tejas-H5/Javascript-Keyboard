@@ -122,7 +122,7 @@ import {
     SWITCH_OP_LT,
     ValueRef
 } from "src/state/effect-rack";
-import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, presetToEffectRack } from "src/state/keyboard-config";
+import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, presetToEffectRack } from "src/state/keyboard-config";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { arrayAt, arrayMove, copyArray, filterInPlace, removeItem } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
@@ -810,11 +810,12 @@ export function imEffectRackEditor(
                         imFlex1(c);
 
                         imHeadingBegin(c); {
-                            imStr(c, "Keyboard ");
-                            imStr(c, lab.currentlyEditing.keyboardConfig.name);
-                            imStr(c, " -> slot ");
-                            imStr(c, lab.currentlyEditing.editingSlotIdx);
-                            imStr(c, ": ");
+                            if (imIf(c) && lab.keyboardConfig) {
+                                imStr(c, lab.keyboardConfig.name);
+                                imStr(c, " -> ");
+                            } imIfEnd(c);
+                            imStr(c, " Slot ");
+                            imStr(c, lab.editingSlotIdx);
 
                             imLayoutBegin(c, INLINE_BLOCK); {
                                 const ev = imTextInputOneLine(c, rack.name, undefined, false);
@@ -838,8 +839,8 @@ export function imEffectRackEditor(
                                 editor.deferredAction = () => editorRedo(editor);
                             }
 
-                            if (imButtonIsClicked(c, "Back", )) {
-                                lab.currentlyEditing.editingSlotIdx = -1;
+                            if (imButtonIsClicked(c, "Back")) {
+                                lab.editingSlotIdx = -1;
                             }
                         } imLayoutEnd(c);
                     } imLayoutEnd(c);
@@ -933,7 +934,7 @@ export function imEffectRackEditor(
         imLine(c, LINE_VERTICAL);
 
         imLayoutBegin(c, COL); imFlex(c, 2); {
-            imEffectRackRightPanel(c, ctx, editor, keyboardEditor);
+            imEffectRackRightPanel(c, ctx, editor, keyboardEditor, lab);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 
@@ -2566,6 +2567,7 @@ function imEffectRackRightPanel(
     ctx: GlobalContext,
     effectRackEditor: EffectRackEditorState,
     keyboardEditor: KeyboardConfigEditorState,
+    lab: SoundLabState,
 ) {
     imLayoutBegin(c, COL); imFlex(c, 3); {
         imLine(c, LINE_HORIZONTAL, 2);
@@ -2639,7 +2641,7 @@ function imEffectRackRightPanel(
 
             // May seem useless rn, but I want to eventually assign different effect rack presets to 
             // different keys or key ranges, and that is when this will become handy.
-            imKeyboardConfigEditorKeyboard(c, ctx, keyboardEditor, false);
+            imKeyboardConfigEditorKeyboard(c, ctx, keyboardEditor, false, lab.editingSlotIdx);
         } imIfEnd(c);
     } imLayoutEnd(c);
 

@@ -4,16 +4,19 @@
 
 import { imTextInputOneLine } from "src/app-components/text-input-one-line.ts";
 import { imButtonIsClicked } from "src/components/button.ts";
-import { COL, imAlign, imBg, imFlex, imFlex1, imGap, imJustify, imLayoutBegin, imLayoutEnd, imPaddingRL, imScrollOverflow, INLINE, INLINE_BLOCK, PX, ROW, START } from "src/components/core/layout.ts";
-import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
+import { BLOCK, COL, imAlign, imBg, imFlex, imFlex1, imGap, imJustify, imLayoutBegin, imLayoutEnd, imPaddingRL, imScrollOverflow, imSize, INLINE_BLOCK, NA, PERCENT, PX, ROW, START } from "src/components/core/layout.ts";
+import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
 import { pressKey } from "src/dsp/dsp-loop-interface.ts";
+import { createKeyboardConfigPreset, loadKeyboardConfig } from "src/state/data-repository.ts";
 import { effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, keyboardConfigDeleteSlot } from "src/state/keyboard-config.ts";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state.ts";
 import { assert } from "src/utils/assert.ts";
+import { DONE } from "src/utils/async-utils.ts";
 import { CssColor, newColorFromHsv } from "src/utils/colour.ts";
-import { ImCache, imFor, imForEnd, imIf, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core.ts";
+import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core.ts";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom.ts";
 import { GlobalContext } from "./app.ts";
+import { imHoverable } from "./button.ts";
 import { imKeyboard } from "./keyboard.ts";
 import { imHeadingBegin, imHeadingEnd } from "./sound-lab-effect-rack-editor.ts";
 import { imEffectRackList, newPresetsListState } from "./sound-lab-effect-rack-list.ts";
@@ -33,8 +36,8 @@ export type KeyboardConfigEditorState = {
 
     version: number;
 
-    ui: {
-        presets: boolean;
+    presetsUi: {
+        isRenaming: boolean;
     }
 };
 
@@ -56,14 +59,15 @@ export function newKeyboardConfigEditorState(config: KeyboardConfig): KeyboardCo
 
         version: 0,
 
-        ui: {
-            presets: false,
+        presetsUi: {
+            isRenaming: false,
         }
     };
 }
 
 type KeyboardConfigEditorEvent = null | {
     editSlot?: { slotIdx: number };
+    updatedKeyboard?: KeyboardConfig; // may or may not be a copy...
 };
 
 export function imKeyboardConfigEditor(
@@ -79,6 +83,13 @@ export function imKeyboardConfigEditor(
     const numSlots        = config.synthSlots.length;
     const numSlotsChanged = imMemo(c, numSlots);
 
+    if (imMemo(c, editor.version)) {
+        result = { updatedKeyboard: editor.keyboardConfig };
+    }
+
+    if (config.id <= 0) {
+        editor.presetsUi.isRenaming = false;
+    }
 
     // allocate colour slots
     {
@@ -101,8 +112,6 @@ export function imKeyboardConfigEditor(
             imFlex1(c);
 
             imHeadingBegin(c); imFlex(c); {
-                imStr(c, "Keyboard - ");
-
                 imLayoutBegin(c, INLINE_BLOCK); {
                     const ev = imTextInputOneLine(c, config.name, undefined, false);
                     if (ev) {
@@ -118,16 +127,36 @@ export function imKeyboardConfigEditor(
 
             imFlex1(c);
 
-            if (imButtonIsClicked(c, "Presets", editor.ui.presets)) {
-                editor.ui.presets = !editor.ui.presets;
-            }
+
+            imLayoutBegin(c, ROW); imGap(c, 10, PX); {
+                if (imButtonIsClicked(c, "Rename", false, config.id > 0)) {
+                    editor.presetsUi.isRenaming = true;
+                }
+
+                if (imButtonIsClicked(c, "New preset", false)) {
+                    createKeyboardConfigPreset(ctx.repo, editor.keyboardConfig, (data, err) => {
+                        if (!data || err) return DONE;
+
+                        editor.keyboardConfig       = data;
+                        editor.presetsUi.isRenaming = true;
+
+                        return DONE;
+                    });
+                }
+            } imLayoutEnd(c);
         } imLayoutEnd(c);
 
         imLine(c, LINE_HORIZONTAL, 1);
 
         imLayoutBegin(c, COL); imFlex(c); {
 
-            imKeyboardConfigEditorKeyboard(c, ctx, editor, true);
+            imLayoutBegin(c, ROW); imFlex(c); {
+                imKeyboardConfigEditorKeyboard(c, ctx, editor, true, -1);
+
+                imKeyboardConfigEditorPresetsList(c, ctx, editor);
+            } imLayoutEnd(c);
+
+            imLine(c, LINE_HORIZONTAL, 1);
 
             imLayoutBegin(c, ROW); imAlign(c); imGap(c, 20, PX); {
                 imStr(c, "Slide mouse over the keys to select them");
@@ -301,13 +330,15 @@ export function imKeyboardConfigEditorKeyboard(
     c: ImCache,
     ctx: GlobalContext,
     editor: KeyboardConfigEditorState,
-    allowSelection: boolean
+    allowSelection: boolean,
+    isolateSlot: number,
 ) {
     imLayoutBegin(c, ROW); imFlex(c); imAlign(c); {
         const ui = imKeyboard(c, ctx);
-        ui.selection = editor.selectedKeys;
-        ui.config = editor.keyboardConfig;
+        ui.selection   = editor.selectedKeys;
+        ui.config      = editor.keyboardConfig;
         ui.slotColours = editor.slotColours;
+        ui.isolateSlotIdx = isolateSlot;
 
         if (allowSelection) {
             const mouse = getGlobalEventSystem().mouse;
@@ -318,5 +349,51 @@ export function imKeyboardConfigEditorKeyboard(
                 editor.selectedKeys.add(key.index);
             }
         }
+    } imLayoutEnd(c);
+}
+
+function imKeyboardConfigEditorPresetsList(c: ImCache, ctx: GlobalContext, editor: KeyboardConfigEditorState) {
+    const ui = editor.presetsUi;
+
+    imLine(c, LINE_VERTICAL, 1);
+
+    imLayoutBegin(c, COL); imSize(c, 30, PERCENT, 0, NA); imScrollOverflow(c); {
+        const keyboardPresets = ctx.repo.tables.keyboardPresets;
+        imFor(c); for (const preset of keyboardPresets.loadedMetadata) {
+            const selected = preset.id === editor.keyboardConfig.id;
+
+            imLayoutBegin(c, BLOCK); imHoverable(c, selected); {
+                if (elHasMousePress(c)) {
+                    // selection is set asyncronously after it's actually loaded, and that is ok
+
+                    loadKeyboardConfig(ctx.repo, preset, (config, err) => {
+                        if (!config || err) return DONE;
+
+                        editor.keyboardConfig = config;
+                        ui.isRenaming = false;
+                        onEdited(editor);
+
+                        return DONE;
+                    });
+                }
+
+                if (imIf(c) && selected && ui.isRenaming) {
+                    const ev = imTextInputOneLine(c, preset.name, undefined, true);
+                    if (ev) {
+                        if (ev.newName !== undefined) {
+                            editor.keyboardConfig.name = ev.newName;
+                            onEdited(editor);
+                        }
+                        if (ev.submit || ev.cancel) {
+                            ui.isRenaming = false;
+                        }
+                    }
+                } else {
+                    imIfElse(c);
+
+                    imStr(c, preset.name);
+                } imIfEnd(c);
+            } imLayoutEnd(c);
+        } imForEnd(c);
     } imLayoutEnd(c);
 }

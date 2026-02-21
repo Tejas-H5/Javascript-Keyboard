@@ -23,7 +23,6 @@ import {
 } from "src/utils/serialization-utils.ts";
 import { deepEquals } from "src/utils/testing.ts";
 import { cos, sawtooth, sin, square, triangle } from "src/utils/turn-based-waves.ts";
-import { EffectRackPreset } from "./keyboard-config";
 
 // TODO: _VALUE__
 export const EFFECT_RACK_ITEM__OSCILLATOR      = 0;

@@ -14,92 +14,106 @@ import {
     imGet,
     imIf,
     imIfElse,
+    imIfEnd,
     imMemo,
     imSet,
     imSetRequired,
-    isFirstishRender
+    imState,
+    isFirstishRender,
+    MEMO_FIRST_RENDER
 } from "src/utils/im-core";
 import { elSetClass, elSetStyle, imDomRootExistingBegin, imDomRootExistingEnd, imStr, imSvgContext } from "src/utils/im-dom";
 import { GlobalContext, setViewChartSelect } from "./app";
 
-import { loadAllEffectRackPresets, updateAutosavedKeyboard } from "src/state/data-repository";
-import { KeyboardConfig } from "src/state/keyboard-config";
+import { createKeyboardConfigPreset, loadAllEffectRackPresets, loadAllKeyboardConfigPresets, loadKeyboardConfig, saveKeyboardConfig } from "src/state/data-repository";
+import { KeyboardConfig, newKeyboardConfig } from "src/state/keyboard-config";
 import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
-import { done } from "src/utils/async-utils";
+import { DONE, done } from "src/utils/async-utils";
 import { imEffectRackEditor, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
 import { imKeyboardConfigEditor, newKeyboardConfigEditorState } from "./sound-lab-keyboard-editor";
+
+function log(...messages: any[]) {
+	console.log("[sound lab]", ...messages);
+}
 
 export const LAB_EDITING_EFFECT_RACK     = 0;
 export const LAB_EDITING_KEYBOARD_CONFIG = 1;
 
-export type SoundLabEditingRef = {
-    // Always editing a keyboard.
-    keyboardConfig: KeyboardConfig;
-    editingSlotIdx: number;
-}
-
 export type SoundLabState = {
-    currentlyEditing: SoundLabEditingRef;
+    keyboardConfig: KeyboardConfig | null;
+    editingSlotIdx: number;
     autosaveKeyboardTimeout: number;
 };
 
-function newSoundLabState(editing: SoundLabEditingRef): SoundLabState {
+function newSoundLabState(): SoundLabState {
     return {
-        currentlyEditing: editing,
+        keyboardConfig: null,
+        editingSlotIdx: -1,
         autosaveKeyboardTimeout: 0,
     };
 }
 
 export function imSoundLab(c: ImCache, ctx: GlobalContext) {
-    if (imMemo(c, true)) {
+    let lab = imState(c, newSoundLabState);
+
+    if (imMemo(c, 0) === MEMO_FIRST_RENDER) {
         loadAllEffectRackPresets(ctx.repo, done);
+        loadAllKeyboardConfigPresets(ctx.repo, (presets, err) => {
+            if (!presets || err) return DONE;
+            if (presets.length === 0) {
+                // we need to create and load the default preset
+                const defaultConfig = newKeyboardConfig();
+                return createKeyboardConfigPreset(ctx.repo, defaultConfig, (config, err) => {
+                    if (!config || err) return DONE;
+                    
+                    lab.keyboardConfig = config;
+                    return DONE;
+                });
+            }
+
+            return loadKeyboardConfig(ctx.repo, presets[0], (config, err) => {
+                if (!config || err) return DONE;
+
+                lab.keyboardConfig = config;
+                return DONE;
+            });
+        });
     }
 
-    let lab = imGet(c, newSoundLabState);
-    if (!lab) {
-        const settings = getCurrentPlaySettings();
-        lab = imSet(c, newSoundLabState({ 
-            keyboardConfig: settings.parameters.keyboardConfig,
-            editingSlotIdx: -1,
-        }));
-    }
+    if (imIf(c) && !lab.keyboardConfig) {
+        imStr(c, "Loading....");
+    } else {
+        imIfElse(c);
+        imSoundLabInternal(c, ctx, lab);
+    } imIfEnd(c);
+}
 
-    const editingSlotIdx = lab.currentlyEditing.editingSlotIdx;
-    const editingSlotIdxChanged = imMemo(c, editingSlotIdx);
+export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLabState) {
+    const keyboard = lab.keyboardConfig; assert(!!keyboard);
+    const slotIdx  = lab.editingSlotIdx;
+
+    const keyboardChanged = imMemo(c, keyboard);
+    const slotIdxChanged  = imMemo(c, slotIdx);
+    const isEditingSynth = slotIdx >= 0 && !!arrayAt(keyboard.synthSlots, slotIdx);
+
+    if (keyboardChanged || slotIdxChanged) {
+        if (!isEditingSynth) {
+            const settings = getCurrentPlaySettings();
+            settings.parameters.keyboardConfig = keyboard;
+            updatePlaySettings();
+        }
+    }
 
     let effectRackEditor = imGet(c, newEffectRackEditorState);
-    if (imSetRequired(c) || editingSlotIdxChanged) {
-        const preset = arrayAt(lab.currentlyEditing.keyboardConfig.synthSlots, lab.currentlyEditing.editingSlotIdx);
+    if (imSetRequired(c) || slotIdxChanged) {
+        const preset = arrayAt(keyboard.synthSlots, slotIdx);
         effectRackEditor = imSet(c, preset ? newEffectRackEditorState(preset) : undefined);
     }
 
-    // NOTE: still in development
-
-    const keyboardConfig = lab.currentlyEditing.keyboardConfig;
-    const keyboardConfigChanged = imMemo(c, keyboardConfig);
-
     let keyboardConfigEditor = imGet(c, newKeyboardConfigEditorState);
-    if (!keyboardConfigEditor || keyboardConfigChanged) {
-        keyboardConfigEditor = imSet(c, newKeyboardConfigEditorState(keyboardConfig));
-    }
-
-    const isEditingSynthSlot = arrayAt(lab.currentlyEditing.keyboardConfig.synthSlots, lab.currentlyEditing.editingSlotIdx);
-    if (imMemo(c, keyboardConfigEditor.version) | imMemo(c, isEditingSynthSlot)) {
-        if (!isEditingSynthSlot) {
-            const settings = getCurrentPlaySettings();
-            settings.parameters.keyboardConfig = lab.currentlyEditing.keyboardConfig;
-            updatePlaySettings();
-        }
-
-        const AUTOSAVE_DEBOUNCE = 500;
-        clearTimeout(lab.autosaveKeyboardTimeout);
-        lab.autosaveKeyboardTimeout = setTimeout(() => {
-            updateAutosavedKeyboard(ctx.repo, lab.currentlyEditing.keyboardConfig, done);
-            console.log("Autosaved keyboard");
-        }, AUTOSAVE_DEBOUNCE);
-
-        console.log("Got updated keyboard");
+    if (!keyboardConfigEditor) {
+        keyboardConfigEditor = imSet(c, newKeyboardConfigEditorState(keyboard));
     }
 
     imLayoutBegin(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
@@ -122,21 +136,24 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
             const ev = imEffectRackEditor(c, ctx, lab, effectRackEditor, keyboardConfigEditor);
             if (ev) {
                 if (ev.updatedPreset) {
-                    assert(lab.currentlyEditing.editingSlotIdx < lab.currentlyEditing.keyboardConfig.synthSlots.length);
-                    lab.currentlyEditing.keyboardConfig.synthSlots[lab.currentlyEditing.editingSlotIdx] = ev.updatedPreset;
-                }
-            }
-        } else if (imIfElse(c)) {
-            const ev = imKeyboardConfigEditor(c, ctx, keyboardConfigEditor);
-            if (ev) {
-                if (ev.editSlot) {
-                    assert(ev.editSlot.slotIdx < lab.currentlyEditing.keyboardConfig.synthSlots.length);
-                    lab.currentlyEditing.editingSlotIdx = ev.editSlot.slotIdx;
+                    assert(lab.editingSlotIdx < keyboard.synthSlots.length);
+                    keyboard.synthSlots[lab.editingSlotIdx] = ev.updatedPreset;
+                    autosaveKeyboardDebounced(lab, ctx);
                 }
             }
         } else {
-            imIfElse(c);
-            imStr(c, "???");
+            imIfElse(c)
+            const ev = imKeyboardConfigEditor(c, ctx, keyboardConfigEditor);
+            if (ev) {
+                if (ev.editSlot) {
+                    assert(ev.editSlot.slotIdx < keyboard.synthSlots.length);
+                    lab.editingSlotIdx = ev.editSlot.slotIdx;
+                }
+                if (ev.updatedKeyboard) {
+                    lab.keyboardConfig = ev.updatedKeyboard;
+                    autosaveKeyboardDebounced(lab, ctx);
+                }
+            }
         } imEndIf(c);
 
         if (effectRackEditor) effectRackEditor.svgCtx = null;
@@ -153,8 +170,8 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
         if (ctx.keyPressState) {
             const { key } = ctx.keyPressState;
             if (key === "Escape") {
-                if (isEditingSynthSlot) {
-                    lab.currentlyEditing.editingSlotIdx = -1;
+                if (isEditingSynth) {
+                    lab.editingSlotIdx = -1;
                     ctx.handled = true;
                 } else {
                     setViewChartSelect(ctx);
@@ -162,6 +179,23 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                 }
             }
         }
+    }
+}
+
+
+function autosaveKeyboardDebounced(lab: SoundLabState, ctx: GlobalContext) {
+    const keyboard = lab.keyboardConfig; assert(!!keyboard);
+
+    const AUTOSAVE_DEBOUNCE = 500;
+    clearTimeout(lab.autosaveKeyboardTimeout);
+    const toAutosave = keyboard;
+    if (toAutosave.id > 0) {
+        lab.autosaveKeyboardTimeout = setTimeout(() => {
+            saveKeyboardConfig(ctx.repo, toAutosave, () => {
+                log("Autosaved keyboard");
+                return DONE;
+            });
+        }, AUTOSAVE_DEBOUNCE);
     }
 }
 

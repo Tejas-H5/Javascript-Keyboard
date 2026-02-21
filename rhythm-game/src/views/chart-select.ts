@@ -24,6 +24,7 @@ import {
     setViewStartScreen
 } from "./app.ts";
 import { cssVarsApp } from "./styling.ts";
+import { imHoverable } from "./button.ts";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
     if (!ctx.keyPressState) return false;
@@ -115,8 +116,10 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
 
                         imFor(c); for (let i = 0; i < availableCharts.length; i++) {
                             const metadata = availableCharts[i];
+                            const chartSelected = s.currentChartMeta === metadata;
 
                             const root = imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
+                                imHoverable(c, chartSelected);
                                 if (elHasMouseOver(c)) {
                                     if (lastSelected.id !== metadata.id) {
                                         lastSelected.id = metadata.id;
@@ -124,18 +127,10 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                     }
                                 }
 
-                                const chartSelected = s.currentChartMeta === metadata;
                                 const chartSelectedChanged = imMemo(c, chartSelected);
                                 if (chartSelectedChanged && chartSelected) {
                                     scrollIntoViewVH(scrollContainer, root, 0.5);
                                 }
-
-                                if (isFirstishRender(c)) {
-                                    elSetStyle(c, "transition", "background-color .1s ease, width .1s ease");
-                                }
-
-                                imBg(c, chartSelected ? cssVars.mg : cssVars.bg);
-                                imFg(c, chartSelected ? cssVars.bg : "");
 
                                 imStr(c, metadata.name);
                                 if (currentChart && elHasMousePress(c)) {
