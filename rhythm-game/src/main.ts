@@ -1,7 +1,7 @@
-import { getCurrentPlaySettings, getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface.ts";
+import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface.ts";
 import { BLOCK, imLayoutBegin, imLayoutEnd } from "./components/core/layout.ts";
 import { debugFlags } from "./debug-flags.ts";
-import { cleanupChartRepo, loadAllEffectRackPresets, loadAutosavedEffectRackPreset, loadChartMetadataList, newDataRepository } from "./state/data-repository.ts";
+import { cleanupChartRepo, loadAllEffectRackPresets, loadChartMetadataList, newDataRepository } from "./state/data-repository.ts";
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state.ts";
 import { NAME_OPERATION_COPY } from "./state/ui-state.ts";
 import { assert } from "./utils/assert.ts";

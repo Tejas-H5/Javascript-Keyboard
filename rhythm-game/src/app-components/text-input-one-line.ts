@@ -5,6 +5,7 @@ import {
     imMemo
 } from "src/utils/im-core.ts";
 import {
+    elSetAttr,
     EV_BLUR,
     EV_INPUT,
     getGlobalEventSystem,
@@ -15,7 +16,8 @@ export function imTextInputOneLine(
     c: ImCache,
     currentName: string,
     placeholder: string = "Enter new name",
-    hasFocus = true
+    hasFocus = true,
+    canFocusWithTab = false,
 ) {
     let val: { newName?: string; submit?: boolean; cancel?: boolean; } | null = null;
 
@@ -23,6 +25,10 @@ export function imTextInputOneLine(
         value: currentName,
         placeholder: placeholder,
     }); imFlex(c); {
+        if (imMemo(c, canFocusWithTab)) {
+            elSetAttr(c, "tabindex", "-1", input.root);
+        }
+
         if (imMemo(c, hasFocus) && hasFocus) {
             setTimeout(() => {
                 input.root.focus();

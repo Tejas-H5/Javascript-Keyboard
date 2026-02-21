@@ -1,4 +1,4 @@
-// IM-DOM 1.64
+// IM-DOM 1.65
 
 import { imFixedXY, imSize, imZIndex, PX } from "src/components/core/layout";
 import { assert } from "src/utils/assert";
@@ -562,14 +562,13 @@ export function elSetClass(
 export function elSetAttr(
     c: ImCache,
     attr: string,
-    val: string | null
+    val: string | null,
+    root = elGet(c),
 ) {
-    const domAppender = getEntriesParent(c, newDomAppender);
-
     if (val !== null) {
-        domAppender.root.setAttribute(attr, val);
+        root.setAttribute(attr, val);
     } else {
-        domAppender.root.removeAttribute(attr);
+        root.removeAttribute(attr);
     }
 
     attrsSet++;
