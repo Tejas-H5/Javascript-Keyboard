@@ -14,7 +14,10 @@ import {
     ROW
 } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
+import { loadEffectRackPreset } from "src/state/data-repository";
+import { EffectRackPreset, EffectRackPresetMetadata } from "src/state/keyboard-config";
 import { assert } from "src/utils/assert";
+import { CANCELLED, DONE } from "src/utils/async-utils";
 import {
     ImCache,
     imFor,
@@ -27,13 +30,12 @@ import {
     isFirstishRender
 } from "src/utils/im-core";
 import { elHasMousePress, elSetClass, elSetStyle, imStr } from "src/utils/im-dom";
-import { utf16ByteLength } from "src/utils/utf8";
 import { GlobalContext } from "./app";
-import { EffectRackPreset } from "src/state/keyboard-config";
 
 
 export type PresetsListState = {
-    selectedId: number;
+    selected: EffectRackPresetMetadata | null;
+    selectedLoaded: EffectRackPreset | null;
     renaming: boolean;
 
     error: string;
@@ -43,7 +45,8 @@ export type PresetsListState = {
 
 export function newPresetsListState(): PresetsListState {
     return {
-        selectedId: 0,
+        selected: null,
+        selectedLoaded: null,
         renaming: false,
         error: "",
         newName: "",
@@ -51,10 +54,23 @@ export function newPresetsListState(): PresetsListState {
     };
 }
 
+function setSelectedPreset(ctx: GlobalContext, s: PresetsListState, preset: EffectRackPresetMetadata) {
+    if (s.selected === preset) return;
 
-export function startRenamingPreset(ctx: GlobalContext, s: PresetsListState, preset: EffectRackPreset) {
+    s.selected = preset;
+    s.selectedLoaded = null;
+    return loadEffectRackPreset(ctx.repo, preset, (val, err) => {
+        if (!val || err)           return DONE;
+        if (s.selected !== preset) return CANCELLED;
+
+        s.selectedLoaded = val;
+        return DONE;
+    });
+}
+
+export function startRenamingPreset(ctx: GlobalContext, s: PresetsListState, preset: EffectRackPresetMetadata) {
     assert(preset.id !== 0);
-    s.selectedId = preset.id;
+    setSelectedPreset(ctx, s, preset);
     s.renaming = true;
     s.newName = preset.name;
 }
@@ -63,14 +79,21 @@ export function stopRenaming(ctx: GlobalContext, s: PresetsListState) {
     s.renaming = false;
 }
 
-export function selectPreset(s: PresetsListState, id: number) {
-    s.selectedId = id;
+export function selectPreset(ctx: GlobalContext, s: PresetsListState, preset: EffectRackPresetMetadata | null) {
+    if (!preset) {
+        s.selected       = null;
+        s.selectedLoaded = null;
+    } else {
+        setSelectedPreset(ctx, s, preset);
+    }
+
     s.renaming = false;
 }
 
 export type PresetSelectionEvent = {
-    selection?: EffectRackPreset;
-    rename?:    { preset: EffectRackPreset; newName: string };
+    selection?:       EffectRackPresetMetadata;
+    selectionLoaded?: EffectRackPreset;
+    rename?:          { preset: EffectRackPresetMetadata; newName: string };
 }
 
 export function imEffectRackList(
@@ -79,6 +102,11 @@ export function imEffectRackList(
     s: PresetsListState,
 ): PresetSelectionEvent | null {
     let result: PresetSelectionEvent | null = null;
+
+    if (s.selectedLoaded) {
+        result = { selectionLoaded: s.selectedLoaded };
+        s.selectedLoaded = null;
+    }
 
     const loading = ctx.repo.effectRackPresets.loading;
 
@@ -138,12 +166,12 @@ function imPresetsArray(
     c: ImCache,
     ctx: GlobalContext,
     s: PresetsListState,
-    presets: EffectRackPreset[],
+    presets: EffectRackPresetMetadata[],
 ): PresetSelectionEvent | null {
     let result: PresetSelectionEvent | null = null;
 
     imFor(c); for (const preset of presets) {
-        const selected = preset.id === s.selectedId;
+        const selected = preset === s.selected;
 
         imKeyedBegin(c, preset); {
             imLayoutBegin(c, BLOCK); imBg(c, selected ? cssVars.bg2 : ""); {
@@ -154,11 +182,11 @@ function imPresetsArray(
                 }
 
                 if (elHasMousePress(c)) {
-                    if (s.selectedId === preset.id) {
-                        selectPreset(s, 0);
+                    if (!selected) {
+                        selectPreset(ctx, s, preset);
                     } else {
                         try {
-                            selectPreset(s, preset.id);
+                            selectPreset(ctx, s, preset);
                             result = { selection: preset };
                             s.error = "";
                         } catch (err) {
@@ -194,7 +222,7 @@ function imPresetsArray(
 
                         imFlex1(c);
 
-                        imStr(c, utf16ByteLength(preset.serialized)); imStr(c, "b");
+                        imStr(c, preset.serializedBytes); imStr(c, "b");
                     } imLayoutEnd(c);
                 } imIfEnd(c);
             } imLayoutEnd(c);

@@ -15,10 +15,10 @@ import { DONE } from "src/utils/async-utils.ts";
 import { CssColor, newColorFromHsv } from "src/utils/colour.ts";
 import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core.ts";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom.ts";
-import { GlobalContext, setViewEditChart } from "./app.ts";
+import { GlobalContext } from "./app.ts";
 import { imHoverable } from "./button.ts";
 import { imKeyboard } from "./keyboard.ts";
-import { editorImport, imHeadingBegin, imHeadingEnd } from "./sound-lab-effect-rack-editor.ts";
+import { imHeadingBegin, imHeadingEnd } from "./sound-lab-effect-rack-editor.ts";
 import { imEffectRackList, newPresetsListState } from "./sound-lab-effect-rack-list.ts";
 
 // No undo for now. Doesn't seem like we need it
@@ -137,7 +137,7 @@ export function imKeyboardConfigEditor(
                     createKeyboardConfigPreset(ctx.repo, editor.keyboardConfig, (data, err) => {
                         if (!data || err) return DONE;
 
-                        editor.keyboardConfig       = data;
+                        editor.keyboardConfig       = data.data;
                         editor.presetsUi.isRenaming = true;
 
                         return DONE;
@@ -235,9 +235,9 @@ export function imKeyboardConfigEditor(
                             if (imIf(c) && isReassigning) {
                                 const ev = imEffectRackList(c, ctx, presetListState);
                                 if (ev) {
-                                    if (ev.selection) {
+                                    if (ev.selectionLoaded) {
                                         assert(slotIdx < config.synthSlots.length);
-                                        config.synthSlots[slotIdx] = { ...ev.selection };
+                                        config.synthSlots[slotIdx] = { ...ev.selectionLoaded };
                                         onEdited(editor);
                                     }
                                 }

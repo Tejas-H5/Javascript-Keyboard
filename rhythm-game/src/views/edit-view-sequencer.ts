@@ -80,7 +80,7 @@ import { copyToClipboard } from "src/utils/clipboard.ts";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core.ts";
 import { EL_B, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom.ts";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils.ts";
-import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8.ts";
+import { bytesToMegabytes, utf16ByteLength } from "src/utils/utf8.ts";
 import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, setViewSoundLab, } from "./app.ts";
 import { isSavingAnyChart } from "./saving-chart.ts";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view.ts";
@@ -1170,7 +1170,7 @@ function imExportModal(
             if (imMemo(c, true)) {
                 const serialized = compressChart(chart);
                 const text = JSON.stringify(serialized);
-                const sizeInBytes = utf8ByteLength(text)
+                const sizeInBytes = utf16ByteLength(text)
                 s.serializedJson = text;
                 s.sizeMb = bytesToMegabytes(sizeInBytes);
             }

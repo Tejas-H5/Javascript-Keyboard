@@ -46,7 +46,7 @@ import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { DspLoopMessage, dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
 import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, newKeyboardConfigOnePreset, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { createEffectRackPreset, DEFAULT_GROUP_NAME, deleteEffectRackPreset, getLoadedPreset, updateEffectRackPreset } from "src/state/data-repository";
+import { createEffectRackPreset, DEFAULT_GROUP_NAME, deleteEffectRackPreset, loadEffectRackPreset, updateEffectRackPreset } from "src/state/data-repository";
 import {
     asRegisterIdx,
     BIQUAD2_TYPE__ALLPASS,
@@ -122,7 +122,7 @@ import {
     SWITCH_OP_LT,
     ValueRef
 } from "src/state/effect-rack";
-import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, presetToEffectRack } from "src/state/keyboard-config";
+import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, keyboardConfigDeleteSlot, presetToEffectRack } from "src/state/keyboard-config";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { arrayAt, arrayMove, copyArray, filterInPlace, removeItem } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
@@ -2551,8 +2551,8 @@ function imEffectRackRightPanel(
     c: ImCache,
     ctx: GlobalContext,
     effectRackEditor: EffectRackEditorState,
-    keyboardEditor: KeyboardConfigEditorState,
-    lab: SoundLabState,
+    keyboardEditorForKeyboard: KeyboardConfigEditorState,
+    labForKeyboard: SoundLabState,
 ) {
     imLayoutBegin(c, COL); imFlex(c, 3); {
         imLine(c, LINE_HORIZONTAL, 2);
@@ -2576,28 +2576,30 @@ function imEffectRackRightPanel(
                 imLayoutBegin(c, ROW); imGap(c, 5, PX); imFlexWrap(c); {
                     imFlex1(c);
 
-                    let selectedPreset = getLoadedPreset(ctx.repo, presetsList.selectedId);
+                    let selectedPreset = presetsList.selectedLoaded;
 
                     if (imButtonIsClicked(c, "Overwrite", false, !!selectedPreset) && selectedPreset) {
                         selectedPreset.serialized = serializeEffectRack(effectRackEditor.effectRack);
                         updateEffectRackPreset(ctx.repo, selectedPreset, done);
                     }
 
-                    if (imButtonIsClicked(c, "Rename", false, !!selectedPreset) && selectedPreset) {
-                        startRenamingPreset(ctx, presetsList, selectedPreset);
+                    if (imButtonIsClicked(c, "Rename", false, !!presetsList.selectedLoaded) && presetsList.selected && presetsList.selected) {
+                        startRenamingPreset(ctx, presetsList, presetsList.selected);
                     }
 
                     if (imButtonIsClicked(c, "Delete", false, !!selectedPreset) && selectedPreset) {
                         deleteEffectRackPreset(ctx.repo, selectedPreset, done);
-                        selectPreset(presetsList, 0);
+                        selectPreset(ctx, presetsList, null);
                     }
 
                     if (imButtonIsClicked(c, "New")) {
                         const preset = effectRackToPreset(effectRackEditor.effectRack);
                         preset.name = "Unnamed";
-                        createEffectRackPreset(ctx.repo, preset, () => {
+                        createEffectRackPreset(ctx.repo, preset, (val, err) => {
+                            if (!val || err) return DONE;
+
                             presetsList.openGroup = DEFAULT_GROUP_NAME;
-                            startRenamingPreset(ctx, presetsList, preset)
+                            startRenamingPreset(ctx, presetsList, val.metadata)
                             return DONE;
                         });
                     }
@@ -2605,15 +2607,19 @@ function imEffectRackRightPanel(
 
                 const ev = imEffectRackList(c, ctx, presetsList);
                 if (ev) {
-                    if (ev.selection) {
+                    if (ev.selectionLoaded) {
                         // Discard the name/id of the preset - we just want the contents
-                        editorImport(effectRackEditor, ev.selection.serialized);
+                        editorImport(effectRackEditor, ev.selectionLoaded.serialized);
                     }
 
                     if (ev.rename) {
                         const { preset, newName } = ev.rename;
-                        preset.name = newName;
-                        updateEffectRackPreset(ctx.repo, preset, done);
+                        loadEffectRackPreset(ctx.repo, preset, (val, err) => {
+                            if (!val || err) return DONE;
+
+                            val.name = newName;
+                            return updateEffectRackPreset(ctx.repo, val, () => DONE);
+                        });
                     }
                 }
             } imLayoutEnd(c);
@@ -2626,7 +2632,7 @@ function imEffectRackRightPanel(
 
             // May seem useless rn, but I want to eventually assign different effect rack presets to 
             // different keys or key ranges, and that is when this will become handy.
-            imKeyboardConfigEditorKeyboard(c, ctx, keyboardEditor, false, lab.editingSlotIdx);
+            imKeyboardConfigEditorKeyboard(c, ctx, keyboardEditorForKeyboard, false, labForKeyboard.editingSlotIdx);
         } imIfEnd(c);
     } imLayoutEnd(c);
 

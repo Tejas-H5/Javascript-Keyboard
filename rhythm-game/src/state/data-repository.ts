@@ -13,7 +13,8 @@ import {
     SequencerChartCompressed,
     uncompressChart
 } from "./sequencer-chart.ts";
-import { EffectRackPreset, KeyboardConfig } from "./keyboard-config.ts";
+import { EffectRackPreset, EffectRackPresetMetadata, effectRackPresetToMetadata, KeyboardConfig, keyboardConfigDeleteSlot } from "./keyboard-config.ts";
+import { utf16ByteLength } from "src/utils/utf8.ts";
 
 /////////////////////////////////////
 // Data repository core utils
@@ -27,13 +28,12 @@ function compressedChartToMetadata(compressedChart: SequencerChartCompressed): S
 }
 
 const tables = {
-    effectsRackPresets: idb.newTableDef<EffectRackPreset>("effect_rack_presets", "id", idb.KEYGEN_AUTOINCREMENT),
-
-    chart:           idb.newMetadataPairTableDef("chart", "i", "id", compressedChartToMetadata),
-    keyboardPresets: idb.newMetadataPairTableDef("keyboard", "id", "id", keyboardConfigToMetadata),
+    chart:             idb.newMetadataPairTableDef("chart",         compressedChartToMetadata,  "i", "id"),
+    keyboardPresets:   idb.newMetadataPairTableDef("keyboard",      keyboardConfigToMetadata,   "id", "id"),
+    effectRackPresets: idb.newMetadataPairTableDef("effect_rack_2", effectRackPresetToMetadata, "id", "id"),
 } as const satisfies idb.AllTables;
 
-const tablesVersion = 8;
+const tablesVersion = 9;
 
 
 // This is actually the central place where we load/save all data. 
@@ -47,8 +47,12 @@ export type DataRepository = {
     };
     effectRackPresets: {
         loading: boolean;
-        allEffectRackPresets: EffectRackPreset[];
-        groups: Map<string, EffectRackPreset[]>;
+        groups: Map<string, EffectRackPresetMetadata[]>;
+        // Like the list in tables.effectRackPresets, but sorted and possibly filtered.
+        allEffectRackPresets: EffectRackPresetMetadata[];
+    };
+    keyboardConfigPresets: {
+        groups: Map<string, KeyboardConfigMetadata[]>;
     };
 };
 
@@ -77,6 +81,9 @@ export function newDataRepository(cb: AsyncCallback<DataRepository>): AsyncDone 
                 groups: new Map(),
                 loading: false,
             },
+            keyboardConfigPresets:  {
+                groups: new Map(),
+            }
         };
 
         updateAvailableMetadata(repo, []);
@@ -293,96 +300,87 @@ export function findChartMetadata(repo: DataRepository, id: number): SequencerCh
 /////////////////////////////////////
 // Effects rack presets
 
-export function loadAllEffectRackPresets(repo: DataRepository, cb: AsyncCb<EffectRackPreset[]>): AsyncDone {
-    const tx = repositoryReadTx(repo, [tables.effectsRackPresets])
-    return idb.getAll(tx, tables.effectsRackPresets, (effects, err) => {
-        if (!effects) {
-            console.error("Couldn't load effect rack:", err);
-            effects = [];
-        }
-
-        repo.effectRackPresets.allEffectRackPresets = effects;
-        recomputePresets(repo);
-
-        return cb(repo.effectRackPresets.allEffectRackPresets);
+export function loadAllEffectRackPresets(repo: DataRepository, cb: AsyncCb<EffectRackPresetMetadata[]>): AsyncDone {
+    cb = toTrackedCallback(cb, "loadAllEffectRackPresets");
+    const tx = repositoryReadTx(repo, [tables.effectRackPresets])
+    return idb.getAllMetadata(tx, tables.effectRackPresets, (list, err) => {
+        if (!list || err) return cb(undefined, err);
+        recomputeEffectRackPresets(repo);
+        return cb(list);
     });
 }
 
-export function getLoadedPreset(repo: DataRepository, id: number): EffectRackPreset | undefined {
-    return repo.effectRackPresets.allEffectRackPresets
-        .find(p => p.id === id);
+export function loadEffectRackPreset(repo: DataRepository, meta: EffectRackPresetMetadata, cb: AsyncCb<EffectRackPreset>): AsyncDone {
+    cb = toTrackedCallback(cb, "loadEffectRackPreset");
+    const tx = repositoryReadTx(repo, [tables.effectRackPresets]);
+    return idb.getData(tx, tables.effectRackPresets, meta.id, cb);
 }
 
 export function createEffectRackPreset(
     repo: DataRepository,
     preset: EffectRackPreset,
-    cb: AsyncCb
+    cb: AsyncCb<{ data: EffectRackPreset; metadata: EffectRackPresetMetadata }>
 ): AsyncDone {
     cb = toTrackedCallback(cb, "createEffectRackPreset");
 
-    repo.effectRackPresets.allEffectRackPresets.push(preset);
-    const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
-    return idb.createOne(tx, tables.effectsRackPresets, preset, () => {
-        recomputePresets(repo);
-        return cb();
+    const tx = repositoryWriteTx(repo, [tables.effectRackPresets]);
+    return idb.createData(tx, tables.effectRackPresets, preset, (val, err) => {
+        if (!val || err) return cb(undefined, err);
+
+        recomputeEffectRackPresets(repo);
+        return cb(val);
     });
 }
 
 export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb): AsyncDone {
     cb = toTrackedCallback(cb, "updateEffectRackPreset");
-
-    assert(preset.id > 0);
-    assert(repo.effectRackPresets.allEffectRackPresets.indexOf(preset) !== -1);
-
-    const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
-    return idb.putOne(tx, tables.effectsRackPresets, preset, () => {
-        recomputePresets(repo);
+    const tx = repositoryWriteTx(repo, [tables.effectRackPresets]);
+    return idb.updateData(tx, tables.effectRackPresets, preset, () => {
+        recomputeEffectRackPresets(repo);
         return cb();
-    })
+    });
 }
 
 export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb): AsyncDone {
     cb = toTrackedCallback(cb, "deleteEffectRackPreset");
-
-    const tx = repositoryWriteTx(repo, [tables.effectsRackPresets]);
-    return idb.deleteOne(tx, tables.effectsRackPresets, preset.id, () => {
-        filterInPlace(repo.effectRackPresets.allEffectRackPresets, p => p !== preset);
-        recomputePresets(repo);
+    const tx = repositoryWriteTx(repo, [tables.effectRackPresets]);
+    return idb.deleteData(tx, tables.effectRackPresets, preset.id, () => {
+        recomputeEffectRackPresets(repo);
         return cb();
     })
 }
 
-function recomputePresets(repo: DataRepository) {
+function recomputeEffectRackPresets(repo: DataRepository) {
+    repo.effectRackPresets.allEffectRackPresets = [
+        ...repo.tables.effectRackPresets.loadedMetadata
+    ];
+
     const presets = repo.effectRackPresets.allEffectRackPresets;
     presets.sort((a, b) => a.name.localeCompare(b.name));
 
     const groups = repo.effectRackPresets.groups;
     groups.clear();
     for (const preset of repo.effectRackPresets.allEffectRackPresets) {
-        forEachPresetGroup(preset, group => {
-            let presets = groups.get(group);
-            if (!presets) {
-                presets = [];
-                groups.set(group, presets);
-            }
-
+        forEachPresetGroup(preset.name, group => {
+            let presets = groups.get(group) ?? [];
             presets.push(preset);
+            groups.set(group, presets);
         });
     }
 }
 
-export function forEachPresetGroup(preset: EffectRackPreset, iter: (group: string) => void) {
+export function forEachPresetGroup(name: string, iter: (group: string) => void) {
     let idx = 0;
     let inGroup = false;
-    while (idx < preset.name.length) {
-        const startIdx = preset.name.indexOf("[", idx);
+    while (idx < name.length) {
+        const startIdx = name.indexOf("[", idx);
         if (startIdx === -1) break;
 
-        const endIdx = preset.name.indexOf("]", startIdx);
+        const endIdx = name.indexOf("]", startIdx);
         if (endIdx === -1) break;
 
         inGroup = true;
-        iter(preset.name.substring(startIdx, endIdx + 1));
+        iter(name.substring(startIdx, endIdx + 1));
 
         idx = endIdx + 1;
     }
@@ -399,7 +397,10 @@ export const DEFAULT_GROUP_NAME = "ungrouped";
 
 export function loadAllKeyboardConfigPresets(repo: DataRepository, cb: AsyncCb<KeyboardConfigMetadata[]>): AsyncDone {
     const tx = repositoryReadTx(repo, [tables.keyboardPresets]);
-    return idb.getAllMetadata(tx, tables.keyboardPresets, cb);
+    return idb.getAllMetadata(tx, tables.keyboardPresets, (list) => {
+        recomputeKeyboardConfigPresets(repo);
+        return cb(list);
+    });
 }
 
 // TODO: debounced, keyed on id
@@ -410,17 +411,23 @@ export function saveKeyboardConfig(
 ): AsyncDone {
     cb = toTrackedCallback(cb, "saveKeyboardConfig");
     const tx = repositoryWriteTx(repo, [tables.keyboardPresets]);
-    return idb.updateData(tx, tables.keyboardPresets, config, cb);
+    return idb.updateData(tx, tables.keyboardPresets, config, (val, err) => {
+        recomputeKeyboardConfigPresets(repo);
+        return cb(val, err);
+    });
 }
 
 export function createKeyboardConfigPreset(
     repo: DataRepository,
     preset: KeyboardConfig,
-    cb: AsyncCb<KeyboardConfig>,
+    cb: AsyncCb<{ data: KeyboardConfig; metadata: KeyboardConfigMetadata }>,
 ): AsyncDone {
     cb = toTrackedCallback(cb, "createKeyboardConfigPreset");
     const tx = repositoryWriteTx(repo, [tables.keyboardPresets]);
-    return idb.createData(tx, tables.keyboardPresets, preset, cb);
+    return idb.createData(tx, tables.keyboardPresets, preset, (val, err) => {
+        recomputeKeyboardConfigPresets(repo);
+        return cb(val, err);
+    });
 }
 
 export function loadKeyboardConfig(
@@ -433,15 +440,47 @@ export function loadKeyboardConfig(
     return idb.getData(tx, tables.keyboardPresets, metadata.id, cb);
 }
 
+export function deleteKeyboardConfig(repo: DataRepository, toDelete: KeyboardConfig, cb: AsyncCb<void>): AsyncDone {
+    if (toDelete.id <= 0) {
+        // Our work here is done :)
+        return cb(undefined);
+    }
+
+    const tx = repositoryWriteTx(repo, [tables.chart]);
+    return idb.deleteData(tx, tables.chart, toDelete.id, (val, err) => {
+        recomputeKeyboardConfigPresets(repo);
+        return cb(val, err);
+    });
+}
+
 export type KeyboardConfigMetadata = {
     id: number;
     name: string;
-};
+    serializedBytes: number;
+} & { readonly __KeyboardConfigMetadata: unique symbol; };
 
 export function keyboardConfigToMetadata(config: KeyboardConfig): KeyboardConfigMetadata {
+    let bytes = 0;
+    for (const slot of config.synthSlots) {
+        bytes += utf16ByteLength(slot.serialized);
+    }
+
     return {
-        id: config.id,
+        id:   config.id,
         name: config.name,
+        serializedBytes: bytes,
+    } as KeyboardConfigMetadata;
+}
+
+function recomputeKeyboardConfigPresets(repo: DataRepository) {
+    const groups = repo.keyboardConfigPresets.groups;
+    groups.clear();
+    for (const preset of repo.tables.keyboardPresets.loadedMetadata) {
+        forEachPresetGroup(preset.name, group => {
+            let presets = groups.get(group) ?? [];
+            presets.push(preset);
+            groups.set(group, presets);
+        });
     }
 }
 

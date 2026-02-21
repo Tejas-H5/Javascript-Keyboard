@@ -411,9 +411,9 @@ export function createOne<T>(
  */
 export function newMetadataPairTableDef<TData, TMetadata>(
     baseName: string,
+    getMetadata: (data: TData) => TMetadata,
     key: keyof TData & string,
     metadataKey: keyof TMetadata & string,
-    getMetadata: (data: TData) => TMetadata,
 ): MetadataPairTableDef<TData, TMetadata> {
     const dataTable     = newTableDef<TData>(baseName + "_data", key, KEYGEN_NONE);
     const metadataTable = newTableDef<TMetadata>(baseName + "_metadata", metadataKey, KEYGEN_AUTOINCREMENT);
@@ -536,7 +536,7 @@ export function createData<TData, TMetadata>(
     tx: WriteTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb: AsyncCb<TData>,
+    cb: AsyncCb<{ data: TData; metadata: TMetadata }>,
 ): AsyncDone {
     const metadata = tables.toMetadata(newData);
     return createOne(tx, tables.metadata, metadata, (id, err) => {
@@ -560,7 +560,7 @@ export function createData<TData, TMetadata>(
             }
 
             tables.loadedMetadata.push(metadata);
-            return cb(newData);
+            return cb({ data: newData, metadata: metadata });
         });
 
         return DONE;

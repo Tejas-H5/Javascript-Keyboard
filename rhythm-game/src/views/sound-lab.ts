@@ -67,7 +67,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                 return createKeyboardConfigPreset(ctx.repo, defaultConfig, (config, err) => {
                     if (!config || err) return DONE;
                     
-                    lab.keyboardConfig = config;
+                    lab.keyboardConfig = config.data;
                     return DONE;
                 });
             }
