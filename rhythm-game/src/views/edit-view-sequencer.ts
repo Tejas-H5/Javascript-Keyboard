@@ -81,7 +81,7 @@ import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGet
 import { EL_B, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom.ts";
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils.ts";
 import { bytesToMegabytes, utf8ByteLength } from "src/utils/utf8.ts";
-import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, } from "./app.ts";
+import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, setViewSoundLab, } from "./app.ts";
 import { isSavingAnyChart } from "./saving-chart.ts";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view.ts";
 import { cssVarsApp } from "./styling.ts";
@@ -385,7 +385,11 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     } imLayoutEnd(c);
                 } imIfEnd(c);
 
-                imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imFg(c, cssVarsApp.danger); { 
+                    if (imIf(c) && isReadonlyChart(chart)) {
+                        imStr(c, "Readonly");
+                    } imIfEnd(c);
+                } imLayoutEnd(c);
 
                 if (imButtonIsClicked(c, "Test", s.importModalOpen)) {
                     const time = getTimeForBeats(chart, sequencer.cursor);

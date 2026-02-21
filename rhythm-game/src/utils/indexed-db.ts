@@ -56,11 +56,11 @@ export type SingleTableDefiniton<T> = {
 };
 
 function log(...messages: any[]) {
-    console.log("[idb]", messages);
+    console.log("[idb]", ...messages);
 }
 
 function logError(...messages: any[]) {
-    console.error("[idb]", messages);
+    console.error("[idb]", ...messages);
 }
 
 // You would typically just put a bunch of schemas into a table, and use that to refer to the various stores.
@@ -88,7 +88,7 @@ export type KeyGenerator
 
 export type TableName<_T> = string & { __TableName: void; };
 
-export function newTableDefinition<T>(
+export function newTableDef<T>(
     name: string,
     keyPath: keyof T & string,
     keyGen: KeyGenerator = KEYGEN_NONE
@@ -409,14 +409,14 @@ export function createOne<T>(
  * to do two tables, but for short-term convenience sake, I just do one table.
  * It is actually very simple, but it is easy to fall into thinking otherwise.
  */
-export function newDataMetadataTablePairDefinition<TData, TMetadata>(
+export function newMetadataPairTableDef<TData, TMetadata>(
     baseName: string,
     key: keyof TData & string,
     metadataKey: keyof TMetadata & string,
     getMetadata: (data: TData) => TMetadata,
 ): MetadataPairTableDef<TData, TMetadata> {
-    const dataTable     = newTableDefinition<TData>(baseName + "_data", key, KEYGEN_NONE);
-    const metadataTable = newTableDefinition<TMetadata>(baseName + "_metadata", metadataKey, KEYGEN_AUTOINCREMENT);
+    const dataTable     = newTableDef<TData>(baseName + "_data", key, KEYGEN_NONE);
+    const metadataTable = newTableDef<TMetadata>(baseName + "_metadata", metadataKey, KEYGEN_AUTOINCREMENT);
 
     return {
         data:           dataTable,
@@ -499,10 +499,7 @@ export function updateData<TData, TMetadata>(
         ], (val, err) => {
             if (!val) return cb(val, err);
 
-            if (target[tables.metadata.keyPath] !== newMetadata[tables.metadata.keyPath]) {
-                return cb(val, newError("Target changed from under us somehow"));
-            }
-            tables.loadedMetadata[idx] = newMetadata;
+            assignToObject(target, newMetadata);
 
             return cb(true);
         });
@@ -593,11 +590,18 @@ export function putData<TData, TMetadata>(
         if (idx === -1) {
             tables.loadedMetadata.push(newMetadata);
         } else {
-            tables.loadedMetadata[idx] = newMetadata;
+            assignToObject(tables.loadedMetadata[idx], newMetadata);
         }
 
         return cb(true);
     });
+}
+
+// Allows object references to be stable
+function assignToObject<T>(dst: T, src: T) {
+    for (const k in src) {
+        dst[k] = src[k];
+    }
 }
 
 export function deleteData<TData, TMetadata>(

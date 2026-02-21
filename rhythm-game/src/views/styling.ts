@@ -83,9 +83,9 @@ export const cnApp = {
 
 const mainTheme = Object.freeze<AppTheme>({
     ...defaultCoreTheme,
-    playback:  newColorFromHex("#00F"),
-    bpmMarker: newColorFromHex("#A00"),
-    error:     newColorFromHex("#F00"),
+    playback:  newColorFromHex("#0000FF"),
+    bpmMarker: newColorFromHex("#AA0000"),
+    error:     newColorFromHex("#FF0000"),
     calm:      newColorFromHex("#00AAFF"),
     danger:    newColorFromHex("#FF0000"),
     unhit:     newColorFromHex("#FF0000"),

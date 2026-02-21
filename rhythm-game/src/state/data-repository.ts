@@ -27,19 +27,10 @@ function compressedChartToMetadata(compressedChart: SequencerChartCompressed): S
 }
 
 const tables = {
-    chart: idb.newDataMetadataTablePairDefinition<SequencerChartCompressed, SequencerChartMetadata>(
-        "chart", "i", "id", compressedChartToMetadata
-    ),
-    // User-created presets.
-    effectsRackPresets:      idb.newTableDefinition("effect_rack_presets", "id", idb.KEYGEN_AUTOINCREMENT),
-    effectRackPresetsSystem: idb.newTableDefinition("effect_rack_presets_system", "id", idb.KEYGEN_AUTOINCREMENT),
+    effectsRackPresets: idb.newTableDef<EffectRackPreset>("effect_rack_presets", "id", idb.KEYGEN_AUTOINCREMENT),
 
-    keyboardPresets: idb.newDataMetadataTablePairDefinition<KeyboardConfig, KeyboardConfigMetadata>(
-        "keyboard", "id", "id", keyboardConfigToMetadata,
-    ),
-    keyboardPresetsSystem: idb.newDataMetadataTablePairDefinition<KeyboardConfig, KeyboardConfigMetadata>(
-        "keyboard_system", "id", "id", keyboardConfigToMetadata,
-    ),
+    chart:           idb.newMetadataPairTableDef("chart", "i", "id", compressedChartToMetadata),
+    keyboardPresets: idb.newMetadataPairTableDef("keyboard", "id", "id", keyboardConfigToMetadata),
 } as const satisfies idb.AllTables;
 
 const tablesVersion = 8;
@@ -49,6 +40,7 @@ const tablesVersion = 8;
 // This design may allow for smarter batching of saving/loading multiple different entities at once.
 export type DataRepository = {
     db: IDBDatabase;
+    tables: typeof tables;
     charts: {
         allChartMetadata: SequencerChartMetadata[];
         loading: boolean;
@@ -58,15 +50,7 @@ export type DataRepository = {
         allEffectRackPresets: EffectRackPreset[];
         groups: Map<string, EffectRackPreset[]>;
     };
-    effectRackPresetsSystem: {
-        autoSaved: EffectRackPreset | null;
-    };
-    tables: typeof tables;
 };
-
-const SYSTEM_PRESET_IDS = {
-    autoSaved: 1,
-}
 
 export function newDataRepository(cb: AsyncCallback<DataRepository>): AsyncDone {
     return idb.openConnection("KeyboardRhythmGameIDB", tablesVersion, tables, {
@@ -83,6 +67,7 @@ export function newDataRepository(cb: AsyncCallback<DataRepository>): AsyncDone 
 
         const repo: DataRepository = {
             db: db,
+            tables: tables,
             charts: {
                 allChartMetadata: [],
                 loading: false,
@@ -92,10 +77,6 @@ export function newDataRepository(cb: AsyncCallback<DataRepository>): AsyncDone 
                 groups: new Map(),
                 loading: false,
             },
-            effectRackPresetsSystem: {
-                autoSaved: null,
-            },
-            tables: tables,
         };
 
         updateAvailableMetadata(repo, []);
@@ -371,16 +352,6 @@ export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackP
     })
 }
 
-export function updateAutosavedEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb<boolean>): AsyncDone {
-    cb = toTrackedCallback(cb, "updateAutosavedEffectRackPreset");
-
-    preset.id = SYSTEM_PRESET_IDS.autoSaved;
-    repo.effectRackPresetsSystem.autoSaved = preset;
-
-    const tx = repositoryWriteTx(repo, [tables.effectRackPresetsSystem]);
-    return idb.putOne(tx, tables.effectRackPresetsSystem, preset, cb);
-}
-
 function recomputePresets(repo: DataRepository) {
     const presets = repo.effectRackPresets.allEffectRackPresets;
     presets.sort((a, b) => a.name.localeCompare(b.name));
@@ -429,18 +400,6 @@ export const DEFAULT_GROUP_NAME = "ungrouped";
 export function loadAllKeyboardConfigPresets(repo: DataRepository, cb: AsyncCb<KeyboardConfigMetadata[]>): AsyncDone {
     const tx = repositoryReadTx(repo, [tables.keyboardPresets]);
     return idb.getAllMetadata(tx, tables.keyboardPresets, cb);
-}
-
-export function updateAutosavedKeyboard(repo: DataRepository, keyboard: KeyboardConfig, cb: AsyncCb<boolean>): AsyncDone {
-    cb = toTrackedCallback(cb, "updateAutosavedKeyboard");
-    const tx = repositoryWriteTx(repo, [tables.keyboardPresetsSystem]);
-    return idb.putData(
-        tx,
-        tables.keyboardPresetsSystem,
-        keyboard,
-        cb,
-        SYSTEM_PRESET_IDS.autoSaved
-    );
 }
 
 // TODO: debounced, keyed on id

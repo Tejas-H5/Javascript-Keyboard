@@ -46,7 +46,7 @@ import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { DspLoopMessage, dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
 import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, newKeyboardConfigOnePreset, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { createEffectRackPreset, DEFAULT_GROUP_NAME, deleteEffectRackPreset, getLoadedPreset, updateAutosavedEffectRackPreset, updateEffectRackPreset } from "src/state/data-repository";
+import { createEffectRackPreset, DEFAULT_GROUP_NAME, deleteEffectRackPreset, getLoadedPreset, updateEffectRackPreset } from "src/state/data-repository";
 import {
     asRegisterIdx,
     BIQUAD2_TYPE__ALLPASS,
@@ -305,7 +305,6 @@ export type EffectRackEditorState = {
     svgCtx: SvgContext | null;
 
     deferredAction: (() => void) | null;
-    autosaveDebounceSeconds: number;
 };
 
 type BindingSvgWires = {
@@ -392,7 +391,6 @@ export function newEffectRackEditorState(effectRackPreset: EffectRackPreset): Ef
         highlightedValueRefNext: {},
 
         deferredAction: null,
-        autosaveDebounceSeconds: -1,
 
         svgCtx: null,
     };
@@ -404,8 +402,6 @@ function onEdited(editor: EffectRackEditorState, wasUndoTraversed = false, editU
     editor.version++;
 
     compileEffectRack(editor.effectRack);
-
-    editor.autosaveDebounceSeconds = 1;
 
     if (editUndoActionId !== undefined) {
         // We actually want to write to the undo buffer immediately
@@ -481,17 +477,6 @@ export function imEffectRackEditor(
         settings.parameters.keyboardConfig = newKeyboardConfigOnePreset(preset);
         updatePlaySettings();
         result = { updatedPreset: preset };
-    }
-
-    if (editor.autosaveDebounceSeconds > 0) {
-        const dt = getDeltaTimeSeconds(c);
-        editor.autosaveDebounceSeconds -= dt;
-        if (editor.autosaveDebounceSeconds <= 0) {
-            editor.autosaveDebounceSeconds = -1;
-
-            const preset = effectRackToPreset(editor.effectRack);
-            updateAutosavedEffectRackPreset(ctx.repo, preset, done);
-        }
     }
 
     if (imMemo(c, true)) {

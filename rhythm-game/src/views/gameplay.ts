@@ -56,7 +56,7 @@ import { arrayAt } from "src/utils/array-utils.ts";
 import { assert } from "src/utils/assert.ts";
 import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour.ts";
 import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core.ts";
-import { EL_B, elSetClass, elSetStyle, imElBegin, imElEnd, imStr, imTrackSize, Stringifyable } from "src/utils/im-dom.ts";
+import { EL_B, elHasMouseOver, elSetClass, elSetStyle, imElBegin, imElEnd, imStr, imTrackSize, Stringifyable } from "src/utils/im-dom.ts";
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils.ts";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
 import { cssVarsApp, getCurrentTheme } from "./styling.ts";
@@ -414,6 +414,10 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     updatePracticeMode(ctx, gameplayState, chart);
 
     imLayoutBegin(c, COL); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
+        if (isFirstishRender(c)) {
+            elSetStyle(c, "userSelect", "none");
+        }
+
         const { size: rootContainerSize } = imTrackSize(c);
 
         // We want to put the game inside a container that maintains it's aspect ratio, so that 
@@ -719,29 +723,18 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
 
             let uiIdx = 0;
-            imLayoutBegin(c, ROW); {
-                const isSelected = uiIdx++ === gameplayState.pauseMenu.idx; 
+            if (imPauseMenuButton(c, ctx, gameplayState, uiIdx, "Resume")) {
+                setPausedState(ctx, gameplayState, false);
+            }
 
-                const hasPress = imSelectionArrow(c, ctx, isSelected);
-
-                if (imButtonIsClicked(c, "Resume") || hasPress) {
-                    setPausedState(ctx, gameplayState, false);
+            uiIdx++;
+            if (imPauseMenuButton(c, ctx, gameplayState, uiIdx, "Quit")) {
+                if (ctx.ui.playView.isTesting) {
+                    setViewEditChart(ctx);
+                } else {
+                    setViewChartSelect(ctx);
                 }
-            } imLayoutEnd(c);
-
-            imLayoutBegin(c, ROW); {
-                const isSelected = uiIdx++ === gameplayState.pauseMenu.idx;
-
-                const hasPress = imSelectionArrow(c, ctx, isSelected);
-
-                if (imButtonIsClicked(c, "Quit") || hasPress) {
-                    if (ctx.ui.playView.isTesting) {
-                        setViewEditChart(ctx);
-                    } else {
-                        setViewChartSelect(ctx);
-                    }
-                }
-            } imLayoutEnd(c);
+            }
         } imLayoutEnd(c);
 
         if (!ctx.handled) {
@@ -756,6 +749,41 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     if (!ctx.handled) {
         ctx.handled = handleGameplayKeyDown(ctx, gameplayState);
     }
+}
+
+function imPauseMenuButton(
+    c: ImCache,
+    ctx: GlobalContext,
+    gameplayState: GameplayState,
+    uiIdx: number,
+    text: string
+): boolean {
+    let result = false;
+    imLayoutBegin(c, ROW); {
+        const isSelected = uiIdx === gameplayState.pauseMenu.idx;
+
+        const hasMouseOver = elHasMouseOver(c);
+        if (imMemo(c, hasMouseOver) && hasMouseOver) {
+            gameplayState.pauseMenu.idx = uiIdx;
+        }
+
+        if (imIf(c) && isSelected) {
+            // The Inter font we're using for this game has a ligature that converts -> into a legit arrow character. 
+            // Pretty crazy
+            imLayoutBegin(c, BLOCK); imStr(c, "->"); imLayoutEnd(c);
+
+            if (!ctx.handled && ctx.keyPressState?.key === "Enter") {
+                result = true;
+                ctx.handled = true;
+            }
+        } imIfEnd(c);
+
+        if (imButtonIsClicked(c, text)) {
+            result = true;
+        }
+    } imLayoutEnd(c);
+
+    return result;
 }
 
 function imLetter(
@@ -1037,25 +1065,4 @@ function updatePracticeMode(
 
         practiceMode.maxScoreThisMeasure = getBestPossibleScore(chart, thisMeasureBeat, nextMeasureBeat);
     }
-}
-
-function imSelectionArrow(
-    c: ImCache,
-    ctx: GlobalContext,
-    focused: boolean
-): boolean {
-    let result = false;
-
-    if (imIf(c) && focused) {
-        // The Inter font we're using for this game has a ligature that converts -> into a legit arrow character. 
-        // Pretty crazy
-        imLayoutBegin(c, BLOCK); imStr(c, "->"); imLayoutEnd(c);
-
-        if (!ctx.handled && ctx.keyPressState?.key === "Enter") {
-            result = true;
-            ctx.handled = true;
-        }
-    } imIfEnd(c);
-    
-    return result;
 }

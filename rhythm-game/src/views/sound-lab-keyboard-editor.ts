@@ -15,10 +15,10 @@ import { DONE } from "src/utils/async-utils.ts";
 import { CssColor, newColorFromHsv } from "src/utils/colour.ts";
 import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core.ts";
 import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom.ts";
-import { GlobalContext } from "./app.ts";
+import { GlobalContext, setViewEditChart } from "./app.ts";
 import { imHoverable } from "./button.ts";
 import { imKeyboard } from "./keyboard.ts";
-import { imHeadingBegin, imHeadingEnd } from "./sound-lab-effect-rack-editor.ts";
+import { editorImport, imHeadingBegin, imHeadingEnd } from "./sound-lab-effect-rack-editor.ts";
 import { imEffectRackList, newPresetsListState } from "./sound-lab-effect-rack-list.ts";
 
 // No undo for now. Doesn't seem like we need it
@@ -253,7 +253,10 @@ export function imKeyboardConfigEditor(
                                             } else if (editor.isRenamingSlotIdx !== -1) {
                                                 editor.isRenamingSlotIdx = -1;
                                                 ctx.handled = true;
-                                            }
+                                            } else if (editor.presetsUi.isRenaming) {
+                                                editor.presetsUi.isRenaming = false;
+                                                ctx.handled = true;
+                                            } 
                                         }
                                     }
                                 }
@@ -386,6 +389,15 @@ function imKeyboardConfigEditorPresetsList(c: ImCache, ctx: GlobalContext, edito
                         }
                         if (ev.submit || ev.cancel) {
                             ui.isRenaming = false;
+                        }
+                    }
+                    
+                    if (!ctx.handled) {
+                        if (ctx.keyPressState?.key === "Escape") {
+                            if (editor.presetsUi.isRenaming) {
+                                editor.presetsUi.isRenaming = false;
+                                ctx.handled = true;
+                            }
                         }
                     }
                 } else {

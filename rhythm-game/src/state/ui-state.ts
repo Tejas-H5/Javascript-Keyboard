@@ -127,7 +127,7 @@ export function newUiState(): UIState {
         playView: {
             result: null,
             isTesting: false,
-        }
+        },
     };
 
     if (debugFlags.testUnitTests) {

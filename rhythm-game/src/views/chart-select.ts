@@ -34,15 +34,12 @@ function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): bool
     const currentChart = getCurrentChartOrNullIfLoading(ctx);
 
     if (currentChart && keyUpper === "E") {
-        if (currentChart._savedStatus === CHART_STATUS_READONLY) {
-            openChartUpdateModal(ctx, currentChart, NAME_OPERATION_COPY, "Bundled charts cannot be edited directly, and need to be copied first");
-        } else {
-            setViewEditChart(ctx);
-        }
+        setViewEditChart(ctx);
         return true;
     }
 
     if (keyUpper === "L") {
+        // But, maybe this should be the selected chart?
         setViewSoundLab(ctx);
         return true;
     }
@@ -186,7 +183,8 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                         setViewStartScreen(ctx);
                     }
 
-                    if (imButtonIsClicked(c, "The lab")) {
+                    if (imButtonIsClicked(c, "Keyboard")) {
+                        // But, maybe this should be the selected chart?
                         setViewSoundLab(ctx);
                     }
                 } imLayoutEnd(c);

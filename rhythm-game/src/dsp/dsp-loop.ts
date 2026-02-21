@@ -9,11 +9,15 @@ import { assert } from "src/utils/assert.ts";
 import { lerp, max } from "src/utils/math-utils.ts";
 import { getNoteFrequency } from "src/utils/music-theory-utils.ts";
 import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random.ts";
-import { compileEffectRack, computeEffectRackIteration, deserializeEffectRack, EffectRack, EffectRackRegisters, newEffectRackRegisters } from "../state/effect-rack.ts";
+import { compileEffectRack, computeEffectRackIteration, EffectRack, EffectRackRegisters, newEffectRackRegisters } from "../state/effect-rack.ts";
 import { ScheduledKeyPress, ScheduledKeyPresses } from "./dsp-loop-interface.ts";
 
 type DspSynthParameters = {
     keyboardConfig: KeyboardConfig;
+}
+
+export function log(...messages: any[]) {
+    console.log("[dsp-loop]", ...messages);
 }
 
 export type DSPPlaySettings = {
@@ -377,7 +381,7 @@ export function processSample(s: DspState, idx: number) {
             if (playedForScheduledDuration) {
                 const playedAllKeys = trackPlayback.scheduedKeysCurrentlyPlaying.length === 0;
                 if (playedAllKeys) {
-                    console.log(
+                    log(
                         "stopped playing",
                         trackPlayback.scheduledPlaybackCurrentIdx,
                         trackPlayback.scheduledPlaybackTime,
@@ -573,7 +577,7 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
     if (e.scheduleKeys !== undefined) {
         stopPlayingScheduledKeys(s);
         if (e.scheduleKeys !== null && e.scheduleKeys.keys.length > 0) {
-            console.log("new scheduled keys: ", e.scheduleKeys);
+            log("new scheduled keys: ", e.scheduleKeys);
             trackPlayback.scheduleKeys = e.scheduleKeys;
             trackPlayback.playingId = e.scheduleKeys.playingId;
             trackPlayback.isPaused = false;
@@ -584,7 +588,7 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
 
     if (e.newPlaybackTime !== undefined) {
         if (trackPlayback.scheduleKeys) {
-            console.log("new playback time", e.newPlaybackTime);
+            log("new playback time", e.newPlaybackTime);
             trackPlayback.scheduledPlaybackTime = e.newPlaybackTime;
             trackPlayback.scheduledPlaybackCurrentIdx = 0;
         }

@@ -31,7 +31,14 @@ export function newKeyboardConfig(): KeyboardConfig {
 export function keyboardConfigDeleteSlot(config: KeyboardConfig, slotIdx: number) {
     config.synthSlots.splice(slotIdx, 1);
 
-    // consumers should just handle broken references gracefully
+    // Move references to synth 0
+    for (let i = 0; i < config.keymaps.length; i++) {
+        if (config.keymaps[i] === slotIdx) {
+            config.keymaps[i] = 0;
+        }
+    }
+
+    // consumers should just handle 0 slots gracefully
 }
 
 export type EffectRackPreset = {

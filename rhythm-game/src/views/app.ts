@@ -34,7 +34,7 @@ import { imPlayView } from "src/views/play-view.ts";
 import { imStartupView } from "src/views/startup-view.ts";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay.ts";
 import { runSaveCurrentChartTask } from "./saving-chart.ts";
-import { imSoundLab } from "./sound-lab.ts";
+import { imSoundLab, SoundLabState } from "./sound-lab.ts";
 import { imUpdateModal } from "./update-modal.ts";
 
 export type GlobalContext = {
