@@ -39,13 +39,13 @@ export function imTextInputOneLine(
         const isFocused = document.activeElement === input.root;
 
         const inputEvent = imOn(c, EV_INPUT);
-        const blur = imOn(c, EV_BLUR);
+        const blur =       imOn(c, EV_BLUR);
 
         if (inputEvent) {
             val = { newName: input.root.value };
-        } else if (isFocused) {
+        } else {
             const keyboard = getGlobalEventSystem().keyboard;
-            if (keyboard.keyDown?.key === "Enter" || blur) {
+            if ((isFocused && keyboard.keyDown?.key === "Enter") || blur) {
                 val = { submit: true, newName: input.root.value }
             } else if (isFocused && keyboard.keyDown?.key === "Escape") {
                 val = { cancel: true }

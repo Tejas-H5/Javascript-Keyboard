@@ -158,7 +158,7 @@ import { imExportModal, imImportModal } from "./import-export-modals";
 import { drawSamples, imPlotBegin, imPlotEnd } from "./plotting";
 import { SoundLabState } from "./sound-lab";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
-import { imEffectRackList, newPresetsListState, selectPreset, startRenamingPreset } from "./sound-lab-effect-rack-list";
+import { imEffectRackList, newPresetsListState, selectEffectRackPreset, startRenamingPreset } from "./sound-lab-effect-rack-list";
 import { imKeyboardConfigEditorKeyboard, KeyboardConfigEditorState } from "./sound-lab-keyboard-editor";
 import { cssVarsApp, getCurrentTheme } from "./styling";
 
@@ -2589,7 +2589,7 @@ function imEffectRackRightPanel(
 
                     if (imButtonIsClicked(c, "Delete", false, !!selectedPreset) && selectedPreset) {
                         deleteEffectRackPreset(ctx.repo, selectedPreset, done);
-                        selectPreset(ctx, presetsList, null);
+                        selectEffectRackPreset(ctx, presetsList, null);
                     }
 
                     if (imButtonIsClicked(c, "New")) {
@@ -2610,16 +2610,6 @@ function imEffectRackRightPanel(
                     if (ev.selectionLoaded) {
                         // Discard the name/id of the preset - we just want the contents
                         editorImport(effectRackEditor, ev.selectionLoaded.serialized);
-                    }
-
-                    if (ev.rename) {
-                        const { preset, newName } = ev.rename;
-                        loadEffectRackPreset(ctx.repo, preset, (val, err) => {
-                            if (!val || err) return DONE;
-
-                            val.name = newName;
-                            return updateEffectRackPreset(ctx.repo, val, () => DONE);
-                        });
                     }
                 }
             } imLayoutEnd(c);

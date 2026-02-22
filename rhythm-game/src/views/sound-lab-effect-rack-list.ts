@@ -14,10 +14,10 @@ import {
     ROW
 } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
-import { loadEffectRackPreset } from "src/state/data-repository";
+import { loadEffectRackPreset, updateEffectRackPreset } from "src/state/data-repository";
 import { EffectRackPreset, EffectRackPresetMetadata } from "src/state/keyboard-config";
 import { assert } from "src/utils/assert";
-import { CANCELLED, DONE } from "src/utils/async-utils";
+import { CANCELLED, done, DONE } from "src/utils/async-utils";
 import {
     ImCache,
     imFor,
@@ -27,6 +27,7 @@ import {
     imIfEnd,
     imKeyedBegin,
     imKeyedEnd,
+    imMemo,
     isFirstishRender
 } from "src/utils/im-core";
 import { elHasMousePress, elSetClass, elSetStyle, imStr } from "src/utils/im-dom";
@@ -54,11 +55,15 @@ export function newPresetsListState(): PresetsListState {
     };
 }
 
-function setSelectedPreset(ctx: GlobalContext, s: PresetsListState, preset: EffectRackPresetMetadata) {
+export function selectEffectRackPreset(ctx: GlobalContext, s: PresetsListState, preset: EffectRackPresetMetadata | null) {
     if (s.selected === preset) return;
 
-    s.selected = preset;
+    s.selected       = preset;
     s.selectedLoaded = null;
+    s.renaming       = false;
+
+    if (!preset) return;
+
     return loadEffectRackPreset(ctx.repo, preset, (val, err) => {
         if (!val || err)           return DONE;
         if (s.selected !== preset) return CANCELLED;
@@ -70,7 +75,7 @@ function setSelectedPreset(ctx: GlobalContext, s: PresetsListState, preset: Effe
 
 export function startRenamingPreset(ctx: GlobalContext, s: PresetsListState, preset: EffectRackPresetMetadata) {
     assert(preset.id !== 0);
-    setSelectedPreset(ctx, s, preset);
+    selectEffectRackPreset(ctx, s, preset);
     s.renaming = true;
     s.newName = preset.name;
 }
@@ -79,21 +84,9 @@ export function stopRenaming(ctx: GlobalContext, s: PresetsListState) {
     s.renaming = false;
 }
 
-export function selectPreset(ctx: GlobalContext, s: PresetsListState, preset: EffectRackPresetMetadata | null) {
-    if (!preset) {
-        s.selected       = null;
-        s.selectedLoaded = null;
-    } else {
-        setSelectedPreset(ctx, s, preset);
-    }
-
-    s.renaming = false;
-}
-
 export type PresetSelectionEvent = {
     selection?:       EffectRackPresetMetadata;
     selectionLoaded?: EffectRackPreset;
-    rename?:          { preset: EffectRackPresetMetadata; newName: string };
 }
 
 export function imEffectRackList(
@@ -103,9 +96,8 @@ export function imEffectRackList(
 ): PresetSelectionEvent | null {
     let result: PresetSelectionEvent | null = null;
 
-    if (s.selectedLoaded) {
+    if (imMemo(c, s.selectedLoaded) && s.selectedLoaded) {
         result = { selectionLoaded: s.selectedLoaded };
-        s.selectedLoaded = null;
     }
 
     const loading = ctx.repo.effectRackPresets.loading;
@@ -183,10 +175,10 @@ function imPresetsArray(
 
                 if (elHasMousePress(c)) {
                     if (!selected) {
-                        selectPreset(ctx, s, preset);
+                        selectEffectRackPreset(ctx, s, preset);
                     } else {
                         try {
-                            selectPreset(ctx, s, preset);
+                            selectEffectRackPreset(ctx, s, preset);
                             result = { selection: preset };
                             s.error = "";
                         } catch (err) {
@@ -195,7 +187,7 @@ function imPresetsArray(
                     }
                 }
 
-                if (imIf(c) && selected && s.renaming) {
+                if (imIf(c) && selected && s.renaming && s.selectedLoaded) {
                     const ev = imTextInputOneLine(c, s.newName, "Enter preset name");
                     if (ev) {
                         if (ev.newName) {
@@ -205,7 +197,10 @@ function imPresetsArray(
 
                         if (ev.submit) {
                             stopRenaming(ctx, s);
-                            result = { rename: { preset: preset, newName: s.newName } };
+
+                            s.selectedLoaded.name = s.newName;
+                            updateEffectRackPreset(ctx.repo, s.selectedLoaded, done);
+
                             ctx.handled = true;
                         }
 

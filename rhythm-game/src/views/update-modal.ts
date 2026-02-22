@@ -8,7 +8,7 @@ import { createChart, saveChart } from "src/state/data-repository";
 import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
 import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "src/state/ui-state";
 import { unreachable } from "src/utils/assert";
-import { AsyncCb, AsyncDone, CANCELLED, done, newError, toTrackedCallback } from "src/utils/async-utils";
+import { AsyncCb, Done, CANCELLED, done, newError, toTrackedCallback } from "src/utils/async-utils";
 import { ImCache, imIf, imIfElse, imIfEnd, isFirstishRender } from "src/utils/im-core";
 import { elSetStyle, imStr } from "src/utils/im-dom";
 import { GlobalContext } from "./app";
@@ -49,6 +49,9 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
                         if (ev) {
                             if (ev.newName !== undefined) {
                                 s.newName = ev.newName;
+                            }
+                            if (ev.submit || ev.cancel) {
+                                ctx.handled = true;
                             }
                         }
 
@@ -103,7 +106,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     ctx.handled = true;
 }
 
-function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, cbIn: AsyncCb<boolean>): AsyncDone {
+function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, cbIn: AsyncCb<boolean>): Done {
     if (s.isUpdating) return CANCELLED;
 
     // Figure out the message, clear the message

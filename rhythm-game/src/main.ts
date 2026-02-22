@@ -5,17 +5,16 @@ import { cleanupChartRepo, loadAllEffectRackPresets, loadChartMetadataList, newD
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state.ts";
 import { NAME_OPERATION_COPY } from "./state/ui-state.ts";
 import { assert } from "./utils/assert.ts";
-import { AsyncCb, AsyncDone, done, toAsyncCallback } from "./utils/async-utils.ts";
+import { AsyncCb, Done, done, toAsyncCallback } from "./utils/async-utils.ts";
 import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imTry, imTryEnd, isFirstishRender, USE_REQUEST_ANIMATION_FRAME } from "./utils/im-core.ts";
 import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imElBegin, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom.ts";
 import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app.ts";
-sslkdj
 
 "use strict"
 
 let globalContext: GlobalContext | undefined;
 
-function initGlobalContext(cb: AsyncCb<void>): AsyncDone {
+function initGlobalContext(cb: AsyncCb<void>): Done {
     // Our code only works after we've established a connection with our
     // IndexedDB instance, and the audio context has loaded.
 
@@ -46,7 +45,7 @@ function initGlobalContext(cb: AsyncCb<void>): AsyncDone {
             return onDatabaseCleaned(ctx);
         });
 
-        function onDatabaseCleaned(ctx: GlobalContext): AsyncDone {
+        function onDatabaseCleaned(ctx: GlobalContext): Done {
             if (debugFlags.testSoundLab) {
                 setViewSoundLab(ctx);
 

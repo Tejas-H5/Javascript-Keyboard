@@ -25,12 +25,16 @@ import {
     AsyncCallback,
     AsyncCallbackResult,
     AsyncCb,
-    AsyncDone,
     asyncResultsAll,
-    DISPATCHED_ELSEWHERE,
+    AsyncState,
+    DISPATCHED_LATER,
+    Done,
     DONE,
+    newAsyncState,
     newError,
+    onAsyncStateLoaded,
     parallelIterator,
+    startLoadingAsyncState,
     toAsyncCallback
 } from "./async-utils";
 
@@ -42,7 +46,7 @@ export function bytesToMegabytes(bytes: number) {
 // For some use-cases on some browsers (chrome and not firefox, surprisingly), 
 // it will grow infinitely, and you won't realize till your storage takes up 15GB for the tab,
 // at which point the tab can no longer open, so you can't debug it even if you wanted to.
-function getEstimatedDataUsage(cb: AsyncCallback<number | undefined>): AsyncDone {
+function getEstimatedDataUsage(cb: AsyncCallback<number | undefined>): Done {
     return toAsyncCallback(navigator.storage.estimate().then(val => {
         if (!val.usage) return undefined;
         return bytesToMegabytes(val.usage);
@@ -75,8 +79,8 @@ export type MetadataPairTableDef<TData, TMetadata> = {
     metadata: SingleTableDefiniton<TMetadata>
 
     toMetadata: (data: TData) => TMetadata;
-    loadedMetadata: TMetadata[];
-    loadedMetadataLoaded: boolean;
+
+    allItemsAsync: AsyncState<TMetadata[]>;
 };
 
 export const KEYGEN_NONE = 0;
@@ -115,7 +119,7 @@ export function openConnection(
         onUnexpectedlyClosed: (ev: Event) => void,
     },
     cb: AsyncCb<IDBDatabase>,
-): AsyncDone {
+): Done {
     const openRequest = window.indexedDB.open(name, version);
 
     getEstimatedDataUsage(mb => {
@@ -195,7 +199,7 @@ export function openConnection(
         methods.onBlocked(event);
     };
 
-    return DISPATCHED_ELSEWHERE;
+    return DISPATCHED_LATER;
 }
 
 export type TransactionData = { raw: IDBTransaction; };
@@ -382,7 +386,7 @@ export function createOne<T>(
     table: SingleTableDefiniton<T>,
     value: T,
     cb: AsyncCallback<ValidKey>
-): AsyncDone {
+): Done {
     const store = tx.raw.objectStore(table.name);
 
     const payload: T = { ...value };
@@ -399,7 +403,7 @@ export function createOne<T>(
         cb(undefined, err);
     }
 
-    return DISPATCHED_ELSEWHERE;
+    return DISPATCHED_LATER;
 }
 
 /**
@@ -422,8 +426,7 @@ export function newMetadataPairTableDef<TData, TMetadata>(
         data:           dataTable,
         metadata:       metadataTable,
         toMetadata:    getMetadata,
-        loadedMetadata: [],
-        loadedMetadataLoaded: false,
+        allItemsAsync: newAsyncState(Array<TMetadata>()),
     };
 }
 
@@ -431,31 +434,18 @@ export function newMetadataPairTableDef<TData, TMetadata>(
 export function getAllMetadata<TData, TMetadata>(
     tx: ReadTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
-    cb: AsyncCallback<TMetadata[]>
-): AsyncCallbackResult {
-    const len = tables.loadedMetadata.length;
-    if (tables.loadedMetadataLoaded) {
-        // Cached - run the callback synchronously, so that we don't lose the transaction.
-        // Not sure if this is even possible with promises. Mabye it is. 
-        // It's simpler to just use callbacks so that I don't have to think about it
-        return cb(tables.loadedMetadata);
+    cb: AsyncCb<TMetadata[]>
+): Done {
+    const event = tables.allItemsAsync;
+
+    onAsyncStateLoaded(event, cb);
+
+    if (startLoadingAsyncState(event)) {
+        log("[getAllMetadata] - fetching", tables);
+        return getAll(tx, tables.metadata, event.populate);
     }
 
-    log("[getAllMetadata] - cache miss", tables);
-
-    return getAll(tx, tables.metadata, (metadataList, err) => {
-        if (!metadataList || err) {
-            return cb(undefined, err);
-        }
-
-        // we don't handle this race condition yet
-        assert(tables.loadedMetadata.length === len);
-
-        tables.loadedMetadata = metadataList;
-        tables.loadedMetadataLoaded = true;
-
-        return cb(metadataList);
-    });
+    return DONE;
 }
 
 export function getData<TData, TMedatada>(
@@ -475,15 +465,18 @@ export function updateData<TData, TMetadata>(
     tables:  MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
     cb:      AsyncCb<boolean>,
-): AsyncDone {
+): Done {
     const id  = newData[tables.data.keyPath] as ValidKey;
-    const idx = tables.loadedMetadata.findIndex(m => m[tables.metadata.keyPath] === id);
+    const idx = tables.allItemsAsync.val.findIndex(m => m[tables.metadata.keyPath] === id);
     if (idx === -1) {
         return cb(undefined, newError("Metadata was not present in loaded metadata list. Only metadata we have first loaded can be updated."));
     }
 
-    const target      = tables.loadedMetadata[idx];
+    const target      = tables.allItemsAsync.val[idx];
     const newMetadata = tables.toMetadata(newData);
+
+    // Update metadata optimistically
+    assignToObject(target, newMetadata);
 
     return asyncResultsAll<[TData, TMetadata]>([
         cb => getOne(tx, tables.data, id, cb),
@@ -499,7 +492,6 @@ export function updateData<TData, TMetadata>(
         ], (val, err) => {
             if (!val) return cb(val, err);
 
-            assignToObject(target, newMetadata);
 
             return cb(true);
         });
@@ -522,7 +514,7 @@ export function saveData<TData, TMetadata>(
     tables:  MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
     cb:      AsyncCb<boolean>,
-): AsyncDone {
+): Done {
     const id  = newData[tables.data.keyPath] as ValidKey;
 
     if (keyIsNil(id)) {
@@ -537,7 +529,7 @@ export function createData<TData, TMetadata>(
     tables: MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
     cb: AsyncCb<{ data: TData; metadata: TMetadata }>,
-): AsyncDone {
+): Done {
     const metadata = tables.toMetadata(newData);
     return createOne(tx, tables.metadata, metadata, (id, err) => {
         if (id === undefined || err) return cb(undefined, err);
@@ -552,14 +544,14 @@ export function createData<TData, TMetadata>(
             // Since we know what happens to the list when we create an item in the database, we can 
             // simply do the same on our side as well, rather than reloading all entries from the database.
             const idx = tables
-                .loadedMetadata
+                .allItemsAsync.val
                 .findIndex(val => val[tables.metadata.keyPath] === metadata[tables.metadata.keyPath]);
 
             if (idx !== -1) {
                 return cb(undefined, newError("Something else already created this data while we were creating it !!!"));
             }
 
-            tables.loadedMetadata.push(metadata);
+            tables.allItemsAsync.val.push(metadata);
             return cb({ data: newData, metadata: metadata });
         });
 
@@ -573,7 +565,7 @@ export function putData<TData, TMetadata>(
     newData: TData,
     cb: AsyncCb<boolean>,
     id: ValidKey,
-): AsyncDone {
+): Done {
     assert(typeof newData[tables.data.keyPath] === typeof id);
 
     // @ts-expect-error it is not smart enough to notice the assert above
@@ -586,11 +578,11 @@ export function putData<TData, TMetadata>(
     ], (_, err) => {
         if (err) return cb(undefined, err);
 
-        const idx = tables.loadedMetadata.findIndex(m => m[tables.metadata.keyPath] === id);
+        const idx = tables.allItemsAsync.val.findIndex(m => m[tables.metadata.keyPath] === id);
         if (idx === -1) {
-            tables.loadedMetadata.push(newMetadata);
+            tables.allItemsAsync.val.push(newMetadata);
         } else {
-            assignToObject(tables.loadedMetadata[idx], newMetadata);
+            assignToObject(tables.allItemsAsync.val[idx], newMetadata);
         }
 
         return cb(true);
@@ -609,14 +601,14 @@ export function deleteData<TData, TMetadata>(
     tables: MetadataPairTableDef<TData, TMetadata>,
     id:     ValidKey,
     cb:     AsyncCb<void>
-): AsyncDone {
+): Done {
     return deleteMany(tx, [
         { table: tables.metadata, id: id },
         { table: tables.data, id: id },
     ], (_, err) => {
         if (err) return cb(undefined, err);
 
-        filterInPlace(tables.loadedMetadata, m => m[tables.metadata.keyPath] !== id);
+        filterInPlace(tables.allItemsAsync.val, m => m[tables.metadata.keyPath] !== id);
         return cb();
     });
 }

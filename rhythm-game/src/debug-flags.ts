@@ -41,20 +41,21 @@ export type DebugFlags = {
 };
 
 export const debugFlags: DebugFlags = {
-    testEditView: ON,
+    testEditView: OFF,
     testLoadSave: OFF,
 
     testEditViewExport:  OFF,
     testEditViewImport:  OFF,
     testCopyModal:       OFF,
-    testChart:           "Geostationary orbit",
     debuUndoBuffer:      OFF,
     testChartSelectView: OFF,
 
-    testGameplay:      OFF,
+    testGameplay:      ON,
     testGameplaySpeed: getSpeed(1),
     testPracticeMode:  OFF,
     testResultsView:   OFF,
+
+    testChart:           "Snarky puppy we like it here",
 
     testFixDatabase: OFF,
 

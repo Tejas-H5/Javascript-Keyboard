@@ -58,6 +58,7 @@ export type PlayingOscillator = {
         prevSignal: number;
         time: number;
         pressedTime: number;
+        pressedTimePlayback: number;
         releasedTime: number;
         volume: number;
         manuallyPressed: boolean;
@@ -328,6 +329,13 @@ export function processSample(s: DspState, idx: number) {
                     allUserNotes = false;
                     break;
                 }
+
+                const SLOP_TOLERANCE_SECONDS = 1;
+                if (osc.state.pressedTimePlayback + SLOP_TOLERANCE_SECONDS < nextItem.time) {
+                    // This user press is too old to count.
+                    allUserNotes = false;
+                    break;
+                }
             }
 
             // Pause playback as required
@@ -366,6 +374,7 @@ export function processSample(s: DspState, idx: number) {
                     osc.inputs.noteId = nextItem.noteId;
                     osc.inputs.signal = 1;
                     osc.state.pressedTime = osc.state.time;
+                    osc.state.pressedTimePlayback = trackPlayback.scheduledPlaybackTime;
                 }
                 osc.state.volume = max(s.trackPlayback.scheduledKeysVolume, osc.state.volume);
 
@@ -438,6 +447,7 @@ export function newPlayingOscilator(effectRack: EffectRack | null): PlayingOscil
             time: 0,
             releasedTime: 0,
             pressedTime: 0,
+            pressedTimePlayback: 0,
             volume: 0,
             manuallyPressed: false,
             value: 0,
@@ -561,6 +571,7 @@ export function dspReceiveMessage(s: DspState, e: DspLoopMessage) {
         osc.inputs = inputs;
         if (prevSignal === 0 && inputs.signal > 0) {
             osc.state.pressedTime = osc.state.time;
+            osc.state.pressedTimePlayback = s.trackPlayback.scheduledPlaybackTime;
         }
 
         giveUserOwnership(osc);

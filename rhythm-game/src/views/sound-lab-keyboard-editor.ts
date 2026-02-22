@@ -120,6 +120,7 @@ export function imKeyboardConfigEditor(
                             onEdited(editor);
                         }
                         if (ev.submit || ev.cancel) {
+                            ctx.handled = true
                         }
                     }
                 } imLayoutEnd(c);
@@ -191,6 +192,7 @@ export function imKeyboardConfigEditor(
 
                                         const ev = imTextInputOneLine(c, preset.name, undefined, isRenaming);
                                         if (ev) {
+                                            console.log("EVVVV", ev)
                                             if (ev.newName !== undefined) {
                                                 preset.name = ev.newName;
                                                 onEdited(editor);
@@ -198,6 +200,7 @@ export function imKeyboardConfigEditor(
                                             if (ev.submit || ev.cancel) {
                                                 editor.isRenamingSlotIdx = -1;
                                             }
+                                            ctx.handled = true;
                                         }
                                     } imLayoutEnd(c);
 
@@ -241,25 +244,6 @@ export function imKeyboardConfigEditor(
                                         onEdited(editor);
                                     }
                                 }
-
-                                if (!ctx.handled) {
-                                    if (ctx.keyPressState) {
-                                        const { key } = ctx.keyPressState;
-
-                                        if (key === "Escape") {
-                                            if (editor.isRenamingSlotIdx !== -1) {
-                                                editor.reassigningSlotIdx = -1;
-                                                ctx.handled = true;
-                                            } else if (editor.isRenamingSlotIdx !== -1) {
-                                                editor.isRenamingSlotIdx = -1;
-                                                ctx.handled = true;
-                                            } else if (editor.presetsUi.isRenaming) {
-                                                editor.presetsUi.isRenaming = false;
-                                                ctx.handled = true;
-                                            } 
-                                        }
-                                    }
-                                }
                             } imIfEnd(c);
                         } imLayoutEnd(c);
                     } imForEnd(c);
@@ -287,6 +271,7 @@ export function imKeyboardConfigEditor(
         action();
     }
 
+
     if (!ctx.handled) {
         if (ctx.blurredState) {
         }
@@ -295,23 +280,17 @@ export function imKeyboardConfigEditor(
         }
 
         if (ctx.keyPressState) {
-            const { keyUpper, ctrlPressed, shiftPressed, key } = ctx.keyPressState;
-
-            // if (keyUpper === "Z" && ctrlPressed && !shiftPressed) {
-            //     editor.deferredAction = () => editorUndo(editor);
-            //     ctx.handled = true;
-            // } else if (
-            //     (keyUpper === "Z" && ctrlPressed && shiftPressed) ||
-            //     (keyUpper === "Y" && ctrlPressed && !shiftPressed)
-            // ) {
-            //     editor.deferredAction = () => editorRedo(editor);
-            //     ctx.handled = true;
-            // } else if (key === "Escape") {
-            //     setViewChartSelect(ctx);
-            //     ctx.handled = true;
-            // }
-
-            if (!ctx.handled) {
+            const { key } = ctx.keyPressState;
+            
+            if (key === "Escape") {
+                if (editor.isRenamingSlotIdx !== -1) {
+                    editor.reassigningSlotIdx = -1;
+                    ctx.handled = true;
+                } else if (editor.presetsUi.isRenaming) {
+                    editor.presetsUi.isRenaming = false;
+                    ctx.handled = true;
+                }
+            } else {
                 const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, key);
                 if (instrumentKey) {
                     pressKey(instrumentKey.index, instrumentKey.noteId, ctx.keyPressState.isRepeat);
@@ -362,7 +341,7 @@ function imKeyboardConfigEditorPresetsList(c: ImCache, ctx: GlobalContext, edito
 
     imLayoutBegin(c, COL); imSize(c, 30, PERCENT, 0, NA); imScrollOverflow(c); {
         const keyboardPresets = ctx.repo.tables.keyboardPresets;
-        imFor(c); for (const preset of keyboardPresets.loadedMetadata) {
+        imFor(c); for (const preset of keyboardPresets.allItemsAsync.val) {
             const selected = preset.id === editor.keyboardConfig.id;
 
             imLayoutBegin(c, BLOCK); imHoverable(c, selected); {
@@ -390,16 +369,8 @@ function imKeyboardConfigEditorPresetsList(c: ImCache, ctx: GlobalContext, edito
                         if (ev.submit || ev.cancel) {
                             ui.isRenaming = false;
                         }
-                    }
-                    
-                    if (!ctx.handled) {
-                        if (ctx.keyPressState?.key === "Escape") {
-                            if (editor.presetsUi.isRenaming) {
-                                editor.presetsUi.isRenaming = false;
-                                ctx.handled = true;
-                            }
-                        }
-                    }
+                        ctx.handled = true;
+                    } 
                 } else {
                     imIfElse(c);
 
@@ -408,4 +379,13 @@ function imKeyboardConfigEditorPresetsList(c: ImCache, ctx: GlobalContext, edito
             } imLayoutEnd(c);
         } imForEnd(c);
     } imLayoutEnd(c);
+
+    if (!ctx.handled) {
+        if (ctx.keyPressState?.key === "Escape") {
+            if (editor.presetsUi.isRenaming) {
+                editor.presetsUi.isRenaming = false;
+                ctx.handled = true;
+            }
+        }
+    }
 }

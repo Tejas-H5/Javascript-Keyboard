@@ -65,6 +65,9 @@
 // simply so that the code is less indented.
 // Within this callback paradigm, deeply indented callbacks are a sign of several async steps one
 // after another, and this is also something that we should aim to minimize where possible.
+//
+// The main advantage of not using async/await is that whatever programming knowledge I gain here
+// can be transferred to other languages that don't have async-await.
 
 import { filterInPlace } from "./array-utils";
 import { assert } from "./assert";
@@ -74,7 +77,9 @@ import { assert } from "./assert";
  */
 export type AsyncCallback<T = void> = ((result: T | undefined, err?: unknown) => AsyncCallbackResult); 
 export type AsyncCb<T = void> = AsyncCallback<T>;
-export type AsyncDone = AsyncCallbackResult;
+export type Done = AsyncCallbackResult;
+
+export type AsyncCallbackZII<T = void> = ((result: T | undefined, err?: unknown) => AsyncCallbackResult); 
 
 
 /**
@@ -100,10 +105,10 @@ export type AsyncDone = AsyncCallbackResult;
 export type AsyncCallbackResult = number & { readonly __AsyncCallbackResult: unique symbol };
 // hopefully, `return undefined;` can be optimized by the compiler to do tail recursion, since its not really returning anything,
 // and we can still get our compiler error
-export const DONE = undefined as unknown as AsyncDone;
+export const DONE = undefined as unknown as Done;
 // Some other alternatives to 'DONE' to make intent more clear
 export const CANCELLED = DONE; // This action was cancelled. We aren't calling the user's callback on purpose.
-export const DISPATCHED_ELSEWHERE = DONE; // This action dispatched callbacks in an unusual way. You'll need to review it's correctness.
+export const DISPATCHED_LATER = DONE; // This action dispatched callbacks in an unusual way. You'll need to review it's correctness.
 
 export function newError(message: string) {
     console.error(message);
@@ -138,7 +143,7 @@ export function done<T>(_val: T | undefined, _err?: any) {
     return DONE;
 }
 
-export function toAsyncCallback<T>(p: Promise<T>, cb: AsyncCallback<T>): AsyncDone {
+export function toAsyncCallback<T>(p: Promise<T>, cb: AsyncCallback<T>): Done {
     p
         .then(val => cb(val))
         .catch(err => {
@@ -146,7 +151,7 @@ export function toAsyncCallback<T>(p: Promise<T>, cb: AsyncCallback<T>): AsyncDo
             cb(undefined, err)
         });
 
-    return DISPATCHED_ELSEWHERE;
+    return DISPATCHED_LATER;
 }
 
 // How do you use for-loops with a callback-based concurrency model? you can't. 
@@ -230,14 +235,14 @@ export function asyncResult<T>(asyncFn: AsyncFunction<T>, cb: AsyncCb<AsyncResul
 
 export function asyncResultsAll<T extends unknown[]>(
     asyncMethods: { [K in keyof T]: AsyncFunction<T[K]> },
-    resultsCallback: (results: { [K in keyof T]: AsyncResult<T[K]> }) => AsyncDone,
-): AsyncDone {
+    resultsCallback: (results: { [K in keyof T]: AsyncResult<T[K]> }) => Done,
+): Done {
     let finishedCount = 0;
     const asyncResults = asyncMethods.map(fn => asyncResult(fn, onFinished));
 
-    return DISPATCHED_ELSEWHERE;
+    return DISPATCHED_LATER;
 
-    function onFinished(): AsyncDone {
+    function onFinished(): Done {
         finishedCount += 1;
         if (finishedCount !== asyncResults.length) {
             return DONE;
@@ -329,3 +334,87 @@ export function getTrackedAsyncActions() {
     return trackedAsyncActions;
 }
 
+
+///////////////////////////////
+// Attempt 2
+
+export type AsyncEventStatus = number & { readonly __AsyncEventStatus: unique symbol };
+
+export const ASYNC_NOT_STARTED = 0 as AsyncEventStatus;
+export const ASYNC_LOADING     = 1 as AsyncEventStatus;
+export const ASYNC_LOADED      = 2 as AsyncEventStatus;
+export const ASYNC_CANCELLED   = 3 as AsyncEventStatus;
+
+export type AsyncState<T> = {
+    handlers: AsyncCb<T>[];
+    val: T;
+    err: unknown;
+    status:
+        | typeof ASYNC_NOT_STARTED
+        | typeof ASYNC_LOADING
+        | typeof ASYNC_LOADED;
+
+    populate: AsyncCb<T>;
+}
+
+export function newAsyncState<T>(zeroValue: T): AsyncState<T> {
+    const event: AsyncState<T> = {
+        handlers: [],
+        status: ASYNC_NOT_STARTED,
+        val: zeroValue,
+        err: undefined,
+        populate: (val, err) => populateAsyncState(event, val ?? zeroValue, err),
+    };
+    return event;
+}
+
+export function cancelAsyncState<T>(ev: AsyncState<T>) {
+    ev.status = ASYNC_CANCELLED;
+}
+
+export function onAsyncStateLoaded<T>(
+    ev: AsyncState<T>,
+    fn: AsyncCb<T>,
+): Done {
+    if (ev.status === ASYNC_CANCELLED) return CANCELLED;
+
+    if (ev.status !== ASYNC_LOADED) {
+        ev.handlers.push(fn);
+        return DISPATCHED_LATER;
+    }
+
+    return fn(ev.val, ev.err);
+}
+
+export function populateAsyncState<T>(ev: AsyncState<T>, val: T, err: unknown): Done {
+    if (ev.status === ASYNC_CANCELLED) return CANCELLED;
+    if (ev.status === ASYNC_LOADED) {
+        console.log("a double-dispatch was ignored");
+        return DONE;
+    }
+
+    ev.val = val;
+    ev.err = err;
+
+    ev.status = ASYNC_LOADED;
+    for (let i = 0; i < ev.handlers.length; i++) {
+        const handler = ev.handlers[i];
+        try {
+            handler(val);
+        } catch(e) {
+            console.error("an error occured when handling an event:", e);
+        }
+    }
+    return DONE;
+}
+
+export function startLoadingAsyncState<T>(ev: AsyncState<T>): boolean {
+    let result = false;
+
+    if (ev.status === ASYNC_NOT_STARTED) {
+        ev.status = ASYNC_LOADING;
+        result = true;
+    }
+
+    return result;
+}

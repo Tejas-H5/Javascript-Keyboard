@@ -61,6 +61,7 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                         } 
                         if (ev.submit || ev.cancel) {
                             s.isRenaming = false;
+                            ctx.handled = true;
                         }
                     }
                 } else {
