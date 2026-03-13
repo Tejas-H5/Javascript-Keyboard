@@ -1,5 +1,4 @@
-import { ImCache, imFor, imForEnd, imMemo, imState, isFirstishRender } from 'src/utils/im-core.ts';
-import { elHasMouseOver, elSetStyle, getGlobalEventSystem, imTrackSize } from 'src/utils/im-dom.ts';
+import { ImCache, im, imdom } from 'src/utils/im-js';
 import { clamp, inverseLerp, lerp } from 'src/utils/math-utils.ts';
 import { BLOCK, imLayoutBegin, imLayoutEnd } from './core/layout.ts';
 import { cssVars } from './core/stylesheets.ts';
@@ -15,37 +14,37 @@ export function imSliderInput(
     start: number, end: number, step: number | null, 
     value: number = start,
 ): number {
-    const s = imState(c, newSliderState);
+    const s = im.State(c, newSliderState);
 
     if (end < start) {
         [start, end] = [end, start];
     }
     value = clamp(value, start, end);
 
-    const valueChanged = imMemo(c, value);
-    const sliderStartChanged = imMemo(c, start);
-    const sliderEndChanged = imMemo(c, end);
+    const valueChanged = im.Memo(c, value);
+    const sliderStartChanged = im.Memo(c, start);
+    const sliderEndChanged = im.Memo(c, end);
     const width = end - start;
 
     const sliderBody = imLayoutBegin(c, BLOCK); {
-        const { size } = imTrackSize(c);
+        const { size } = imdom.TrackSize(c);
 
-        const widthChanged = imMemo(c, size.width);
+        const widthChanged = im.Memo(c, size.width);
 
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "display", "flex");
-            elSetStyle(c, "flex", "1");
-            elSetStyle(c, "position", "relative");
-            elSetStyle(c, "backgroundColor", cssVars.bg2);
-            elSetStyle(c, "borderRadius", "1000px");
-            elSetStyle(c, "cursor", "ew-resize");
-            elSetStyle(c, "userSelect", "none");
+        if (im.isFirstishRender(c)) {
+            imdom.setStyle(c, "display", "flex");
+            imdom.setStyle(c, "flex", "1");
+            imdom.setStyle(c, "position", "relative");
+            imdom.setStyle(c, "backgroundColor", cssVars.bg2);
+            imdom.setStyle(c, "borderRadius", "1000px");
+            imdom.setStyle(c, "cursor", "ew-resize");
+            imdom.setStyle(c, "userSelect", "none");
         }
 
         const sliderHandleSize = size.height;
 
         // little dots for every step
-        imFor(c); if (step) {
+        im.For(c); if (step) {
             const count = Math.floor(width / step);
             if (count < 50) {
                 for (let i = 0; i < count - 1; i++) {
@@ -53,44 +52,44 @@ export function imSliderInput(
                     const sliderPos = lerp(0, size.width - sliderHandleSize, t);
 
                     imLayoutBegin(c, BLOCK); {
-                        if (isFirstishRender(c)) {
-                            elSetStyle(c, "position", "absolute");
-                            elSetStyle(c, "aspectRatio", "1 / 1");
-                            elSetStyle(c, "height", "100%");
-                            elSetStyle(c, "backgroundColor", cssVars.mg);
-                            elSetStyle(c, "transformOrigin", "center");
-                            elSetStyle(c, "transform", "scale(0.4) rotate(45deg)");
+                        if (im.isFirstishRender(c)) {
+                            imdom.setStyle(c, "position", "absolute");
+                            imdom.setStyle(c, "aspectRatio", "1 / 1");
+                            imdom.setStyle(c, "height", "100%");
+                            imdom.setStyle(c, "backgroundColor", cssVars.mg);
+                            imdom.setStyle(c, "transformOrigin", "center");
+                            imdom.setStyle(c, "transform", "scale(0.4) rotate(45deg)");
                         }
 
-                        elSetStyle(c, "left", sliderPos + "px");
+                        imdom.setStyle(c, "left", sliderPos + "px");
                     } imLayoutEnd(c);
                 }
             }
-        } imForEnd(c);
+        } im.ForEnd(c);
 
         // slider handle
         imLayoutBegin(c, BLOCK); {
-            if (isFirstishRender(c)) {
-                elSetStyle(c, "position", "absolute");
-                elSetStyle(c, "backgroundColor", cssVars.fg);
-                elSetStyle(c, "borderRadius", "1000px");
-                elSetStyle(c, "aspectRatio", "1 / 1");
-                elSetStyle(c, "height", "100%");
-                elSetStyle(c, "userSelect", "none");
-                elSetStyle(c, "cursor", "ew-resize");
+            if (im.isFirstishRender(c)) {
+                imdom.setStyle(c, "position", "absolute");
+                imdom.setStyle(c, "backgroundColor", cssVars.fg);
+                imdom.setStyle(c, "borderRadius", "1000px");
+                imdom.setStyle(c, "aspectRatio", "1 / 1");
+                imdom.setStyle(c, "height", "100%");
+                imdom.setStyle(c, "userSelect", "none");
+                imdom.setStyle(c, "cursor", "ew-resize");
             }
 
             if (valueChanged || sliderStartChanged || sliderEndChanged || widthChanged) {
                 const t = inverseLerp(value, start, end);
                 const sliderPos = lerp(0, size.width - sliderHandleSize, t);
-                elSetStyle(c, "left", sliderPos + "px");
+                imdom.setStyle(c, "left", sliderPos + "px");
             }
         } imLayoutEnd(c);
 
-        const { mouse }  = getGlobalEventSystem();
+        const mouse = imdom.getMouse();
 
-        if (imMemo(c, mouse.leftMouseButton)) {
-            if (elHasMouseOver(c, sliderBody) && mouse.leftMouseButton) {
+        if (im.Memo(c, mouse.leftMouseButton)) {
+            if (imdom.hasMouseOver(c, sliderBody) && mouse.leftMouseButton) {
                 s.startedDragging = true;
             } else {
                 s.startedDragging = false;

@@ -1,7 +1,7 @@
 import { DisplayType, imAlign, imLayoutBegin, imLayoutEnd, imNoWrap, INLINE, ROW } from "src/components/core/layout.ts";
 import { newCssBuilder } from "src/utils/cssb.ts";
-import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core.ts";
-import { elHasMousePress, elSetClass, imStr } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { cssVars } from "./core/stylesheets.ts";
 
 const cssb = newCssBuilder();
@@ -41,15 +41,15 @@ export const BUTTON_TOGGLED = 1 << 0;
 export const BUTTON_HIDDEN = 1 << 1;
 
 export function imButton(c: ImCache, flags = 0) {
-    if (isFirstishRender(c)) {
-        elSetClass(c, cnButton);
+    if (im.isFirstishRender(c)) {
+        imdom.setClass(c, cnButton);
     }
 
-    if (imMemo(c, flags)) {
+    if (im.Memo(c, flags)) {
         const toggled = !!(flags & BUTTON_TOGGLED);
         const hidden = !!(flags & BUTTON_HIDDEN);
-        elSetClass(c, "toggled", toggled);
-        elSetClass(c, "hidden", hidden);
+        imdom.setClass(c, "toggled", toggled);
+        imdom.setClass(c, "hidden", hidden);
     }
 }
 
@@ -63,19 +63,19 @@ export function imButtonBegin(
     let result = false;
 
     imLayoutBegin(c, type); imButton(c, flags); imAlign(c); imNoWrap(c); {
-        if (imMemo(c, compact)) {
-            elSetClass(c, "compact", compact);
+        if (im.Memo(c, compact)) {
+            imdom.setClass(c, "compact", compact);
         }
 
         imLayoutBegin(c, INLINE); {
-            if (isFirstishRender(c)) {
-                elSetClass(c, "inner");
+            if (im.isFirstishRender(c)) {
+                imdom.setClass(c, "inner");
             }
 
-            imStr(c, text);
+            imdom.Str(c, text);
 
             if (!(flags & BUTTON_HIDDEN)) {
-                result = elHasMousePress(c);
+                result = imdom.hasMousePress(c);
             }
         } // imLayoutEnd(c);
     } // imLayoutEnd(c);

@@ -1,14 +1,14 @@
-import { ImCache, imMemo } from "src/utils/im-core";
-import { EL_A, elSetAttr, imElBegin, imElEnd, imStr } from "src/utils/im-dom";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 
 export function imLink(c: ImCache, url: string, text: string = url) {
-    imElBegin(c, EL_A); {
-        if (imMemo(c, url)) {
-            elSetAttr(c, "rel", "nofollow noopener noreferrer external");
-            elSetAttr(c, "target", "_blank");
-            elSetAttr(c, "href", url);
+    imdom.ElBegin(c, el.A); {
+        if (im.Memo(c, url)) {
+            imdom.setAttr(c, "rel", "nofollow noopener noreferrer external");
+            imdom.setAttr(c, "target", "_blank");
+            imdom.setAttr(c, "href", url);
         }
 
-        imStr(c, text);
-    } imElEnd(c, EL_A);
+        imdom.Str(c, text);
+    } imdom.ElEnd(c, el.A);
 }

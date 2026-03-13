@@ -1,16 +1,7 @@
 import { imFlex } from "src/components/core/layout.ts";
 import { imTextInputBegin, imTextInputEnd } from "src/components/text-input.ts";
-import {
-    ImCache,
-    imMemo
-} from "src/utils/im-core.ts";
-import {
-    elSetAttr,
-    EV_BLUR,
-    EV_INPUT,
-    getGlobalEventSystem,
-    imOn
-} from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 
 export function imTextInputOneLine(
     c: ImCache,
@@ -25,11 +16,11 @@ export function imTextInputOneLine(
         value: currentName,
         placeholder: placeholder,
     }); imFlex(c); {
-        if (imMemo(c, canFocusWithTab)) {
-            elSetAttr(c, "tabindex", "-1", input.root);
+        if (im.Memo(c, canFocusWithTab)) {
+            imdom.setAttr(c, "tabindex", "-1", input.root);
         }
 
-        if (imMemo(c, hasFocus) && hasFocus) {
+        if (im.Memo(c, hasFocus) && hasFocus) {
             setTimeout(() => {
                 input.root.focus();
                 input.root.select();
@@ -38,13 +29,13 @@ export function imTextInputOneLine(
 
         const isFocused = document.activeElement === input.root;
 
-        const inputEvent = imOn(c, EV_INPUT);
-        const blur =       imOn(c, EV_BLUR);
+        const inputEvent = imdom.On(c, ev.INPUT);
+        const blur =       imdom.On(c, ev.BLUR);
 
         if (inputEvent) {
             val = { newName: input.root.value };
         } else {
-            const keyboard = getGlobalEventSystem().keyboard;
+            const keyboard = imdom.getKeyboard();
             if ((isFocused && keyboard.keyDown?.key === "Enter") || blur) {
                 val = { submit: true, newName: input.root.value }
             } else if (isFocused && keyboard.keyDown?.key === "Escape") {

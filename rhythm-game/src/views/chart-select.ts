@@ -10,8 +10,8 @@ import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "
 import { assert } from "src/utils/assert.ts";
 import { AsyncCallback, AsyncCallbackResult, done } from "src/utils/async-utils.ts";
 import { scrollIntoViewVH } from "src/utils/dom-utils.ts";
-import { ImCache, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, isFirstishRender } from "src/utils/im-core.ts";
-import { EL_H2, elHasMouseOver, elHasMousePress, elSetStyle, imElBegin, imElEnd, imStr } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { arrayMax, clamp, lerp } from "src/utils/math-utils.ts";
 import {
     GlobalContext,
@@ -108,39 +108,39 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
         imLayoutBegin(c, ROW); imAlign(c, STRETCH); imFlex(c); {
             imLayoutBegin(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX); {
                 const scrollContainer = imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c, true); {
-                    if (imIf(c) && availableCharts.length > 0) {
-                        const lastSelected = imGetInline(c, imChartSelect) ?? imSet(c, { id: 0 });
+                    if (im.If(c) && availableCharts.length > 0) {
+                        const lastSelected = im.GetInline(c, imChartSelect) ?? im.Set(c, { id: 0 });
 
-                        imFor(c); for (let i = 0; i < availableCharts.length; i++) {
+                        im.For(c); for (let i = 0; i < availableCharts.length; i++) {
                             const metadata = availableCharts[i];
                             const chartSelected = s.currentChartMeta === metadata;
 
                             const root = imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
                                 imHoverable(c, chartSelected);
-                                if (elHasMouseOver(c)) {
+                                if (imdom.hasMouseOver(c)) {
                                     if (lastSelected.id !== metadata.id) {
                                         lastSelected.id = metadata.id;
                                         setCurrentChartMeta(ctx, metadata, done);
                                     }
                                 }
 
-                                const chartSelectedChanged = imMemo(c, chartSelected);
+                                const chartSelectedChanged = im.Memo(c, chartSelected);
                                 if (chartSelectedChanged && chartSelected) {
                                     scrollIntoViewVH(scrollContainer, root, 0.5);
                                 }
 
-                                imStr(c, metadata.name);
-                                if (currentChart && elHasMousePress(c)) {
+                                imdom.Str(c, metadata.name);
+                                if (currentChart && imdom.hasMousePress(c)) {
                                     setViewPlayCurrentChart(ctx);
                                 }
 
                                 imFlex1(c);
 
-                                imStr(c, isBundledChartId(metadata.id) ? "[bundled]" : "");
+                                imdom.Str(c, isBundledChartId(metadata.id) ? "[bundled]" : "");
                             } imLayoutEnd(c);
-                        } imForEnd(c);
+                        } im.ForEnd(c);
                     } else {
-                        imIfElse(c);
+                        im.IfElse(c);
                         imLayoutBegin(c, BLOCK); {
                             // We have react-suspense at home. xD
                             // Actually we don't. I'm pretty sure it can be done though, but prob not worth the effort yet.
@@ -148,34 +148,34 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                             // and then rendering the loading component to a background node while we evaluate the promises,
                             // and then switch the fallback out with the final component once the promises have loaded.
                             // I simply can't be bothered implementing it because I don't need it.
-                            // The API would be similar to imIf()/imIfElse()/imIfEnd() but without
+                            // The API would be similar to im.If()/im.IfElse()/im.IfEnd() but without
                             // an actual if statement. 
-                            imStr(c, "Loading...");
+                            imdom.Str(c, "Loading...");
                         } imLayoutEnd(c);
-                    } imIfEnd(c);
+                    } im.IfEnd(c);
                 } imLayoutEnd(c);
                 imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
-                    if (imIf(c) && currentChart) {
-                        if (imIf(c) && currentChart.timeline.length === 0) {
-                            imStr(c, "Empty chart");
+                    if (im.If(c) && currentChart) {
+                        if (im.If(c) && currentChart.timeline.length === 0) {
+                            imdom.Str(c, "Empty chart");
                         } else {
-                            imIfElse(c);
+                            im.IfElse(c);
 
                             if (imButtonIsClicked(c, "Play")) {
                                 setViewPlayCurrentChart(ctx);
                             }
-                        } imIfEnd(c);
+                        } im.IfEnd(c);
 
                         if (imButtonIsClicked(c, "Edit")) {
                             setViewEditChart(ctx);
                         }
                     } else {
-                        imIfElse(c);
+                        im.IfElse(c);
 
                         imLayoutBegin(c, BLOCK); {
-                            imStr(c, "Loading....");
+                            imdom.Str(c, "Loading....");
                         } imLayoutEnd(c);
-                    } imIfEnd(c);
+                    } im.IfEnd(c);
 
                     imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
@@ -193,48 +193,48 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
 
             imLine(c, LINE_VERTICAL, 1);
 
-            if (imIf(c) && currentChart) {
+            if (im.If(c) && currentChart) {
                 const bundled = currentChart._savedStatus === CHART_STATUS_READONLY;
                 imLayoutBegin(c, COL); imFlex(c); {
                     imLayoutBegin(c, COL); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                        imElBegin(c, EL_H2); {
+                        imdom.ElBegin(c, el.H2); {
                             imLayoutBegin(c, ROW); {
                                 imLayoutBegin(c, ROW); {
-                                    imStr(c, currentChart.name);
+                                    imdom.Str(c, currentChart.name);
                                 } imLayoutEnd(c);
 
                                 imLayoutBegin(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
 
                                 imLayoutBegin(c, ROW); {
-                                    imStr(c, "<Artist Name>");
+                                    imdom.Str(c, "<Artist Name>");
                                 } imLayoutEnd(c);
 
                                 imLayoutBegin(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
 
                                 imLayoutBegin(c, ROW); {
-                                    imStr(c, bundled ? "[Bundled]" : "Some player");
+                                    imdom.Str(c, bundled ? "[Bundled]" : "Some player");
                                 } imLayoutEnd(c);
                             } imLayoutEnd(c);
-                        } imElEnd(c, EL_H2);
+                        } imdom.ElEnd(c, el.H2);
 
                         imLayoutBegin(c, BLOCK); {
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c, "whiteSpace", "pre-wrap");
+                            if (im.isFirstishRender(c)) {
+                                imdom.setStyle(c, "whiteSpace", "pre-wrap");
                             }
 
-                            imStr(c, "<Artist name>\n<View link> | <purchase link>\nI made this map because blah blah blah balh. blah blah blah. I hope you like it!");
+                            imdom.Str(c, "<Artist name>\n<View link> | <purchase link>\nI made this map because blah blah blah balh. blah blah blah. I hope you like it!");
                         } imLayoutEnd(c);
                     } imLayoutEnd(c);
 
                     imChartStatistics(c, ctx, currentChart);
                 } imLayoutEnd(c);
             } else {
-                imIfElse(c);
+                im.IfElse(c);
 
                 imLayoutBegin(c, BLOCK); {
-                    imStr(c, "Loading....");
+                    imdom.Str(c, "Loading....");
                 } imLayoutEnd(c);
-            } imIfEnd(c);
+            } im.IfEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 
@@ -253,16 +253,16 @@ function imChartStatistics(
     ctx: GlobalContext,
     currentChart: SequencerChart
 ) {
-    let musicNoteHashToKeyboardKeyIdx; musicNoteHashToKeyboardKeyIdx = imGetInline(c, imGetInline);
+    let musicNoteHashToKeyboardKeyIdx; musicNoteHashToKeyboardKeyIdx = im.GetInline(c, im.GetInline);
     if (!musicNoteHashToKeyboardKeyIdx) {
-        musicNoteHashToKeyboardKeyIdx = imSet(c, new Map<number, InstrumentKey>());
+        musicNoteHashToKeyboardKeyIdx = im.Set(c, new Map<number, InstrumentKey>());
         for (const key of ctx.keyboard.flatKeys) {
             musicNoteHashToKeyboardKeyIdx.set(key.noteId, key);
         }
     }
 
-    const currentChartChanged = imMemo(c, currentChart);
-    let s; s = imGetInline(c, imChartStatistics);
+    const currentChartChanged = im.Memo(c, currentChart);
+    let s; s = im.GetInline(c, imChartStatistics);
     if (!s || currentChartChanged) {
         const val = {
             keyFrequencies: Array(ctx.keyboard.flatKeys.length).fill(0) as number[],
@@ -280,7 +280,7 @@ function imChartStatistics(
 
         val.maxFrequency = arrayMax(val.keyFrequencies);
 
-        s = imSet(c, val);
+        s = im.Set(c, val);
     }
 
     imLayoutBegin(c, COL); imFlex(c); {
@@ -290,8 +290,8 @@ function imChartStatistics(
 
             imLayoutBegin(c, BLOCK); imSize(c, 20, PERCENT, 0, NA); imPadding(c, 5, PX, 10, PX, 10, PX, 10, PX); {
                 imLayoutBegin(c, BLOCK); {
-                    imStr(c, currentChart.timeline.length);
-                    imStr(c, " notes");
+                    imdom.Str(c, currentChart.timeline.length);
+                    imdom.Str(c, " notes");
                 } imLayoutEnd(c);
 
                 // Flexbox has to be the most overpowered layout concept. Can literally make any layout.
@@ -300,42 +300,42 @@ function imChartStatistics(
 
                 const root = imLayoutBegin(c, ROW); imSize(c, 0, NA, 100, PERCENT); {
                     const height = root.clientHeight;
-                    if (imMemo(c, height)) {
+                    if (im.Memo(c, height)) {
                         const fontSize = (height - (ctx.keyboard.keys.length * 2)) / ctx.keyboard.flatKeys.length;
-                        elSetStyle(c, "lineHeight", "1");
-                        elSetStyle(c, "fontSize", fontSize + "px");
+                        imdom.setStyle(c, "lineHeight", "1");
+                        imdom.setStyle(c, "fontSize", fontSize + "px");
                     }
 
                     imLayoutBegin(c, COL); {
-                        imFor(c); for (const row of ctx.keyboard.keys) {
+                        im.For(c); for (const row of ctx.keyboard.keys) {
                             for (const key of row) {
                                 imLayoutBegin(c, BLOCK); {
-                                    imStr(c, key.keyboardKey);
-                                    imStr(c, " -> ");
-                                    imStr(c, key.noteText);
+                                    imdom.Str(c, key.keyboardKey);
+                                    imdom.Str(c, " -> ");
+                                    imdom.Str(c, key.noteText);
                                 } imLayoutEnd(c);
                             }
 
                             imLine(c, LINE_HORIZONTAL, 2);
-                        } imForEnd(c);
+                        } im.ForEnd(c);
                     } imLayoutEnd(c);
                     imLayoutBegin(c, COL); imFlex(c); {
-                        imFor(c); for (const row of ctx.keyboard.keys) {
+                        im.For(c); for (const row of ctx.keyboard.keys) {
                             for (const key of row) {
                                 const count = s.keyFrequencies[key.index];
                                 const normalized = count / s.maxFrequency;
                                 imLayoutBegin(c, BLOCK); imBg(c, cssVarsApp.fg); {
-                                    if (isFirstishRender(c)) {
-                                        elSetStyle(c, "color", cssVars.bg);
+                                    if (im.isFirstishRender(c)) {
+                                        imdom.setStyle(c, "color", cssVars.bg);
                                     }
 
                                     imSize(c, 100 * normalized, PERCENT, 0, NA);
-                                    imStr(c, count);
+                                    imdom.Str(c, count);
                                 } imLayoutEnd(c);
                             }
 
                             imLayoutBegin(c, BLOCK); imBg(c, cssVarsApp.fg); imSize(c, 0, NA, 2, PX); imLayoutEnd(c);
-                        } imForEnd(c);
+                        } im.ForEnd(c);
                     } imLayoutEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
@@ -344,17 +344,17 @@ function imChartStatistics(
 
             const root = imLayoutBegin(c, COL); imFlex(c); imAlign(c, STRETCH); {
                 const width = root.clientWidth;
-                const widthChanged = imMemo(c, root.clientWidth);
+                const widthChanged = im.Memo(c, root.clientWidth);
 
                 imLayoutBegin(c, ROW); imFlex(c); {
                     imVerticalText(c); {
-                        imStr(c, "Transitions");
+                        imdom.Str(c, "Transitions");
                     } imLayoutEnd(c);
 
                     imLine(c, LINE_VERTICAL, 1);
 
                     imLayoutBegin(c, ROW); imFlex(c); {
-                        let vis; vis = imGetInline(c, imChartStatistics);
+                        let vis; vis = im.GetInline(c, imChartStatistics);
                         if (!vis || currentChartChanged || widthChanged) {
                             const n = Math.floor(width / 4);
                             const transitions: number[] = Array(n).fill(0);
@@ -379,7 +379,7 @@ function imChartStatistics(
 
                             const maxTransitions = Math.max(7, arrayMax(transitions));
 
-                            vis = imSet(c, { transitions, maxTransitions });
+                            vis = im.Set(c, { transitions, maxTransitions });
                         }
 
                         imVerticalHistogram(c, vis.transitions, vis.maxTransitions);
@@ -390,13 +390,13 @@ function imChartStatistics(
 
                 imLayoutBegin(c, ROW); imFlex(c); {
                     imVerticalText(c); {
-                        imStr(c, "Concurrency");
+                        imdom.Str(c, "Concurrency");
                     } imLayoutEnd(c);
 
                     imLine(c, LINE_VERTICAL, 1);
 
                     imLayoutBegin(c, ROW); imFlex(c); {
-                        let vis; vis = imGetInline(c, imChartStatistics);
+                        let vis; vis = im.GetInline(c, imChartStatistics);
                         if (!vis || currentChartChanged || widthChanged) {
                             const n = Math.floor(width / 4);
                             const concurrency: number[] = Array(n).fill(0);
@@ -410,7 +410,7 @@ function imChartStatistics(
 
                             const maxConcurrency = Math.max(7, arrayMax(concurrency));
 
-                            vis = imSet(c, { concurrency, maxConcurrency });
+                            vis = im.Set(c, { concurrency, maxConcurrency });
                         }
 
                         imVerticalHistogram(c, vis.concurrency, vis.maxConcurrency);
@@ -421,13 +421,13 @@ function imChartStatistics(
 
                 imLayoutBegin(c, ROW); imFlex(c); {
                     imVerticalText(c); {
-                        imStr(c, "Speed");
+                        imdom.Str(c, "Speed");
                     } imLayoutEnd(c);
 
                     imLine(c, LINE_VERTICAL, 1);
 
                     imLayoutBegin(c, ROW); imFlex(c); {
-                        let vis; vis = imGetInline(c, imChartStatistics);
+                        let vis; vis = im.GetInline(c, imChartStatistics);
                         if (!vis || currentChartChanged || widthChanged) {
                             const n = Math.floor(width / 4);
                             const speed: number[] = Array(n).fill(0);
@@ -449,7 +449,7 @@ function imChartStatistics(
 
                             const maxSpeed = arrayMax(speed);
 
-                            vis = imSet(c, { speed, maxSpeed });
+                            vis = im.Set(c, { speed, maxSpeed });
                         }
                         imVerticalHistogram(c, vis.speed, vis.maxSpeed);
                     } imLayoutEnd(c);
@@ -464,7 +464,7 @@ function imVerticalHistogram(c: ImCache, arr: number[], arrMax: number) {
     arrMax = Math.max(arrMax, 0.000001);
 
     imLayoutBegin(c, ROW); imAlign(c, STRETCH); imFlex(c); {
-        imFor(c); for (const val of arr) {
+        im.For(c); for (const val of arr) {
             imLayoutBegin(c, COL); imFlex(c); {
                 imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
                 const percent = 100 * val / arrMax;
@@ -472,7 +472,7 @@ function imVerticalHistogram(c: ImCache, arr: number[], arrMax: number) {
                     imBg(c, cssVars.fg); imSize(c, 0, NA, percent, PERCENT);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
-        } imForEnd(c);
+        } im.ForEnd(c);
     } imLayoutEnd(c);
 }
 

@@ -55,8 +55,8 @@ import {
 import { arrayAt } from "src/utils/array-utils.ts";
 import { assert } from "src/utils/assert.ts";
 import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour.ts";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core.ts";
-import { EL_B, elHasMouseOver, elSetClass, elSetStyle, imElBegin, imElEnd, imStr, imTrackSize, Stringifyable } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, Stringifyable, } from "src/utils/im-js";
+
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils.ts";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
 import { cssVarsApp, getCurrentTheme } from "./styling.ts";
@@ -378,7 +378,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     gameplayState.end = gameplayState.currentBeat + GAMEPLAY_BEATS_LOADAHEAD;
     gameplayState.endAnimated = gameplayState.currentBeatAnimated + GAMEPLAY_BEATS_VIEWPORT;
 
-    gameplayState.dt = gameplayState.pauseMenu.isPaused ? 0 : getDeltaTimeSeconds(c);
+    gameplayState.dt = gameplayState.pauseMenu.isPaused ? 0 : im.getDeltaTimeSeconds(c);
 
     if (gameplayState.penaltyEnabled) {
         gameplayState.penaltyTimer += gameplayState.dt;
@@ -414,11 +414,11 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     updatePracticeMode(ctx, gameplayState, chart);
 
     imLayoutBegin(c, COL); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "userSelect", "none");
+        if (im.isFirstishRender(c)) {
+            imdom.setStyle(c, "userSelect", "none");
         }
 
-        const { size: rootContainerSize } = imTrackSize(c);
+        const { size: rootContainerSize } = imdom.TrackSize(c);
 
         // We want to put the game inside a container that maintains it's aspect ratio, so that 
         // I can play this on my 4:3 screen as well.
@@ -460,23 +460,23 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
         imLayoutBegin(c, ROW); imJustify(c); 
         imAbsolute(c, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT); {
-            const { size: playfieldSize } = imTrackSize(c);
+            const { size: playfieldSize } = imdom.TrackSize(c);
             const dividerWidth = 2;
             const playfieldWidth = playfieldSize.width - (ctx.keyboard.keys.length * dividerWidth);
             const letterWidth = playfieldWidth / ctx.keyboard.flatKeys.length;
 
             imLayoutBegin(c, COL); imAbsolute(c, 0, PX, 0, PX, 0, NA, 0, PX); imZIndex(c, 10); imBg(c, `rgba(255, 255, 255, 0.4)`); {
                 imLayoutBegin(c, ROW); {
-                    if (isFirstishRender(c)) {
-                        elSetClass(c, cn.mediumFont);
-                        elSetClass(c, cn.noWrap);
+                    if (im.isFirstishRender(c)) {
+                        imdom.setClass(c, cn.mediumFont);
+                        imdom.setClass(c, cn.noWrap);
                     }
 
                     // using runway doesn' look as nice.
                     const runway = PENALTY_QUANTIZATION_START_SECONDS + PENALTY_QUANTIZATION_SECONDS;
                     const amountPenalized01 = (gameplayState.penaltyTimer + PENALTY_QUANTIZATION_START_SECONDS) / PENALTY_QUANTIZATION_START_SECONDS;
 
-                    const colours = imGetInline(c, imGameplay) ?? imSet(c, {
+                    const colours = im.GetInline(c, imGameplay) ?? im.Set(c, {
                         barColor: newColor(0, 0, 0, 0),
                         textColor: newColor(0, 0, 0, 0),
                     });
@@ -492,13 +492,13 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                         imAbsolute(c, 0, PX, 0, PX, 0, NA, 0, PX);
                         imSize(c, 0, NA, 2, EM);
 
-                        if (isFirstishRender(c)) {
-                            elSetStyle(c, "background", "rgba(0, 0, 0, 0");
+                        if (im.isFirstishRender(c)) {
+                            imdom.setStyle(c, "background", "rgba(0, 0, 0, 0");
                         }
-                        if (imMemo(c, amountPenalized01)) {
+                        if (im.Memo(c, amountPenalized01)) {
                             const c1 = colours.barColor;
                             const c2 = `rgba(255, 255, 255, 0)`;
-                            elSetStyle(c, "background", `linear-gradient(180deg,${c1} 0%, ${c2} 100%)`);
+                            imdom.setStyle(c, "background", `linear-gradient(180deg,${c1} 0%, ${c2} 100%)`);
                         }
 
                         // imBg(c, colours.barColor.toString());
@@ -509,9 +509,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             imLayoutBegin(c, ROW); imFontSize(c, 1, EM); {
                                 im3DLookingText(c, chart.name);
 
-                                if (imIf(c) && debugFlags.testGameplaySpeed !== 1) {
+                                if (im.If(c) && debugFlags.testGameplaySpeed !== 1) {
                                     im3DLookingText(c, "[TEST:" + debugFlags.testGameplaySpeed.toFixed(2) + "x]");
-                                } imIfEnd(c);
+                                } im.IfEnd(c);
                             } imLayoutEnd(c);
                         } imLayoutEnd(c);
 
@@ -533,7 +533,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                         } imLayoutEnd(c);
 
                         imLayoutBegin(c, ROW); imFlex(c); imJustify(c, END); {
-                            if (imIf(c) && gameplayState.practiceMode.enabled) {
+                            if (im.If(c) && gameplayState.practiceMode.enabled) {
                                 let measuresCount = 0;
                                 for (const item of chart.timeline) {
                                     if (item.type === TIMELINE_ITEM_MEASURE) {
@@ -543,7 +543,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
                                 const requiredScore = practiceMode.scoreThisMeasure + practiceMode.maxScoreThisMeasure;
                                 im3DLookingText(c, gameplayState.score + " / " + requiredScore);
-                            } imIfEnd(c);
+                            } im.IfEnd(c);
                         } imLayoutEnd(c);
                     } imLayoutEnd(c);
                 } imLayoutEnd(c);
@@ -552,9 +552,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
             imLayoutBegin(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
                 gameplayState.avoidPenalty = true;
 
-                imFor(c); for (let rowIdx = 0; rowIdx < keyboard.keys.length; rowIdx++) {
+                im.For(c); for (let rowIdx = 0; rowIdx < keyboard.keys.length; rowIdx++) {
                     const row = keyboard.keys[rowIdx];
-                    imFor(c); for (let keyRowIdx = 0; keyRowIdx < row.length; keyRowIdx++) {
+                    im.For(c); for (let keyRowIdx = 0; keyRowIdx < row.length; keyRowIdx++) {
                         const instrumentKey = row[keyRowIdx];
 
                         const thread = gameplayState.keysMap.get(instrumentKey)?._items;
@@ -592,25 +592,25 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
                         // Vertical note
                         {
-                            const s = imState(c, newVerticalNoteThreadState);
+                            const s = im.State(c, newVerticalNoteThreadState);
 
 
                             const theme = getCurrentTheme();
 
                             copyColor(theme.bg, s.currentBgColor);
 
-                            if (imIf(c) && instrumentKey.isLeftmost) {
+                            if (im.If(c) && instrumentKey.isLeftmost) {
                                 imLayoutBegin(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
-                            } imEndIf(c);
+                            } im.IfEnd(c);
 
                             imLayoutBegin(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
                                 imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
                                 } imLayoutEnd(c);
 
                                 imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
-                                    imFor(c); for (let i = 0; i < thread.length; i++) {
+                                    im.For(c); for (let i = 0; i < thread.length; i++) {
                                         const item = thread[i];
-                                        const s = imState(c, newBarState);
+                                        const s = im.State(c, newBarState);
                                         const currentBeatInItem = isBeatWithinInclusve(item, gameplayState.currentBeatAnimated);
 
                                         if (item.type !== TIMELINE_ITEM_NOTE) continue;
@@ -647,8 +647,8 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                         }
 
                                         imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, heightPercent, PERCENT); {
-                                            if (isFirstishRender(c)) {
-                                                elSetStyle(c, "color", "transparent");
+                                            if (im.isFirstishRender(c)) {
+                                                imdom.setStyle(c, "color", "transparent");
                                             }
 
                                             imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT); imRelative(c); imBg(c, cssVarsApp.fg); {
@@ -656,9 +656,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                                 } imLayoutEnd(c);
                                             } imLayoutEnd(c);
                                         } imLayoutEnd(c);
-                                    } imEndFor(c);
+                                    } im.ForEnd(c);
 
-                                    imFor(c); for (const measure of gameplayState.measures) {
+                                    im.For(c); for (const measure of gameplayState.measures) {
                                         let bottomPercent = 100 * inverseLerp2(gameplayState.currentBeatAnimated, measure.start, gameplayState.endAnimated);
                                         if (bottomPercent > 100) continue;
                                         if (bottomPercent < -5) continue;
@@ -666,12 +666,12 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                         imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, 2, PX);
                                         imBg(c, cssVars.mg); {
                                         } imLayoutEnd(c);
-                                    } imForEnd(c);
+                                    } im.ForEnd(c);
                                 } imLayoutEnd(c);
 
                                 imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 2, PX); {
-                                    if (isFirstishRender(c)) {
-                                        elSetStyle(c, "backgroundColor", cssVarsApp.fg);
+                                    if (im.isFirstishRender(c)) {
+                                        imdom.setStyle(c, "backgroundColor", cssVarsApp.fg);
                                     }
                                 } imLayoutEnd(c);
 
@@ -694,9 +694,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                 imLetter(c, gameplayState, instrumentKey, thread, keyGain, letterColor, letterWidth);
                             } imLayoutEnd(c);
                         }
-                    } imEndFor(c);
+                    } im.ForEnd(c);
                     imLine(c, LINE_VERTICAL, dividerWidth);
-                } imEndFor(c);
+                } im.ForEnd(c);
 
                 if (gameplayState.avoidPenalty) {
                     gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
@@ -709,12 +709,12 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 
-    if (imIf(c) && gameplayState.pauseMenu.isPaused) {
+    if (im.If(c) && gameplayState.pauseMenu.isPaused) {
         // Pause menu
 
         imLayoutBegin(c, COL); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0,0,0, 0.4`); imZIndex(c, 100); {
-            if (isFirstishRender(c)) {
-                elSetStyle(c, "fontSize", "3em");
+            if (im.isFirstishRender(c)) {
+                imdom.setStyle(c, "fontSize", "3em");
             }
 
             imLayoutBegin(c, BLOCK); {
@@ -744,7 +744,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 ctx.handled = true;
             }
         }
-    } imIfEnd(c);
+    } im.IfEnd(c);
 
     if (!ctx.handled) {
         ctx.handled = handleGameplayKeyDown(ctx, gameplayState);
@@ -762,21 +762,21 @@ function imPauseMenuButton(
     imLayoutBegin(c, ROW); {
         const isSelected = uiIdx === gameplayState.pauseMenu.idx;
 
-        const hasMouseOver = elHasMouseOver(c);
-        if (imMemo(c, hasMouseOver) && hasMouseOver) {
+        const hasMouseOver = imdom.hasMouseOver(c);
+        if (im.Memo(c, hasMouseOver) && hasMouseOver) {
             gameplayState.pauseMenu.idx = uiIdx;
         }
 
-        if (imIf(c) && isSelected) {
+        if (im.If(c) && isSelected) {
             // The Inter font we're using for this game has a ligature that converts -> into a legit arrow character. 
             // Pretty crazy
-            imLayoutBegin(c, BLOCK); imStr(c, "->"); imLayoutEnd(c);
+            imLayoutBegin(c, BLOCK); imdom.Str(c, "->"); imLayoutEnd(c);
 
             if (!ctx.handled && ctx.keyPressState?.key === "Enter") {
                 result = true;
                 ctx.handled = true;
             }
-        } imIfEnd(c);
+        } im.IfEnd(c);
 
         if (imButtonIsClicked(c, text)) {
             result = true;
@@ -795,7 +795,7 @@ function imLetter(
     letterColor: CssColor | null,
     width: number,
 ) {
-    let s; s = imGetInline(c, imLetter) ?? imSet(c, {
+    let s; s = im.GetInline(c, imLetter) ?? im.Set(c, {
         textColor: newColor(0, 0, 0, 1),
         bgColor: newColor(0, 0, 0, 1),
     });
@@ -837,14 +837,14 @@ function imLetter(
         imFg(c, s.textColor.toString());
 
         imLayoutBegin(c, BLOCK); {
-            if (isFirstishRender(c)) {
-                elSetStyle(c, "fontSize", "2em");
-                elSetStyle(c, "height", "1.3em");
+            if (im.isFirstishRender(c)) {
+                imdom.setStyle(c, "fontSize", "2em");
+                imdom.setStyle(c, "height", "1.3em");
             }
 
-            imElBegin(c, EL_B); {
-                imStr(c, instrumentKey ? instrumentKey.text : "?");
-            } imElEnd(c, EL_B);
+            imdom.ElBegin(c, el.B); {
+                imdom.Str(c, instrumentKey ? instrumentKey.text : "?");
+            } imdom.ElEnd(c, el.B);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 }
@@ -853,11 +853,11 @@ function im3DLookingText(c: ImCache, value: Stringifyable) {
     imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imRelative(c); {
         imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 3, PX, 0, PX, 0, PX, 3, PX); {
             imFg(c, cssVars.bg);
-            imStr(c, value);
+            imdom.Str(c, value);
         } imLayoutEnd(c);
         imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imZIndex(c, 2); {
             imFg(c, cssVars.fg2);
-            imStr(c, value);
+            imdom.Str(c, value);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 }

@@ -1,7 +1,7 @@
 import { BLOCK, imBg, imFg, imFixed, imFixedXY, imLayoutBegin, imLayoutEnd, imOpacity, imSize, PX } from "src/components/core/layout.ts";
 import { cssVars } from "src/components/core/stylesheets.ts";
-import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, isFirstishRender } from "src/utils/im-core.ts";
-import { elHasMousePress, elSetStyle, EV_CONTEXTMENU, getGlobalEventSystem, imOn } from "src/utils/im-dom.ts";
+import { ev, im, ImCache, imdom } from "src/utils/im-js";
+
 import { clamp, deltaAngle, gridsnapRound, lerp01 } from "src/utils/math-utils.ts";
 
 export type CompactLinearDragSlideInteractionState = {
@@ -19,7 +19,7 @@ export function imCompactLinearDragSlideInteraction(
     min: number,
     max: number,
 ): CompactLinearDragSlideInteractionState {
-    const s = imGet(c, imCompactLinearDragSlideInteraction) ?? imSet(c, {
+    const s = im.Get(c, imCompactLinearDragSlideInteraction) ?? im.Set(c, {
         isDragging: false,
         lastMouseX: 0,
         // Track our own copy of the value being dragged, so that
@@ -27,17 +27,18 @@ export function imCompactLinearDragSlideInteraction(
         draggedValue: 0,
     });
 
-    if (isFirstishRender(c)) {
-        elSetStyle(c, "cursor", "ew-resize");
+    if (im.isFirstishRender(c)) {
+        imdom.setStyle(c, "cursor", "ew-resize");
     }
 
-    const { mouse, blur } = getGlobalEventSystem();
+    const mouse = imdom.getMouse();
+    const blur  = imdom.getBlur();
 
     let startedDragging = false;
 
     if (blur || !mouse.leftMouseButton) {
         s.isDragging = false;
-    } else if (elHasMousePress(c) && mouse.leftMouseButton) {
+    } else if (imdom.hasMousePress(c) && mouse.leftMouseButton) {
         startedDragging = true;
     }
 
@@ -149,16 +150,17 @@ export function imCompactCircularDragSlideInteraction(
     ringSizeExp: number,
     lockRing: boolean,
 ): CompactCircularDragSlideInteractionState {
-    const s = imState(c, newCompactCircularDragSlideInteractionState);
+    const s = im.State(c, newCompactCircularDragSlideInteractionState);
     s.value = value;
 
-    const { mouse, blur } = getGlobalEventSystem();
+    const mouse = imdom.getMouse();
+    const blur  = imdom.getBlur();
 
     let startedDragging = false;
 
     if (blur || !mouse.leftMouseButton) {
         s.isDragging = false;
-    } else if (elHasMousePress(c) && mouse.leftMouseButton) {
+    } else if (imdom.hasMousePress(c) && mouse.leftMouseButton) {
         startedDragging = true;
     }
 
@@ -230,12 +232,12 @@ export function imCompactCircularDragSlideInteraction(
 export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: CompactCircularDragSlideInteractionState) {
     let wantedCursor = "move";
 
-    if (imIf(c) && s.isDragging) {
+    if (im.If(c) && s.isDragging) {
         // Cursor handles
         imLayoutBegin(c, BLOCK); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-            if (isFirstishRender(c)) elSetStyle(c, "zIndex", "100000");
+            if (im.isFirstishRender(c)) imdom.setStyle(c, "zIndex", "100000");
 
-            const ctxEv = imOn(c, EV_CONTEXTMENU);
+            const ctxEv = imdom.On(c, ev.CONTEXTMENU);
             if (ctxEv) {
                 // used to re-center the rotation in a more comfortable position on the screen.
                 ctxEv.preventDefault();
@@ -251,28 +253,28 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
             wantedCursor = cursorsPerSector[wantedCursorIdx];
         } imLayoutEnd(c);
 
-        const angleChanged = imMemo(c, s.angle);
-        const ringDistanceChanged = imMemo(c, s.ringDistance);
+        const angleChanged = im.Memo(c, s.angle);
+        const ringDistanceChanged = im.Memo(c, s.ringDistance);
 
         // centerpoint
         imLayoutBegin(c, BLOCK); {
             imSize(c, 20, PX, 20, PX);
             imOpacity(c, lerp01(0, 0.5, s.distance / s.ringSize));
             imFixedXY(c, s.startMouseX, PX, s.startMouseY, PX);
-            if (isFirstishRender(c)) elSetStyle(c, "border", "2px solid " + cssVars.fg);
+            if (im.isFirstishRender(c)) imdom.setStyle(c, "border", "2px solid " + cssVars.fg);
 
             if (angleChanged) {
-                elSetStyle(c, "transform", `translate(-50%, -50%) rotateZ(${s.angle - Math.PI / 2}rad)`);
+                imdom.setStyle(c, "transform", `translate(-50%, -50%) rotateZ(${s.angle - Math.PI / 2}rad)`);
             }
         } imLayoutEnd(c);
 
 
         // dynamic dials
-        if (imIf(c) && s.ringIdx >= 0) {
+        if (im.If(c) && s.ringIdx >= 0) {
             const numTicks = Math.ceil(s.ringDistance * 2 * Math.PI / TICK_SPACING_MINIMUM);
             const tickSpacing = 2 * Math.PI / numTicks;
 
-            imFor(c); for (let i = 0; i <= numTicks; i++) {
+            im.For(c); for (let i = 0; i <= numTicks; i++) {
                 const width = 5;
                 const height = s.ringSize;
 
@@ -287,13 +289,13 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
                     imFixedXY(c, s.startMouseX, PX, s.startMouseY, PX);
 
                     if (ringDistanceChanged || angleChanged) {
-                        elSetStyle(c, "transform", `translate(-50%, -50%) rotateZ(${tickAngle}rad) translate(0, calc(50% + ${s.ringDistance}px)`);
+                        imdom.setStyle(c, "transform", `translate(-50%, -50%) rotateZ(${tickAngle}rad) translate(0, calc(50% + ${s.ringDistance}px)`);
                     }
                 } imLayoutEnd(c);
-            } imForEnd(c);
-        } imIfEnd(c);
+            } im.ForEnd(c);
+        } im.IfEnd(c);
 
-    } imIfEnd(c);
+    } im.IfEnd(c);
 
-    if (imMemo(c, wantedCursor)) elSetStyle(c, "cursor", wantedCursor);
+    if (im.Memo(c, wantedCursor)) imdom.setStyle(c, "cursor", wantedCursor);
 }

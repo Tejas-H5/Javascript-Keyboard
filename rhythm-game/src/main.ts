@@ -6,8 +6,8 @@ import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequen
 import { NAME_OPERATION_COPY } from "./state/ui-state.ts";
 import { assert } from "./utils/assert.ts";
 import { AsyncCb, Done, done, toAsyncCallback } from "./utils/async-utils.ts";
-import { getDeltaTimeSeconds, ImCache, imCacheBegin, imCacheEnd, imCatch, imEndIf, imIf, imIfElse, imIfEnd, imTry, imTryEnd, isFirstishRender, USE_REQUEST_ANIMATION_FRAME } from "./utils/im-core.ts";
-import { EL_H2, elSetStyle, imDomRootBegin, imDomRootEnd, imElBegin, imElEnd, imGlobalEventSystemBegin, imGlobalEventSystemEnd, imStr } from "./utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app.ts";
 
 "use strict"
@@ -107,53 +107,53 @@ function initGlobalContext(cb: AsyncCb<void>): Done {
 initGlobalContext(done);
 
 function imMainInner(c: ImCache) {
-    if (imIf(c) && globalContext) {
-        globalContext.deltaTime = getDeltaTimeSeconds(c);
+    if (im.If(c) && globalContext) {
+        globalContext.deltaTime = im.getDeltaTimeSeconds(c);
 
-        const tryState = imTry(c); try {
+        const tryState = im.Try(c); try {
             const { err } = tryState;
-            if (imIf(c) && !err) {
+            if (im.If(c) && !err) {
                 imApp(c, globalContext); // imMainInnerInner. xd
             } else {
-                imIfElse(c);
+                im.IfElse(c);
 
                 imLayoutBegin(c, BLOCK); {
-                    imElBegin(c, EL_H2); imStr(c, "An error occured..."); imElEnd(c, EL_H2);
+                    imdom.ElBegin(c, el.H2); imdom.Str(c, "An error occured..."); imdom.ElEnd(c, el.H2);
                     imLayoutBegin(c, BLOCK); {
-                        imStr(c, err);
+                        imdom.Str(c, err);
                     } imLayoutEnd(c);
 
-                    if (imIf(c) && err instanceof Error && err.stack) {
+                    if (im.If(c) && err instanceof Error && err.stack) {
                         imLayoutBegin(c, BLOCK); {
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c, "fontFamily", "monospace");
-                                elSetStyle(c, "whiteSpace", "pre");
+                            if (im.isFirstishRender(c)) {
+                                imdom.setStyle(c, "fontFamily", "monospace");
+                                imdom.setStyle(c, "whiteSpace", "pre");
                             }
 
-                            imStr(c, err.stack);
+                            imdom.Str(c, err.stack);
                         } imLayoutEnd(c);
-                    } imIfEnd(c);
+                    } im.IfEnd(c);
                 } imLayoutEnd(c);
-            } imIfEnd(c);
+            } im.IfEnd(c);
 
             imDiagnosticInfo(c, globalContext);
         } catch (err) {
-            imCatch(c, tryState, err);
+            im.Catch(c, tryState, err);
             console.error("An error in the render loop:", err);
-        } imTryEnd(c, tryState);
+        } im.TryEnd(c, tryState);
     } else {
-        imIfElse(c);
+        im.IfElse(c);
 
-        imLayoutBegin(c, BLOCK); imStr(c, "Loading..."); imLayoutEnd(c);
-    } imEndIf(c);
+        imLayoutBegin(c, BLOCK); imdom.Str(c, "Loading..."); imLayoutEnd(c);
+    } im.IfEnd(c);
 }
 
 export function imMain(c: ImCache) {
-    imCacheBegin(c, imMain, USE_REQUEST_ANIMATION_FRAME); {
-        imDomRootBegin(c, document.body); {
-            const ev = imGlobalEventSystemBegin(c); {
+    im.CacheBegin(c, imMain); {
+        imdom.RootBegin(c, document.body); {
+            const ev = imdom.GlobalEventSystemBegin(c); {
                 imMainInner(c);
-            } imGlobalEventSystemEnd(c, ev);
-        } imDomRootEnd(c, document.body);
-    } imCacheEnd(c);
+            } imdom.GlobalEventSystemEnd(c, ev);
+        } imdom.RootEnd(c, document.body);
+    } im.CacheEnd(c);
 }

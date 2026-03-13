@@ -1,7 +1,7 @@
 import { imButtonIsClicked } from "src/components/button";
 import { BLOCK, COL, imAbsolute, imAlign, imFlex, imLayoutBegin, imLayoutEnd, imRelative, NA, PERCENT } from "src/components/core/layout";
-import { getDeltaTimeSeconds, ImCache, imState, isFirstishRender } from "src/utils/im-core";
-import { elSetStyle, imStr } from "src/utils/im-dom";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { GlobalContext, setViewChartSelect } from "./app";
 
 function newStartupViewState() {
@@ -35,9 +35,9 @@ export function imStartupView(c: ImCache, ctx: GlobalContext) {
 
     // TODO: better game name
     const gameName = "Rhythm Keyboard!! (name subject to change)"
-    const s = imState(c, newStartupViewState);
+    const s = im.State(c, newStartupViewState);
 
-    const dt = getDeltaTimeSeconds(c);
+    const dt = im.getDeltaTimeSeconds(c);
     s.t += dt;
     if (s.t > 1) {
         s.t = 0;
@@ -46,12 +46,12 @@ export function imStartupView(c: ImCache, ctx: GlobalContext) {
 
     imLayoutBegin(c, COL); imFlex(c); imAlign(c); imRelative(c); {
         imLayoutBegin(c, COL); imFlex(c); imAlign(c); imRelative(c); {
-            elSetStyle(c,"fontSize", s.fontSizeAnimated + "px");
-            imStr(c, gameName);
+            imdom.setStyle(c,"fontSize", s.fontSizeAnimated + "px");
+            imdom.Str(c, gameName);
         } imLayoutEnd(c);
         imLayoutBegin(c, BLOCK); imAbsolute(c, 25, PERCENT, 0, NA, 25, PERCENT, 0, NA); {
-            if (isFirstishRender(c)) {
-                elSetStyle(c,"fontSize", "24px");
+            if (im.isFirstishRender(c)) {
+                imdom.setStyle(c,"fontSize", "24px");
             }
 
             if (imButtonIsClicked(c, "Play")) {

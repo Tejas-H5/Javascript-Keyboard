@@ -3,26 +3,14 @@ import {
     imLayoutBegin,
     imLayoutEnd,
     imSize,
+    imSvgContext,
     PERCENT,
     ROW
 } from "src/components/core/layout";
 import { cn, cssVars } from "src/components/core/stylesheets";
 import { getCurrentPlaySettings, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import {
-    ImCache,
-    imEndIf,
-    imGet,
-    imIf,
-    imIfElse,
-    imIfEnd,
-    imMemo,
-    imSet,
-    imSetRequired,
-    imState,
-    isFirstishRender,
-    MEMO_FIRST_RENDER
-} from "src/utils/im-core";
-import { elSetClass, elSetStyle, imDomRootExistingBegin, imDomRootExistingEnd, imStr, imSvgContext } from "src/utils/im-dom";
+import { im, ImCache, imdom } from "src/utils/im-js";
+
 import { GlobalContext, setViewChartSelect } from "./app";
 
 import { createKeyboardConfigPreset, loadAllEffectRackPresets, loadAllKeyboardConfigPresets, loadKeyboardConfig, saveKeyboardConfig } from "src/state/data-repository";
@@ -55,9 +43,9 @@ function newSoundLabState(): SoundLabState {
 }
 
 export function imSoundLab(c: ImCache, ctx: GlobalContext) {
-    let lab = imState(c, newSoundLabState);
+    let lab = im.State(c, newSoundLabState);
 
-    if (imMemo(c, 0) === MEMO_FIRST_RENDER) {
+    if (im.Memo(c, 0) === im.MEMO_FIRST_RENDER) {
         loadAllEffectRackPresets(ctx.repo, done);
         loadAllKeyboardConfigPresets(ctx.repo, (presets, err) => {
             if (!presets || err) return DONE;
@@ -81,20 +69,20 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
         });
     }
 
-    if (imIf(c) && !lab.keyboardConfig) {
-        imStr(c, "Loading....");
+    if (im.If(c) && !lab.keyboardConfig) {
+        imdom.Str(c, "Loading....");
     } else {
-        imIfElse(c);
+        im.IfElse(c);
         imSoundLabInternal(c, ctx, lab);
-    } imIfEnd(c);
+    } im.IfEnd(c);
 }
 
 export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLabState) {
     const keyboard = lab.keyboardConfig; assert(!!keyboard);
     const slotIdx  = lab.editingSlotIdx;
 
-    const keyboardChanged = imMemo(c, keyboard);
-    const slotIdxChanged  = imMemo(c, slotIdx);
+    const keyboardChanged = im.Memo(c, keyboard);
+    const slotIdxChanged  = im.Memo(c, slotIdx);
     const isEditingSynth = slotIdx >= 0 && !!arrayAt(keyboard.synthSlots, slotIdx);
 
     if (keyboardChanged || slotIdxChanged) {
@@ -105,34 +93,34 @@ export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLab
         }
     }
 
-    let effectRackEditor = imGet(c, newEffectRackEditorState);
-    if (imSetRequired(c) || slotIdxChanged) {
+    let effectRackEditor = im.Get(c, newEffectRackEditorState);
+    if (im.isSetRequired(c) || slotIdxChanged) {
         const preset = arrayAt(keyboard.synthSlots, slotIdx);
-        effectRackEditor = imSet(c, preset ? newEffectRackEditorState(preset) : undefined);
+        effectRackEditor = im.Set(c, preset ? newEffectRackEditorState(preset) : undefined);
     }
 
-    let keyboardConfigEditor = imGet(c, newKeyboardConfigEditorState);
+    let keyboardConfigEditor = im.Get(c, newKeyboardConfigEditorState);
     if (!keyboardConfigEditor) {
-        keyboardConfigEditor = imSet(c, newKeyboardConfigEditorState(keyboard));
+        keyboardConfigEditor = im.Set(c, newKeyboardConfigEditorState(keyboard));
     }
 
     imLayoutBegin(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
-        if (isFirstishRender(c)) {
+        if (im.isFirstishRender(c)) {
             // Should be the default for web apps tbh. Only on documents, would you ever want to select the text ...
-            elSetClass(c, cn.userSelectNone);
+            imdom.setClass(c, cn.userSelectNone);
         }
 
         const svgCtx = imSvgContext(c);
         if (effectRackEditor) effectRackEditor.svgCtx = svgCtx;
-        imDomRootExistingBegin(c, svgCtx.root); {
-            if (isFirstishRender(c)) {
+        imdom.RootExistingBegin(c, svgCtx.root); {
+            if (im.isFirstishRender(c)) {
                 // Dont want to be able to touch the SVG actually.
                 // It's just for the wires visual.
-                elSetStyle(c, "pointerEvents", "none");
+                imdom.setStyle(c, "pointerEvents", "none");
             }
-        } imDomRootExistingEnd(c, svgCtx.root);
+        } imdom.RootExistingEnd(c, svgCtx.root);
 
-        if (imIf(c) && effectRackEditor) {
+        if (im.If(c) && effectRackEditor) {
             const ev = imEffectRackEditor(c, ctx, lab, effectRackEditor, keyboardConfigEditor);
             if (ev) {
                 if (ev.updatedPreset) {
@@ -142,7 +130,7 @@ export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLab
                 }
             }
         } else {
-            imIfElse(c)
+            im.IfElse(c)
             const ev = imKeyboardConfigEditor(c, ctx, keyboardConfigEditor);
             if (ev) {
                 if (ev.editSlot) {
@@ -154,7 +142,7 @@ export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLab
                     autosaveKeyboardDebounced(lab, ctx);
                 }
             }
-        } imEndIf(c);
+        } im.IfEnd(c);
 
         if (effectRackEditor) effectRackEditor.svgCtx = null;
 

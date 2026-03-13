@@ -1,18 +1,19 @@
-// IM-CORE 1.072
+// IM-CORE 1.080
 // NOTE: I'm currently working on 3 different apps with this framework,
 // so even though I thought it was mostly finished, the API appears to still be changing slightly.
 // Majority of the last changes have just been updates to the documentation though
 
-import { assert } from "src/utils/assert";
+import { assert } from "./assert";
 
 // Conventions
-//  - An 'immediate mode' method or 'im' method is any method that eventually _writes_ to the `ImCache`.
+//  - An 'immediate mode' method or 'im' method is any method that eventually _writes_ to the `Cache`.
 //    These methods should ideally be prefixed with 'im'.
-//    Conversely, methods that don't touch the imCache, or that will only ever _read_ from the imCache, should NOT be prefixed with 'im'.
+//    Conversely, methods that don't touch the Cache, or that will only ever _read_ from the imCache, should NOT be prefixed with 'im'.
 //    This allows developers (and in the future, static analysis tools) to know that this method can't be rendered conditionally, or
 //    out of order, similar to how React hooks work. This is really the only convention I would recommend you actually follow.
+//    - If you want to expose these methods on a namespace, the im can be dropped from the alias, if the namespace itself starts with 'im'
 //
-//  - imMethods that begin a scope and have a corresponding method to end that scope should be called `im<Name>Begin` and `im<Name>End`. 
+//  - Methods that begin a scope and have a corresponding method to end that scope should be called `im<Name>Begin` and `im<Name>End`. 
 //    Some day, I plan on making an eslint rule that will make use of this convention to flag missing closing statements.
 //    Though I have significantly reduced the chance of this bug happening with typeIds and such,
 //    missing begin/end statements not being paired corectly can still not be caught, and it can 
@@ -20,34 +21,96 @@ import { assert } from "src/utils/assert";
 //
 //    NOTE: This framework still may have methods or utils that I called them so frequently that I omitted the `Begin` from them. 
 //    As discussed above, I'm in the process of renaming them to conform to `<Begin>/<End>`. There will be carve-outs for
-//    imIf, imSwitch, imFor and other basic control-flow stuff. I should probably just make this 
+//    If, imSwitch, imFor and other basic control-flow stuff. I should probably just make this 
 //    static analysis tool - it would speed up the process...
 
-// Somewhat important that we store these all at 0.
 
-export const ENTRIES_IDX                             = 0;
-export const ENTRIES_LAST_IDX                        = 1;
-export const ENTRIES_INTERNAL_TYPE                   = 2;
-export const ENTRIES_PARENT_TYPE                     = 3;
-export const ENTRIES_PARENT_VALUE                    = 4;
-export const ENTRIES_COMPLETED_ONE_RENDER            = 5;
-export const ENTRIES_KEYED_MAP                       = 6;
-export const ENTRIES_REMOVE_LEVEL                    = 7;
-export const ENTRIES_IS_IN_CONDITIONAL_PATHWAY       = 8;
-export const ENTRIES_IS_DERIVED                      = 9;
-export const ENTRIES_STARTED_CONDITIONALLY_RENDERING = 10;
-export const ENTRIES_DESTRUCTORS                     = 11;
-export const ENTRIES_KEYED_MAP_REMOVE_LEVEL          = 12;
-export const ENTRIES_ITEMS_START                     = 13;
+// I no longer export these - It should be easy to toggle between the array implementation and the object
+// implementation, so only getters and setters get exported
+const CACHE_FPS_COUNTER_STATE            = 0; // Useful for debugging performance in general, and running expensive computations over multiple frames
+const CACHE_RERENDER_FN                  = 1;
+const CACHE_ANIMATE_FN                   = 2;
+const CACHE_ANIMATE_FN_STILL_ANIMATING   = 3;
+const CACHE_ANIMATION_TIME_LAST          = 4;
+const CACHE_ANIMATION_TIME               = 5;
+const CACHE_ANIMATION_DELTA_TIME_SECONDS = 6;
+const CACHE_TOTAL_DESTRUCTORS            = 7; // Useful memory leak indicator
+const CACHE_RENDER_FN_CHANGES            = 8;
+const CACHE_RERENDER_FN_INNER            = 9;
+const CACHE_IS_EVENT_RERENDER            = 10;
+const CACHE_NEEDS_RERENDER               = 11;
+const CACHE_ITEMS_ITERATED               = 12;
+const CACHE_IS_RENDERING                 = 13;
+const CACHE_TOTAL_MAP_ENTRIES            = 14; // Useful memory leak indicator
+const CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME = 15; // Useful memory leak indicator
+const CACHE_ITEMS_ITERATED_LAST_FRAME    = 16; // Useful performance metric
+const CACHE_RENDER_COUNT                 = 17;
+const CACHE_CURRENT_WAITING_FOR_SET      = 18;
+const CACHE_ROOT_ENTRIES                 = 19;
+const CACHE_CURRENT_ENTRIES              = 20;
+const CACHE_IDX                          = 21;
+const CACHE_ENTRIES_START         = 22; // Not in the struct implementation, but we'll need it for the array implementation
+
+
+const ENTRIES_REMOVE_LEVEL                    = 1;
+const ENTRIES_IS_IN_CONDITIONAL_PATHWAY       = 2;
+const ENTRIES_IS_DERIVED                      = 3;
+const ENTRIES_STARTED_CONDITIONALLY_RENDERING = 4;
+const ENTRIES_DESTRUCTORS                     = 5;
+const ENTRIES_KEYED_MAP_REMOVE_LEVEL          = 6;
+const ENTRIES_KEYED_MAP                       = 7;
+const ENTRIES_PARENT_TYPE                     = 8;
+const ENTRIES_PARENT_VALUE                    = 9;
+const ENTRIES_INTERNAL_TYPE                   = 10;
+const ENTRIES_COMPLETED_ONE_RENDER            = 11;
+const ENTRIES_LAST_IDX                        = 12;
+const ENTRIES_IDX                             = 13;
+const ENTRIES_ITEMS_START              = 14; // Not in the struct implementation, but we'll need it for the array implementation
+
+function newCache(): ImCache {
+    return [];
+}
+
+function getItemsIterated(c: ImCache): number {
+    return c[CACHE_ITEMS_ITERATED_LAST_FRAME];
+}
+
+function getTotalMapEntries(c: ImCache): number {
+    return c[CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME];
+}
+
+function getTotalDestructors(c: ImCache): number {
+    return c[CACHE_TOTAL_DESTRUCTORS];
+}
+
+function getCurrentCacheEntries(c: ImCache) {
+    return c[CACHE_CURRENT_ENTRIES] as unknown as ImCacheEntries;
+}
+
+function getRootEntries(c: ImCache): ImCacheEntries {
+    return c[CACHE_ROOT_ENTRIES];
+}
+
+function getEntriesRemoveLevel(entries: ImCacheEntries) {
+    return entries[ENTRIES_REMOVE_LEVEL];
+}
+
+function getEntriesIsInConditionalPathway(entries: ImCacheEntries) {
+    return entries[ENTRIES_IS_IN_CONDITIONAL_PATHWAY];
+}
+
+function getStackLength(c: ImCache) {
+    return c.length - CACHE_ENTRIES_START;
+}
+
 
 /**
  * Allows us to cache state for our immediate mode callsites.
- * Initialize this on your end with `const cache: ImCache = [];`. It's just an array
+ * Initialize this on your end with `const cache: Cache = [];`. It's just an array
+ * TODO: better typing here
  */
-// Initially started using array indices instead of object+fields to see what would happen.
-// A lot of code paths have actually been simplified as a result at the expense of type safety... (worth it)
 export type ImCache = (ImCacheEntries | any)[]; 
-export type ImCacheEntries = any[] & { __ImCacheEntries: void };
+export type ImCacheEntries = any[] & { __CacheEntries: void };
 
 export type FpsCounterState = {
     renderCount: number;
@@ -58,7 +121,7 @@ export type FpsCounterState = {
     renderMs: number;
 }
 
-export function newFpsCounterState(): FpsCounterState {
+function newFpsCounterState(): FpsCounterState {
     return {
         renderCount: 0,
         lastRenderCount: 0,
@@ -69,7 +132,7 @@ export function newFpsCounterState(): FpsCounterState {
     }
 }
 
-export function fpsMarkRenderingStart(fps: FpsCounterState) {
+function fpsMarkRenderingStart(fps: FpsCounterState) {
     const t = performance.now();;
 
     fps.renderMs = fps.renderEnd - fps.renderStart;
@@ -79,50 +142,20 @@ export function fpsMarkRenderingStart(fps: FpsCounterState) {
     fps.renderCount = 0;
 }
 
-export function fpsMarkRenderingEnd(fps: FpsCounterState) {
+function fpsMarkRenderingEnd(fps: FpsCounterState) {
     fps.renderEnd = performance.now();
 }
 
-
-export const CACHE_IDX                          = 0;
-export const CACHE_CURRENT_ENTRIES              = 1;
-export const CACHE_CURRENT_WAITING_FOR_SET      = 2;
-export const CACHE_FPS_COUNTER_STATE            = 3; // Useful for debugging performance in general, and running expensive computations over multiple frames
-export const CACHE_CONTEXTS                     = 4;
-export const CACHE_ROOT_ENTRIES                 = 5;
-export const CACHE_NEEDS_RERENDER               = 6;
-export const CACHE_RERENDER_FN                  = 7;
-export const CACHE_RERENDER_FN_INNER            = 8;
-export const CACHE_SELF_REFERENCE               = 9;
-export const CACHE_IS_RENDERING                 = 10;
-export const CACHE_IS_EVENT_RERENDER            = 11;
-export const CACHE_RENDER_COUNT                 = 12;
-export const CACHE_ANIMATE_FN                   = 13;
-export const CACHE_ANIMATION_ID                 = 14;
-export const CACHE_ANIMATION_TIME_LAST          = 15;
-export const CACHE_ANIMATION_TIME               = 16;
-export const CACHE_ANIMATION_DELTA_TIME_SECONDS = 17;
-export const CACHE_ITEMS_ITERATED               = 18;
-export const CACHE_ITEMS_ITERATED_LAST_FRAME    = 19; // Useful performance metric
-export const CACHE_TOTAL_DESTRUCTORS            = 20; // Useful memory leak indicator
-export const CACHE_TOTAL_MAP_ENTRIES            = 21; // Useful memory leak indicator
-export const CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME = 22; // Useful memory leak indicator
-export const CACHE_HMR_ENABLED                  = 23; 
-export const CACHE_HMR_STATE_INCOMPATIBLE       = 24;
-export const CACHE_RENDER_FN_CHANGES            = 25;
-export const CACHE_ENTRIES_START                = 26;
-
-
-export const REMOVE_LEVEL_NONE = 1;
+const REMOVE_LEVEL_NONE = 1;
 // This is the default remove level for im-blocks, im-arrays, im-if/else conditionals, and im-switch.
 // The increase in performance far oughtweighs any memory problems.
-export const REMOVE_LEVEL_DETATCHED = 2;
+const REMOVE_LEVEL_DETATCHED = 2;
 // This is the default for im-keyed map entries. This is because we can key components on arbitrary values. 
 // It is common (and intended behaviour) to use object references directly as keys.
 // However, if those objects are constantly created and destroyed, this can pose a problem for REMOVE_LEVEL_DETATCHED. 
 // Using REMOVE_LEVEL_DESTROYED instead allows the map to clean up and remove those keys, so 
 // that the size of the map isn't constantly increasing.
-export const REMOVE_LEVEL_DESTROYED = 3;
+const REMOVE_LEVEL_DESTROYED = 3;
 
 export type RemovedLevel
     = typeof REMOVE_LEVEL_NONE
@@ -137,8 +170,8 @@ export type RemovedLevel
 // You probably have a whole bunch of them lying around somewhere.
 // The function that you are creating the state from, for example. 
 // The return value of the function can be used to infer the return value of
-// the {@link imGetsState} call, but it can also be a completely unrelated function
-// - in which case you can just use {@link imInlineTypeId}. As long as a function
+// the {@link GetsState} call, but it can also be a completely unrelated function
+// - in which case you can just use {@link InlineTypeId}. As long as a function
 // has been uniquely used within a particular entry list at a particular slot, the 
 // likelyhood of out-of-order rendering errors will reduce to almost 0.
 export type TypeId<T> = (...args: any[]) => T;
@@ -149,39 +182,29 @@ export type TypeId<T> = (...args: any[]) => T;
  * This is an alterantive to the prior implementation, which forced you to pollute your module scopes with named integers.
  *
  * ```ts
- * let pingPong; pingPong = imGet(c, inlineTypeId(Math.sin));
- * if (!pingPong) pingPong = imSet(c, { t: 0 });
+ * let pingPong; pingPong = Get(c, inlineTypeId(Math.sin));
+ * if (!pingPong) pingPong = Set(c, { t: 0 });
  * ```
+ * // NOTE: You probably just want {@link imGetInline}
  */
-export function inlineTypeId<T = undefined>(fn: Function) {
+function inlineTypeId<T = undefined>(fn: Function) {
     return fn as TypeId<T>;
 }
 
 // Can be any valid object reference. Or string, but avoid string if you can - string comparisons are slower than object comparisons
 export type ValidKey = string | number | Function | object | boolean | null | unknown;
 
-export const USE_MANUAL_RERENDERING = 1 << 0;
-export const USE_REQUEST_ANIMATION_FRAME = 1 << 1;
+// Any immediate mode function that takes in the cache, and nothing else.
+export type ImCacheRerenderFn = (c: ImCache) => void;
 
-/**
- * Pass in {@link USE_REQUEST_ANIMATION_FRAME} to get the intended experience - 
- * The animatin loop will make the following things significantly easier:
- *  - Animating that one thing
- *  - Writing robust javascript interaction logic that doesn't keep getting stuck in a particular bugged 
- *      state due to callbacks not being fired when you thought they would
- *  - 'reacting' to any state from anywhere. VanillaJS objects, your own data stores, api responses, you name it
+/** 
+ * Initiates the render loop. 
  *
- * If you want to avoid the animation loop for whatever reason, pass in the {@link USE_MANUAL_RERENDERING} flag instead.
- *  - You'll need to manually call c[CACHE_RERENDER_FN]() whenever any state anywhere changes.
- *  - Methods that previously reported a deltaTime will report a constant 0.0333_ instead.
- * 
- * NOTE: the rerender function and the `useEventLoop` parameter are completely ignored after the first render, and this will never change.
+ * NOTE: I used to have an option here to allow 'manual rerendering', but I've since removed it.
+ * The main point of this framework is that rerendering your components as an animation eliminates and simplifies various problems, 
+ * so it's pretty pointless if you have to start issuing manual rerenders.
  */
-export function imCacheBegin(
-    c: ImCache,
-    renderFn: (c: ImCache) => void,
-    flags: typeof USE_REQUEST_ANIMATION_FRAME | typeof USE_MANUAL_RERENDERING,
-) {
+function imCacheBegin(c: ImCache, renderFn: ImCacheRerenderFn) {
     if (c.length === 0) {
         c.length = CACHE_ENTRIES_START;
         c.fill(undefined);
@@ -189,7 +212,6 @@ export function imCacheBegin(
         // starts at -1 and increments onto the current value. So we can keep accessing this idx over and over without doing idx - 1.
         // NOTE: memory access is supposedly far slower than math. So might not matter too much
         c[CACHE_IDX] = 0;
-        c[CACHE_CONTEXTS] = [];
         c[CACHE_ROOT_ENTRIES] = [];
         c[CACHE_CURRENT_ENTRIES] = c[CACHE_ROOT_ENTRIES];
         c[CACHE_CURRENT_WAITING_FOR_SET] = false;
@@ -203,36 +225,21 @@ export function imCacheBegin(
         c[CACHE_RENDER_COUNT] = 0;
         c[CACHE_FPS_COUNTER_STATE] = newFpsCounterState();
 
-        c[CACHE_SELF_REFERENCE] = c;
-
-        // Deltatime should naturally reach 0 on 'rerenders'. Not sure how it will work for manual rendering.
         c[CACHE_ANIMATION_TIME] = 0;
         c[CACHE_ANIMATION_TIME_LAST] = 0;
-
-        if ((flags & USE_MANUAL_RERENDERING) !== 0) {
-            // Nothing - for now
-        } else if ((flags & USE_REQUEST_ANIMATION_FRAME) !== 0) {
-            c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 0;
-            c[CACHE_ANIMATION_ID] = 0;
-        } else {
-            throw new Error("Invalid flags");
-        }
-
-        c[CACHE_HMR_ENABLED]            = false;
-        c[CACHE_HMR_STATE_INCOMPATIBLE] = false;
+        c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 0;
         c[CACHE_RENDER_FN_CHANGES]      = 0;
+        c[CACHE_ANIMATE_FN_STILL_ANIMATING] = true;
     }
 
     if (c[CACHE_RERENDER_FN_INNER] !== renderFn) {
         c[CACHE_RERENDER_FN_INNER] = renderFn;
 
-        // In a production APP, this should remain 1.
+        // In a production app, this should remain 1.
         // In a dev environment with HMR enabled, it should be incrementing each
         // time HMR causes the render function to reload.
         const id = c[CACHE_RENDER_FN_CHANGES] + 1;
         c[CACHE_RENDER_FN_CHANGES] = id;
-
-        cancelAnimationFrame(c[CACHE_ANIMATION_ID]);
 
         c[CACHE_RERENDER_FN] = (c: ImCache) => {
             // I've found a significant speedup by writing code like
@@ -251,36 +258,32 @@ export function imCacheBegin(
                 }
                 c[CACHE_IS_EVENT_RERENDER] = false;
             }
-        }
+        };
 
-
-        if ((flags & USE_MANUAL_RERENDERING) !== 0) {
-            c[CACHE_ANIMATE_FN]   = noOp;
-            c[CACHE_ANIMATION_ID] = null;
-        } else if ((flags & USE_REQUEST_ANIMATION_FRAME) !== 0) {
-            const animateFn = (t: number) => {
-                if (c[CACHE_IS_RENDERING] === true) {
-                    // This will make debugging a lot easier. Otherwise the animation will play while
-                    // we're breakpointed. Firefox moment. xD
-                    return;
-                }
-
-                if (c[CACHE_RERENDER_FN_INNER] !== renderFn) {
-                    return;
-                }
-
-                c[CACHE_ANIMATION_TIME] = t;
-
-                renderFn(c);
-
-                // we actually _want_ this to go stale
-                requestAnimationFrame(animateFn);
+        const animateFn = (t: number) => {
+            if (c[CACHE_ANIMATE_FN_STILL_ANIMATING] === false) {
+                return;
             }
-            c[CACHE_ANIMATE_FN]   = animateFn;
-            c[CACHE_ANIMATION_ID] = requestAnimationFrame(animateFn);
-        } else {
-            throw new Error("Invalid flags");
+
+            if (c[CACHE_IS_RENDERING] === true) {
+                // This will make debugging a lot easier. Otherwise the animation will play while
+                // we're breakpointed. Firefox moment. xD
+                return;
+            }
+
+            if (c[CACHE_RERENDER_FN_INNER] !== renderFn) {
+                return;
+            }
+
+            c[CACHE_ANIMATION_TIME] = t;
+
+            renderFn(c);
+
+            // Needs to go stale, so that c[CACHE_RERENDER_FN_INNER] !== renderFn can work.
+            requestAnimationFrame(animateFn);
         }
+        c[CACHE_ANIMATE_FN] = animateFn;
+        requestAnimationFrame(animateFn);
     }
 
     const fpsState = getFpsCounterState(c);
@@ -299,33 +302,30 @@ export function imCacheBegin(
     c[CACHE_CURRENT_WAITING_FOR_SET] = false;
     c[CACHE_RENDER_COUNT]++;
 
-    if ((flags & USE_REQUEST_ANIMATION_FRAME) !== 0) {
-        c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = (c[CACHE_ANIMATION_TIME] - c[CACHE_ANIMATION_TIME_LAST]) / 1000;
-        c[CACHE_ANIMATION_TIME_LAST] = c[CACHE_ANIMATION_TIME];
-    } else {
-        c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = 1 / 30;
-    }
+    // Deltatime should naturally reach 0 on 'rerenders'. Not sure how it will work for manual rendering.
+    c[CACHE_ANIMATION_DELTA_TIME_SECONDS] = (c[CACHE_ANIMATION_TIME] - c[CACHE_ANIMATION_TIME_LAST]) / 1000;
+    c[CACHE_ANIMATION_TIME_LAST] = c[CACHE_ANIMATION_TIME];
 
-    imCacheEntriesBegin(c, c[CACHE_ROOT_ENTRIES], imCacheBegin, c, INTERNAL_TYPE_CACHE);
+    CacheEntriesBegin(c, c[CACHE_ROOT_ENTRIES], imCacheBegin, c, INTERNAL_TYPE_CACHE);
 
     return c;
 }
 
-export function getFpsCounterState(c: ImCache): FpsCounterState {
+function getFpsCounterState(c: ImCache): FpsCounterState {
     assert(c[CACHE_FPS_COUNTER_STATE] != null);
     return c[CACHE_FPS_COUNTER_STATE];
 }
 
-// Enqueues a cache rerender. 
-// Usually to process an event without waiting for the next animation frame
-export function rerenderImCache(c: ImCache) {
-    c[CACHE_RERENDER_FN](c[CACHE_SELF_REFERENCE]);
+// Enqueues a cache rerender. Usually to process an event again after the 
+// current render without waiting for the next animation frame, or rerender once outside the animation frame.
+function rerenderCache(c: ImCache) {
+    c[CACHE_RERENDER_FN](c);
 }
 
 function noOp() {}
 
-export function imCacheEnd(c: ImCache) {
-    imCacheEntriesEnd(c);
+function imCacheEnd(c: ImCache) {
+    CacheEntriesEnd(c);
 
     const startIdx = CACHE_ENTRIES_START - 1;
     if (c[CACHE_IDX] > startIdx) {
@@ -341,7 +341,7 @@ export function imCacheEnd(c: ImCache) {
     if (needsRerender === true) {
         // Other things need to rerender the cache long after we've done a render. Mainly, DOM UI events - 
         // once we get the event, we trigger a full rerender, and pull the event out of state and use it's result in the process.
-        rerenderImCache(c);
+        rerenderCache(c);
 
         // Some things may occur while we're rendering the framework that require is to immediately rerender
         // our components to not have a stale UI. Those events will set this flag to true, so that
@@ -354,11 +354,6 @@ export function imCacheEnd(c: ImCache) {
     }
 }
 
-export function imCacheStopImmediately(c: ImCache) {
-    cancelAnimationFrame(c[CACHE_ANIMATION_ID]);
-    c[CACHE_RERENDER_FN] = noOp;
-}
-
 const INTERNAL_TYPE_NORMAL_BLOCK = 1;
 const INTERNAL_TYPE_CONDITIONAL_BLOCK = 2;
 const INTERNAL_TYPE_ARRAY_BLOCK = 3;
@@ -367,14 +362,29 @@ const INTERNAL_TYPE_TRY_BLOCK = 5;
 const INTERNAL_TYPE_CACHE = 6;
 const INTERNAL_TYPE_SWITCH_BLOCK = 7;
 
-export function imCacheEntriesBegin<T>(
+// Some common errors will get their own dedicated throw Error insead of a simple assert + comment
+function internalTypeToString(internalType: number): string {
+    switch (internalType) {
+        case INTERNAL_TYPE_NORMAL_BLOCK:      return "INTERNAL_TYPE_NORMAL_BLOCK";
+        case INTERNAL_TYPE_CONDITIONAL_BLOCK: return "INTERNAL_TYPE_CONDITIONAL_BLOCK";
+        case INTERNAL_TYPE_ARRAY_BLOCK:       return "INTERNAL_TYPE_ARRAY_BLOCK";
+        case INTERNAL_TYPE_KEYED_BLOCK:       return "INTERNAL_TYPE_KEYED_BLOCK";
+        case INTERNAL_TYPE_TRY_BLOCK:         return "INTERNAL_TYPE_TRY_BLOCK";
+        case INTERNAL_TYPE_CACHE:             return "INTERNAL_TYPE_CACHE";
+        case INTERNAL_TYPE_SWITCH_BLOCK:      return "INTERNAL_TYPE_SWITCH_BLOCK";
+    }
+
+    return "Custom user type: " + internalType
+}
+
+function CacheEntriesBegin<T>(
     c: ImCache,
     entries: ImCacheEntries,
     parentTypeId: TypeId<T>,
     parent: T,
     internalType: number,
 ) {
-    __imPush(c, entries);
+    __Push(c, entries);
 
     if (entries.length === 0) {
         for (let i = 0; i < ENTRIES_ITEMS_START; i++) {
@@ -393,11 +403,9 @@ export function imCacheEntriesBegin<T>(
         entries[ENTRIES_PARENT_VALUE] = parent;
         entries[ENTRIES_KEYED_MAP_REMOVE_LEVEL] = REMOVE_LEVEL_DESTROYED;
     } else {
+        // The parent should never change
         assert(entries[ENTRIES_PARENT_TYPE] === parentTypeId);
-        // NOTE: your API doesn't need to support changing this value every frame.
-        // In fact, most of the APIs I have made so far don't.
-        // This line of code only exists for the few times when you do want this.
-        entries[ENTRIES_PARENT_VALUE] = parent;
+        assert(entries[ENTRIES_PARENT_VALUE] === parent);
     }
 
     entries[ENTRIES_IDX] = ENTRIES_ITEMS_START - 2;
@@ -412,22 +420,23 @@ export function imCacheEntriesBegin<T>(
     }
 }
 
-function __imPush(c: ImCache, entries: ImCacheEntries) {
+function __Push(c: ImCache, entries: ImCacheEntries) {
     c[CACHE_IDX] += 1;
-    if (c[CACHE_IDX] < c.length) {
-        c[c[CACHE_IDX]] = entries;
-    } else {
+    const idx = c[CACHE_IDX];
+    if (idx === c.length) {
         c.push(entries);
+    } else {
+        c[idx] = entries;
     }
 
     c[CACHE_CURRENT_ENTRIES] = entries;
 }
 
-export function imCacheEntriesEnd(c: ImCache) {
-    __imPop(c);
+function CacheEntriesEnd(c: ImCache) {
+    __Pop(c);
 }
 
-function __imPop(c: ImCache): ImCacheEntries {
+function __Pop(c: ImCache): ImCacheEntries {
     const entries = c[CACHE_CURRENT_ENTRIES];
     const idx = --c[CACHE_IDX];
     c[CACHE_CURRENT_ENTRIES] = c[idx];
@@ -439,11 +448,11 @@ function __imPop(c: ImCache): ImCacheEntries {
 /**
  * Allows you to get/set state inline without using lambdas, when used with {@link imSet}:
  * ```ts
- * const s = imGet(c, fn) ?? imSet(c, { blah });
+ * const s = Get(c, fn) ?? imSet(c, { blah });
  * ```
  *
  * {@link typeId} is a function reference that we use to check that susbequent state access is for the 
- * correct state. This is required, because state is indexed by the position where `imGet` is called,
+ * correct state. This is required, because state is indexed by the position where `Get` is called,
  * and conditional rendering/etc can easily break this order. I've not looked at React sourcecode, but
  * I imagine it is very similar to the rule of hooks that they have.
  *
@@ -455,19 +464,19 @@ function __imPop(c: ImCache): ImCacheEntries {
  * You might need to refresh the state more often:
  *
  * ```ts
- * const depChanged = imMemo(c, dep);
+ * const depChanged = Memo(c, dep);
  *
- * let s = imGet(c, fn);
+ * let s = Get(c, fn);
  * if (!s || depChanged) {
- *      s = imSet(c, someConstructorFn(dep));
+ *      s = Set(c, someConstructorFn(dep));
  * };
  * ```
  *
- * All calls to `imGet` must be followed by `imSet` the very first time, to populate the initial state.
+ * All calls to `Get` must be followed by `imSet` the very first time, to populate the initial state.
  * An assertion will throw if this is not the case.
  * NOTE: This function is a fundamental primitive that most of the other methods in this framework are built with.
  */
-export function imGet<T>(
+function imGet<T>(
     c: ImCache,
     typeId: TypeId<T>,
     initialValue: T | undefined = undefined
@@ -475,12 +484,12 @@ export function imGet<T>(
     const entries = c[CACHE_CURRENT_ENTRIES];
     c[CACHE_ITEMS_ITERATED]++;
 
-    // Make sure you called imSet for the previous state before calling imGet again.
+    // Make sure you called Set for the previous state before calling imGet again.
     assert(c[CACHE_CURRENT_WAITING_FOR_SET] === false);
 
     // [type, value][type,value],[typ....
     // ^----------->^
-    entries[ENTRIES_IDX] += 2; 
+    entries[ENTRIES_IDX] += 2;
 
     const idx = entries[ENTRIES_IDX];
     if (idx === ENTRIES_ITEMS_START) {
@@ -502,23 +511,16 @@ export function imGet<T>(
 
     if (idx < entries.length) {
         if (entries[idx] !== typeId) {
-            let isError = true;
-            if (c[CACHE_HMR_ENABLED] === true) {
-                // During HMR, all function references get replaced. 
-                // Instead of throwing, we can try comparing thier names instead:
-                if (entries[idx].name !== undefined && entries[idx].name === typeId.name) {
-                    console.log("[imjs] patching typeId " + typeId.name);
-                    entries[idx] = typeId;
-                    isError = false;
-                }
+            const expectedName = entries[idx].name;
+            let gotName = typeId.name;
+            let errorMessage;
+            if (expectedName === gotName) {
+                errorMessage = `Expected to populate this cache entry with type=${expectedName}, but got <same name, but new object reference>. Only functions that don't change can be used as typeIds. If you wrote some code like State(c, () => ({ ... })), consider using imGet/imSet directly instead.`
+            } else {
+                errorMessage = `Expected to populate this cache entry with type=${expectedName}, but got ${gotName} . Either your begin/end pairs probably aren't lining up right, or you're conditionally rendering immediate-mode state`;
             }
-
-            if (isError) {
-                c[CACHE_HMR_STATE_INCOMPATIBLE] = true;
-                const errorMessage = "Expected to populate this cache entry with a different type. Your begin/end pairs probably aren't lining up right";
-                console.error(errorMessage, entries[idx], typeId);
-                throw new Error(errorMessage);
-            }
+            console.error(errorMessage, entries[idx], typeId);
+            throw new Error(errorMessage);
         }
     } else if (idx === entries.length) {
         entries.push(typeId);
@@ -534,15 +536,15 @@ export function imGet<T>(
 /**
  * When you have code like this:
  * ```ts
- * if (!imGet(c) || valueChanged) imSet(c, value);
+ * if (!Get(c) || valueChanged) imSet(c, value);
  * ```
- * When value could be undefined, it will trigger every frame. You can use imSetRequired instead.
+ * When value could be undefined, it will trigger every frame. You can use SetRequired instead.
  * This code will check "allocated or nah" instead of "is the value we have undefined?", which is more correct.
  * ```ts
- * if (imSetRequired(c) || valueChanged) imSet(c, value);
+ * if (SetRequired(c) || valueChanged) imSet(c, value);
  * ```
  */
-export function imSetRequired(c: ImCache): boolean {
+function isSetRequired(c: ImCache): boolean {
     return c[CACHE_CURRENT_WAITING_FOR_SET];
 }
 
@@ -551,31 +553,34 @@ export function imSetRequired(c: ImCache): boolean {
  * the type returned by {@link typeIdInline} is not necessarily
  * the type being stored.
  *
+ * NOTE: you're not really supposed to use the last parameter.
+ *
  * ```ts
- * const = imGetInline(c, fn) ?? imSet(c, { blah });
+ * const = GetInline(c, fn) ?? imSet(c, { blah });
  * ```
  */
-export function imGetInline(
+function imGetInline<T = undefined>(
     c: ImCache,
     typeIdInline: TypeId<unknown>,
-): undefined {
-    // NOTE: undefined return type is a lie! Will also return whatever you set with imSet.
-    // But we want typescript to infer the value of `x = imGet(c) ?? imSet(c, val)` to always be the type of val.
-    return imGet(c, inlineTypeId(typeIdInline));
+    initialValue: T | undefined = undefined
+): T | undefined {
+    // NOTE: undefined return type is a lie! Will also return whatever you set with Set.
+    // But we want typescript to infer the value of `x = Get(c) ?? imSet(c, val)` to always be the type of val.
+    return imGet(c, inlineTypeId(typeIdInline), initialValue as T);
 }
 
 
 /**
  * A shorthand for a pattern that is very common.
- * NOTE: if your state gains dependencies, you can just use imGet and imSet directly, as intended.
+ * NOTE: if your state gains dependencies, you can just use Get and imSet directly, as intended.
  */
-export function imState<T>(c: ImCache, fn: () => T): T {
+function imState<T>(c: ImCache, fn: () => T): T {
     let val = imGet(c, fn);
     if (val === undefined) val = imSet(c, fn());
     return val;
 }
 
-export function getEntryAt<T>(c: ImCache, typeId: TypeId<T>, idx: number): T {
+function getEntryAt<T>(c: ImCache, typeId: TypeId<T>, idx: number): T {
     const entries = c[CACHE_CURRENT_ENTRIES];
     const type = entries.at(ENTRIES_ITEMS_START + idx);
     if (type !== typeId) {
@@ -587,14 +592,14 @@ export function getEntryAt<T>(c: ImCache, typeId: TypeId<T>, idx: number): T {
 }
 
 
-export function getEntriesParent<T>(c: ImCache, typeId: TypeId<T>): T {
+function getEntriesParent<T>(c: ImCache, typeId: TypeId<T>): T {
     // If this assertion fails, then you may have forgotten to pop some things you've pushed onto the stack
     const entries = c[CACHE_CURRENT_ENTRIES];
     assert(entries[ENTRIES_PARENT_TYPE] === typeId);
     return entries[ENTRIES_PARENT_VALUE] as T;
 }
 
-export function getEntriesParentFromEntries<T>(entries: ImCacheEntries, typeId: TypeId<T>): T | undefined {
+function getEntriesParentFromEntries<T>(entries: ImCacheEntries, typeId: TypeId<T>): T | undefined {
     if (entries[ENTRIES_PARENT_TYPE] === typeId) {
         return entries[ENTRIES_PARENT_VALUE] as T;
     }
@@ -602,7 +607,7 @@ export function getEntriesParentFromEntries<T>(entries: ImCacheEntries, typeId: 
 }
 
 
-export function imSet<T>(c: ImCache, val: T): T {
+function imSet<T>(c: ImCache, val: T): T {
     const entries = c[CACHE_CURRENT_ENTRIES];
     const idx = entries[ENTRIES_IDX];
     entries[idx + 1] = val;
@@ -615,7 +620,7 @@ export type ListMapBlock = { rendered: boolean; entries: ImCacheEntries; };
 /**
  * Creates an entry in the _Parent's_ keyed elements map.
  */
-function __imBlockKeyedBegin(c: ImCache, key: ValidKey, removeLevel: RemovedLevel) {
+function __BlockKeyedBegin(c: ImCache, key: ValidKey, removeLevel: RemovedLevel) {
     const entries = c[CACHE_CURRENT_ENTRIES];
     entries[ENTRIES_KEYED_MAP_REMOVE_LEVEL] = removeLevel;
 
@@ -639,14 +644,17 @@ function __imBlockKeyedBegin(c: ImCache, key: ValidKey, removeLevel: RemovedLeve
      * If you're doing this in an infrequent event, here's a quick fix:
      * {
      *      let deferredAction: () => {} | undefined;
-     *      imCacheListItem(s);
+     *      CacheListItem(s);
      *      for (item of list) {
      *          if (event) deferredAction = () => literally same mutation
      *      }
-     *      imCacheListItemEnd(s);
+     *      CacheListItemEnd(s);
      *      if (deferredAction) deferredAction();
      * }
      */
+    if (block.rendered === true) {
+        throw new Error("You have already rendered to this key");
+    }
     assert(block.rendered === false);
 
     block.rendered = true;
@@ -654,31 +662,31 @@ function __imBlockKeyedBegin(c: ImCache, key: ValidKey, removeLevel: RemovedLeve
     const parentType = entries[ENTRIES_PARENT_TYPE];
     const parent = entries[ENTRIES_PARENT_VALUE];
 
-    imCacheEntriesBegin(c, block.entries, parentType, parent, INTERNAL_TYPE_KEYED_BLOCK);
+    CacheEntriesBegin(c, block.entries, parentType, parent, INTERNAL_TYPE_KEYED_BLOCK);
 }
 
 /**
  * Allows you to reuse the same component for the same key.
- * This key is local to the current entry list, which means that multiple `imKeyedBegin` calls all reuse the same entry list
- * pushed by `imFor` in this example:
+ * This key is local to the current entry list, which means that multiple `KeyedBegin` calls all reuse the same entry list
+ * pushed by `For` in this example:
  *
  * ```ts
- * imFor(c); for (const val of list) {
+ * For(c); for (const val of list) {
  *      if (!val) continue;
- *      imKeyedBegin(c, val); { ... } imKeyedEnd(c);
- * } imForEnd(c);
+ *      KeyedBegin(c, val); { ... } imKeyedEnd(c);
+ * } ForEnd(c);
  * ```
  */
-export function imKeyedBegin(c: ImCache, key: ValidKey) {
-    __imBlockKeyedBegin(c, key, REMOVE_LEVEL_DESTROYED);
+function imKeyedBegin(c: ImCache, key: ValidKey) {
+    __BlockKeyedBegin(c, key, REMOVE_LEVEL_DESTROYED);
 }
 
-export function imKeyedEnd(c: ImCache) {
-    __imBlockDerivedEnd(c, INTERNAL_TYPE_KEYED_BLOCK);
+function imKeyedEnd(c: ImCache) {
+    __BlockDerivedEnd(c, INTERNAL_TYPE_KEYED_BLOCK);
 }
 
 // You probably don't need a destructor unless you're being forced to add/remove callbacks or 'clean up' something
-export function cacheEntriesAddDestructor(c: ImCache, destructor: () => void) {
+function onImmediateModeBlockDestroyed(c: ImCache, destructor: () => void) {
     const entries = c[CACHE_CURRENT_ENTRIES];
     let destructors = entries[ENTRIES_DESTRUCTORS];
     if (destructors === undefined) {
@@ -690,17 +698,19 @@ export function cacheEntriesAddDestructor(c: ImCache, destructor: () => void) {
     c[CACHE_TOTAL_DESTRUCTORS]++;
 }
 
-function imCacheEntriesOnRemove(entries: ImCacheEntries) {
-    recursivelyEnumerateEntries(entries, imCacheEntriesRemoveEnumerator);
+function CacheEntriesOnRemove(entries: ImCacheEntries) {
+    if (entries[ENTRIES_IS_IN_CONDITIONAL_PATHWAY] === true) {
+        recursivelyEnumerateEntries(entries, CacheEntriesRemoveEnumerator);
+    }
 }
 
-export function recursivelyEnumerateEntries(entries: ImCacheEntries, fn: (entries: ImCacheEntries) => boolean) {
+function recursivelyEnumerateEntries(entries: ImCacheEntries, fn: (entries: ImCacheEntries) => boolean) {
     const shouldEnumerate = fn(entries);
     if (shouldEnumerate) {
         for (let i = ENTRIES_ITEMS_START; i < entries.length; i += 2) {
             const t = entries[i];
             const v = entries[i + 1];
-            if (t === imBlockBegin) {
+            if (t === imImmediateModeBlockBegin) {
                 recursivelyEnumerateEntries(v, fn);
             }
         }
@@ -715,7 +725,26 @@ export function recursivelyEnumerateEntries(entries: ImCacheEntries, fn: (entrie
     }
 }
 
-function imCacheEntriesRemoveEnumerator(entries: ImCacheEntries): boolean {
+/**
+ * Iterates every item in an entries list. You only need this if you're working on 
+ * dev-tools for this framework.
+ */
+function imForEachCacheEntryItem(entries: ImCacheEntries, fn: (t: TypeId<unknown>, value: unknown) => void) {
+    for (let i = ENTRIES_ITEMS_START; i < entries.length; i += 2) {
+        const t = entries[i];
+        const v = entries[i + 1];
+        fn(t, v);
+    }
+
+    let map = entries[ENTRIES_KEYED_MAP] as (Map<ValidKey, ListMapBlock> | undefined);
+    if (map !== undefined) {
+        for (const block of map.values()) {
+            imForEachCacheEntryItem(block.entries, fn);
+        }
+    }
+}
+
+function CacheEntriesRemoveEnumerator(entries: ImCacheEntries): boolean {
     // don't re-traverse these items.
     if (entries[ENTRIES_IS_IN_CONDITIONAL_PATHWAY] === true) {
         entries[ENTRIES_IS_IN_CONDITIONAL_PATHWAY] = false;
@@ -725,16 +754,17 @@ function imCacheEntriesRemoveEnumerator(entries: ImCacheEntries): boolean {
     return false;
 }
 
-function imCacheEntriesOnDestroy(c: ImCache, entries: ImCacheEntries) {
+function CacheEntriesOnDestroy(c: ImCache, entries: ImCacheEntries) {
     // don't re-traverse these items.
     if (entries[ENTRIES_REMOVE_LEVEL] < REMOVE_LEVEL_DESTROYED) {
         entries[ENTRIES_REMOVE_LEVEL] = REMOVE_LEVEL_DESTROYED;
+        entries[ENTRIES_IS_IN_CONDITIONAL_PATHWAY] = false;
 
         for (let i = ENTRIES_ITEMS_START; i < entries.length; i += 2) {
             const t = entries[i];
             const v = entries[i + 1];
-            if (t === imBlockBegin) {
-                imCacheEntriesOnDestroy(c, v);
+            if (t === imImmediateModeBlockBegin) {
+                CacheEntriesOnDestroy(c, v);
             }
         }
 
@@ -754,33 +784,35 @@ function imCacheEntriesOnDestroy(c: ImCache, entries: ImCacheEntries) {
 }
 
 // This is the typeId for a list of cache entries.
-export function imBlockBegin<T>(
+function imImmediateModeBlockBegin<T>(
     c: ImCache,
     parentTypeId: TypeId<T>,
     parent: T,
     internalType: number = INTERNAL_TYPE_NORMAL_BLOCK
 ): ImCacheEntries {
-    let entries; entries = imGet(c, imBlockBegin);
+    let entries; entries = imGet(c, imImmediateModeBlockBegin);
     if (entries === undefined) {
         entries = imSet(c, [] as unknown as ImCacheEntries);
     }
 
-    imCacheEntriesBegin(c, entries, parentTypeId, parent, internalType);
+    CacheEntriesBegin(c, entries, parentTypeId, parent, internalType);
 
     return entries;
 }
 
-export function __GetEntries(c: ImCache): ImCacheEntries {
+function __GetEntries(c: ImCache): ImCacheEntries {
     const entries = c[CACHE_CURRENT_ENTRIES];
     return entries;
 }
 
-export function imBlockEnd(c: ImCache, internalType: number = INTERNAL_TYPE_NORMAL_BLOCK) {
+function imImmediateModeBlockEnd(c: ImCache, internalType: number = INTERNAL_TYPE_NORMAL_BLOCK) {
     const entries = c[CACHE_CURRENT_ENTRIES];
 
-    // Opening and closing blocks may not be lining up right.
-    // You may have missed or inserted some blocks by accident.
-    assert(entries[ENTRIES_INTERNAL_TYPE] === internalType);
+    if (entries[ENTRIES_INTERNAL_TYPE] !== internalType) {
+        const message = `Opening and closing blocks may not be lining up right. You may have missed or inserted some blocks by accident. `
+            + "expected " + internalTypeToString(entries[ENTRIES_INTERNAL_TYPE]) + ", got " + internalTypeToString(internalType);
+        throw new Error(message)
+    }
 
     let map = entries[ENTRIES_KEYED_MAP] as (Map<ValidKey, ListMapBlock> | undefined);
     if (map !== undefined) {
@@ -790,7 +822,7 @@ export function imBlockEnd(c: ImCache, internalType: number = INTERNAL_TYPE_NORM
         if (removeLevel === REMOVE_LEVEL_DETATCHED) {
             for (const v of map.values()) {
                 if (v.rendered === false) {
-                    imCacheEntriesOnRemove(v.entries);
+                    CacheEntriesOnRemove(v.entries);
                 }
             }
         } else if (removeLevel === REMOVE_LEVEL_DESTROYED) {
@@ -798,7 +830,7 @@ export function imBlockEnd(c: ImCache, internalType: number = INTERNAL_TYPE_NORM
             // get destroyed instead of detatched. 
             for (const [k, v] of map) {
                 if (v.rendered === false) {
-                    imCacheEntriesOnDestroy(c, v.entries);
+                    CacheEntriesOnDestroy(c, v.entries);
                     map.delete(k);
                 }
             }
@@ -817,20 +849,19 @@ export function imBlockEnd(c: ImCache, internalType: number = INTERNAL_TYPE_NORM
             entries[ENTRIES_LAST_IDX] = idx;
         } else if (idx !== ENTRIES_ITEMS_START - 2) {
             // This was not the first render...
-            c[CACHE_HMR_STATE_INCOMPATIBLE] = true;
             throw new Error("You should be rendering the same number of things in every render cycle");
         }
     }
 
-    imCacheEntriesEnd(c);
+    CacheEntriesEnd(c);
 }
 
-export function __imBlockDerivedBegin(c: ImCache, internalType: number): ImCacheEntries {
+function __BlockDerivedBegin(c: ImCache, internalType: number): ImCacheEntries {
     const entries = c[CACHE_CURRENT_ENTRIES];
     const parentType = entries[ENTRIES_PARENT_TYPE];
     const parent = entries[ENTRIES_PARENT_VALUE];
 
-    return imBlockBegin(c, parentType, parent, internalType);
+    return imImmediateModeBlockBegin(c, parentType, parent, internalType);
 }
 
 // Not quite the first render - 
@@ -839,17 +870,21 @@ export function __imBlockDerivedBegin(c: ImCache, internalType: number): ImCache
 // as it doesn't require an additional im-state entry. 
 // For example, if you have an API like this:
 // ```ts
-// imDiv(c); imRow(c); imCode(c); imJustifyCenter(c); imBg(c, cssVars.bg); {
-// } imDivEnd(c);
+// Div(c); imRow(c); imCode(c); imJustifyCenter(c); imBg(c, cssVars.bg); {
+// } DivEnd(c);
 // ```
-// Each of those methods that 'augment' the call to `imDiv` may have their own initialization logic.
-// TODO: When HMR updates the render function, we should recursively set entries[ENTRIES_COMPLETED_ONE_RENDER] = false, so it can return true one more time.
-export function isFirstishRender(c: ImCache): boolean {
+// Each of those methods that 'augment' the call to `Div` may have their own initialization logic.
+function isFirstishRender(c: ImCache): boolean {
     const entries = c[CACHE_CURRENT_ENTRIES];
     return entries[ENTRIES_COMPLETED_ONE_RENDER] === false;
 }
 
-export function __imBlockDerivedEnd(c: ImCache, internalType: number) {
+function isEventRerender(c: ImCache) {
+    return c[CACHE_IS_EVENT_RERENDER];
+}
+
+
+function __BlockDerivedEnd(c: ImCache, internalType: number) {
     // The DOM appender will automatically update and diff the children if they've changed.
     // However we can't just do
     // ```
@@ -861,10 +896,10 @@ export function __imBlockDerivedEnd(c: ImCache, internalType: number) {
     // Because this would de-sync the immediate mode call-sites from their positions in the cache entries.
     // But simply putting them in another entry list:
     //
-    // imConditionalBlock();
+    // ConditionalBlock();
     // if (blah) {
     // }
-    // imConditionalBlockEnd();
+    // ConditionalBlockEnd();
     //
     // Will automatically isolate the next immediate mode call-sites with zero further effort required,
     // because all the entries will go into a single array which always takes up just 1 slot in the entries list.
@@ -873,7 +908,7 @@ export function __imBlockDerivedEnd(c: ImCache, internalType: number) {
     // NOTE: I've now moved this functionality into core. Your immediate mode tree builder will need
     // to resolve diffs in basically the same way.
 
-    imBlockEnd(c, internalType);
+    imImmediateModeBlockEnd(c, internalType);
 }
 
 /**
@@ -882,15 +917,15 @@ export function __imBlockDerivedEnd(c: ImCache, internalType: number) {
  *
  * // Annotating the control flow is needed - otherwise it won't work
  *
- * if (imIf(c) && <condition>) {
+ * if (If(c) && <condition>) {
  *      // <condition> will by adequately type-narrowed by typescript
- * } else if (imElseIf(c) && <condition2>){
+ * } else if (ElseIf(c) && <condition2>){
  *      // <condition>'s negative will not by adequately type-narrowed here though, sadly.
  *      // I might raise an issue on their github soon.
  * } else {
- *      imElse(c);
+ *      Else(c);
  *      // <condition>'s negative will not by adequately type-narrowed here though, sadly, same as above.
- * } imIfEnd(c);
+ * } IfEnd(c);
  *
  * ```
  *
@@ -902,118 +937,117 @@ export function __imBlockDerivedEnd(c: ImCache, internalType: number) {
  * Even though code like below will work, you should never write it:
  * ```ts
  * // technically correct but dont do it like this:
- * imIf(c); if (<condition>) {
+ * If(c); if (<condition>) {
  * } else {
- *      imElse(c);
- * }imIfEnd(c);
+ *      Else(c);
+ * }IfEnd(c);
  * ```
  * Because it suggests that you can extend it like the following, which would
  * no longer be correct:
  * ```ts
- * imIf(c); if (<condition>) {
+ * If(c); if (<condition>) {
  * } else if (<condition2>) {
  *      // NOO this will throw or corrupt data :((
- *      imElseIf(c);
+ *      ElseIf(c);
  * } else {
- *      imElse(c);
- * } imIfEnd(c);
+ *      Else(c);
+ * } IfEnd(c);
  * ```
  *
  * The framework assumes that every conditional annotation will get called in order,
- * till one of the conditions passes, after which the next annotation is `imIfEnd`. 
- * But now, it is no longer guaranteed that imElseIf will always be called if <condition> was false.
+ * till one of the conditions passes, after which the next annotation is `IfEnd`. 
+ * But now, it is no longer guaranteed that ElseIf will always be called if <condition> was false.
  * This means the framework has no way of telling the difference between the else-if block
  * and the else block (else blocks and else-if blocks are handled the same internally).
  */
-export function imIf(c: ImCache): true {
-    __imBlockArrayBegin(c);
-    __imBlockConditionalBegin(c);
+function imIf(c: ImCache): true {
+    __BlockArrayBegin(c);
+    __BlockConditionalBegin(c);
     return true;
 }
 
-export function imIfElse(c: ImCache): true {
-    __imBlockConditionalEnd(c);
-    __imBlockConditionalBegin(c);
+function imIfElse(c: ImCache): true {
+    __BlockConditionalEnd(c);
+    __BlockConditionalBegin(c);
     return true;
 }
 
-export function imIfEnd(c: ImCache) {
-    __imBlockConditionalEnd(c);
-    __imBlockArrayEnd(c);
+function imIfEnd(c: ImCache) {
+    __BlockConditionalEnd(c);
+    __BlockArrayEnd(c);
 }
 
 // All roads lead to rome (TM) design pattern. not sure if good idea or shit idea
-export const imEndIf = imIfEnd;
-export const imElse = imIfElse;
-export const imEndSwitch = imSwitchEnd;
-export const imEndFor = imForEnd;
-export const imCatch = imTryCatch;
+const EndIf = imIfEnd;
+const imElse = imIfElse;
+const EndSwitch = imSwitchEnd;
+const EndFor = imForEnd;
 
 /**
  * Example usage:
  * ```ts
- * imSwitch(c, key) switch (key) {
+ * Switch(c, key) switch (key) {
  *      case a: { ... } break;
  *      case b: { ... } break;
  *      case c: { ... } break;
- * } imSwitchEnd(c);
+ * } SwitchEnd(c);
  * ```
- * ERROR: Don't use fallthrough, use if-else + imIf/imIfElse/imIfEnd instead. 
+ * ERROR: Don't use fallthrough, use if-else + If/imIfElse/imIfEnd instead. 
  * Fallthrough doesn't work as you would expect - for example:
  * ```ts
- *  imSwitch(c,key); switch(key) {
- *          case "A": { imComponent1(c); } // fallthrough (nooo)
- *          case "B": { imComponent2(c); }
- *  } imSwitchEnd(c);
+ *  Switch(c,key); switch(key) {
+ *          case "A": { Component1(c); } // fallthrough (nooo)
+ *          case "B": { Component2(c); }
+ *  } SwitchEnd(c);
  * ```
- * When the key is `b`, an instance of imComponent2 is rendered. However,
- * when the key is `a`, two completely separate instances of `imComponent1` and `imComponent2` are rendered.
- *      You would expect the `imComponent2` from both switch cases to be the same instance, but they are duplicates 
+ * When the key is `b`, an instance of Component2 is rendered. However,
+ * when the key is `a`, two completely separate instances of `Component1` and `imComponent2` are rendered.
+ *      You would expect the `Component2` from both switch cases to be the same instance, but they are duplicates 
  *      with none of the same state.
  * 
  */
-export function imSwitch(c: ImCache, key: ValidKey, cached: boolean = false) {
-    __imBlockDerivedBegin(c, INTERNAL_TYPE_SWITCH_BLOCK);
+function imSwitch(c: ImCache, key: ValidKey, cached: boolean = false) {
+    __BlockDerivedBegin(c, INTERNAL_TYPE_SWITCH_BLOCK);
     // I expect the keys to a switch statement to be constants that are known at 'compile time', 
     // so we don't need to worry about the usual memory leaks we would get with normal keyed blocks.
     // NOTE: However, switches can have massive components behind them.
     // This decision may be reverted in the future if we find it was a mistake.
-    __imBlockKeyedBegin(c, key, cached ? REMOVE_LEVEL_DETATCHED : REMOVE_LEVEL_DESTROYED);
+    __BlockKeyedBegin(c, key, cached ? REMOVE_LEVEL_DETATCHED : REMOVE_LEVEL_DESTROYED);
 }
 
-export function imSwitchEnd(c: ImCache) {
-    __imBlockDerivedEnd(c, INTERNAL_TYPE_KEYED_BLOCK);
-    __imBlockDerivedEnd(c, INTERNAL_TYPE_SWITCH_BLOCK);
+function imSwitchEnd(c: ImCache) {
+    __BlockDerivedEnd(c, INTERNAL_TYPE_KEYED_BLOCK);
+    __BlockDerivedEnd(c, INTERNAL_TYPE_SWITCH_BLOCK);
 }
 
-function __imBlockArrayBegin(c: ImCache) {
-    __imBlockDerivedBegin(c, INTERNAL_TYPE_ARRAY_BLOCK);
+function __BlockArrayBegin(c: ImCache) {
+    __BlockDerivedBegin(c, INTERNAL_TYPE_ARRAY_BLOCK);
 }
 
-function __imBlockConditionalBegin(c: ImCache) {
-    __imBlockDerivedBegin(c, INTERNAL_TYPE_CONDITIONAL_BLOCK);
+function __BlockConditionalBegin(c: ImCache) {
+    __BlockDerivedBegin(c, INTERNAL_TYPE_CONDITIONAL_BLOCK);
 }
 
-function __imBlockConditionalEnd(c: ImCache) {
+function __BlockConditionalEnd(c: ImCache) {
     const entries = c[CACHE_CURRENT_ENTRIES];
     if (entries[ENTRIES_IDX] === ENTRIES_ITEMS_START - 2) {
         // The index wasn't moved, so nothing was rendered.
         // This tells the conditional block to remove everything rendered under it last. 
-        imCacheEntriesOnRemove(entries);
+        CacheEntriesOnRemove(entries);
     }
 
-    __imBlockDerivedEnd(c, INTERNAL_TYPE_CONDITIONAL_BLOCK);
+    __BlockDerivedEnd(c, INTERNAL_TYPE_CONDITIONAL_BLOCK);
 }
 
-export function imFor(c: ImCache) {
-    __imBlockArrayBegin(c);
+function imFor(c: ImCache) {
+    __BlockArrayBegin(c);
 }
 
-export function imForEnd(c: ImCache) {
-    __imBlockArrayEnd(c);
+function imForEnd(c: ImCache) {
+    __BlockArrayEnd(c);
 }
 
-function __imBlockArrayEnd(c: ImCache) {
+function __BlockArrayEnd(c: ImCache) {
     const entries = c[CACHE_CURRENT_ENTRIES]
 
     const idx = entries[ENTRIES_IDX];
@@ -1023,8 +1057,8 @@ function __imBlockArrayEnd(c: ImCache) {
         for (let i = idx + 2; i <= lastIdx; i += 2) {
             const t = entries[i];
             const v = entries[i + 1];
-            if (t === imBlockBegin) {
-                imCacheEntriesOnRemove(v);
+            if (t === imImmediateModeBlockBegin) {
+                CacheEntriesOnRemove(v);
             }
         }
     }
@@ -1032,29 +1066,28 @@ function __imBlockArrayEnd(c: ImCache) {
     // we allow growing or shrinking this kind of block in particular
     entries[ENTRIES_LAST_IDX] = idx;
 
-    __imBlockDerivedEnd(c, INTERNAL_TYPE_ARRAY_BLOCK);
+    __BlockDerivedEnd(c, INTERNAL_TYPE_ARRAY_BLOCK);
 }
 
-// This is the initial value, so that anything, even `undefined`, can trigger imMemo
+// This is the initial value, so that anything, even `undefined`, can trigger Memo
 const IM_MEMO_FIRST_EVER = {};
 
-export const MEMO_NOT_CHANGED = 0;
+const MEMO_NOT_CHANGED = 0;
 /** returned by {@link imMemo} if the value changed */
-export const MEMO_CHANGED = 1;
+const MEMO_CHANGED = 1;
 /** 
  * returned by {@link imMemo} if this is simply the first render. 
  * Most of the time the distinction is not important, but sometimes,
  * you want to happen on a change but NOT the initial renderer.
  */
-export const MEMO_FIRST_RENDER = 2;
+const MEMO_FIRST_RENDER = 2;
 /** 
  * returned by {@link imMemo} if this is is caused by the component
  * re-entering the conditional rendering codepath.
  */
-export const MEMO_FIRST_RENDER_CONDITIONAL = 3;
+const MEMO_FIRST_RENDER_CONDITIONAL = 3;
 
-
-export type ImMemoResult
+export type MemoResult
     = typeof MEMO_NOT_CHANGED
     | typeof MEMO_FIRST_RENDER
     | typeof MEMO_CHANGED
@@ -1071,7 +1104,7 @@ export type ImMemoResult
  *
  * ```ts
  * function uiComponent(focused: boolean) {
- *      if (imMemo(c, focused)) {
+ *      if (Memo(c, focused)) {
  *          // recompute state
  *      }
  * }
@@ -1081,16 +1114,16 @@ export type ImMemoResult
  * and then re-enters it:
  *
  * ```ts
- * imSwitch(c); switch(currentComponent) {
+ * Switch(c); switch(currentComponent) {
  *      case "component 1": uiComponent(true); break;
  *      case "component 2": somethingElse(true); break;
- *  } imSwitchEnd(c);
+ *  } SwitchEnd(c);
  * ```
  *
  * But with 2. as well, it should always work as expected.
  *
  * NOTE: NaN !== NaN. So your memo will fire every frame. 
- * I'm still diliberating on should my code be 'correct' and always handle this for every imMemo, 
+ * I'm still diliberating on should my code be 'correct' and always handle this for every Memo, 
  * even when it doesn't really need to, or if you sohuld just handle it as needed. 
  * For now, you can handle it.
  *
@@ -1098,30 +1131,26 @@ export type ImMemoResult
  * without extracing value1Changed, value2Changed, etc. variables since this is not short-circuiting like the || operator.
  * 
  * ```ts
- * if (
- *      imMemo(c, value1) |
- *      imMemo(c, value2) |
- *      imMemo(c, value3) |
- *      imMemo(c, value4) 
- * ) {
+ * if (Memo(c, value1) | imMemo(c, value2) | imMemo(c, value3) | imMemo(c, value4)) {
+ *      // Something
  * }
  * ```
  */
-export function imMemo(c: ImCache, val: unknown): ImMemoResult {
-    /*
-     * NOTE: I had previously implemented imMemo() and imMemoEnd():
+function imMemo(c: ImCache, val: unknown): MemoResult {
+    /**
+     * NOTE: I had previously implemented Memo() and imMemoEnd():
      *
      * ```ts
-     * if (imMemoBegin().val(x).objectVals(obj)) {
+     * if (MemoBegin().val(x).objectVals(obj)) {
      *      <Memoized component>
-     * } imMemoEnd();
+     * } MemoEnd();
      * ```
      * It can be done, but I've found that it's a terrible idea in practice.
-     * I had initially thought {@link imMemo} was bad too, but it has 
-     * turned out to be very useful, more so even, than imMemo2(c, ...manyArgs)
+     * I had initially thought {@link imMemo} was bad too, but it has turned out to be very useful.
+     * turned out to be very useful, more so even, than Memo2(c, ...manyArgs)
      */
 
-    let result: ImMemoResult = MEMO_NOT_CHANGED;
+    let result: MemoResult = MEMO_NOT_CHANGED;
 
     const entries = c[CACHE_CURRENT_ENTRIES];
 
@@ -1150,16 +1179,25 @@ export type TryState = {
 
 /**
  * ```ts
- * const tryState = imTry(c); try {
+ * const tryState = Try(c); try {
+ *      const { err, recover }  tryState;
+ *      if (If(c) && !err) {
+ *          MainApp(c);
+ *      } else {
+ *          IfElse(c):
+ *
+ *          ErrorViewer(c, err, recover);
+ *      } IfEnd(c);
  *      // render your component here
  * } catch(err) {
- *      imTryCatch(c, tryState, err);
- *      // don't render anything here! Only do the other things
- * } imTryEnd(c, tryState); 
+ *      TryCatch(c, tryState, err);
+ *      // NOTE: you can't render components here. use the else part of an if-else in the try block instead.
+ *      // NOTE: if your else block has an error as well, then you're cooked.
+ * } TryEnd(c, tryState); 
  * ```
  */
-export function imTry(c: ImCache): TryState {
-    const entries = __imBlockDerivedBegin(c, INTERNAL_TYPE_TRY_BLOCK);
+function imTry(c: ImCache): TryState {
+    const entries = __BlockDerivedBegin(c, INTERNAL_TYPE_TRY_BLOCK);
 
     let tryState = imGet(c, imTry);
     if (tryState === undefined) {
@@ -1167,7 +1205,7 @@ export function imTry(c: ImCache): TryState {
             err: null,
             recover: () => {
                 val.err = null;
-                c[CACHE_NEEDS_RERENDER] = true;
+                rerenderCache(c);
             },
             entries,
             unwoundThisFrame: false,
@@ -1180,7 +1218,7 @@ export function imTry(c: ImCache): TryState {
     return tryState;
 }
 
-export function imTryCatch(c: ImCache, tryState: TryState, err: any) {
+function imCatch(c: ImCache, tryState: TryState, err: any) {
     tryState.unwoundThisFrame = true;
 
     if (tryState.err != null) {
@@ -1198,207 +1236,99 @@ export function imTryCatch(c: ImCache, tryState: TryState, err: any) {
     c[CACHE_CURRENT_ENTRIES] = c[idx - 1];
 }
 
-export function imTryEnd(c: ImCache, tryState: TryState) {
+function imTryEnd(c: ImCache, tryState: TryState) {
     if (tryState.unwoundThisFrame === true) {
         // nothing to end.
         assert(c[c[CACHE_IDX] + 1] === tryState.entries);
     } else {
         const entries = c[CACHE_CURRENT_ENTRIES];
         assert(entries === tryState.entries);
-        __imBlockDerivedEnd(c, INTERNAL_TYPE_TRY_BLOCK);
+        __BlockDerivedEnd(c, INTERNAL_TYPE_TRY_BLOCK);
     }
 }
 
-export function getDeltaTimeSeconds(c: ImCache): number {
+function getDeltaTimeSeconds(c: ImCache): number {
     return c[CACHE_ANIMATION_DELTA_TIME_SECONDS];
 }
 
 // Events can trigger rerenders in the same frame.
-export function getRenderCount(c: ImCache) {
+function getRenderCount(c: ImCache) {
     return c[CACHE_RENDER_COUNT];
 }
 
-/**
- * Sometimes, you'll need a global state stack, so that you have access to some state.
- * ```ts
- *
- * globalStateStackPush(gssThing, thing); {
- *      ...
- *      // can be arbitrarily deep inside the component
- *      const thing = globalStateStackGet(gssThing);
- *
- *      ...
- * } globalStateStackPop(gssThing);
- * ```ts
- *
- * 99% of the time, this pattern is a mistake that obfuscates and overcomplicates the code, 
- * and you should just pass `thing` as an additional function parameter.
- * And for things you pass around *a lot* like c: ImCache, you will incur a significant performance
- * hit by using this approach (as of 08/2025) (on top of the perf hit of using this framework).
- *
- * Here is a decision matrix you can use to decide whether to use this pattern or not:
- *
- *                                      | I need this state everywhere,    | I infrequently need this value, but the requirement can arise 
- *                                      | and I make sure to pass it as    | naturally somewhere deep node of the component, and I have
- *                                      | a method param everywhere anyway | to spend a bunch of time adding an extra function argument 
- *                                      |                                  | everywhere when it does.
- * ----------------------------------------------------------------------------------------------------------------------------
- *  This state is related to my app's   | Don't use a global state stack   | Don't use a global state stack 
- *  domain model                        | ctx: AppGlobalState is here      | s: BlahViewState is here
- * ----------------------------------------------------------------------------------------------------------------------------
- *  This state is not related to my     | Don't use a global state stack   | Consider using a global state stack
- *  app's domain model                  | c: ImCache is here               | getGlobalEventSystem() is here
- * ----------------------------------------------------------------------------------------------------------------------------
- *
- */
-export function globalStateStackPush<T>(gss: T[], item: T) {
-    // I've put a limit on the context depth to 100. But really, anything > 1 is already a niche usecase, and anything > 2 may never happen in practice ... 
-    if (gss.length > 100) {
-        throw new Error("Looks like you're forgetting to pop items from your global state array. tsk tsk tsk. ");
-    }
+export const im = {
+    /** You'll need to call this once, and retain the state somewhere. So, technically speaking, this framework is retained-mode :nerd-emoji: */
+    newCache,
 
-    gss.push(item);
-}
+    /** Need to call these two for the immediate-mode cache to work */
+    CacheBegin: imCacheBegin, CacheEnd: imCacheEnd,
 
-export function globalStateStackGet<T>(gss: T[]): T {
-    // No context item was pushed
-    assert(gss.length > 0);
+    /** Internal methods and variables */
+    CACHE_ENTRIES_START, // Offset into an Imcache where the actual entries start
+    ENTRIES_ITEMS_START, // Offset into an ImCacheEntries where the actual items start
 
-    return gss[gss.length - 1];
-}
+    /** State management - all different flavours of Get/Set */
+    Get: imGet, Set: imSet,
+    GetInline: imGetInline,  
+    isSetRequired,  // Useful for when you want to store `undefined` as a valid value
+    State: imState,
+    // Use this to add a destructor. Destructors should not be relied upon to execute business logic on entry-list exit, because
+    // they may or may not run depending on the 'remove level' you've set, which is purely based on
+    // the performance characteristics you want.
+    // They should only be used to free memory/resources, like event listeners, various observers, etc.
+    onImmediateModeBlockDestroyed, 
 
-export function globalStateStackPop<T>(gss: T[], item: T): T {
-    const currentItem = globalStateStackGet(gss);
+    /** Conditional rendering, list rendering */
 
-    // Item may have changed mid-render, which definitely shouldn't ever happen, and is indicative of some other issue.
-    assert(currentItem === item);
+    KeyedBegin: imKeyedBegin, KeyedEnd: imKeyedEnd,
+    If: imIf, IfElse: imIfElse, Else: imElse, IfEnd: imIfEnd,
+    Switch: imSwitch, SwitchEnd: imSwitchEnd,
+    For: imFor, ForEnd: imForEnd,
+    Try: imTry, Catch: imCatch, TryEnd: imTryEnd, TryCatch: imCatch,
 
-    gss.pop();
+    /** Executing code when something else has changed */
+    Memo: imMemo,
+    MEMO_NOT_CHANGED, MEMO_CHANGED, MEMO_FIRST_RENDER, MEMO_FIRST_RENDER_CONDITIONAL,
 
-    return currentItem;
-}
+    /** Animation */
+    getDeltaTimeSeconds, // Gets the _seconds_ elapsed between the previous frame and the current frame
 
+    /** Performance optimization */
 
-// Basically, HMR works like this. At least, for Vite it definitely does.
-//
-// [module 1] --needs hot-reload-> accept([module 2])
-// [module 2] --needs hot-reload-> accept([module 3])
-// [module 3] --needs hot-reload-> accept([module 4])
-// ....
-//
-// each older module needs to accept the new module. This only happens once per-module.
-// The module needs to pass along the very first module in the chain for state retention 
-// to work. I anticipate a similar API for other bundlers.
-export type HmrState = {
-    imMain: (c: ImCache) => void;
-    cGlobal: ImCache;
-    timeout: number;
-    accept: (newModule: any, onInvalidate: (() => void) | undefined) => void;
+    // Is this more-or-less the first render? If the component encountered an error before ending 
+    // the entry list, then this method will continue to be true till we can call CacheEntriesEnd on it.
+    // You'll want to use this for quite a lot of idempotent things that you dont want running too often, 
+    // as it doesn't create any cache entries by itself.
+    isFirstishRender, 
+    // Is this rerender caused by an event (as opposed to an animation frame)? 
+    // Useful to avoid expensive canvas rendering when true.
+    isEventRerender,
+
+    /** State management - surprisingly useless method */
+    getEntryAt,
+
+    /** You won't need these for your app, but you may need these to build a custom adapter */
+
+    getCurrentCacheEntries,   // Gets the current entry list
+    getRootEntries,           // Gets whatever entries were in the call to {@link im.newCache}
+    getEntriesRemoveLevel,    // When this entry list leaves the conditional pathway, to what extent should we remove it?
+    REMOVE_LEVEL_NONE, REMOVE_LEVEL_DETATCHED, REMOVE_LEVEL_DESTROYED,
+    getEntriesIsInConditionalPathway,   // Is this entry list currently in the conditional pathway?
+    rerenderCache,      // Use this to rerender the cache. Either immediately afther the current render, or a new render. Happens outside the animation frame.
+    recursivelyEnumerateEntries, // Recursively enumerate your entries
+    getEntriesParent, getEntriesParentFromEntries, // Get the 'parent item' associated with an entry list
+
+    ImmediateModeBlockBegin: imImmediateModeBlockBegin, // This is the typeId of an ImCacheEntries object
+    ImmediateModeBlockEnd: imImmediateModeBlockEnd,
+
+    /** Internal diagnostics */
+    getFpsCounterState,
+    getItemsIterated,
+    getTotalMapEntries,
+    getTotalDestructors,
+    getStackLength,
+    getRenderCount,
+
+    /** I made this literally for some demo that I canned, but might be useful idk */
+    ForEachCacheEntryItem: imForEachCacheEntryItem,
 };
-
-
-/**
- * HMR core function. See {@link HmrState} for an explanation of HMR.
- * Here is how you would use it with Vite (IS_PROD env variable not included):
- * ```ts
- * export let hmr: HmrState | undefined;
- * 
- * if (IS_PROD) {
- *     imMain([]);
- * } else {
- *     hmr = startRenderingWithHMR(imMain);
- *     if (import.meta.hot) {
- *         import.meta.hot.accept((newModule) => {
- *             hmr!.accept(newModule, import.meta.hot?.invalidate);
- *         });
- *     }
- * }
- * ```
- * Other bundlers will require slightly differnt code. 
- * You could put your own invalidator that does fancier logic.
- *
- * NOTE: doing HMR properly can significantly increase the complexity of your app, for very little cost. 
- * Don't reach for this till making tiny changes to styling or whatever is really slow.
- */
-export function startRenderingWithHMR(
-    renderFn: (c: ImCache) => void,
-    cGlobal: ImCache = [],
-): HmrState {
-    // The previous module has this long to prevent the next module from initializing a
-    // fresh copy of itself.
-    const HMR_TIMEOUT = 100;
-    const timeout = setTimeout(() => {
-        console.log("[hmr] the first state has been initialized");
-        renderFn(cGlobal);
-    }, HMR_TIMEOUT);
-
-    const hmr: HmrState = {
-        imMain: renderFn,
-        cGlobal: cGlobal,
-        timeout: timeout,
-        accept: (newModule, onInvalidate) => {
-            if (!newModule) return;
-            const newHmr = newModule.hmr;
-            if (!newHmr) {
-                console.warn("[hmr] The new module did not export the previous HMR state in a variable called 'hmr', invalidating...");
-                onInvalidate?.();
-                return;
-            }
-
-            // But it works though
-            const HMR_HACK_TIMEOUT = 30;
-            setTimeout(() => {
-                let err;
-                try {
-                    // Stop new module entrypoint, and pass our state forwards
-                    clearTimeout(newHmr.timeout);
-                    newHmr.cGlobal = hmr.cGlobal;
-
-                    console.log("[hmr] Attempting to patch the new render function...");
-                    hmr.cGlobal[CACHE_HMR_ENABLED] = true;
-                    newModule.hmr.imMain(hmr.cGlobal);
-                } catch (e) {
-                    err = e;
-                }
-
-                // NOTE: CACHE_HMR_ENABLED is now a flag that gets set to true once, and stays that way.
-                // I had wanted it to be a gate that I turn on and then turn off here, but that won't work - 
-                // a `requestAnimationFrame` invoked 2 frames later will throw errors R.E patching
-                // of typeIds, which is somewhat unexpected.
-                // If I debug with breakpoints however, it does work as expected. This indicates that
-                // the functions must get asyncronously patched some time after HMR actually
-                // runs this accept callback. For now, I have noticed that I can also get it to work
-                // as expected when I use HMR_HACK_TIMEOUT - it must have a similar effect to putting
-                // in a breakpoint.
-
-                let invalidate = false;
-                if (err) {
-                    console.log("[hmr] Couldn't hot-reload: ", err);
-                    invalidate = true;
-                } else if (hmr.cGlobal[CACHE_HMR_STATE_INCOMPATIBLE]) {
-                    console.log("[hmr] Couldn't hot-reload - the new component state layout is no longer compatible with the previous state");
-                    invalidate = true;
-                }
-
-                if (invalidate) {
-                    imCacheStopImmediately(hmr.cGlobal);
-                    try {
-                        onInvalidate?.();
-                    } catch (e) {
-                        console.error("[hmr] failed to invalidate: ", e);
-                        window.location.reload();
-                    }
-                } else {
-                    console.log("[hmr] Reloaded x" + hmr.cGlobal[CACHE_RENDER_FN_CHANGES]);
-                }
-
-            }, HMR_HACK_TIMEOUT);
-        }
-    };
-
-    return hmr;
-}
-
-
-export function hmrAccept() {
-}

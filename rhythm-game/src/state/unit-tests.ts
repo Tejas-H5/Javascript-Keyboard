@@ -2,7 +2,7 @@ import { imModalBegin, imModalEnd } from "src/app-components/modal";
 import { imTestHarness } from "src/components/test-harness";
 import { COL, imBg, imLayoutBegin, imLayoutEnd, imPadding, imSize, PERCENT, PX } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
-import { ImCache } from "src/utils/im-core";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 import { GlobalContext } from "src/views/app";
 
 import "src/utils/testing.test";

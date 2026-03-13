@@ -1,7 +1,7 @@
 import { newCssBuilder } from "src/utils/cssb";
 import { cssVars } from "./core/stylesheets";
-import { EL_INPUT, elSetAttr, elSetClass, imElBegin, imElEnd } from "src/utils/im-dom";
-import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core";
+
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 
 const cssb = newCssBuilder();
 
@@ -28,27 +28,27 @@ export function imTextInputBegin(c: ImCache, {
     value: string;
     placeholder?: string;
 }) {
-    const input = imElBegin(c, EL_INPUT); {
-        if (isFirstishRender(c)) {
-            elSetClass(c, cnInput);
-            elSetAttr(c, "type", "text");
+    const input = imdom.ElBegin(c, el.INPUT); {
+        if (im.isFirstishRender(c)) {
+            imdom.setClass(c, cnInput);
+            imdom.setAttr(c, "type", "text");
         }
 
-        if (imMemo(c, placeholder)) {
-            elSetAttr(c, "placeholder", placeholder);
+        if (im.Memo(c, placeholder)) {
+            imdom.setAttr(c, "placeholder", placeholder);
         }
 
-        if (imMemo(c, value)) {
+        if (im.Memo(c, value)) {
             input.root.value = value;
         }
 
-    } // imElEnd(c, EL_INPUT);
+    } // imdom.ElEnd(c, el.INPUT);
 
     return input;
 }
 
 export function imTextInputEnd(c: ImCache) {
-    imElEnd(c, EL_INPUT);
+    imdom.ElEnd(c, el.INPUT);
 }
 
 

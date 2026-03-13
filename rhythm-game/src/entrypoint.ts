@@ -1,7 +1,7 @@
 import { IS_PROD } from "./debug-flags";
 import { imMain } from "./main";
 import { initCssbStyles } from "./utils/cssb";
-import { HmrState, startRenderingWithHMR } from "./utils/im-core";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 
 // export let hmr: HmrState | undefined;
 

@@ -1,6 +1,6 @@
-import { ImCache, imGet, imMemo, imSet } from "src/utils/im-core.ts";
-import { EL_CANVAS, elSetStyle, imElBegin, imElEnd, imTrackSize } from "src/utils/im-dom.ts";
-import { BLOCK, imFlex, imLayoutBegin, imLayoutEnd, imRelative, imSize, PERCENT } from "./core/layout.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
+import { BLOCK, imFlex, imLayoutBegin, imLayoutEnd, imRelative } from "./core/layout.ts";
 
 type ImCanvasRenderingContext = [
     canvas: HTMLCanvasElement,
@@ -16,31 +16,30 @@ export function imBeginCanvasRenderingContext2D(c: ImCache): ImCanvasRenderingCo
     // This relative -> absolute pattern is being used here to fix this.
 
     imLayoutBegin(c, BLOCK); imRelative(c); imFlex(c);
-    const { size } = imTrackSize(c);
+    const { size } = imdom.TrackSize(c);
 
-    const canvas = imElBegin(c, EL_CANVAS).root;
+    const canvas = imdom.ElBegin(c, el.CANVAS).root;
 
-    let ctx = imGet(c, imBeginCanvasRenderingContext2D);
+    let ctx = im.Get(c, imBeginCanvasRenderingContext2D);
     if (!ctx) {
         const context = canvas.getContext("2d");
         if (!context) {
             throw new Error("Canvas 2d isn't supported by your browser!!! I'd suggest _not_ plotting anything.");
         }
 
-        elSetStyle(c, "position", "absolute");
-        elSetStyle(c, "top", "0");
-        elSetStyle(c, "left", "0");
+        imdom.setStyle(c, "position", "absolute");
+        imdom.setStyle(c, "top", "0");
+        imdom.setStyle(c, "left", "0");
 
-        ctx = imSet(c, [canvas, context, 0, 0, 0]);
+        ctx = im.Set(c, [canvas, context, 0, 0, 0]);
     }
 
     const w = size.width;
     const h = size.height;
-    // const sf = window.devicePixelRatio ?? 1;
-    const dpi = 2; // TODO: revert
-    const wC   = imMemo(c, w);
-    const hC   = imMemo(c, h);
-    const dpiC = imMemo(c, dpi);
+    const dpi = window.devicePixelRatio ?? 1;
+    const wC   = im.Memo(c, w);
+    const hC   = im.Memo(c, h);
+    const dpiC = im.Memo(c, dpi);
     if (wC || hC || dpiC) {
         canvas.style.width = w + "px";
         canvas.style.height = h + "px";
@@ -55,6 +54,6 @@ export function imBeginCanvasRenderingContext2D(c: ImCache): ImCanvasRenderingCo
 }
 
 export function imEndCanvasRenderingContext2D(c: ImCache) {
-    imElEnd(c, EL_CANVAS);
+    imdom.ElEnd(c, el.CANVAS);
     imLayoutEnd(c);
 }

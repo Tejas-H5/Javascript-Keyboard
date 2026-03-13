@@ -1,19 +1,7 @@
 import { BLOCK, COL, imAlign, imFlex, imJustify, imLayoutBegin, imLayoutEnd, imSize, NA, PERCENT, REM, ROW } from "src/components/core/layout";
 import { chooseItem } from "src/utils/array-utils";
-import {
-    getDeltaTimeSeconds,
-    ImCache,
-    imElse,
-    imEndIf,
-    imFor,
-    imForEnd,
-    imGet,
-    imIf,
-    imMemo,
-    imSet,
-    isFirstishRender
-} from "src/utils/im-core";
-import { EL_B, EL_I, elSetStyle, imElBegin, imElEnd, imStr } from "src/utils/im-dom";
+import { el, im, ImCache, imdom } from "src/utils/im-js";
+
 import { clamp } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./app";
 import { GameplayState, imGameplay } from "./gameplay";
@@ -43,13 +31,13 @@ export function imPlayView(c: ImCache, ctx: GlobalContext) {
     // but it seems to work ok for now.
 
     imLayoutBegin(c, COL); imFlex(c); {
-        if (imIf(c) && ctx.ui.playView.result) {
+        if (im.If(c) && ctx.ui.playView.result) {
             imResultsScreen(ctx, c, ctx.ui.playView.result);
         } else {
-            imElse(c);
+            im.Else(c);
 
             imGameplay(c, ctx);
-        } imEndIf(c);
+        } im.IfEnd(c);
     } imLayoutEnd(c);
 
     if (!ctx.handled) {
@@ -115,16 +103,16 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
         }
     }
 
-    const focusChanged = imMemo(c, true);
-    let s = imGet(c, newResultsScreenState);
+    const focusChanged = im.Memo(c, true);
+    let s = im.Get(c, newResultsScreenState);
     if (!s || focusChanged) {
-        s = imSet(c, newResultsScreenState());
+        s = im.Set(c, newResultsScreenState());
         const designation = getDesignation(result.score, result.bestPossibleScore);
         const messages = getMessagesForDesignation(designation);
         s.message = chooseItem(messages, Math.random());
     }
 
-    const dt = getDeltaTimeSeconds(c);
+    const dt = im.getDeltaTimeSeconds(c);
     if (s.t < 100) {
         s.t += dt * 0.5;
     }
@@ -133,17 +121,17 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
     imLayoutBegin(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
         imLayoutBegin(c, COL); imSize(c, 80, PERCENT, 80, PERCENT); {
-            if (isFirstishRender(c)) {
-                elSetStyle(c,"border", "1px solid currentColor");
+            if (im.isFirstishRender(c)) {
+                imdom.setStyle(c,"border", "1px solid currentColor");
             }
 
             let currentStart = 0.1;
 
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); imSize(c, 0, NA, s.baseFontSize + s.wiggle, REM); {
                 currentStart += 0.3;
-                elSetStyle(c, "fontSize", s.fontSize + "rem");
+                imdom.setStyle(c, "fontSize", s.fontSize + "rem");
 
-                imElBegin(c, EL_B); imStr(c, result.chartName); imElEnd(c, EL_B);
+                imdom.ElBegin(c, el.B); imdom.Str(c, result.chartName); imdom.ElEnd(c, el.B);
             } imLayoutEnd(c);
 
             imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
@@ -153,7 +141,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
                 imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
-                imStr(c, "Best possible score: "); 
+                imdom.Str(c, "Best possible score: "); 
 
                 imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
@@ -168,7 +156,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
                 imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
 
-                imStr(c, "Score: "); 
+                imdom.Str(c, "Score: "); 
 
                 imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
@@ -182,7 +170,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
                 currentStart += 0.3;
-                imStr(c, s.message);
+                imdom.Str(c, s.message);
             } imLayoutEnd(c);
 
             const root = imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); 
@@ -190,21 +178,21 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
                 currentStart += 0.3;
 
                 const height = root.clientHeight;
-                const sizeChanged = imMemo(c, height);
+                const sizeChanged = im.Memo(c, height);
                 if (sizeChanged) {
-                    elSetStyle(c, "fontSize", (height / 2) + "px");
+                    imdom.setStyle(c, "fontSize", (height / 2) + "px");
                 }
 
                 const designation = getDesignation(result.score, result.bestPossibleScore);
 
-                const dt = getDeltaTimeSeconds(c);
-                let angle = imGet(c, Number, 0) || 0; {
+                const dt = im.getDeltaTimeSeconds(c);
+                let angle = im.Get(c, Number, 0) || 0; {
                     angle += dt;
                     const twoPi = Math.PI * 2;
                     if (angle > twoPi) {
                         angle -= twoPi;
                     }
-                } imSet(c, angle);
+                } im.Set(c, angle);
 
                 // Guyse. which its rotatign . ??
                 let scale = 1;
@@ -212,17 +200,17 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
                     scale = -1;
                 }
 
-                imFor(c); for (let i = 0; i < designation.length; i++) {
+                im.For(c); for (let i = 0; i < designation.length; i++) {
                     imLayoutBegin(c, BLOCK); {
-                        if (isFirstishRender(c)) {
-                            elSetStyle(c, "position", `absolute`);
+                        if (im.isFirstishRender(c)) {
+                            imdom.setStyle(c, "position", `absolute`);
                         }
 
-                        elSetStyle(c, "transform", `scaleX(${scale}) rotateY(${angle}rad) translate3d(${i * 0.05 * height}px, ${i * 0.05 * height}px, ${i * 10}px)`);
+                        imdom.setStyle(c, "transform", `scaleX(${scale}) rotateY(${angle}rad) translate3d(${i * 0.05 * height}px, ${i * 0.05 * height}px, ${i * 10}px)`);
 
-                        imElBegin(c, EL_I); imStr(c, designation[i]); imElEnd(c, EL_I);
+                        imdom.ElBegin(c, el.I); imdom.Str(c, designation[i]); imdom.ElEnd(c, el.I);
                     } imLayoutEnd(c);
-                } imForEnd(c);
+                } im.ForEnd(c);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
@@ -244,8 +232,8 @@ function imBeginAnimatedRow(
     t = clamp((t - inTime) / duration, 0, 1);
 
     const root = imLayoutBegin(c, ROW); imJustify(c); {
-        elSetStyle(c,"opacity", t + "");
-        elSetStyle(c,"transform", `translate(0, ${downAmount * (1 - t)}px)`);
+        imdom.setStyle(c,"opacity", t + "");
+        imdom.setStyle(c,"transform", `translate(0, ${downAmount * (1 - t)}px)`);
     } // user specified end
 
     return root;
@@ -268,5 +256,5 @@ function imAnimatedNumber(
         number = Math.floor(targetNumber * t);
     }
 
-    imStr(c, number);
+    imdom.Str(c, number);
 }

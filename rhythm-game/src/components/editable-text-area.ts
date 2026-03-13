@@ -1,7 +1,7 @@
 import { newCssBuilder } from "src/utils/cssb.ts";
 import { setInputValue } from "src/utils/dom-utils.ts";
-import { ImCache, imMemo, isFirstishRender } from "src/utils/im-core.ts";
-import { EL_TEXTAREA, elSetAttr, elSetClass, elSetStyle, elSetTextSafetyRemoved, imElBegin, imElEnd } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { BLOCK, imLayoutBegin, imLayoutEnd, INLINE } from "./core/layout.ts";
 import { cn, cssVars } from "./core/stylesheets.ts";
 
@@ -71,68 +71,68 @@ export function imTextAreaBegin(c: ImCache, {
     let textArea: HTMLTextAreaElement;
 
     const root = imLayoutBegin(c, BLOCK); {
-        if (isFirstishRender(c)) {
-            elSetClass(c, cn.flex1);
-            elSetClass(c, cn.row);
-            elSetClass(c, cn.h100);
-            elSetClass(c, cn.overflowYAuto);
-            elSetClass(c, cnTextAreaRoot);
+        if (im.isFirstishRender(c)) {
+            imdom.setClass(c, cn.flex1);
+            imdom.setClass(c, cn.row);
+            imdom.setClass(c, cn.h100);
+            imdom.setClass(c, cn.overflowYAuto);
+            imdom.setClass(c, cnTextAreaRoot);
         }
 
         // This is now always present.
         imLayoutBegin(c, BLOCK); {
-            if (isFirstishRender(c)) {
-                elSetClass(c, cn.handleLongWords);
-                elSetClass(c, cn.relative);
-                elSetClass(c, cn.w100);
-                elSetClass(c, cn.hFitContent);
-                elSetStyle(c, "minHeight", "100%");
+            if (im.isFirstishRender(c)) {
+                imdom.setClass(c, cn.handleLongWords);
+                imdom.setClass(c, cn.relative);
+                imdom.setClass(c, cn.w100);
+                imdom.setClass(c, cn.hFitContent);
+                imdom.setStyle(c, "minHeight", "100%");
             }
 
-            if (imMemo(c, isOneLine)) {
-                elSetClass(c, cn.preWrap, !isOneLine)
-                elSetClass(c, cn.pre, !!isOneLine)
-                elSetClass(c, cn.overflowHidden, isOneLine)
-                elSetClass(c, cn.noWrap, !!isOneLine);
+            if (im.Memo(c, isOneLine)) {
+                imdom.setClass(c, cn.preWrap, !isOneLine)
+                imdom.setClass(c, cn.pre, !!isOneLine)
+                imdom.setClass(c, cn.overflowHidden, isOneLine)
+                imdom.setClass(c, cn.noWrap, !!isOneLine);
             }
 
             // This is a facade that gives the text area the illusion of auto-sizing!
             // but it only works if the text doesn't end in whitespace....
             imLayoutBegin(c, INLINE); {
-                const placeholderChanged = imMemo(c, placeholder);
-                const valueChanged = imMemo(c, value);
+                const placeholderChanged = im.Memo(c, placeholder);
+                const valueChanged = im.Memo(c, value);
                 if (placeholderChanged || valueChanged) {
                     if (!value) {
-                        elSetTextSafetyRemoved(c, placeholder);
-                        elSetStyle(c, "color", cssVars.fg2);
+                        imdom.setTextUnsafe(c, placeholder);
+                        imdom.setStyle(c, "color", cssVars.fg2);
                     } else {
-                        elSetTextSafetyRemoved(c, value);
-                        elSetStyle(c, "color", cssVars.fg);
+                        imdom.setTextUnsafe(c, value);
+                        imdom.setStyle(c, "color", cssVars.fg);
                     }
                 }
             } imLayoutEnd(c);
 
             // This full-stop at the end of the text is what prevents the text-area from collapsing in on itself
             imLayoutBegin(c, INLINE); {
-                if (isFirstishRender(c)) {
-                    elSetStyle(c, "color", "transparent");
-                    elSetStyle(c, "userSelect", "none");
-                    elSetTextSafetyRemoved(c, ".");
+                if (im.isFirstishRender(c)) {
+                    imdom.setStyle(c, "color", "transparent");
+                    imdom.setStyle(c, "userSelect", "none");
+                    imdom.setTextUnsafe(c, ".");
                 }
             } imLayoutEnd(c);
 
-            textArea = imElBegin(c, EL_TEXTAREA).root; {
-                if (isFirstishRender(c)) {
-                    elSetAttr(c, "class", [cn.allUnset, cn.absoluteFill, cn.preWrap, cn.w100, cn.h100].join(" "));
-                    elSetAttr(c, "style", "background-color: transparent; color: transparent; overflow-y: hidden; padding: 0px");
+            textArea = imdom.ElBegin(c, el.TEXTAREA).root; {
+                if (im.isFirstishRender(c)) {
+                    imdom.setAttr(c, "class", [cn.allUnset, cn.absoluteFill, cn.preWrap, cn.w100, cn.h100].join(" "));
+                    imdom.setAttr(c, "style", "background-color: transparent; color: transparent; overflow-y: hidden; padding: 0px");
                 }
 
-                if (imMemo(c, value)) {
+                if (im.Memo(c, value)) {
                     // don't update the value out from under the user implicitly
                     setInputValue(textArea, value);
                 }
 
-            } // imElEnd(c, EL_TEXTAREA);
+            } // imdom.ElEnd(c, el.TEXTAREA);
         } // imLayoutEnd(c);
 
         // TODO: some way to optionally render other stuff hereYou can now render your own overlays here.
@@ -146,7 +146,7 @@ export function imTextAreaEnd(c: ImCache) {
     {
         {
             {
-            } imElEnd(c, EL_TEXTAREA);
+            } imdom.ElEnd(c, el.TEXTAREA);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 }

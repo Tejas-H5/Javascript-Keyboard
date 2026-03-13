@@ -1,8 +1,8 @@
 import { COL, imAbsolute, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout.ts";
 import { cssVars } from "src/components/core/stylesheets.ts";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
-import { ImCache, imState, isFirstishRender, rerenderImCache } from "src/utils/im-core.ts";
-import { elHasMousePress, elSetStyle, getGlobalEventSystem } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 
 export type ContextMenuState = {
     open: boolean;
@@ -19,7 +19,7 @@ export function newContextMenuState(): ContextMenuState {
 }
 
 export function imContextMenu(c: ImCache) {
-    return imState(c, newContextMenuState);
+    return im.State(c, newContextMenuState);
 }
 
 export function imContextMenuBegin(c: ImCache, s: ContextMenuState) {
@@ -28,7 +28,7 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState) {
 
     imLayoutBegin(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, 10000); {
         const root = imLayoutBegin(c, COL); imAbsolute(c, y, PX, 0, NA, 0, NA, x, PX); {
-            const mouse = getGlobalEventSystem().mouse;
+            const mouse = imdom.getMouse();
             const rect = root.getBoundingClientRect();
 
             if (Math.abs(rect.x - rect.y) > 10) {
@@ -48,12 +48,12 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState) {
                 s.position.y = wantedTop;
             }
 
-            if (isFirstishRender(c)) {
-                elSetStyle(c, "padding", "3px");
-                elSetStyle(c, "userSelect", "none");
-                elSetStyle(c, "backgroundColor", cssVars.bg);
-                elSetStyle(c, "boxShadow", "4px 4px 5px 0px rgba(0,0,0,0.37)");
-                elSetStyle(c, "border", "1px solid rgba(0,0,0,0.37)");
+            if (im.isFirstishRender(c)) {
+                imdom.setStyle(c, "padding", "3px");
+                imdom.setStyle(c, "userSelect", "none");
+                imdom.setStyle(c, "backgroundColor", cssVars.bg);
+                imdom.setStyle(c, "boxShadow", "4px 4px 5px 0px rgba(0,0,0,0.37)");
+                imdom.setStyle(c, "border", "1px solid rgba(0,0,0,0.37)");
             }
 
         } // imLayoutEnd(c);
@@ -65,14 +65,14 @@ export function imContextMenuEnd(c: ImCache, s: ContextMenuState) {
     {
         // imLayout
         {
-            if (elHasMousePress(c)) {
-                const mouse = getGlobalEventSystem().mouse;
+            if (imdom.hasMousePress(c)) {
+                const mouse = imdom.getMouse();
                 mouse.mouseDownElements.clear();
                 mouse.mouseClickElements.clear();
             }
         } imLayoutEnd(c);
 
-        if (elHasMousePress(c)) {
+        if (imdom.hasMousePress(c)) {
             s.open = false;
         }
     } imLayoutEnd(c);
@@ -101,11 +101,11 @@ export function openContextMenu(c: ImCache, s: ContextMenuState, x: number, y: n
 
     // Allows the context menu to measure and reposition itself if it's overflowing the window, 
     // without the  1 frame delay. TODO: think of a better way to achieve this.
-    rerenderImCache(c);
+    im.rerenderCache(c);
 }
 
 export function openContextMenuAtMouse(c: ImCache, s: ContextMenuState) {
-    const mouse = getGlobalEventSystem().mouse;
+    const mouse = imdom.getMouse();
     openContextMenu(c, s, mouse.X, mouse.Y);
 }
 

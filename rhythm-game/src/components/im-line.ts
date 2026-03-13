@@ -1,7 +1,7 @@
 import { BLOCK, imBg, imLayoutBegin, imLayoutEnd, imOpacity, imSize, NA, PERCENT, PX } from "src/components/core/layout.ts";
 import { newCssBuilder } from "src/utils/cssb.ts";
-import { ImCache, isFirstishRender } from "src/utils/im-core.ts";
-import { elSetClass } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { cssVars } from "./core/stylesheets.ts";
 
 const cssb = newCssBuilder();
@@ -34,8 +34,8 @@ export function imLine(
     imSize(c, !isH ? widthPx : 100, !isH ? heightUnit : PERCENT,
                isH ? widthPx : 100,  isH ? heightUnit : PERCENT); 
     imBg(c, isOpaque ? cssVars.fg : ""); imOpacity(c, opacity); {
-        if (isFirstishRender(c)) {
-            elSetClass(c, cnLine);
+        if (im.isFirstishRender(c)) {
+            imdom.setClass(c, cnLine);
         }
     } imLayoutEnd(c);
 }

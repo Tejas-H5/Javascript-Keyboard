@@ -1,5 +1,5 @@
 import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
-import { getRenderCount, ImCache, imMemo, imState } from "src/utils/im-core";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 import { inverseLerp, lerp, max, min } from "src/utils/math-utils";
 
 // TODO: consider moving to components.ts
@@ -158,10 +158,10 @@ export type PlotState = {
 
 
 export function imPlotBegin(c: ImCache): PlotState {
-    const plotState = imState(c, newPlotState);
+    const plotState = im.State(c, newPlotState);
     plotState.isNewFrame = false;
 
-    let isNewFrame = imMemo(c, getRenderCount(c));
+    let isNewFrame = im.Memo(c, im.getRenderCount(c));
     if (isNewFrame) {
         plotState.isNewFrame = true;
     }
@@ -170,9 +170,9 @@ export function imPlotBegin(c: ImCache): PlotState {
         plotState.ctx = ctx;
 
 
-        const widthChanged  = imMemo(c, width);
-        const heightChanged = imMemo(c, height);
-        const dpiChanged    = imMemo(c, dpi);
+        const widthChanged  = im.Memo(c, width);
+        const heightChanged = im.Memo(c, height);
+        const dpiChanged    = im.Memo(c, dpi);
 
         plotState.resized = (widthChanged || heightChanged || dpiChanged) !== 0;
         if (plotState.resized) {

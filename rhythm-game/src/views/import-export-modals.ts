@@ -17,17 +17,8 @@ import {
 } from "src/components/core/layout.ts";
 import { cssVars } from "src/components/core/stylesheets.ts";
 import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area.ts";
-import {
-    ImCache,
-    imGetInline,
-    imIf,
-    imIfEnd,
-    imMemo,
-    imSet,
-    imState,
-    isFirstishRender
-} from "src/utils/im-core.ts";
-import { EL_B, EV_INPUT, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { cssVarsApp } from "./styling.ts";
 
 export type ImportEvent = {
@@ -50,10 +41,10 @@ function newImportModalState(): ImportModalState {
 }
 
 export function imImportModal(c: ImCache): ImportModalState {
-    const refocused = imMemo(c, true);
-    let s; s = imGetInline(c, imImportModal); 
+    const refocused = im.Memo(c, true);
+    let s; s = im.GetInline(c, imImportModal); 
     if (!s || refocused) {
-        s = imSet(c, newImportModalState());
+        s = im.Set(c, newImportModalState());
     }
 
     imModalBegin(c, 200); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
@@ -63,22 +54,22 @@ export function imImportModal(c: ImCache): ImportModalState {
                     value: s.json,
                     placeholder: "Paste in your wave program JSON!"
                 }); {
-                    if (isFirstishRender(c)) {
+                    if (im.isFirstishRender(c)) {
                     }
 
-                    const ev = imOn(c, EV_INPUT);
-                    if (ev) {
+                    const inputEv = imdom.On(c, ev.INPUT);
+                    if (inputEv) {
                         s.json = textArea.value;
                         s.event = { previewUpdated: true };
                     }
                 } imTextAreaEnd(c);
             } imLayoutEnd(c);
 
-            if (imIf(c) && s.importError) {
+            if (im.If(c) && s.importError) {
                 imLayoutBegin(c, BLOCK); imBg(c, cssVarsApp.error); {
-                    imStr(c, s.importError);
+                    imdom.Str(c, s.importError);
                 } imLayoutEnd(c);
-            } imIfEnd(c);
+            } im.IfEnd(c);
 
             imLayoutBegin(c, ROW); {
                 if (imButtonIsClicked(c, "Import")) {
@@ -93,7 +84,7 @@ export function imImportModal(c: ImCache): ImportModalState {
 
 function imHeading(c: ImCache, text: string) {
     imLayoutBegin(c, ROW); imJustify(c); {
-        imElBegin(c, EL_B); imStr(c, text); imElEnd(c, EL_B);
+        imdom.ElBegin(c, el.B); imdom.Str(c, text); imdom.ElEnd(c, el.B);
     } imLayoutEnd(c);
 }
 
@@ -109,8 +100,8 @@ function newExportModalState(): ExportModalState {
 }
 
 export function imExportModal<T>(c: ImCache, jsonSerializable: T, customSerializer?: (val: T) => string): ExportModalState {
-    const s = imState(c, newExportModalState);
-    if (imMemo(c, true)) {
+    const s = im.State(c, newExportModalState);
+    if (im.Memo(c, true)) {
         s.json = customSerializer ? customSerializer(jsonSerializable) : JSON.stringify(jsonSerializable);
     }
 
@@ -119,7 +110,7 @@ export function imExportModal<T>(c: ImCache, jsonSerializable: T, customSerializ
             imHeading(c, "Paste this JSON somewhere safe!");
 
             imLayoutBegin(c, BLOCK); imFlex(c); imScrollOverflow(c); {
-                imStr(c, s.json);
+                imdom.Str(c, s.json);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
     } imModalEnd(c);

@@ -77,15 +77,15 @@ import {
 import { filteredCopy } from "src/utils/array-utils.ts";
 import { assert, unreachable } from "src/utils/assert.ts";
 import { copyToClipboard } from "src/utils/clipboard.ts";
-import { getDeltaTimeSeconds, ImCache, imEndFor, imEndIf, imFor, imForEnd, imGetInline, imIf, imIfElse, imIfEnd, imMemo, imSet, imState, imSwitch, imSwitchEnd, isFirstishRender } from "src/utils/im-core.ts";
-import { EL_B, elSetClass, elSetStyle, EV_INPUT, getGlobalEventSystem, imElBegin, imElEnd, imOn, imStr } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, key, KEY } from "src/utils/im-js";
+
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils.ts";
 import { bytesToMegabytes, utf16ByteLength } from "src/utils/utf8.ts";
 import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, setViewSoundLab, } from "./app.ts";
 import { isSavingAnyChart } from "./saving-chart.ts";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view.ts";
 import { cssVarsApp } from "./styling.ts";
-import { isKeyHeld, KEY_SHIFT } from "src/utils/key-state.ts";
+
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
     if (item.type === TIMELINE_ITEM_NOTE) {
@@ -189,7 +189,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
     const chart = sequencer._currentChart;
     const isRangeSelecting = hasRangeSelection(sequencer);
 
-    const s = imState(c, newSequencerState);
+    const s = im.State(c, newSequencerState);
 
     const currentCursor = getSequencerPlaybackOrEditingCursor(sequencer);
 
@@ -198,7 +198,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
     // Compute animation factors every frame without memoization
     {
-        const lerpFactor = 20 * getDeltaTimeSeconds(c);
+        const lerpFactor = 20 * im.getDeltaTimeSeconds(c);
 
         s.currentCursorAnimated = lerp(s.currentCursorAnimated, s.lastCursor, lerpFactor);
         s.cursorSnapAnimated    = lerp(s.cursorSnapAnimated, sequencer.cursorSnap, lerpFactor);
@@ -227,8 +227,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         }
     }
 
-    const previewItemsChanged = imMemo(c, sequencer.notesToPreviewVersion);
-    const currentChartChanged = imMemo(c, sequencer._currentChart);
+    const previewItemsChanged = im.Memo(c, sequencer.notesToPreviewVersion);
+    const currentChartChanged = im.Memo(c, sequencer._currentChart);
 
     // Recompute the non-overlapping items in the sequencer timeline as needed
     if (
@@ -299,7 +299,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         }
     }
 
-    if (imIf(c) && s.importModalOpen) {
+    if (im.If(c) && s.importModalOpen) {
         imImportModal(c, ctx);
 
         if (!ctx.handled) {
@@ -310,9 +310,9 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         }
 
         ctx.handled = true;
-    } imIfEnd(c);
+    } im.IfEnd(c);
 
-    if (imIf(c) && s.exportModalOpen) {
+    if (im.If(c) && s.exportModalOpen) {
         imExportModal(c, ctx, sequencer._currentChart);
 
         if (!ctx.handled) {
@@ -323,41 +323,41 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         }
 
         ctx.handled = true;
-    } imIfEnd(c);
+    } im.IfEnd(c);
 
     imLayoutBegin(c, COL); imFlex(c); imRelative(c); {
         imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
             imLayoutBegin(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
 
-            if (imIf(c) && !loadSaveModal._open) {
-                if (imIf(c) && sequencer.playingId) {
+            if (im.If(c) && !loadSaveModal._open) {
+                if (im.If(c) && sequencer.playingId) {
                     imLayoutBegin(c, ROW); imGap(c, 20, PX); {
                         imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
                             const speed = getPlaybackSpeed();
-                            imStr(c, "Speed: ");
-                            imStr(c, speed.toFixed(2));
-                            imStr(c, "x");
+                            imdom.Str(c, "Speed: ");
+                            imdom.Str(c, speed.toFixed(2));
+                            imdom.Str(c, "x");
 
                             imLayoutBegin(c, COL); imSize(c, 500, PX, 1.5, REM); {
                                 const newSpeed = imSliderInput(c, 0.0, 3, 0.0001, speed);
-                                if (imMemo(c, newSpeed)) {
+                                if (im.Memo(c, newSpeed)) {
                                     setGlobalPlaybackSpeed(ctx, newSpeed);
                                 }
                             } imLayoutEnd(c);
 
-                            if (imIf(c) && speed !== 1) {
+                            if (im.If(c) && speed !== 1) {
                                 if (imButtonIsClicked(c, "<")) {
                                     setGlobalPlaybackSpeed(ctx, 1);
                                 }
-                            } imIfEnd(c);
+                            } im.IfEnd(c);
                         } imLayoutEnd(c);
 
                         imLayoutBegin(c, BLOCK); {
-                            imStr(c, (sequencer._time / 1000).toFixed(3)); imStr(c, "s");
+                            imdom.Str(c, (sequencer._time / 1000).toFixed(3)); imdom.Str(c, "s");
                         } imLayoutEnd(c);
                     } imLayoutEnd(c);
                 } else {
-                    imIfElse(c);
+                    im.IfElse(c);
 
                     imLayoutBegin(c, ROW); imGap(c, 20, PX); {
                         // bpm input
@@ -383,12 +383,12 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         }
 
                     } imLayoutEnd(c);
-                } imIfEnd(c);
+                } im.IfEnd(c);
 
                 imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imFg(c, cssVarsApp.danger); { 
-                    if (imIf(c) && isReadonlyChart(chart)) {
-                        imStr(c, "Readonly");
-                    } imIfEnd(c);
+                    if (im.If(c) && isReadonlyChart(chart)) {
+                        imdom.Str(c, "Readonly");
+                    } im.IfEnd(c);
                 } imLayoutEnd(c);
 
                 if (imButtonIsClicked(c, "Test", s.importModalOpen)) {
@@ -412,11 +412,11 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     setLoadSaveModalOpen(ctx);
                 }
             } else {
-                imIfElse(c);
+                im.IfElse(c);
 
                 // TODO: Load/save modal top bar. When needed.
 
-            } imIfEnd(c);
+            } im.IfEnd(c);
 
             imLayoutBegin(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
         } imLayoutEnd(c);
@@ -424,7 +424,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         imLine(c, LINE_HORIZONTAL, 1);
 
         imLayoutBegin(c, COL); imFlex(c); {
-            if (imIf(c) && isRangeSelecting) {
+            if (im.If(c) && isRangeSelecting) {
                 imLayoutBegin(c, BLOCK); imRelative(c); {
                     const [start, end] = getSelectionStartEndIndexes(sequencer);
                     let str;
@@ -434,34 +434,34 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         str = (end - start + 1) + " selected";
                     }
 
-                    imStr(c, str);
+                    imdom.Str(c, str);
                 } imLayoutEnd(c);
-            } imIfEnd(c);
+            } im.IfEnd(c);
 
             if (!!debugFlags.debuUndoBuffer) {
                 // Debug visualizer for the undo buffer
                 imLayoutBegin(c, BLOCK); {
                     let i = 0;
                     const chart = sequencer._currentChart;
-                    imFor(c); for (const item of chart._undoBuffer.items) {
+                    im.For(c); for (const item of chart._undoBuffer.items) {
                         imLayoutBegin(c, INLINE_BLOCK); imPadding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
-                            imStr(c, chart._undoBuffer.idx === i ? "->" : "");
-                            imStr(c, "Entry " + (i++) + ": ");
-                            imFor(c); for (const tlItem of item.items) {
-                                imStr(c, timelineItemToString(tlItem));
-                            } imForEnd(c);
+                            imdom.Str(c, chart._undoBuffer.idx === i ? "->" : "");
+                            imdom.Str(c, "Entry " + (i++) + ": ");
+                            im.For(c); for (const tlItem of item.items) {
+                                imdom.Str(c, timelineItemToString(tlItem));
+                            } im.ForEnd(c);
                         } imLayoutEnd(c);
-                    } imForEnd(c);
+                    } im.ForEnd(c);
                 } imLayoutEnd(c);
             }
 
             imLayoutBegin(c, BLOCK); imFlex(c); imRelative(c); {
-                if (isFirstishRender(c)) {
-                    elSetStyle(c, "overflowY", "auto");
-                    elSetStyle(c, "overflowX", "hidden");
+                if (im.isFirstishRender(c)) {
+                    imdom.setStyle(c, "overflowY", "auto");
+                    imdom.setStyle(c, "overflowX", "hidden");
                 }
 
-                if (imIf(c) && isRangeSelecting) {
+                if (im.If(c) && isRangeSelecting) {
                     const beatsA = sequencer.rangeSelectStart;
                     const beatsB = sequencer.rangeSelectEnd;
 
@@ -491,14 +491,14 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     // range select lines
                     imSequencerVerticalLine(c, s, sequencer.rangeSelectStart, cssVarsApp.mg, 3);
                     imSequencerVerticalLine(c, s, sequencer.rangeSelectEnd, cssVarsApp.mg, 3);
-                } imIfEnd(c);
+                } im.IfEnd(c);
 
                 {
                     const start = sequencer.cursorSnap * Math.floor(s.leftExtentBeats / sequencer.cursorSnap);
                     const end   = sequencer.cursorSnap * Math.floor(s.rightExtentBeats / sequencer.cursorSnap);
 
                     // grid lines
-                    imFor(c); for (let x = start; x < end; x += sequencer.cursorSnap) {
+                    im.For(c); for (let x = start; x < end; x += sequencer.cursorSnap) {
                         if (x < 0) {
                             continue;
                         }
@@ -512,17 +512,17 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             thickness = 2;
                         }
                         imSequencerVerticalLine(c, s, x, color, thickness);
-                    } imForEnd(c);
+                    } im.ForEnd(c);
 
                     // cursor start vertical line
                     imSequencerVerticalLine(c, s, s.lastCursor, cssVarsApp.mg, 3);
 
                     // add blue vertical lines for all the measures
-                    imFor(c); for (const item of s.commandsList) {
+                    im.For(c); for (const item of s.commandsList) {
                         if (item.type !== TIMELINE_ITEM_MEASURE) continue;
                         const beats = item.start;
                         imSequencerVerticalLine(c, s, beats, cssVarsApp.playback, 4);
-                    } imForEnd(c);
+                    } im.ForEnd(c);
                 }
 
                 let hasFilter = sequencer.notesFilter.size > 0;
@@ -531,12 +531,12 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s, false);
                     imSequencerNotesUI(c, "measures", s.measures, null, ctx, s, false);
 
-                    if (imMemo(c, s.allNotesVisible)) {
-                        elSetStyle(c, "fontSize", s.allNotesVisible ? "13px" : "");
+                    if (im.Memo(c, s.allNotesVisible)) {
+                        imdom.setStyle(c, "fontSize", s.allNotesVisible ? "13px" : "");
                     }
 
-                    if (imIf(c) && s.allNotesVisible) {
-                        imFor(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
+                    if (im.If(c) && s.allNotesVisible) {
+                        im.For(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
                             const key = ctx.keyboard.flatKeys[i];
                             const entry = s.notesMap.get(key.noteId);
                             const faded = hasFilter && !sequencer.notesFilter.has(key.noteId);
@@ -547,11 +547,11 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                                 const text = getMusicNoteText(key.noteId);
                                 imSequencerNotesUI(c, text, noItems, noItems, ctx, s, faded);
                             }
-                        } imForEnd(c);
+                        } im.ForEnd(c);
                     } else {
-                        imIfElse(c);
+                        im.IfElse(c);
 
-                        imFor(c); for (const entry of s.noteOrder) {
+                        im.For(c); for (const entry of s.noteOrder) {
                             assert(!!entry.firstItem);
                             const key = getKeyForNote(ctx.keyboard, entry.firstItem.noteId);
                             if (!key) {
@@ -569,8 +569,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                                 s,
                                 faded
                             );
-                        } imForEnd(c);
-                    } imIfEnd(c);
+                        } im.ForEnd(c);
+                    } im.IfEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
 
@@ -579,7 +579,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
             // minimap of the entire chart
             const chart = sequencer._currentChart;
-            if (imIf(c) && chart.timeline.length > 0) {
+            if (im.If(c) && chart.timeline.length > 0) {
                 const lastItem = chart.timeline[chart.timeline.length - 1]
                 const totalBeats = itemEnd(lastItem);
 
@@ -588,12 +588,12 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     const rightAbsolutePercent = 100.0 * s.rightExtentBeatsAnimated / totalBeats;
                     const color = `rgba(0, 0, 0, 0.25)`;
 
-                    imFor(c); for (let i = 0; i < chart.timeline.length; i++) {
+                    im.For(c); for (let i = 0; i < chart.timeline.length; i++) {
                         const item = chart.timeline[i];
                         const absoluteLeftStart = 100 * item.start / totalBeats;
                         const absoluteLeftEnd   = 100 * itemEnd(item) / totalBeats;
                         const width = absoluteLeftEnd - absoluteLeftStart;
-                        imSwitch(c, item.type); switch (item.type) {
+                        im.Switch(c, item.type); switch (item.type) {
                             case TIMELINE_ITEM_MEASURE: {
                                 imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.playback, 2);
                             } break;
@@ -609,8 +609,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                                     imBg(c, cssVars.fg);
                                 } imLayoutEnd(c);
                             } break;
-                        } imSwitchEnd(c);
-                    } imForEnd(c);
+                        } im.SwitchEnd(c);
+                    } im.ForEnd(c);
 
                     imAbsoluteVerticalLine(c, 100.0 * s.currentCursorAnimated / totalBeats, cssVarsApp.fg, 4);
 
@@ -628,14 +628,14 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         } imLayoutEnd(c);
                     }
                 } imLayoutEnd(c);
-            } imIfEnd(c);
+            } im.IfEnd(c);
 
             imLine(c, LINE_HORIZONTAL, 1);
 
             imLayoutBegin(c, ROW); imJustify(c); imGap(c, 10, PX); {
-                imElBegin(c, EL_B); { 
-                    imStr(c, sequencer._currentChart.name); 
-                } imElEnd(c, EL_B);
+                imdom.ElBegin(c, el.B); { 
+                    imdom.Str(c, sequencer._currentChart.name); 
+                } imdom.ElEnd(c, el.B);
 
                 imLayoutBegin(c, BLOCK); imFlex(c); {
                     let isSaving = isSavingAnyChart();
@@ -651,51 +651,51 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     //
                     // And this will always be the case.
 
-                    if (imIf(c) && (ui.editView.chartSaveTimerSeconds > 0 || isSaving)) {
+                    if (im.If(c) && (ui.editView.chartSaveTimerSeconds > 0 || isSaving)) {
                         const t = ui.editView.chartSaveTimerSeconds / CHART_SAVE_DEBOUNCE_SECONDS;
                         const numDots = Math.floor((1.0 - t) * 10);
                         let message = "Awaiting save" + ".".repeat(numDots);
 
-                        imStr(c, message);
+                        imdom.Str(c, message);
                     } else {
-                        imIfElse(c);
+                        im.IfElse(c);
 
                         const numToUndo = chart._undoBuffer.idx + 1;
-                        if (imIf(c) && numToUndo > 0) {
-                            imStr(c, "|");
-                            imStr(c, numToUndo + " undo");
-                        } imIfEnd(c);
+                        if (im.If(c) && numToUndo > 0) {
+                            imdom.Str(c, "|");
+                            imdom.Str(c, numToUndo + " undo");
+                        } im.IfEnd(c);
                         const numToRedo = chart._undoBuffer.items.length - chart._undoBuffer.idx - 1;
-                        if (imIf(c) && numToRedo > 0) {
-                            imStr(c, "|");
-                            imStr(c, numToRedo + " redo");
-                        } imIfEnd(c);
+                        if (im.If(c) && numToRedo > 0) {
+                            imdom.Str(c, "|");
+                            imdom.Str(c, numToRedo + " redo");
+                        } im.IfEnd(c);
 
                         const numCopied = ui.copied.items.length;
-                        if (imIf(c) && numCopied > 0) {
-                            imStr(c, "|");
-                            imStr(c, numCopied + " items copied");
-                        } imIfEnd(c);
-                    } imIfEnd(c);
+                        if (im.If(c) && numCopied > 0) {
+                            imdom.Str(c, "|");
+                            imdom.Str(c, numCopied + " items copied");
+                        } im.IfEnd(c);
+                    } im.IfEnd(c);
                 } imLayoutEnd(c);
 
-                imStr(c, "note_idx=");
-                imStr(c, s.cursorIdx);
-                imStr(c, ", beats="); imStr(c, (sequencer.cursor / FRACTIONAL_UNITS_PER_BEAT).toFixed(3)); 
-                imStr(c, "(integer_beats="); imStr(c, sequencer.cursor); imStr(c, ")");
-                imStr(c, ", time="); imStr(c, (sequencer._time / 1000).toFixed(3)); imStr(c, "s");
+                imdom.Str(c, "note_idx=");
+                imdom.Str(c, s.cursorIdx);
+                imdom.Str(c, ", beats="); imdom.Str(c, (sequencer.cursor / FRACTIONAL_UNITS_PER_BEAT).toFixed(3)); 
+                imdom.Str(c, "(integer_beats="); imdom.Str(c, sequencer.cursor); imdom.Str(c, ")");
+                imdom.Str(c, ", time="); imdom.Str(c, (sequencer._time / 1000).toFixed(3)); imdom.Str(c, "s");
 
                 imLayoutBegin(c, ROW); imFlex(c); imJustify(c, END); {
-                    if (imIf(c) && sequencer.notesToPreview.length > 0) {
-                        imStr(c, "TAB -> place, DEL or ~ -> delete");
-                    } imIfEnd(c);
+                    if (im.If(c) && sequencer.notesToPreview.length > 0) {
+                        imdom.Str(c, "TAB -> place, DEL or ~ -> delete");
+                    } im.IfEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
 
-        if (imIf(c) && sequencer.keyEditFilterModalOpen) {
+        if (im.If(c) && sequencer.keyEditFilterModalOpen) {
             imFilterModal(c, s, ctx, sequencer, ctx.keyboard); 
-        } imIfEnd(c);
+        } im.IfEnd(c);
     } imLayoutEnd(c);
 
     if (!ctx.handled) {
@@ -748,16 +748,16 @@ function imAbsoluteVerticalLine(
     color: string,
     thickness: number,
 ) {
-    if (imIf(c) && absolutePercent >= 0 && absolutePercent <= 100) {
+    if (im.If(c) && absolutePercent >= 0 && absolutePercent <= 100) {
         imLayoutBegin(c, BLOCK); imAbsolute(
             c,
             0, PX, 0, NA,
             0, PX, absolutePercent, PERCENT,
         ); {
-            if (imMemo(c, thickness)) elSetStyle(c,"width", thickness + "px");
-            if (imMemo(c, color)) elSetStyle(c,"backgroundColor", color);
+            if (im.Memo(c, thickness)) imdom.setStyle(c,"width", thickness + "px");
+            if (im.Memo(c, color)) imdom.setStyle(c,"backgroundColor", color);
         } imLayoutEnd(c);
-    } imIfEnd(c);
+    } im.IfEnd(c);
 }
 
 function imSequencerNotesUI(
@@ -779,25 +779,25 @@ function imSequencerNotesUI(
         compact ? 0 : 10, PX, 3, PX, 
         compact ? 0 : 10, PX, 3, PX, 
     ); {
-        if (imMemo(c, faded)) {
-            elSetStyle(c, "color", faded ? cssVars.mg : "");
+        if (im.Memo(c, faded)) {
+            imdom.setStyle(c, "color", faded ? cssVars.mg : "");
         }
 
-        imStr(c, text);
+        imdom.Str(c, text);
 
-        imFor(c); for (const item of items) {
+        im.For(c); for (const item of items) {
             const key = item.type === TIMELINE_ITEM_NOTE ? getKeyForNote(ctx.keyboard, item.noteId) : undefined;
             const text = getItemSequencerText(item, key);
             imSequencerTrackTimelineItem(c, text, item, ctx, s, compact);
-        } imForEnd(c);
+        } im.ForEnd(c);
 
-        if (imIf(c) && previewItems) {
-            imFor(c); for (const item of previewItems) {
+        if (im.If(c) && previewItems) {
+            im.For(c); for (const item of previewItems) {
                 const key = item.type === TIMELINE_ITEM_NOTE ? getKeyForNote(ctx.keyboard, item.noteId) : undefined;
                 const text = getItemSequencerText(item, key);
                 imSequencerTrackTimelineItem(c, text, item, ctx, s, compact);
-            } imEndFor(c);
-        } imEndIf(c);
+            } im.ForEnd(c);
+        } im.IfEnd(c);
     } imLayoutEnd(c);
 }
 
@@ -843,24 +843,24 @@ function imSequencerTrackTimelineItem(
         0, NA, 0, NA,
         0, PX, leftPercent, PERCENT,
     ); {
-        if (isFirstishRender(c)) {
-            elSetClass(c, cn.noWrap);
-            elSetStyle(c,"overflowX", "clip");
-            elSetStyle(c,"border", `1px solid ${cssVarsApp.fg}`);
-            elSetStyle(c,"boxSizing", "border-box");
+        if (im.isFirstishRender(c)) {
+            imdom.setClass(c, cn.noWrap);
+            imdom.setStyle(c,"overflowX", "clip");
+            imdom.setStyle(c,"border", `1px solid ${cssVarsApp.fg}`);
+            imdom.setStyle(c,"boxSizing", "border-box");
         }
 
-        if (imMemo(c, compact)) {
+        if (im.Memo(c, compact)) {
             if (compact) {
-                elSetStyle(c, "padding", "0px");
+                imdom.setStyle(c, "padding", "0px");
             } else {
-                elSetStyle(c, "padding", "3px 10px");
+                imdom.setStyle(c, "padding", "3px 10px");
             }
         }
 
-        elSetStyle(c,"backgroundColor", isBeingPlayed ? cssVarsApp.playback : isUnderCursor ? cssVarsApp.bg2 : cssVarsApp.bg);
-        elSetStyle(c,"width", width + "%");
-        imStr(c, text);
+        imdom.setStyle(c,"backgroundColor", isBeingPlayed ? cssVarsApp.playback : isUnderCursor ? cssVarsApp.bg2 : cssVarsApp.bg);
+        imdom.setStyle(c,"width", width + "%");
+        imdom.Str(c, text);
     } imLayoutEnd(c);
 }
 
@@ -926,8 +926,8 @@ function imCursorDivisor(c: ImCache, val: number): number | null {
 
         imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-        imStr(c, "Divisor: ");
-        imStr(c, "1 / " + val);
+        imdom.Str(c, "Divisor: ");
+        imdom.Str(c, "1 / " + val);
 
         imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
@@ -956,8 +956,8 @@ function imBpmInput(c: ImCache, value: number): number | null {
 
         imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
-        imStr(c, "Last BPM: ");
-        imStr(c, value.toFixed(1) + "");
+        imdom.Str(c, "Last BPM: ");
+        imdom.Str(c, value.toFixed(1) + "");
 
         imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
@@ -980,32 +980,32 @@ function imFilterModal(
     keyboard: KeyboardState,
 ) {
 
-    if (imMemo(c, true)) {
+    if (im.Memo(c, true)) {
         sequencer.keyEditFilterRangeIdx0 = -1;
     }
 
     imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "zIndex", "100");
+        if (im.isFirstishRender(c)) {
+            imdom.setStyle(c, "zIndex", "100");
         }
 
         imLayoutBegin(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
             imLayoutBegin(c, ROW); imAlign(c); imJustify(c); {
-                imStr(c, "Edit filter - shift to range-select");
+                imdom.Str(c, "Edit filter - shift to range-select");
             } imLayoutEnd(c);
 
             const root = imLayoutBegin(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
-                if (isFirstishRender(c)) {
-                    elSetStyle(c, "lineHeight", "1");
+                if (im.isFirstishRender(c)) {
+                    imdom.setStyle(c, "lineHeight", "1");
                 }
 
                 const height = root.clientHeight;
-                if (imMemo(c, height)) {
-                    elSetStyle(c, "fontSize", (root.clientHeight / ctx.keyboard.flatKeys.length) + "px");
+                if (im.Memo(c, height)) {
+                    imdom.setStyle(c, "fontSize", (root.clientHeight / ctx.keyboard.flatKeys.length) + "px");
                 }
 
                 imLayoutBegin(c, COL); imAlign(c, END); {
-                    imFor(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
+                    im.For(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
                         imLayoutBegin(c, BLOCK); {
                             let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
@@ -1013,13 +1013,13 @@ function imFilterModal(
                             imBg(c, hasPress ? cssVars.fg : "");
                             imFg(c, hasPress ? cssVars.bg : "");
 
-                            imStr(c, getMusicNoteText(key.noteId));
+                            imdom.Str(c, getMusicNoteText(key.noteId));
                         } imLayoutEnd(c);
-                    } imForEnd(c);
+                    } im.ForEnd(c);
                 } imLayoutEnd(c);
 
                 imLayoutBegin(c, COL); {
-                    imFor(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
+                    im.For(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
                         imLayoutBegin(c, BLOCK); {
 
@@ -1028,31 +1028,31 @@ function imFilterModal(
                             imBg(c, hasPress ? cssVars.fg : "");
                             imFg(c, hasPress ? cssVars.bg : "");
 
-                            imStr(c, "(");
-                            imStr(c, key.text);
-                            imStr(c, ")");
+                            imdom.Str(c, "(");
+                            imdom.Str(c, key.text);
+                            imdom.Str(c, ")");
                         } imLayoutEnd(c);
-                    } imForEnd(c);
+                    } im.ForEnd(c);
                 } imLayoutEnd(c);
 
                 imLayoutBegin(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
 
                 imLayoutBegin(c, COL); imFlex(c); {
-                    imFor(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
+                    im.For(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
                         const normalized = 1;
                         imLayoutBegin(c, BLOCK); {
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c, "color", cssVars.bg);
+                            if (im.isFirstishRender(c)) {
+                                imdom.setStyle(c, "color", cssVars.bg);
                             }
 
                             const inFilter = sequencer.notesFilter.has(key.noteId);
 
                             let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
-                            if (imMemo(c, hasPress) && hasPress) {
-                                const keys = getGlobalEventSystem().keyboard.keys;
+                            if (im.Memo(c, hasPress) && hasPress) {
+                                const keys = imdom.getKeyboard();
 
-                                if (isKeyHeld(keys, KEY_SHIFT)) {
+                                if (imdom.isKeyHeld(keys, KEY.SHIFT)) {
                                     let min = Math.min(sequencer.keyEditFilterRangeIdx0, key.index);
                                     if (min === -1) min = 0;
                                     let max = Math.max(sequencer.keyEditFilterRangeIdx0, key.index);
@@ -1090,8 +1090,8 @@ function imFilterModal(
                                 }
                             }
 
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c, "transition", "background-color 0.2s");
+                            if (im.isFirstishRender(c)) {
+                                imdom.setStyle(c, "transition", "background-color 0.2s");
                             }
 
                             let isVisible = !!s.notesMap.has(key.noteId);
@@ -1103,9 +1103,9 @@ function imFilterModal(
 
 
                             // HACK: Load-bearing text!
-                            imStr(c, isVisible ? "onscreen" : "offscreen");
+                            imdom.Str(c, isVisible ? "onscreen" : "offscreen");
                         } imLayoutEnd(c);
-                    } imForEnd(c);
+                    } im.ForEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
@@ -1157,17 +1157,17 @@ function imExportModal(
     chart: SequencerChart
 ) {
     imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "zIndex", "10");
+        if (im.isFirstishRender(c)) {
+            imdom.setStyle(c, "zIndex", "10");
         }
         imLayoutBegin(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
-            let s; s = imGetInline(c, imExportModal) ?? imSet(c, {
+            let s; s = im.GetInline(c, imExportModal) ?? im.Set(c, {
                 buttonText: "Copy to clipboard",
                 serializedJson: "",
                 sizeMb: 0,
             });
 
-            if (imMemo(c, true)) {
+            if (im.Memo(c, true)) {
                 const serialized = compressChart(chart);
                 const text = JSON.stringify(serialized);
                 const sizeInBytes = utf16ByteLength(text)
@@ -1177,13 +1177,13 @@ function imExportModal(
 
             imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c, true); {
                 imLayoutBegin(c, BLOCK); {
-                    elSetStyle(c, "userSelect", "none");
-                    imStr(c, s.sizeMb.toPrecision(3));
-                    imStr(c, "mb");
+                    imdom.setStyle(c, "userSelect", "none");
+                    imdom.Str(c, s.sizeMb.toPrecision(3));
+                    imdom.Str(c, "mb");
                 } imLayoutEnd(c);
                 imLayoutBegin(c, BLOCK); imFlex(c); {
-                    elSetStyle(c, "wordBreak", "break-all");
-                    imStr(c, s.serializedJson);
+                    imdom.setStyle(c, "wordBreak", "break-all");
+                    imdom.Str(c, s.serializedJson);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
             if (imButtonIsClicked(c, s.buttonText)) {
@@ -1204,39 +1204,39 @@ function imImportModal(
 ) {
     imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
         imLayoutBegin(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
-            let s; s = imGetInline(c, imExportModal) ?? imSet(c, {
+            let s; s = im.GetInline(c, imExportModal) ?? im.Set(c, {
                 importJson: "",
                 nameOverride: "",
             });
 
-            if (imMemo(c, true)) {
+            if (im.Memo(c, true)) {
                 s.importJson = "";
             }
 
             imLayoutBegin(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                imStr(c, "Data to import:");
+                imdom.Str(c, "Data to import:");
             } imLayoutEnd(c);
             imLayoutBegin(c, COL); imFlex(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 const [, textArea] = imTextAreaBegin(c, {
                     value: s.importJson,
                     placeholder: "Paste in the JSON you exported"
                 }); {
-                    const input = imOn(c, EV_INPUT);
+                    const input = imdom.On(c, ev.INPUT);
                     if (input) {
                         s.importJson = textArea.value;
                     }
                 } imTextAreaEnd(c);
             } imLayoutEnd(c);
             imLayoutBegin(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-                imStr(c, "New name (optional):");
+                imdom.Str(c, "New name (optional):");
             } imLayoutEnd(c);
             imLayoutBegin(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 const input = imTextInputBegin(c, {
                     value: s.nameOverride,
                     placeholder: "Provide a new name here"
                 }); {
-                    const ev = imOn(c, EV_INPUT);
-                    if (ev) {
+                    const inputEv = imdom.On(c, ev.INPUT);
+                    if (inputEv) {
                         s.nameOverride = input.root.value;
                     }
                 } imTextInputEnd(c);

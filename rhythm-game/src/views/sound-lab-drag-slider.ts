@@ -1,7 +1,7 @@
 import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideInteractionFeedback, imCompactLinearDragSlideInteraction } from "src/app-components/drag-slider-interaction";
-import {ImCache, imElse, imEndIf, imIf} from "src/utils/im-core";
-import { elHasMousePress, getGlobalEventSystem } from "src/utils/im-dom";
-import { isKeyHeld, KEY_MOD, KEY_SHIFT } from "src/utils/key-state";
+import { im, ImCache, imdom, el, ev, KEY, } from "src/utils/im-js";
+
+
 import { clamp, gridsnapRound } from "src/utils/math-utils";
 
 export const DRAG_TYPE_LINEAR = 1;
@@ -18,16 +18,17 @@ export function imParameterSliderInteraction(
 ): { val: number } | null {
     let initialVal = val;
 
-    const { mouse, keyboard } = getGlobalEventSystem();
+    const mouse = imdom.getMouse();
+    const keyboard = imdom.getKeyboard();
 
-    const shiftHeld = isKeyHeld(keyboard.keys, KEY_SHIFT);
-    const modHeld   = isKeyHeld(keyboard.keys, KEY_MOD);
+    const shiftHeld = imdom.isKeyHeld(keyboard, KEY.SHIFT);
+    const modHeld   = imdom.isKeyHeld(keyboard, KEY.MOD);
 
     let pixelsPerUnit = 100;
 
     let isDragging = false;
 
-    if (imIf(c) && dragType === DRAG_TYPE_CIRCULAR) {
+    if (im.If(c) && dragType === DRAG_TYPE_CIRCULAR) {
         const lockRing = shiftHeld;
         const state = imCompactCircularDragSlideInteraction(c, val, min, max, 30, 1.6, lockRing);
         imCompactCircularDragSlideInteractionFeedback(c, state);
@@ -37,7 +38,7 @@ export function imParameterSliderInteraction(
             val = state.value;
         }
     } else {
-        imElse(c);
+        im.Else(c);
 
         if (modHeld) {
             pixelsPerUnit = 1000;
@@ -51,14 +52,14 @@ export function imParameterSliderInteraction(
             isDragging = true;
             val = state.draggedValue;
         }
-    } imEndIf(c);
+    } im.IfEnd(c);
 
 
     if (isDragging) {
         val = gridsnapRound(val, step);
         val = clamp(val, min, max);
 
-        if (elHasMousePress(c) && mouse.rightMouseButton) {
+        if (imdom.hasMousePress(c) && mouse.rightMouseButton) {
             // Reset to default value on rightclick
             mouse.ev?.preventDefault();
             val = defaultValue;

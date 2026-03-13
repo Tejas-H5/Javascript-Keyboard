@@ -1,7 +1,7 @@
 import { newCssBuilder } from "src/utils/cssb.ts";
-import { ImCache, isFirstishRender } from "src/utils/im-core.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 import { BLOCK, EM, imAlign, imBg, imLayoutBegin, imLayoutEnd, imSize, INLINE, INLINE_BLOCK, PERCENT, ROW } from "./core/layout.ts";
-import { elHasMousePress, elSetClass, elSetStyle } from "src/utils/im-dom.ts";
+
 import { cssVars } from "./core/stylesheets.ts";
 
 const cssb = newCssBuilder();
@@ -23,15 +23,15 @@ const cnL = {
 // label to trigger the checkbox as well, just because it can be easier to do so.
 export function imCheckbox(c: ImCache, checked: boolean): { checked: boolean } | null {
     // NOTE: we don't do `value = imCheckbox(c, value);` here - 
-    // This encourages the use of `imMemo(c, value)` to respond to changes, which is wrong.
+    // This encourages the use of `im.Memo(c, value)` to respond to changes, which is wrong.
     // `value` may depend on other state - if it changes, you actually have no way of knowing
-    // if it was this checkbox that did it or the other state changin when you use imMemo. 
+    // if it was this checkbox that did it or the other state changin when you use im.Memo. 
     // So instead, an event is returned.
     let result = null;
 
     // I didn't think a checkbox could be broken down any further ...
     imCheckboxBegin(c); {
-        if (elHasMousePress(c)) {
+        if (imdom.hasMousePress(c)) {
             result = { checked: !checked }
         }
         imCheckboxCheckBegin(c, checked);
@@ -43,9 +43,9 @@ export function imCheckbox(c: ImCache, checked: boolean): { checked: boolean } |
 
 export function imCheckboxBegin(c: ImCache) {
     imLayoutBegin(c, INLINE_BLOCK); imAlign(c); {
-        if (isFirstishRender(c)) {
-            elSetClass(c, root);
-            elSetStyle(c, "cursor", "pointer");
+        if (im.isFirstishRender(c)) {
+            imdom.setClass(c, root);
+            imdom.setStyle(c, "cursor", "pointer");
         }
     } // imLayoutEnd
 }
@@ -58,15 +58,15 @@ export function imCheckboxEnd(c: ImCache) {
 
 export function imCheckboxCheckBegin(c: ImCache, checked: boolean) {
     imLayoutBegin(c, BLOCK); imSize(c, 0.65, EM, 0.65, EM); {
-        if (isFirstishRender(c)) {
-            elSetClass(c, cnL.solidBorderSmRounded);
-            elSetStyle(c, "padding", "4px");
+        if (im.isFirstishRender(c)) {
+            imdom.setClass(c, cnL.solidBorderSmRounded);
+            imdom.setStyle(c, "padding", "4px");
         }
 
         imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT);
         imBg(c, checked ? cssVars.fg : ""); {
-            if (isFirstishRender(c)) {
-                elSetClass(c, cnL.checkboxButton);
+            if (im.isFirstishRender(c)) {
+                imdom.setClass(c, cnL.checkboxButton);
             }
         } // imLayoutEnd(c);
     } // imLayoutEnd(c);

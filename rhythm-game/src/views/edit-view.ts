@@ -38,13 +38,7 @@ import {
     transposeSelectedItems
 } from "src/state/sequencer-state.ts";
 import { APP_VIEW_PLAY_CHART, EditViewState } from "src/state/ui-state.ts";
-import {
-    getDeltaTimeSeconds,
-    ImCache,
-    imEndIf,
-    imIf,
-    imMemo
-} from "src/utils/im-core.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 import { imSequencer } from "src/views/edit-view-sequencer.ts";
 import {
     copyNotesToTempStore,
@@ -399,7 +393,7 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
     }
 
     if (s.chartSaveTimerSeconds >= 0) {
-        s.chartSaveTimerSeconds -= getDeltaTimeSeconds(c);
+        s.chartSaveTimerSeconds -= im.getDeltaTimeSeconds(c);
         if (s.chartSaveTimerSeconds < 0) {
             runSaveCurrentChartTask(ctx);
             s.chartSaveTimerSeconds = -1;
@@ -415,9 +409,9 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
     imLayoutBegin(c, ROW); imFlex(c); {
         imSequencer(c, ctx);
 
-        if (imIf(c) && loadSaveModal._open) {
+        if (im.If(c) && loadSaveModal._open) {
             imLoadSaveSidebar(c, ctx);
-        } imEndIf(c);
+        } im.IfEnd(c);
     } imLayoutEnd(c);
 
     // NOTE: we should actually handle keyboard input at the _end_, so that deeper components

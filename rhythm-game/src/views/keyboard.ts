@@ -13,8 +13,8 @@ import {
 import { APP_VIEW_EDIT_CHART } from "src/state/ui-state";
 import { arrayAt, filterInPlace } from "src/utils/array-utils";
 import { CssColor } from "src/utils/colour";
-import { ImCache, imFor, imForEnd, imGet, imIf, imIfEnd, imMemo, imSet, imState, inlineTypeId, isFirstishRender } from "src/utils/im-core";
-import { elGet, elHasMouseOver, elHasMousePress, elSetClass, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { lerp } from "src/utils/math-utils";
 import { GlobalContext } from "./app";
 import { cssVarsApp } from "./styling";
@@ -54,14 +54,14 @@ function newKeyboardUiState(): KeyboardUiState {
 }
 
 export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
-    const state = imState(c, newKeyboardUiState);
+    const state = im.State(c, newKeyboardUiState);
     state.keysPressed.length  = 0;
     state.keysReleased.length = 0;
 
     const keyboard = ctx.keyboard;
     const keys     = keyboard.keys;
 
-    const parent = elGet(c);
+    const parent = imdom.getElement(c);
     let maxOffset = 0;
     for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
         const keyRow = keyboard.keys[rowIdx];
@@ -70,11 +70,11 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
     }
 
     imLayoutBegin(c, COL); imFlex(c); imAlign(c); {
-        elSetClass(c, "keyboard");
+        imdom.setClass(c, "keyboard");
 
-        const mouse = getGlobalEventSystem().mouse;
+        const mouse = imdom.getMouse();
 
-        if (elHasMousePress(c)) {
+        if (imdom.hasMousePress(c)) {
             keyboard.hasClicked = mouse.leftMouseButton;
         } 
         if (!mouse.leftMouseButton) {
@@ -86,21 +86,21 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
         const keySize = Math.min(width / maxOffset, height / (keyboard.keys.length));
 
         imLayoutBegin(c, COL); imFlex(c); {
-            imFor(c); for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
+            im.For(c); for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
                 const keyRow      = keyboard.keys[rowIdx];
                 const startOffset = KEYBOARD_OFFSETS[rowIdx];
 
                 imLayoutBegin(c, ROW); imGap(c, 5, PX); imJustify(c, START); {
                     imLayoutBegin(c, BLOCK); imSize(c, startOffset * keySize, PX, 0, NA); imLayoutEnd(c);
 
-                    imFor(c); for (
+                    im.For(c); for (
                         let keyIdx = 0;
                         keyIdx < keyRow.length;
                         keyIdx++
                     ) {
                         const key = keyRow[keyIdx];
-                        let s; s = imGet(c, inlineTypeId(imKeyboard));
-                        if (!s) s = imSet(c, { pressed: false });
+                        let s; s = im.GetInline(c, imKeyboard);
+                        if (!s) s = im.Set(c, { pressed: false });
 
                         const signal = getCurrentOscillatorGain(key.index);
                         const isSelected = state.selection && state.selection.has(key.index);
@@ -118,30 +118,30 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                         const pressEffect = PRESS_EFFECT * Math.max(signal, hasNote ? 1 : 0);
 
                         imLayoutBegin(c, BLOCK); imRelative(c); {
-                            if (isFirstishRender(c)) {
-                                elSetStyle(c, "fontFamily", "monospace");
-                                elSetStyle(c, "outline", `1px solid ${cssVarsApp.fg}`);
-                                elSetStyle(c, "display", "inline-block");
-                                elSetStyle(c, "textAlign", "center");
-                                elSetStyle(c, "userSelect", "none");
+                            if (im.isFirstishRender(c)) {
+                                imdom.setStyle(c, "fontFamily", "monospace");
+                                imdom.setStyle(c, "outline", `1px solid ${cssVarsApp.fg}`);
+                                imdom.setStyle(c, "display", "inline-block");
+                                imdom.setStyle(c, "textAlign", "center");
+                                imdom.setStyle(c, "userSelect", "none");
                             }
 
-                            if (imMemo(c, keySize)) {
-                                elSetStyle(c, "width", keySize + "px");
-                                elSetStyle(c, "height", keySize + "px");
-                                elSetStyle(c, "fontSize", (keySize / 2) + "px");
+                            if (im.Memo(c, keySize)) {
+                                imdom.setStyle(c, "width", keySize + "px");
+                                imdom.setStyle(c, "height", keySize + "px");
+                                imdom.setStyle(c, "fontSize", (keySize / 2) + "px");
                             }
 
-                            if (imMemo(c, signal)) {
-                                elSetStyle(c, "color", signal > 0.1 ? cssVarsApp.bg : cssVarsApp.fg);
+                            if (im.Memo(c, signal)) {
+                                imdom.setStyle(c, "color", signal > 0.1 ? cssVarsApp.bg : cssVarsApp.fg);
                             }
 
-                            if (imMemo(c, pressEffect)) {
-                                elSetStyle(c, "transform", `translate(${pressEffect}px, ${pressEffect}px)`);
+                            if (im.Memo(c, pressEffect)) {
+                                imdom.setStyle(c, "transform", `translate(${pressEffect}px, ${pressEffect}px)`);
                             }
 
-                            const isPressing = keyboard.hasClicked && elHasMouseOver(c) && mouse.leftMouseButton;
-                            const isPressingChanged = imMemo(c, isPressing);
+                            const isPressing = keyboard.hasClicked && imdom.hasMouseOver(c) && mouse.leftMouseButton;
+                            const isPressingChanged = im.Memo(c, isPressing);
 
                             // UI uses this for key presses.
                             // I actually don't think we should select the keys with the keyboard.
@@ -171,8 +171,8 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
 
                             // indicator that shows if it's pressed on the sequencer
                             imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-                                if (imMemo(c, hasNote)) {
-                                    elSetStyle(c, "backgroundColor", hasNote ? cssVarsApp.mg : cssVarsApp.bg);
+                                if (im.Memo(c, hasNote)) {
+                                    imdom.setStyle(c, "backgroundColor", hasNote ? cssVarsApp.mg : cssVarsApp.bg);
                                 }
                             } imLayoutEnd(c);
                             // letter bg
@@ -195,52 +195,52 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                                     color = `rgba(0, 0, 0, ${signal})`;
                                 }
 
-                                elSetStyle(c, "backgroundColor", color);
+                                imdom.setStyle(c, "backgroundColor", color);
 
-                                if (imMemo(c, isSelected)) {
-                                    elSetStyle(c, "border", !isSelected ? "" : "3px solid " + cssVarsApp.fg);
+                                if (im.Memo(c, isSelected)) {
+                                    imdom.setStyle(c, "border", !isSelected ? "" : "3px solid " + cssVarsApp.fg);
                                 }
                             } imLayoutEnd(c);
                             // letter text
                             imLayoutBegin(c, BLOCK); imAbsolute(c, 5, PX, 0, PX, 0, PX, 0, PX); {
-                                imStr(c, key.text);
+                                imdom.Str(c, key.text);
                             } imLayoutEnd(c);
                             // note text
                             imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, 5, PX, 0, PX); {
-                                if (isFirstishRender(c)) {
-                                    elSetStyle(c, "textAlign", "right");
+                                if (im.isFirstishRender(c)) {
+                                    imdom.setStyle(c, "textAlign", "right");
                                 }
 
-                                if (imMemo(c, keySize)) {
-                                    elSetStyle(c, "fontSize", (keySize / 4) + "px");
-                                    elSetStyle(c, "paddingRight", (keySize / 10) + "px");
+                                if (im.Memo(c, keySize)) {
+                                    imdom.setStyle(c, "fontSize", (keySize / 4) + "px");
+                                    imdom.setStyle(c, "paddingRight", (keySize / 10) + "px");
                                 }
 
-                                imStr(c, key.noteText);
+                                imdom.Str(c, key.noteText);
                             } imLayoutEnd(c);
 
-                            if (imIf(c) && state.config) {
+                            if (im.If(c) && state.config) {
                                 // slot text
                                 imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, NA, 5, PX, 8, PX); {
-                                    if (imMemo(c, keySize)) {
-                                        elSetStyle(c, "fontSize", (keySize / 4) + "px");
-                                        elSetStyle(c, "paddingRight", (keySize / 10) + "px");
+                                    if (im.Memo(c, keySize)) {
+                                        imdom.setStyle(c, "fontSize", (keySize / 4) + "px");
+                                        imdom.setStyle(c, "paddingRight", (keySize / 10) + "px");
                                     }
 
-                                    imStr(c, "s");
-                                    imStr(c, state.config.keymaps[key.index]);
+                                    imdom.Str(c, "s");
+                                    imdom.Str(c, state.config.keymaps[key.index]);
                                 } imLayoutEnd(c);
-                            } imIfEnd(c);
+                            } im.IfEnd(c);
 
                             // approach square(s)
                             // need to iterate over all the notes within the approach window, 
                             // could need multiple approach squares for this key.
                             const sequencer = ctx.sequencer;
-                            if (imIf(c) && !sequencer.isPaused) {
+                            if (im.If(c) && !sequencer.isPaused) {
                                 const currentTime = getCurrentPlayingTimeIntoChart(sequencer);
 
                                 const scheduledKeyPresses = ctx.sequencer.scheduledKeyPresses;
-                                imFor(c); for (let i = 0; i < scheduledKeyPresses.length; i++) {
+                                im.For(c); for (let i = 0; i < scheduledKeyPresses.length; i++) {
                                     const scheduledPress = scheduledKeyPresses[i];
                                     if (scheduledPress.keyIndex !== key.index) {
                                         continue;
@@ -262,26 +262,26 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                                     const scale = 250 * Math.max(0, t)
 
                                     imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-                                        if (isFirstishRender(c)) {
-                                            elSetStyle(c, "backgroundColor", cssVarsApp.playback);
+                                        if (im.isFirstishRender(c)) {
+                                            imdom.setStyle(c, "backgroundColor", cssVarsApp.playback);
                                         }
-                                        if (imMemo(c, t)) {
-                                            elSetStyle(c, "opacity", t + "");
+                                        if (im.Memo(c, t)) {
+                                            imdom.setStyle(c, "opacity", t + "");
                                         }
                                     } imLayoutEnd(c);
                                     // This osu! style border kinda whack ngl.
                                     imLayoutBegin(c, BLOCK); imAbsolute(c, -scale, PX, -scale, PX, scale, PX, scale, PX); {
-                                        if (isFirstishRender(c)) {
-                                            elSetStyle(c, "border", `5px solid ${cssVarsApp.fg}`);
-                                            elSetStyle(c, "opacity", "1");
+                                        if (im.isFirstishRender(c)) {
+                                            imdom.setStyle(c, "border", `5px solid ${cssVarsApp.fg}`);
+                                            imdom.setStyle(c, "opacity", "1");
                                         }
                                     } imLayoutEnd(c);
-                                } imForEnd(c);
-                            } imIfEnd(c);
+                                } im.ForEnd(c);
+                            } im.IfEnd(c);
                         } imLayoutEnd(c);
-                    } imForEnd(c);
+                    } im.ForEnd(c);
                 } imLayoutEnd(c);
-            } imForEnd(c);
+            } im.ForEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 

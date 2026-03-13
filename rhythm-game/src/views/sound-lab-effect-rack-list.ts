@@ -18,19 +18,8 @@ import { loadEffectRackPreset, updateEffectRackPreset } from "src/state/data-rep
 import { EffectRackPreset, EffectRackPresetMetadata } from "src/state/keyboard-config";
 import { assert } from "src/utils/assert";
 import { CANCELLED, done, DONE } from "src/utils/async-utils";
-import {
-    ImCache,
-    imFor,
-    imForEnd,
-    imIf,
-    imIfElse,
-    imIfEnd,
-    imKeyedBegin,
-    imKeyedEnd,
-    imMemo,
-    isFirstishRender
-} from "src/utils/im-core";
-import { elHasMousePress, elSetClass, elSetStyle, imStr } from "src/utils/im-dom";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { GlobalContext } from "./app";
 
 
@@ -96,7 +85,7 @@ export function imEffectRackList(
 ): PresetSelectionEvent | null {
     let result: PresetSelectionEvent | null = null;
 
-    if (imMemo(c, s.selectedLoaded) && s.selectedLoaded) {
+    if (im.Memo(c, s.selectedLoaded) && s.selectedLoaded) {
         result = { selectionLoaded: s.selectedLoaded };
     }
 
@@ -104,24 +93,24 @@ export function imEffectRackList(
 
     // UI could be better but for now I don't care too much.
     imLayoutBegin(c, COL); imFlex(c); {
-        if (imIf(c) && loading) {
+        if (im.If(c) && loading) {
             imLayoutBegin(c, COL); imFlex(c, 2); {
-                imStr(c, "Loading...");
+                imdom.Str(c, "Loading...");
             } imLayoutEnd(c);
         } else {
-            imIfElse(c);
+            im.IfElse(c);
 
-            if (imIf(c) && s.error) {
+            if (im.If(c) && s.error) {
                 imLayoutBegin(c, BLOCK); imFg(c, "red"); {
-                    imStr(c, s.error);
+                    imdom.Str(c, s.error);
                 } imLayoutEnd(c);
-            } imIfEnd(c);
+            } im.IfEnd(c);
 
             imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c); {
-                imFor(c); for (const [groupName, group] of ctx.repo.effectRackPresets.groups) {
+                im.For(c); for (const [groupName, group] of ctx.repo.effectRackPresets.groups) {
                     const open = s.openGroup === groupName;
 
-                    imKeyedBegin(c, groupName); {
+                    im.KeyedBegin(c, groupName); {
                         imLayoutBegin(c, BLOCK); {
                             imLayoutBegin(c, ROW); imAlign(c); {
 
@@ -134,21 +123,21 @@ export function imEffectRackList(
                                 }
 
                                 imLayoutBegin(c, ROW); imFlex(c); {
-                                    imStr(c, groupName);
+                                    imdom.Str(c, groupName);
                                 } imLayoutEnd(c);
                             } imLayoutEnd(c);
 
-                            if (imIf(c) && open) {
+                            if (im.If(c) && open) {
                                 const itemEv = imPresetsArray(c, ctx, s, group);
                                 if (!result && itemEv) {
                                     result = itemEv;
                                 }
-                            } imIfEnd(c);
+                            } im.IfEnd(c);
                         } imLayoutEnd(c);
-                    } imKeyedEnd(c);
-                } imForEnd(c);
+                    } im.KeyedEnd(c);
+                } im.ForEnd(c);
             } imLayoutEnd(c);
-        } imIfEnd(c);
+        } im.IfEnd(c);
     } imLayoutEnd(c);
 
     return result;
@@ -162,18 +151,18 @@ function imPresetsArray(
 ): PresetSelectionEvent | null {
     let result: PresetSelectionEvent | null = null;
 
-    imFor(c); for (const preset of presets) {
+    im.For(c); for (const preset of presets) {
         const selected = preset === s.selected;
 
-        imKeyedBegin(c, preset); {
+        im.KeyedBegin(c, preset); {
             imLayoutBegin(c, BLOCK); imBg(c, selected ? cssVars.bg2 : ""); {
-                if (isFirstishRender(c)) {
-                    elSetStyle(c, "cursor", "pointer");
-                    elSetClass(c, "hoverable");
-                    elSetClass(c, cn.userSelectNone);
+                if (im.isFirstishRender(c)) {
+                    imdom.setStyle(c, "cursor", "pointer");
+                    imdom.setClass(c, "hoverable");
+                    imdom.setClass(c, cn.userSelectNone);
                 }
 
-                if (elHasMousePress(c)) {
+                if (imdom.hasMousePress(c)) {
                     if (!selected) {
                         selectEffectRackPreset(ctx, s, preset);
                     } else {
@@ -187,7 +176,7 @@ function imPresetsArray(
                     }
                 }
 
-                if (imIf(c) && selected && s.renaming && s.selectedLoaded) {
+                if (im.If(c) && selected && s.renaming && s.selectedLoaded) {
                     const ev = imTextInputOneLine(c, s.newName, "Enter preset name");
                     if (ev) {
                         if (ev.newName) {
@@ -210,20 +199,20 @@ function imPresetsArray(
                         }
                     }
                 } else {
-                    imIfElse(c);
+                    im.IfElse(c);
 
                     imLayoutBegin(c, ROW); {
-                        imStr(c, preset.name);
+                        imdom.Str(c, preset.name);
 
                         imFlex1(c);
 
-                        imStr(c, preset.serializedBytes); imStr(c, "b");
+                        imdom.Str(c, preset.serializedBytes); imdom.Str(c, "b");
                     } imLayoutEnd(c);
-                } imIfEnd(c);
+                } im.IfEnd(c);
             } imLayoutEnd(c);
 
-        } imKeyedEnd(c);
-    } imForEnd(c);
+        } im.KeyedEnd(c);
+    } im.ForEnd(c);
 
     return result;
 }

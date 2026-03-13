@@ -1,7 +1,8 @@
 import { newColorFromHsv } from "src/utils/colour.ts";
-import { getNormalizedKey, NormalizedKey } from "src/utils/key-state";
+
 import { getNoteText } from "src/utils/music-theory-utils.ts";
 import { KEYBOARD_LAYOUT } from "./keyboard-config";
+import { imdom, NormalizedKey } from "src/utils/im-js";
 
 export type KeyboardState = {
     keys: InstrumentKey[][];
@@ -62,14 +63,14 @@ function getLowerCase(key: string) {
 }
 
 export function getKeyForKeyboardKey(state: KeyboardState, key: string): InstrumentKey | undefined {
-    return state.flatKeys.find(k => k.keyboardKeyNormalized === getNormalizedKey(key));
+    return state.flatKeys.find(k => k.keyboardKeyNormalized === imdom.getNormalizedKey(key));
 }
 
 function newKey(k: string): InstrumentKey {
     const key = k === "↵" ? "Enter" : k.toLowerCase();
     return {
         keyboardKey: key,
-        keyboardKeyNormalized: getNormalizedKey(key),
+        keyboardKeyNormalized: imdom.getNormalizedKey(key),
         text: k[0].toUpperCase() + k.substring(1),
         noteText: "",
         index: -1,

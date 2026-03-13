@@ -37,7 +37,8 @@ import {
     ROW,
     ROW_REVERSE,
     SPACE_EVENLY,
-    STRETCH
+    STRETCH,
+    SvgContext
 } from "src/components/core/layout";
 import { cssVars } from "src/components/core/stylesheets";
 import { DragAndDropState, imDragAndDrop, imDragHandle, imDragZoneBegin, imDragZoneEnd, imDropZoneForPrototyping } from "src/components/drag-and-drop";
@@ -130,26 +131,8 @@ import { DONE, done } from "src/utils/async-utils";
 import { CssColor, newColor, newColorFromHsv, rgbaToCssString } from "src/utils/colour";
 import { newCssBuilder } from "src/utils/cssb";
 import { fft, fftToReal, resizeNumberArrayPowerOf2 } from "src/utils/fft";
-import {
-    getDeltaTimeSeconds,
-    getFpsCounterState,
-    ImCache,
-    imFor,
-    imForEnd,
-    imGetInline,
-    imIf,
-    imIfElse,
-    imIfEnd,
-    imKeyedBegin,
-    imKeyedEnd,
-    imMemo,
-    imSet,
-    imState,
-    imSwitch,
-    imSwitchEnd,
-    isFirstishRender
-} from "src/utils/im-core";
-import { EL_B, EL_I, EL_SVG_PATH, elHasMouseOver, elHasMousePress, elSetAttr, elSetClass, elSetStyle, getGlobalEventSystem, imDomRootExistingBegin, imDomRootExistingEnd, imElBegin, imElEnd, imElSvgBegin, imElSvgEnd, imStr, imStrFmt, SvgContext } from "src/utils/im-dom";
+import { im, ImCache, imdom, el, ev, elsvg, } from "src/utils/im-js";
+
 import { arrayMax, arrayMin } from "src/utils/math-utils";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
 import { canRedo, canUndo, JSONUndoBuffer, newJSONUndoBuffer, redo, stepUndoBufferTimer, undo, undoBufferIsEmpty, writeToUndoBuffer, writeToUndoBufferDebounced } from "src/utils/undo-buffer-json";
@@ -415,18 +398,18 @@ function onEdited(editor: EffectRackEditorState, wasUndoTraversed = false, editU
 }
 
 export function imHeading(c: ImCache, text: string) {
-    imHeadingBegin(c); imStr(c, text); imHeadingEnd(c);
+    imHeadingBegin(c); imdom.Str(c, text); imHeadingEnd(c);
 }
 
 export function imHeadingBegin(c: ImCache) {
-    imLayoutBegin(c, ROW); imJustify(c); imElBegin(c, EL_B); {
-    } // imElEnd(c, EL_B); imLayoutEnd(c);
+    imLayoutBegin(c, ROW); imJustify(c); imdom.ElBegin(c, el.B); {
+    } // imdom.ElEnd(c, el.B); imLayoutEnd(c);
 }
 
 export function imHeadingEnd(c: ImCache) {
-    // imLayoutBegin(c, ROW); imJustify(c); imElBegin(c, EL_B); 
+    // imLayoutBegin(c, ROW); imJustify(c); imdom.ElBegin(c, el.B); 
     {
-    } imElEnd(c, EL_B); imLayoutEnd(c);
+    } imdom.ElEnd(c, el.B); imLayoutEnd(c);
 }
 
 
@@ -469,7 +452,7 @@ export function imEffectRackEditor(
 
     const rack = editor.effectRack;
 
-    const versionChanged = imMemo(c, editor.version);
+    const versionChanged = im.Memo(c, editor.version);
     if (versionChanged) {
         // Needs to be every frame, so we can edit while playing
         const settings = getCurrentPlaySettings();
@@ -479,14 +462,14 @@ export function imEffectRackEditor(
         result = { updatedPreset: preset };
     }
 
-    if (imMemo(c, true)) {
+    if (im.Memo(c, true)) {
         if (undoBufferIsEmpty(editor.undoBuffer)) {
             writeToUndoBuffer(editor.undoBuffer, editor.effectRack);
         }
     }
 
     const wires = editor.ui.wires; {
-        const mouse = getGlobalEventSystem().mouse;
+        const mouse = imdom.getMouse();
         const wires = editor.ui.wires;
 
         if (wires.drag.toRegisterInput) {
@@ -565,10 +548,10 @@ export function imEffectRackEditor(
     {
         const s = editor.signalPreview;
 
-        const noteChanged = imMemo(c, s.noteIdx);
-        const pressedChanged = imMemo(c, s.signalPressRange.idx);
-        const releasedChanged = imMemo(c, s.signalPressRange.len);
-        const editorChanged = imMemo(c, editor.version);
+        const noteChanged = im.Memo(c, s.noteIdx);
+        const pressedChanged = im.Memo(c, s.signalPressRange.idx);
+        const releasedChanged = im.Memo(c, s.signalPressRange.len);
+        const editorChanged = im.Memo(c, editor.version);
 
         if (noteChanged || pressedChanged || releasedChanged || editorChanged) {
             const t0 = performance.now();
@@ -595,7 +578,7 @@ export function imEffectRackEditor(
 
             const batchSize = 4096;
 
-            const fps = getFpsCounterState(c);
+            const fps = im.getFpsCounterState(c);
             const remainingTime = fps.frameMs - (performance.now() - fps.renderStart);
             const allowedTimeMs = Math.min(remainingTime * 0.5, 8);
 
@@ -640,9 +623,9 @@ export function imEffectRackEditor(
 
         const info = getDspInfo();
         const sampleRate = info.sampleRate;
-        const sampleRateChanged = imMemo(c, sampleRate);
+        const sampleRateChanged = im.Memo(c, sampleRate);
         const infoCurrentlyPlaying = info.currentlyPlaying.length > 0;
-        const infoCurrentlyPlayingChanged = imMemo(c, infoCurrentlyPlaying);
+        const infoCurrentlyPlayingChanged = im.Memo(c, infoCurrentlyPlaying);
 
         if (sampleRateChanged || infoCurrentlyPlayingChanged) {
             if (sampleRate !== 1) {
@@ -683,7 +666,7 @@ export function imEffectRackEditor(
 
                 const samples = state.output[0][0];
 
-                const dt = getDeltaTimeSeconds(c);
+                const dt = im.getDeltaTimeSeconds(c);
 
                 // The DSP we're running here is purely for visuals.
                 // It is the exact same code that runs in the DSP loop.
@@ -710,7 +693,7 @@ export function imEffectRackEditor(
         }
     }
 
-    if (imIf(c) && editor.ui.modal === MODAL_EXPORT) {
+    if (im.If(c) && editor.ui.modal === MODAL_EXPORT) {
         imExportModal(c, editor.effectRack, serializeEffectRack);
 
         if (!ctx.handled) {
@@ -726,7 +709,7 @@ export function imEffectRackEditor(
                 }
             }
         }
-    } else if (imIfElse(c) && editor.ui.modal === MODAL_IMPORT) {
+    } else if (im.IfElse(c) && editor.ui.modal === MODAL_IMPORT) {
         const importModal = imImportModal(c);
         const ev = importModal.event;
         importModal.event = null
@@ -756,7 +739,7 @@ export function imEffectRackEditor(
             }
         }
 
-    } imIfEnd(c);
+    } im.IfEnd(c);
 
     const svgCtx = editor.svgCtx;
     assert(!!svgCtx);
@@ -764,8 +747,8 @@ export function imEffectRackEditor(
     imLayoutBegin(c, ROW); imFlex(c); {
         imLayoutBegin(c, COL); imFlex(c, 4); {
             imLayoutBegin(c, COL); imFlex(c); {
-                if (isFirstishRender(c)) elSetStyle(c, "fontSize", "20px");
-                if (isFirstishRender(c)) elSetClass(c, cnEffectRackEditor);
+                if (im.isFirstishRender(c)) imdom.setStyle(c, "fontSize", "20px");
+                if (im.isFirstishRender(c)) imdom.setClass(c, cnEffectRackEditor);
 
                 imLayoutBegin(c, COL); imFlex(c); {
                     imLayoutBegin(c, ROW); imAlign(c); {
@@ -795,12 +778,12 @@ export function imEffectRackEditor(
                         imFlex1(c);
 
                         imHeadingBegin(c); {
-                            if (imIf(c) && lab.keyboardConfig) {
-                                imStr(c, lab.keyboardConfig.name);
-                                imStr(c, " -> ");
-                            } imIfEnd(c);
-                            imStr(c, " Slot ");
-                            imStr(c, lab.editingSlotIdx);
+                            if (im.If(c) && lab.keyboardConfig) {
+                                imdom.Str(c, lab.keyboardConfig.name);
+                                imdom.Str(c, " -> ");
+                            } im.IfEnd(c);
+                            imdom.Str(c, " Slot ");
+                            imdom.Str(c, lab.editingSlotIdx);
 
                             imLayoutBegin(c, INLINE_BLOCK); {
                                 const ev = imTextInputOneLine(c, rack.name, undefined, false);
@@ -831,13 +814,13 @@ export function imEffectRackEditor(
                     } imLayoutEnd(c);
 
                     imLayoutBegin(c, COL); imFlex(c); {
-                        const sc = imState(c, newScrollContainer);
+                        const sc = im.State(c, newScrollContainer);
                         imScrollContainerBegin(c, sc); {
 
                             // The wire we are currently dragging
-                            if (imIf(c) && wires.drag.registerOutputId !== undefined || wires.drag.registerInput !== undefined) {
-                                imDomRootExistingBegin(c, svgCtx.root); {
-                                    const mouse = getGlobalEventSystem().mouse;
+                            if (im.If(c) && wires.drag.registerOutputId !== undefined || wires.drag.registerInput !== undefined) {
+                                imdom.RootExistingBegin(c, svgCtx.root); {
+                                    const mouse = imdom.getMouse();
                                     let srcX = mouse.X, srcY = mouse.Y;
                                     let dstX = mouse.X, dstY = mouse.Y;
 
@@ -857,8 +840,8 @@ export function imEffectRackEditor(
                                         srcX, srcY, dstX, dstY,
                                         dragColour.r, dragColour.g, dragColour.b, 1,
                                     );
-                                } imDomRootExistingEnd(c, svgCtx.root);
-                            } imIfEnd(c);
+                                } imdom.RootExistingEnd(c, svgCtx.root);
+                            } im.IfEnd(c);
 
                             const effectsDnd = imDragAndDrop(c);
                             if (effectsDnd.moved) {
@@ -867,13 +850,13 @@ export function imEffectRackEditor(
                                 onEdited(editor);
                             }
 
-                            imFor(c); for (let effectPos = 0; effectPos < rack.effects.length; effectPos++) {
+                            im.For(c); for (let effectPos = 0; effectPos < rack.effects.length; effectPos++) {
                                 const effect = rack.effects[effectPos];
 
-                                imKeyedBegin(c, effect); {
+                                im.KeyedBegin(c, effect); {
                                     imEffectRackEditorEffect(c, editor, effectPos, effectsDnd);
-                                } imKeyedEnd(c);
-                            } imForEnd(c);
+                                } im.KeyedEnd(c);
+                            } im.ForEnd(c);
 
                             imLayoutBegin(c, ROW); imJustify(c); {
                                 imDropZoneForPrototyping(c, effectsDnd, rack.effects.length);
@@ -888,28 +871,28 @@ export function imEffectRackEditor(
                     const s = editor.compileStats;
                     const samplesPerMs = s.numSamples / s.computeSamplesTime;
                     imLayoutBegin(c, ROW); imAlign(c); imFlex(c); {
-                        if (imIf(c) && s.completed) {
-                            imStr(c, "Compiled in ");
-                            imStr(c, s.compileTime.toFixed(3))
-                            imStr(c, "ms, ");
-                            imStr(c, "Ran in ");
-                            imStr(c, samplesPerMs.toFixed(3))
-                            imStr(c, s.numSamples); imStr(c, " computed over "); imStr(c, s.framesRequired);
-                            imStr(c, " frames. Expect glitching if over "); imStr(c, s.maxFramesRequired);
+                        if (im.If(c) && s.completed) {
+                            imdom.Str(c, "Compiled in ");
+                            imdom.Str(c, s.compileTime.toFixed(3))
+                            imdom.Str(c, "ms, ");
+                            imdom.Str(c, "Ran in ");
+                            imdom.Str(c, samplesPerMs.toFixed(3))
+                            imdom.Str(c, s.numSamples); imdom.Str(c, " computed over "); imdom.Str(c, s.framesRequired);
+                            imdom.Str(c, " frames. Expect glitching if over "); imdom.Str(c, s.maxFramesRequired);
                             // want to compute ~ 0.1 seconds ahead of time
                             // const wantedSamplesPerMs = (dspInfo.sampleRate / 10);
-                            // imStr(c, " (budget = " + wantedSamplesPerMs.toFixed(3) + ")");
+                            // imdom.Str(c, " (budget = " + wantedSamplesPerMs.toFixed(3) + ")");
                         } else {
-                            imIfElse(c);
-                            imStr(c, "...");
-                        } imIfEnd(c);
+                            im.IfElse(c);
+                            imdom.Str(c, "...");
+                        } im.IfEnd(c);
                     } imLayoutEnd(c);
 
                     imLayoutBegin(c, COL); {
-                        if (isFirstishRender(c)) elSetStyle(c, "borderTop", "1px solid " + cssVars.fg);
-                        if (isFirstishRender(c)) elSetStyle(c, "borderLeft", "1px solid " + cssVars.fg);
-                        if (isFirstishRender(c)) elSetStyle(c, "borderTopLeftRadius", "5px");
-                        if (isFirstishRender(c)) elSetStyle(c, "padding", "5px");
+                        if (im.isFirstishRender(c)) imdom.setStyle(c, "borderTop", "1px solid " + cssVars.fg);
+                        if (im.isFirstishRender(c)) imdom.setStyle(c, "borderLeft", "1px solid " + cssVars.fg);
+                        if (im.isFirstishRender(c)) imdom.setStyle(c, "borderTopLeftRadius", "5px");
+                        if (im.isFirstishRender(c)) imdom.setStyle(c, "padding", "5px");
                         imValueOrBindingEditor(c, editor, rack.effects.length, rack.output);
                     } imLayoutEnd(c);
                 } imLayoutEnd(c);
@@ -1042,7 +1025,7 @@ function imEffectRackEditorEffect(
                     imLayoutBegin(c, ROW); {
                         imDragHandle(c, effectsDnd, effectPos);
 
-                        imStrFmt(c, effect.value.type, getEffectTypeShortName);
+                        imdom.StrFmt(c, effect.value.type, getEffectTypeShortName);
                     } imLayoutEnd(c);
                 } imLayoutEnd(c);
 
@@ -1053,7 +1036,7 @@ function imEffectRackEditorEffect(
                 imDspVisualGroupBegin(c, ROW); imFlex(c); imFlexWrap(c); imJustify(c); {
                     imLayoutBegin(c, ROW); imFlex(c); imGap(c, 10, PX);  {
                         const effectValue = effect.value;
-                        imSwitch(c, effectValue.type); switch (effectValue.type) {
+                        im.Switch(c, effectValue.type); switch (effectValue.type) {
                             case EFFECT_RACK_ITEM__OSCILLATOR: {
                                 const osc = effectValue;
 
@@ -1074,7 +1057,7 @@ function imEffectRackEditorEffect(
 
                                         imValueOrBindingEditor(c, editor, effectPos, osc.phaseUI);
 
-                                        imStr(c, "+");
+                                        imdom.Str(c, "+");
 
                                         imValueOrBindingEditor(c, editor, effectPos, osc.offsetUI);
                                     } imLayoutEnd(c);
@@ -1121,7 +1104,7 @@ function imEffectRackEditorEffect(
                                     // [   |[              ]|   ]
                                     
                                     imLayoutBegin(c, COL); imGap(c, 10, PX); {
-                                        imFor(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
+                                        im.For(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
                                             const term = math.terms[termIdx];
 
                                             imLayoutBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
@@ -1130,19 +1113,19 @@ function imEffectRackEditorEffect(
                                                     imLayoutBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
                                                         imMathsCoefficientsList(c, editor, effectPos, math, termIdx, term.coefficients, true);
 
-                                                        if (imIf(c) && term.coefficientsDivide.length === 0) {
+                                                        if (im.If(c) && term.coefficientsDivide.length === 0) {
                                                             if (imButtonIsClicked(c, "/")) {
                                                                 const co = newEffectRackMathsItemCoefficient();
                                                                 term.coefficientsDivide.push(co);
                                                                 onEdited(editor);
                                                             }
-                                                        } imIfEnd(c);
+                                                        } im.IfEnd(c);
 
-                                                        if (imIf(c) && term.coefficientsDivide.length > 0) {
-                                                            imStr(c, " / ");
+                                                        if (im.If(c) && term.coefficientsDivide.length > 0) {
+                                                            imdom.Str(c, " / ");
 
                                                             imMathsCoefficientsList(c, editor, effectPos, math, termIdx, term.coefficientsDivide, false);
-                                                        } imIfEnd(c);
+                                                        } im.IfEnd(c);
 
                                                         imDspVisualGroupBegin(c, COL); {
                                                             term.termOut._name = "";
@@ -1152,11 +1135,11 @@ function imEffectRackEditorEffect(
 
                                                 } imDspVisualGroupEnd(c);
 
-                                                if (imIf(c) && termIdx < math.terms.length - 1) {
-                                                    imStr(c, " + ");
-                                                } imIfEnd(c);
+                                                if (im.If(c) && termIdx < math.terms.length - 1) {
+                                                    imdom.Str(c, " + ");
+                                                } im.IfEnd(c);
                                             } imLayoutEnd(c);
-                                        } imForEnd(c);
+                                        } im.ForEnd(c);
 
                                         if (imButtonIsClicked(c, "+")) {
                                             const term = newEffectRackMathsItemTerm();
@@ -1176,7 +1159,7 @@ function imEffectRackEditorEffect(
                                 imFlex1(c);
 
                                 imLayoutBegin(c, COL); {
-                                    imFor(c); for (let i = 0; i < switchEffect.conditions.length; i++) {
+                                    im.For(c); for (let i = 0; i < switchEffect.conditions.length; i++) {
                                         const cond = switchEffect.conditions[i];
 
                                         imDspVisualGroupBegin(c, ROW); {
@@ -1203,7 +1186,7 @@ function imEffectRackEditorEffect(
                                                 };
                                             }
                                         } imDspVisualGroupEnd(c);
-                                    } imForEnd(c);
+                                    } im.ForEnd(c);
 
                                     if (imButtonIsClicked(c, "+")) {
                                         const condition = newEffectRackSwitchCondition();
@@ -1258,7 +1241,7 @@ function imEffectRackEditorEffect(
                                         } imDspVisualGroupEnd(c);
                                     } imDspVisualGroupEnd(c);
                                     imLayoutBegin(c, BLOCK); {
-                                        imStr(c, "Due to the high memory usage of this effect, the max delay has been artifically limited to 1 second");
+                                        imdom.Str(c, "Due to the high memory usage of this effect, the max delay has been artifically limited to 1 second");
                                     } imLayoutEnd(c);
                                 } imLayoutEnd(c);
 
@@ -1269,11 +1252,11 @@ function imEffectRackEditorEffect(
                             case EFFECT_RACK_ITEM__BIQUAD_FILTER: {
                                 const filter = effectValue;
 
-                                const filterUi = imGetInline(c, imEffectRackEditor) ?? imSet(c, {
+                                const filterUi = im.GetInline(c, imEffectRackEditor) ?? im.Set(c, {
                                     analyzing: false,
                                     compact: false,
                                 });
-                                if (imMemo(c, effect)) filterUi.compact = true;
+                                if (im.Memo(c, effect)) filterUi.compact = true;
 
                                 imLayoutBegin(c, COL); imFlex(c); {
                                     imLayoutBegin(c, ROW); {
@@ -1294,7 +1277,7 @@ function imEffectRackEditorEffect(
                                         imSpacingSymbol(c, " -> ");
 
                                         imDspVisualGroupBegin(c, ROW); imFlex(c); {
-                                            if (imIf(c) && filterUi.compact) {
+                                            if (im.If(c) && filterUi.compact) {
                                                 imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
                                                     imValueOrBindingEditor(c, editor, effectPos, filter.a1Ui);
                                                     imValueOrBindingEditor(c, editor, effectPos, filter.a2Ui);
@@ -1305,7 +1288,7 @@ function imEffectRackEditorEffect(
                                                     imValueOrBindingEditor(c, editor, effectPos, filter.b2Ui);
                                                 } imLayoutEnd(c);
                                             } else {
-                                                imIfElse(c);
+                                                im.IfElse(c);
 
                                                 imLayoutBegin(c, COL); imFlex(c); {
                                                     function imCellBegin(c: ImCache, height: number = 2) {
@@ -1375,12 +1358,12 @@ function imEffectRackEditorEffect(
                                                         } imLayoutEnd(c);
                                                     } imLayoutEnd(c);
                                                 } imLayoutEnd(c);
-                                            } imIfEnd(c);
+                                            } im.IfEnd(c);
 
                                         } imDspVisualGroupEnd(c);
                                     } imLayoutEnd(c);
 
-                                    if (imIf(c) && filterUi.analyzing) {
+                                    if (im.If(c) && filterUi.analyzing) {
                                         let hasAllManualInputs =
                                             filter.a1Ui.valueRef.value !== undefined &&
                                             filter.a2Ui.valueRef.value !== undefined &&
@@ -1389,7 +1372,7 @@ function imEffectRackEditorEffect(
                                             filter.b2Ui.valueRef.value !== undefined;
 
                                         imFilterAnalyzer(c, editor, hasAllManualInputs, effect);
-                                    } imIfEnd(c);
+                                    } im.IfEnd(c);
                                 } imLayoutEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
@@ -1399,7 +1382,7 @@ function imEffectRackEditorEffect(
                             case EFFECT_RACK_ITEM__SINC_FILTER: {
                                 const conv = effectValue;
 
-                                const filterUi = imGetInline(c, imEffectRackEditor) ?? imSet(c, {
+                                const filterUi = im.GetInline(c, imEffectRackEditor) ?? im.Set(c, {
                                     analyzing: false,
                                 });
 
@@ -1439,7 +1422,7 @@ function imEffectRackEditorEffect(
                                                         onEdited(editor);
                                                     }
 
-                                                    imStr(c, "Highpass"); effect
+                                                    imdom.Str(c, "Highpass"); effect
                                                 } imLayoutEnd(c);
                                             } imLayoutEnd(c);
                                         } imDspVisualGroupEnd(c);
@@ -1448,20 +1431,20 @@ function imEffectRackEditorEffect(
                                     const isHighStopband =
                                         conv.stopbandUi.valueRef.value === undefined ||
                                         conv.stopbandUi.valueRef.value > 20;
-                                    if (imIf(c) && isHighStopband) {
+                                    if (im.If(c) && isHighStopband) {
                                         imLayoutBegin(c, BLOCK); {
-                                            imStr(c, "WARNING: a high stopband will cripple the efficiency of this filter");
+                                            imdom.Str(c, "WARNING: a high stopband will cripple the efficiency of this filter");
                                         } imLayoutEnd(c);
-                                    } imIfEnd(c);
+                                    } im.IfEnd(c);
 
-                                    if (imIf(c) && filterUi.analyzing) {
+                                    if (im.If(c) && filterUi.analyzing) {
                                         let hasAllManualInputs =
                                             conv.cutoffFrequencyMultUi.valueRef.value !== undefined &&
                                             conv.cutoffFrequencyUi.valueRef.value !== undefined &&
                                             conv.stopbandUi.valueRef.value !== undefined;
 
                                         imFilterAnalyzer(c, editor, hasAllManualInputs, effect);
-                                    } imIfEnd(c);
+                                    } im.IfEnd(c);
                                 } imLayoutEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
@@ -1488,7 +1471,7 @@ function imEffectRackEditorEffect(
                             case EFFECT_RACK_ITEM__BIQUAD_FILTER_2: {
                                 const filter = effectValue;
 
-                                const filterUi = imGetInline(c, imEffectRackEditor) ?? imSet(c, {
+                                const filterUi = im.GetInline(c, imEffectRackEditor) ?? im.Set(c, {
                                     analyzing: false,
                                 });
 
@@ -1521,22 +1504,22 @@ function imEffectRackEditorEffect(
 
                                             imValueOrBindingEditor(c, editor, effectPos, filter.qOrBWOrS);
 
-                                            if (imIf(c) && biquad2IsUsingDbGain(filter)) {
+                                            if (im.If(c) && biquad2IsUsingDbGain(filter)) {
                                                 imValueOrBindingEditor(c, editor, effectPos, filter.dbGain);
-                                            } imIfEnd(c);
+                                            } im.IfEnd(c);
                                         } imDspVisualGroupEnd(c);
 
                                         imSpacingSymbol(c, " -> ", true);
                                     } imLayoutEnd(c);
 
 
-                                    if (imIf(c) && filterUi.analyzing) {
+                                    if (im.If(c) && filterUi.analyzing) {
                                         let hasAllManualInputs = filter.f0.valueRef.value !== undefined &&
                                             filter.dbGain.valueRef.value !== undefined &&
                                             filter.qOrBWOrS.valueRef.value !== undefined;
 
                                         imFilterAnalyzer(c, editor, hasAllManualInputs, effect);
-                                    } imIfEnd(c);
+                                    } im.IfEnd(c);
                                 } imLayoutEnd(c);
 
                                 imDspVisualGroupBegin(c, COL); {
@@ -1549,10 +1532,10 @@ function imEffectRackEditorEffect(
                                 const falloff = table.falloffUi.valueRef.value;
 
                                 imLayoutBegin(c, COL); imAlign(c, STRETCH); imGap(c, 10, PX); imFlex(c); {
-                                    imFor(c); for (let i = 0; i < table.items.length; i++) {
+                                    im.For(c); for (let i = 0; i < table.items.length; i++) {
                                         const item = table.items[i];
                                         imDspVisualGroupBegin(c, ROW); imFlex(c); imAlign(c); {
-                                            if (imIf(c) && falloff !== undefined && wavePos !== undefined) {
+                                            if (im.If(c) && falloff !== undefined && wavePos !== undefined) {
                                                 wavePos = wavePos % table.items.length;
                                                 if (wavePos < 0) {
                                                     wavePos = table.items.length + wavePos;
@@ -1563,7 +1546,7 @@ function imEffectRackEditorEffect(
                                                     if (mask < 0) mask = 0;
                                                     imOpacity(c, mask);
                                                 } imLayoutEnd(c);
-                                            } imIfEnd(c);
+                                            } im.IfEnd(c);
 
                                             imFlex1(c);
 
@@ -1587,7 +1570,7 @@ function imEffectRackEditorEffect(
                                                 };
                                             }
                                         } imDspVisualGroupEnd(c);
-                                    } imForEnd(c);
+                                    } im.ForEnd(c);
 
                                     if (imButtonIsClicked(c, "+")) {
                                         editor.deferredAction = () => {
@@ -1608,7 +1591,7 @@ function imEffectRackEditorEffect(
                                 } imDspVisualGroupEnd(c);
                             } break;
                             default: unreachable(effectValue);
-                        } imSwitchEnd(c);
+                        } im.SwitchEnd(c);
                     } imLayoutEnd(c);
 
                     // Might want to put something else here later ...
@@ -1669,24 +1652,24 @@ function imMathsCoefficientsList(
     isFirst: boolean,
 ) {
     imDspVisualGroupBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "flexFlow", "wrap");
+        if (im.isFirstishRender(c)) {
+            imdom.setStyle(c, "flexFlow", "wrap");
         }
 
-        if (imIf(c) && isFirst) {
+        if (im.If(c) && isFirst) {
             imLayoutBegin(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
-                imElBegin(c, EL_I); {
-                    imElBegin(c, EL_B); imStr(c, termIdx); imElEnd(c, EL_B);
-                } imElEnd(c, EL_I);
+                imdom.ElBegin(c, el.I); {
+                    imdom.ElBegin(c, el.B); imdom.Str(c, termIdx); imdom.ElEnd(c, el.B);
+                } imdom.ElEnd(c, el.I);
             } imLayoutEnd(c);
-        } imIfEnd(c);
+        } im.IfEnd(c);
 
-        imFor(c); for (let coIdx = 0; coIdx < coefficients.length; coIdx++) {
+        im.For(c); for (let coIdx = 0; coIdx < coefficients.length; coIdx++) {
             const co = coefficients[coIdx];
             imLayoutBegin(c, ROW); imJustify(c); imGap(c, 5, PX); {
                 if (
-                    imMemo(c, termIdx) |
-                    imMemo(c, coIdx) 
+                    im.Memo(c, termIdx) |
+                    im.Memo(c, coIdx) 
                 ) {
                     co.valueUI._name = "x[" + termIdx + "][" + coIdx + "]";
                 }
@@ -1700,12 +1683,12 @@ function imMathsCoefficientsList(
                     };
                 }
             } imLayoutEnd(c);
-            if (imIf(c) && coIdx < coefficients.length - 1) {
+            if (im.If(c) && coIdx < coefficients.length - 1) {
                 imLayoutBegin(c, ROW); imJustify(c); {
-                    imStr(c, " * ");
+                    imdom.Str(c, " * ");
                 } imLayoutEnd(c);
-            } imIfEnd(c);
-        } imForEnd(c);
+            } im.IfEnd(c);
+        } im.ForEnd(c);
 
         if (imButtonIsClicked(c, "+")) {
             const co = newEffectRackMathsItemCoefficient();
@@ -1719,23 +1702,23 @@ function imSelectChoice<T>(c: ImCache, currentChoice: T, choices: T[], fmt: (val
     let result: { choice: T } | null = null;
 
     const contextMenu = imContextMenu(c);
-    if (imIf(c) && contextMenu.open) {
+    if (im.If(c) && contextMenu.open) {
         imContextMenuBegin(c, contextMenu); {
-            imFor(c); for (const type of choices) {
+            im.For(c); for (const type of choices) {
                 imEditorContextMenuItemBegin(c); {
-                    if (elHasMousePress(c)) {
+                    if (imdom.hasMousePress(c)) {
                         result = { choice: type };
                         // Let's keep it open, so we can make multiple choices without having
                         // to keep re-opening it
                     }
-                    imStrFmt(c, type, fmt);
+                    imdom.StrFmt(c, type, fmt);
                 } imEditorContextMenuItemEnd(c);
-            } imForEnd(c);
+            } im.ForEnd(c);
         } imContextMenuEnd(c, contextMenu);
-    } imIfEnd(c);
+    } im.IfEnd(c);
 
     const clicked = imButtonBegin(c, fmt(currentChoice)); {
-        imStr(c, " | v");
+        imdom.Str(c, " | v");
 
         if (clicked) {
             openContextMenuAtMouse(c, contextMenu);
@@ -1751,18 +1734,18 @@ function imFilterAnalyzer(
     hasAllManualInputs: boolean,
     effect: EffectRackItem,
 ) {
-    if (imIf(c) && !hasAllManualInputs) {
+    if (im.If(c) && !hasAllManualInputs) {
         imLayoutBegin(c, ROW); imJustify(c); {
-            imStr(c, "Analysis will only work as expected when all value inputs are manual");
+            imdom.Str(c, "Analysis will only work as expected when all value inputs are manual");
         } imLayoutEnd(c);
-    } imIfEnd(c);
+    } im.IfEnd(c);
 
-    const effectChanged = imMemo(c, effect);
-    let s; s = imGetInline(c, imEffectRackEditor);
+    const effectChanged = im.Memo(c, effect);
+    let s; s = im.GetInline(c, imEffectRackEditor);
     if (!s || effectChanged) {
         const numSamples = MAX_NUM_FREQUENCIES;
 
-        s = imSet(c, {
+        s = im.Set(c, {
             osc: newOscilloscopeState(),
             impulseResponse: Array(numSamples),
 
@@ -1777,7 +1760,7 @@ function imFilterAnalyzer(
         });
     }
 
-    if (imMemo(c, editor.version) || effectChanged) {
+    if (im.Memo(c, editor.version) || effectChanged) {
 
         const rack = newEffectRack();
 
@@ -1824,11 +1807,11 @@ function imFilterAnalyzer(
         s.impulseResponseFft.frequenciesMin = arrayMin(s.impulseResponseFft.frequencies);
     }
 
-    imLayoutBegin(c, BLOCK); imStr(c, "Impulse response (time)"); imLayoutEnd(c);
+    imLayoutBegin(c, BLOCK); imdom.Str(c, "Impulse response (time)"); imLayoutEnd(c);
     imLayoutBegin(c, COL); imSize(c, 0, NA, 200, PX); {
         imOscilloscope(c, s.osc, s.impulseResponse, "blue");
     } imLayoutEnd(c);
-    imLayoutBegin(c, BLOCK); imStr(c, "Impulse response (frequency)"); imLayoutEnd(c);
+    imLayoutBegin(c, BLOCK); imdom.Str(c, "Impulse response (frequency)"); imLayoutEnd(c);
     imLayoutBegin(c, COL); imSize(c, 0, NA, 200, PX); {
         imOscilloscope(
             c,
@@ -1844,7 +1827,7 @@ function imFilterAnalyzer(
 
 function imSpacingSymbol(c: ImCache, symbol: string, flex = false) {
     imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imNoWrap(c); imSize(c, 50, PX, 0, NA); imFlex(c, flex ? 1 : - 1); {
-        imStr(c, symbol);
+        imdom.Str(c, symbol);
     } imLayoutEnd(c);
 }
 
@@ -1898,11 +1881,11 @@ const BINDING_IS_OUTPUT = 1 << 1;
 
 function imDspVisualGroupBegin(c: ImCache, type: DisplayType, enabled: boolean = true) {
     imLayoutBegin(c, type); imAlign(c); imJustify(c); imGap(c, 5, PX); {
-        if (imMemo(c, enabled)) {
-            elSetStyle(c, "flexWrap", "wrap");
-            elSetStyle(c, "border", !enabled ? "" : "1px solid " + cssVars.fg);
-            elSetStyle(c, "padding", !enabled ? "" : "5px");
-            elSetStyle(c, "borderRadius", !enabled ? "" : "5px");
+        if (im.Memo(c, enabled)) {
+            imdom.setStyle(c, "flexWrap", "wrap");
+            imdom.setStyle(c, "border", !enabled ? "" : "1px solid " + cssVars.fg);
+            imdom.setStyle(c, "padding", !enabled ? "" : "5px");
+            imdom.setStyle(c, "borderRadius", !enabled ? "" : "5px");
         }
 
     } // imLayoutEnd
@@ -1927,8 +1910,8 @@ function imValueOrBindingEditor(
     const isOutput = !!(flags & BINDING_IS_OUTPUT);
 
     imDspVisualGroupBegin(c, ROW, false); imNoWrap(c); imGap(c, 4, row ? PX : NA); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "fontSize", "1.25rem");
+        if (im.isFirstishRender(c)) {
+            imdom.setStyle(c, "fontSize", "1.25rem");
         }
 
         // Much easier to connect things.
@@ -1936,14 +1919,14 @@ function imValueOrBindingEditor(
 
         imRegisterHighlightBg(c, editor, undefined, regIdxUi.valueRef.regOutputId);
 
-        if (imIf(c) && !isOutput) {
+        if (im.If(c) && !isOutput) {
             imWireDragEndpoint(c, editor, regIdxUi, null);
-        } imIfEnd(c);
+        } im.IfEnd(c);
 
         imLayoutBegin(c, row ? ROW_REVERSE : COL); imAlign(c); imJustify(c); imGap(c, 4, row ? PX : NA); {
             imLayoutBegin(c, BLOCK); {
-                if (imIf(c) && regIdxUi.valueRef.value !== undefined && !isOutput) {
-                    imStrFmt(c, regIdxUi.valueRef.value, registerValueToString);
+                if (im.If(c) && regIdxUi.valueRef.value !== undefined && !isOutput) {
+                    imdom.StrFmt(c, regIdxUi.valueRef.value, registerValueToString);
 
                     let dragEvent = imParameterSliderInteraction(c, regIdxUi._min, regIdxUi._max, 0.0001, regIdxUi.valueRef.value, 0, DRAG_TYPE_CIRCULAR);
                     if (dragEvent) {
@@ -1953,15 +1936,15 @@ function imValueOrBindingEditor(
                         // to see the preview waveform and not the list of presets.
                         editor.ui.rightPanel.presets = false;
                     }
-                } else if (imIfElse(c) && regIdxUi.valueRef.regIdx !== undefined && !isOutput) {
+                } else if (im.IfElse(c) && regIdxUi.valueRef.regIdx !== undefined && !isOutput) {
                     imLayoutBegin(c, ROW); {
                         imRegisterHighlightBg(c, editor, regIdxUi.valueRef.regIdx, regIdxUi.valueRef.regOutputId);
 
-                        imStr(c, "<var=");
-                        imStr(c, defaultBindings[regIdxUi.valueRef.regIdx].name);
-                        imStr(c, ">");
+                        imdom.Str(c, "<var=");
+                        imdom.Str(c, defaultBindings[regIdxUi.valueRef.regIdx].name);
+                        imdom.Str(c, ">");
                     } imLayoutEnd(c);
-                } else if (imIfElse(c) && regIdxUi.valueRef.regOutputId !== undefined) {
+                } else if (im.IfElse(c) && regIdxUi.valueRef.regOutputId !== undefined) {
                     imLayoutBegin(c, ROW); {
                         imRegisterHighlightBg(c, editor, regIdxUi.valueRef.regIdx, regIdxUi.valueRef.regOutputId);
 
@@ -1970,24 +1953,24 @@ function imValueOrBindingEditor(
 
                         imResultName(c, regOutput, effectPos);
                     } imLayoutEnd(c);
-                    imIfElse(c);
+                    im.IfElse(c);
                 } else {
-                    imIfElse(c);
+                    im.IfElse(c);
 
-                    imStr(c, "????");
-                } imIfEnd(c);
+                    imdom.Str(c, "????");
+                } im.IfEnd(c);
             } imLayoutEnd(c);
 
             imLayoutBegin(c, BLOCK); {
-                if (isFirstishRender(c)) {
-                    elSetStyle(c, "fontSize", "1rem");
-                    elSetStyle(c, "userSelect", "none");
-                    elSetStyle(c, "fontWeight", "bold");
-                    elSetClass(c, "hoverable");
+                if (im.isFirstishRender(c)) {
+                    imdom.setStyle(c, "fontSize", "1rem");
+                    imdom.setStyle(c, "userSelect", "none");
+                    imdom.setStyle(c, "fontWeight", "bold");
+                    imdom.setClass(c, "hoverable");
                 }
 
-                imStr(c, regIdxUi._name);
-                imStr(c, row ? ":" : "");
+                imdom.Str(c, regIdxUi._name);
+                imdom.Str(c, row ? ":" : "");
 
                 imBindingEditorContextMenu(c, editor, regIdxUi);
             } imLayoutEnd(c);
@@ -1997,11 +1980,11 @@ function imValueOrBindingEditor(
 
 function imEditorContextMenuItemBegin(c: ImCache) {
     imContextMenuItemBegin(c); {
-        if (isFirstishRender(c)) {
+        if (im.isFirstishRender(c)) {
             // TODO: things in apps should be non-selectable by default, and opt-in to the selection process.
             // This is a webapp, not a document.
-            elSetStyle(c, "userSelect", "none");
-            elSetClass(c, "hoverable");
+            imdom.setStyle(c, "userSelect", "none");
+            imdom.setClass(c, "hoverable");
         }
     } // imContextMenuItemEnd
 }
@@ -2018,22 +2001,22 @@ function imBindingEditorContextMenu(
     reg: RegisterIdxUi,
 ) {
     const contextMenu = imContextMenu(c);
-    if (imIf(c) && contextMenu.open) {
+    if (im.If(c) && contextMenu.open) {
         imContextMenuBegin(c, contextMenu); {
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "default value");
-                imStr(c, " (");
-                imStr(c, reg._defaultValue);
-                imStr(c, ")");
+                imdom.Str(c, "default value");
+                imdom.Str(c, " (");
+                imdom.Str(c, reg._defaultValue);
+                imdom.Str(c, ")");
 
-                if (elHasMousePress(c)) {
+                if (imdom.hasMousePress(c)) {
                     reg.valueRef = { value: reg._defaultValue };
                     onEdited(editor);
                     contextMenu.open = false;
                 }
             } imEditorContextMenuItemEnd(c);
 
-            imFor(c); for (
+            im.For(c); for (
                 let bindingIdx = 0 as RegisterIdx;
                 bindingIdx < defaultBindings.length;
                 bindingIdx++
@@ -2043,19 +2026,19 @@ function imBindingEditorContextMenu(
                 imEditorContextMenuItemBegin(c); {
                     imRegisterHighlightBg(c, editor, bindingIdx, undefined);
 
-                    imStr(c, "<"); imStr(c, binding.name); imStr(c, ">");
+                    imdom.Str(c, "<"); imdom.Str(c, binding.name); imdom.Str(c, ">");
 
-                    if (elHasMousePress(c)) {
+                    if (imdom.hasMousePress(c)) {
                         reg.valueRef = { regIdx: asRegisterIdx(bindingIdx) };
                         onEdited(editor);
                         contextMenu.open = false;
                     }
                 } imContextMenuItemEnd(c);
-            } imForEnd(c);
+            } im.ForEnd(c);
         } imContextMenuEnd(c, contextMenu);
-    } imIfEnd(c);
+    } im.IfEnd(c);
 
-    if (elHasMousePress(c)) {
+    if (imdom.hasMousePress(c)) {
         openContextMenuAtMouse(c, contextMenu);
     }
 }
@@ -2065,17 +2048,17 @@ function imResultName(
     output: RegisterOutput,
     effectPos: number,
 ) {
-    if (imIf(c) && output._name.length > 0) {
-        imStr(c, "r");
-        imStr(c, output._effectPos);
+    if (im.If(c) && output._name.length > 0) {
+        imdom.Str(c, "r");
+        imdom.Str(c, output._effectPos);
 
-        imStr(c, ".");
-        imStr(c, output._name);
+        imdom.Str(c, ".");
+        imdom.Str(c, output._name);
 
-        if (imIf(c) && effectPos <= output._effectPos) {
-            imStr(c, "(-1)");
-        } imIfEnd(c);
-    } imIfEnd(c);
+        if (im.If(c) && effectPos <= output._effectPos) {
+            imdom.Str(c, "(-1)");
+        } im.IfEnd(c);
+    } im.IfEnd(c);
 }
 
 function imWireDragEndpoint(
@@ -2101,9 +2084,9 @@ function imWireDragEndpoint(
 
     const root = imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imSize(c, 30, PX, 30, PX);
     imBg(c, isEligibleDropZone ? cssVars.mg : cssVars.bg2); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "borderRadius", "1000px");
-            elSetStyle(c, "cursor", "move");
+        if (im.isFirstishRender(c)) {
+            imdom.setStyle(c, "borderRadius", "1000px");
+            imdom.setStyle(c, "cursor", "move");
         }
 
         if (!reg && regOutput) {
@@ -2119,7 +2102,7 @@ function imWireDragEndpoint(
             }
         }
 
-        if (imIf(c) && reg?.valueRef.regOutputId !== undefined) {
+        if (im.If(c) && reg?.valueRef.regOutputId !== undefined) {
             const outputUi = wires.outputPositions.get(reg.valueRef.regOutputId);
             assert(outputUi !== undefined);
 
@@ -2132,7 +2115,7 @@ function imWireDragEndpoint(
 
             assert(editor.svgCtx != null);
 
-            imDomRootExistingBegin(c, editor.svgCtx.root); {
+            imdom.RootExistingBegin(c, editor.svgCtx.root); {
                 const color = outputUi.colour;
 
                 imWire(
@@ -2140,8 +2123,8 @@ function imWireDragEndpoint(
                     srcX, srcY, dstX, dstY,
                     color.r, color.g, color.b, 0.3 + (1 - 0.3) * 0.5,
                 );
-            } imDomRootExistingEnd(c, editor.svgCtx.root);
-        } imIfEnd(c);
+            } imdom.RootExistingEnd(c, editor.svgCtx.root);
+        } im.IfEnd(c);
     } imLayoutEnd(c);
 
     return root;
@@ -2154,8 +2137,8 @@ function elDragWireToRegisterInput(
     reg: RegisterIdxUi | null,
 ) {
     const wires = editor.ui.wires;
-    const mouse = getGlobalEventSystem().mouse;
-    if (wires.drag.registerOutputId === undefined && elHasMousePress(c) && mouse.leftMouseButton) {
+    const mouse = imdom.getMouse();
+    if (wires.drag.registerOutputId === undefined && imdom.hasMousePress(c) && mouse.leftMouseButton) {
         if (registerOutputIdToDrag !== undefined) {
             if (reg) {
                 reg.valueRef = { value: reg._defaultValue };
@@ -2174,8 +2157,8 @@ function elDragWireToEffectOutput(
     clientX: number, clientY: number
 ) {
     const wires = editor.ui.wires;
-    const mouse = getGlobalEventSystem().mouse;
-    if (wires.drag.registerInput === undefined && elHasMousePress(c) && mouse.leftMouseButton) {
+    const mouse = imdom.getMouse();
+    if (wires.drag.registerInput === undefined && imdom.hasMousePress(c) && mouse.leftMouseButton) {
         wires.drag.registerInput = reg;
         wires.drag.toRegisterInput = false;
     }
@@ -2189,14 +2172,14 @@ function elDragWireToEffectOutput(
 function elDropWireToRegisterInput(c: ImCache, editor: EffectRackEditorState, reg: RegisterIdxUi) {
     const wires = editor.ui.wires;
 
-    if (wires.drag.registerOutputId !== undefined && elHasMouseOver(c)) {
+    if (wires.drag.registerOutputId !== undefined && imdom.hasMouseOver(c)) {
         wires.drag.registerInput = reg;
     }
 }
 
 function elDropWireToEffectOutput(c: ImCache, editor: EffectRackEditorState, outputIdToDrop: RegisterOutputId) {
     const wires = editor.ui.wires;
-    if (wires.drag.registerInput !== undefined && elHasMouseOver(c)) {
+    if (wires.drag.registerInput !== undefined && imdom.hasMouseOver(c)) {
         wires.drag.registerOutputId = outputIdToDrop;
     }
 }
@@ -2207,17 +2190,17 @@ function imWire(
     dstX: number, dstY: number,
     r: number, g: number, b: number, a: number,
 ) {
-    imElSvgBegin(c, EL_SVG_PATH); {
-        if (imMemo(c, r) | imMemo(c, g) | imMemo(c, b) | imMemo(c, a)) {
-            elSetAttr(c, "stroke", rgbaToCssString(r, g, b, a));
+    imdom.ElSvgBegin(c, elsvg.PATH); {
+        if (im.Memo(c, r) | im.Memo(c, g) | im.Memo(c, b) | im.Memo(c, a)) {
+            imdom.setAttr(c, "stroke", rgbaToCssString(r, g, b, a));
         }
 
-        if (isFirstishRender(c)) {
-            elSetAttr(c, "fill", "none");
-            elSetAttr(c, "stroke-width", "10");
+        if (im.isFirstishRender(c)) {
+            imdom.setAttr(c, "fill", "none");
+            imdom.setAttr(c, "stroke-width", "10");
         }
 
-        if (imMemo(c, srcX) | imMemo(c, srcY) | imMemo(c, dstX) | imMemo(c, dstY)) {
+        if (im.Memo(c, srcX) | im.Memo(c, srcY) | im.Memo(c, dstX) | im.Memo(c, dstY)) {
             const mY = srcY + (dstY - srcY) / 2;
             const mX = srcX + (dstX - srcX) / 2;
             const bowing = 100;
@@ -2238,9 +2221,9 @@ function imWire(
             const newPath
                 = `M ${srcX} ${srcY} Q ${srcX + bowing} ${srcY + bowingVertical}, ${mX} ${mY} T ${dstX} ${dstY}`
 
-            elSetAttr(c, "d", newPath);
+            imdom.setAttr(c, "d", newPath);
         }
-    } imElSvgEnd(c, EL_SVG_PATH);
+    } imdom.ElSvgEnd(c, elsvg.PATH);
 }
 
 // want to visualize the program somehow. 
@@ -2257,7 +2240,7 @@ function imOscilloscope(
             const { ctx, width, height } = plotState;
 
             if (ctx) {
-                const viewChanged = imMemo(c, s.viewVersion);
+                const viewChanged = im.Memo(c, s.viewVersion);
                 if (plotState.isNewFrame || viewChanged) {
                     ctx.clearRect(0, 0, width, height);
 
@@ -2286,7 +2269,7 @@ function imSampleRangeSlider(c: ImCache, range: SampleRange, samplesLen: number,
 
     imLayoutBegin(c, ROW); imAlign(c); {
         imLayoutBegin(c, BLOCK); imSize(c, 150, PX, 0, NA); {
-            imStr(c, label);
+            imdom.Str(c, label);
         } imLayoutEnd(c);
         imLayoutBegin(c, COL); imFlex(c); {
             const [start, end, draggingStart, draggingEnd] = imRangeSlider(
@@ -2318,7 +2301,7 @@ function imRegisterHighlightBg(
 
     imBg(c, isHighlighted ? cssVarsApp.codeHighlight : "");
 
-    if (elHasMouseOver(c)) {
+    if (imdom.hasMouseOver(c)) {
         editor.highlightedValueRefNext.regOutputId = regOutId;
         editor.highlightedValueRefNext.regIdx = regIdx;
     }
@@ -2330,44 +2313,44 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
     let toAdd: EffectRackItem | undefined;
 
     const contextMenu = imContextMenu(c);
-    if (imIf(c) && contextMenu.open) {
+    if (im.If(c) && contextMenu.open) {
         imContextMenuBegin(c, contextMenu); {
             const effect = arrayAt(rack.effects, insertIdx);
-            if (imIf(c) && !!effect) {
+            if (im.If(c) && !!effect) {
                 imEditorContextMenuItemBegin(c); {
-                    imStr(c, "Duplicate");
-                    if (elHasMousePress(c)) {
+                    imdom.Str(c, "Duplicate");
+                    if (imdom.hasMousePress(c)) {
                         toAdd = copyEffectRackItem(effect);
                     }
                 } imContextMenuItemEnd(c);
-            } imIfEnd(c);
+            } im.IfEnd(c);
 
             imContextMenuDivider(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Oscillator");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Oscillator");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackOscillator());
                 }
             } imContextMenuItemEnd(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Wave-Table");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Wave-Table");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackWaveTable());
                 }
             } imContextMenuItemEnd(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Envelope");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Envelope");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackEnvelope());
                 }
             } imContextMenuItemEnd(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Noise");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Noise");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackNoise());
                 }
             } imContextMenuItemEnd(c);
@@ -2375,22 +2358,22 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
             imContextMenuDivider(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Biquad Filter - Manual");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Biquad Filter - Manual");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackBiquadFilter());
                 }
             } imContextMenuItemEnd(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Biquad Filter - Parameterized");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Biquad Filter - Parameterized");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackBiquadFilter2());
                 }
             } imContextMenuItemEnd(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Sinc wall filter");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Sinc wall filter");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackConvolutionFilter());
                 }
             } imContextMenuItemEnd(c);
@@ -2398,34 +2381,34 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
             imContextMenuDivider(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Maths");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Maths");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackMaths());
                 }
             } imContextMenuItemEnd(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Switch");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Switch");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackSwitch());
                 }
             } imContextMenuItemEnd(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Delay");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Delay");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackDelay());
                 }
             } imContextMenuItemEnd(c);
 
             imEditorContextMenuItemBegin(c); {
-                imStr(c, "+ Reverb");
-                if (elHasMousePress(c)) {
+                imdom.Str(c, "+ Reverb");
+                if (imdom.hasMousePress(c)) {
                     toAdd = newEffectRackItem(newEffectRackReverbBadImpl());
                 }
             } imContextMenuItemEnd(c);
         } imContextMenuEnd(c, contextMenu);
-    } imIfEnd(c);
+    } im.IfEnd(c);
 
     if (toAdd) {
         editor.deferredAction = () => {
@@ -2443,8 +2426,8 @@ function imInsertButton(c: ImCache, editor: EffectRackEditorState, insertIdx: nu
 // Got like this because the 'sound lab' and 'effect rack editor' were two separate widgets for a while, 
 // then I decided they shouldn't be. but I can;t be bothered consolidating these two yet.
 function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
-    const visibleStartChanged = imMemo(c, state.allSamplesVisibleStart);
-    const visibleEndChanged = imMemo(c, state.allSamplesVisibleEnd);
+    const visibleStartChanged = im.Memo(c, state.allSamplesVisibleStart);
+    const visibleEndChanged = im.Memo(c, state.allSamplesVisibleEnd);
     const numFrequencies = Math.min(state.allSamplesWindowLength, MAX_NUM_FREQUENCIES);
     // NOTE: fft results are mirrored. Something to do with 'conjugate symmetry', whatever that is. 
     // basically, we can ignore the second half. 
@@ -2460,10 +2443,10 @@ function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
     imLayoutBegin(c, COL); imFlex(c); {
         imLayoutBegin(c, COL); imFlex(c); {
             imLayoutBegin(c, BLOCK); {
-                imStr(c, "Frequencies (hz) (?)");
-                imStr(c, " -> ");
-                imStr(c, state.frequenciesReal.length);
-                imStr(c, "hz (?)");
+                imdom.Str(c, "Frequencies (hz) (?)");
+                imdom.Str(c, " -> ");
+                imdom.Str(c, state.frequenciesReal.length);
+                imdom.Str(c, "hz (?)");
             } imLayoutEnd(c);
 
             const plotState = imPlotBegin(c); {
@@ -2495,14 +2478,14 @@ function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
         } imLayoutEnd(c);
         imLayoutBegin(c, COL); imFlex(c); {
             imLayoutBegin(c, ROW); imAlign(c); {
-                imStr(c, "Waveform ");
+                imdom.Str(c, "Waveform ");
 
-                imStr(c, " t=");
-                imStr(c, (state.allSamplesStartIdx / state.dsp.sampleRate).toPrecision(3));
-                imStr(c, " sample ");
-                imStr(c, state.allSamplesStartIdx);
-                imStr(c, " -> ");
-                imStr(c, state.allSamplesStartIdx + state.allSamplesWindowLength);
+                imdom.Str(c, " t=");
+                imdom.Str(c, (state.allSamplesStartIdx / state.dsp.sampleRate).toPrecision(3));
+                imdom.Str(c, " sample ");
+                imdom.Str(c, state.allSamplesStartIdx);
+                imdom.Str(c, " -> ");
+                imdom.Str(c, state.allSamplesStartIdx + state.allSamplesWindowLength);
             } imLayoutEnd(c);
 
             const plotState = imPlotBegin(c); {
@@ -2567,11 +2550,11 @@ function imEffectRackRightPanel(
             }
         } imLayoutEnd(c);
 
-        if (imIf(c) && effectRackEditor.ui.rightPanel.presets) {
+        if (im.If(c) && effectRackEditor.ui.rightPanel.presets) {
             imLayoutBegin(c, COL); imFlex(c); {
                 imHeading(c, "Effect rack presets");
 
-                const presetsList = imState(c, newPresetsListState);
+                const presetsList = im.State(c, newPresetsListState);
 
                 imLayoutBegin(c, ROW); imGap(c, 5, PX); imFlexWrap(c); {
                     imFlex1(c);
@@ -2614,7 +2597,7 @@ function imEffectRackRightPanel(
                 }
             } imLayoutEnd(c);
         } else {
-            imIfElse(c);
+            im.IfElse(c);
 
             imLayoutBegin(c, ROW); imHeading(c, "Waveform preview"); imLayoutEnd(c);
 
@@ -2623,7 +2606,7 @@ function imEffectRackRightPanel(
             // May seem useless rn, but I want to eventually assign different effect rack presets to 
             // different keys or key ranges, and that is when this will become handy.
             imKeyboardConfigEditorKeyboard(c, ctx, keyboardEditorForKeyboard, false, labForKeyboard.editingSlotIdx);
-        } imIfEnd(c);
+        } im.IfEnd(c);
     } imLayoutEnd(c);
 
     imLine(c, LINE_HORIZONTAL);

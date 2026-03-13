@@ -12,19 +12,11 @@ import {
 } from "src/state/sequencer-chart.ts";
 import { getCurrentChart } from "src/state/sequencer-state.ts";
 import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME } from "src/state/ui-state.ts";
-import {
-    ImCache,
-    imElse,
-    imEndFor,
-    imEndIf,
-    imFor,
-    imIf,
-    imIfElse,
-    imIfEnd
-} from "src/utils/im-core.ts";
-import {
-    imStr
-} from "src/utils/im-dom.ts";
+import { im, ImCache, imdom } from "src/utils/im-js";
+
+import { arrayAt } from "src/utils/array-utils.ts";
+import { assert } from "src/utils/assert.ts";
+import { done, DONE } from "src/utils/async-utils.ts";
 import {
     GlobalContext,
     openChartUpdateModal,
@@ -33,9 +25,6 @@ import {
 } from "./app.ts";
 import { moveChartSelection } from "./chart-select.ts";
 import { cssVarsApp } from "./styling.ts";
-import { done, DONE } from "src/utils/async-utils.ts";
-import { arrayAt } from "src/utils/array-utils.ts";
-import { assert } from "src/utils/assert.ts";
 
 
 export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
@@ -47,13 +36,13 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
 
     imLayoutBegin(c, COL); imSize(c, 25, PERCENT, 0, NA); imAlign(c, STRETCH); {
         const allAvailableCharts = ctx.repo.charts.allChartMetadata;
-        imFor(c); for (let i = 0; i < allAvailableCharts.length; i++) {
+        im.For(c); for (let i = 0; i < allAvailableCharts.length; i++) {
             const chart = allAvailableCharts[i];
             const isFocused = chart === chartSelect.currentChartMeta;
             const shouldRename = isFocused && s.isRenaming && chart;
 
             imLayoutBegin(c, ROW); imBg(c, isFocused ? cssVarsApp.bg2 : ""); {
-                if (imIf(c) && shouldRename) {
+                if (im.If(c) && shouldRename) {
                     const ev = imTextInputOneLine(c, chart.name);
                     if (ev) {
                         if (ev.newName !== undefined) {
@@ -65,20 +54,20 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                         }
                     }
                 } else {
-                    imElse(c);
+                    im.Else(c);
 
                     imLayoutBegin(c, BLOCK); {
                         let name = chart.name || "untitled"
-                        imStr(c, name);
-                        if (imIf(c) && isBundledChartId(chart.id)) {
+                        imdom.Str(c, name);
+                        if (im.If(c) && isBundledChartId(chart.id)) {
                             imLayoutBegin(c, INLINE); imFg(c, cssVarsApp.error); {
-                                imStr(c, " (readonly)");
+                                imdom.Str(c, " (readonly)");
                             } imLayoutEnd(c);
-                        } imIfEnd(c);
+                        } im.IfEnd(c);
                     } imLayoutEnd(c);
-                } imEndIf(c);
+                } im.IfEnd(c);
             } imLayoutEnd(c);
-        } imEndFor(c);
+        } im.ForEnd(c);
 
         imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
 
@@ -88,20 +77,20 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                 ctx.handled = true;
             }
 
-            if (imIf(c) && s.helpEnabled) {
-                imLayoutBegin(c, BLOCK); imStr(c, "[Up/Down] -> move, preview"); imLayoutEnd(c);
-                imLayoutBegin(c, BLOCK); imStr(c, "[Enter] -> start editing"); imLayoutEnd(c);
-                imLayoutBegin(c, BLOCK); imStr(c, "[R] -> rename"); imLayoutEnd(c);
-                imLayoutBegin(c, BLOCK); imStr(c, "[N] -> new"); imLayoutEnd(c);
-                if (imIf(c) && currentChart) {
-                    imLayoutBegin(c, BLOCK); imStr(c, "[C] -> copy"); imLayoutEnd(c);
-                } imIfEnd(c);
-                imLayoutBegin(c, BLOCK); imStr(c, "[X] -> delete"); imLayoutEnd(c);
+            if (im.If(c) && s.helpEnabled) {
+                imLayoutBegin(c, BLOCK); imdom.Str(c, "[Up/Down] -> move, preview"); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imdom.Str(c, "[Enter] -> start editing"); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imdom.Str(c, "[R] -> rename"); imLayoutEnd(c);
+                imLayoutBegin(c, BLOCK); imdom.Str(c, "[N] -> new"); imLayoutEnd(c);
+                if (im.If(c) && currentChart) {
+                    imLayoutBegin(c, BLOCK); imdom.Str(c, "[C] -> copy"); imLayoutEnd(c);
+                } im.IfEnd(c);
+                imLayoutBegin(c, BLOCK); imdom.Str(c, "[X] -> delete"); imLayoutEnd(c);
             } else {
-                imIfElse(c);
+                im.IfElse(c);
 
-                imStr(c, "[H] to toggle help");
-            } imIfEnd(c);
+                imdom.Str(c, "[H] to toggle help");
+            } im.IfEnd(c);
 
 
         } imLayoutEnd(c);

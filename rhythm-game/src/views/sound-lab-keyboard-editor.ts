@@ -13,8 +13,8 @@ import { getKeyForKeyboardKey } from "src/state/keyboard-state.ts";
 import { assert } from "src/utils/assert.ts";
 import { DONE } from "src/utils/async-utils.ts";
 import { CssColor, newColorFromHsv } from "src/utils/colour.ts";
-import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imMemo, imState, isFirstishRender } from "src/utils/im-core.ts";
-import { elHasMousePress, elSetStyle, getGlobalEventSystem, imStr } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { GlobalContext } from "./app.ts";
 import { imHoverable } from "./button.ts";
 import { imKeyboard } from "./keyboard.ts";
@@ -79,11 +79,11 @@ export function imKeyboardConfigEditor(
 
     const config = editor.keyboardConfig;
 
-    const presetListState = imState(c, newPresetsListState);
+    const presetListState = im.State(c, newPresetsListState);
     const numSlots        = config.synthSlots.length;
-    const numSlotsChanged = imMemo(c, numSlots);
+    const numSlotsChanged = im.Memo(c, numSlots);
 
-    if (imMemo(c, editor.version)) {
+    if (im.Memo(c, editor.version)) {
         result = { updatedKeyboard: editor.keyboardConfig };
     }
 
@@ -160,7 +160,7 @@ export function imKeyboardConfigEditor(
             imLine(c, LINE_HORIZONTAL, 1);
 
             imLayoutBegin(c, ROW); imAlign(c); imGap(c, 20, PX); {
-                imStr(c, "Slide mouse over the keys to select them");
+                imdom.Str(c, "Slide mouse over the keys to select them");
 
                 if (imButtonIsClicked(c, "Deselect", false, editor.selectedKeys.size > 0)) {
                     editor.selectedKeys.clear();
@@ -171,7 +171,7 @@ export function imKeyboardConfigEditor(
                 const isReassigningSomething = editor.reassigningSlotIdx !== -1;
 
                 imLayoutBegin(c, COL); imFlex(c, 1.8); imAlign(c, START); imScrollOverflow(c); {
-                    imFor(c); for (let slotIdx = 0; slotIdx < config.synthSlots.length; slotIdx++) {
+                    im.For(c); for (let slotIdx = 0; slotIdx < config.synthSlots.length; slotIdx++) {
                         const preset = config.synthSlots[slotIdx];
                         const presetColor = editor.slotColours[slotIdx];
                         const isReassigning = editor.reassigningSlotIdx === slotIdx
@@ -181,11 +181,11 @@ export function imKeyboardConfigEditor(
                         imLayoutBegin(c, COL); {
                             imLayoutBegin(c, ROW); imGap(c, 10, PX); imAlign(c); imBg(c, presetColor.toCssString()); { 
                                 imLayoutBegin(c, ROW); imFlex(c); imAlign(c); imGap(c, 10, PX); {
-                                    if (isFirstishRender(c)) elSetStyle(c, "padding", "0 5px");
+                                    if (im.isFirstishRender(c)) imdom.setStyle(c, "padding", "0 5px");
 
-                                    imStr(c, "s");
-                                    imStr(c, slotIdx);
-                                    imStr(c, " -> ");
+                                    imdom.Str(c, "s");
+                                    imdom.Str(c, slotIdx);
+                                    imdom.Str(c, " -> ");
 
                                     imLayoutBegin(c, ROW); imJustify(c); imFlex(c); {
                                         const isRenaming = editor.isRenamingSlotIdx === slotIdx;
@@ -235,7 +235,7 @@ export function imKeyboardConfigEditor(
                                 } imLayoutEnd(c);
                             } imLayoutEnd(c);
 
-                            if (imIf(c) && isReassigning) {
+                            if (im.If(c) && isReassigning) {
                                 const ev = imEffectRackList(c, ctx, presetListState);
                                 if (ev) {
                                     if (ev.selectionLoaded) {
@@ -244,11 +244,11 @@ export function imKeyboardConfigEditor(
                                         onEdited(editor);
                                     }
                                 }
-                            } imIfEnd(c);
+                            } im.IfEnd(c);
                         } imLayoutEnd(c);
-                    } imForEnd(c);
+                    } im.ForEnd(c);
 
-                    if (imIf(c) && !isReassigningSomething) {
+                    if (im.If(c) && !isReassigningSomething) {
                         if (imButtonIsClicked(c, "+")) {
                             const newPreset = effectRackToPreset(getDefaultSineWaveEffectRack());
                             config.synthSlots.push(newPreset);
@@ -259,7 +259,7 @@ export function imKeyboardConfigEditor(
                             }
                             onEdited(editor);
                         }
-                    } imIfEnd(c);
+                    } im.IfEnd(c);
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
         } imLayoutEnd(c);
@@ -323,8 +323,8 @@ export function imKeyboardConfigEditorKeyboard(
         ui.isolateSlotIdx = isolateSlot;
 
         if (allowSelection) {
-            const mouse = getGlobalEventSystem().mouse;
-            if (elHasMousePress(c) && mouse.leftMouseButton) {
+            const mouse = imdom.getMouse();
+            if (imdom.hasMousePress(c) && mouse.leftMouseButton) {
                 editor.selectedKeys.clear();
             }
             for (const key of ui.keysPressed) {
@@ -341,11 +341,11 @@ function imKeyboardConfigEditorPresetsList(c: ImCache, ctx: GlobalContext, edito
 
     imLayoutBegin(c, COL); imSize(c, 30, PERCENT, 0, NA); imScrollOverflow(c); {
         const keyboardPresets = ctx.repo.tables.keyboardPresets;
-        imFor(c); for (const preset of keyboardPresets.allItemsAsync.val) {
+        im.For(c); for (const preset of keyboardPresets.allItemsAsync.val) {
             const selected = preset.id === editor.keyboardConfig.id;
 
             imLayoutBegin(c, BLOCK); imHoverable(c, selected); {
-                if (elHasMousePress(c)) {
+                if (imdom.hasMousePress(c)) {
                     // selection is set asyncronously after it's actually loaded, and that is ok
 
                     loadKeyboardConfig(ctx.repo, preset, (config, err) => {
@@ -359,7 +359,7 @@ function imKeyboardConfigEditorPresetsList(c: ImCache, ctx: GlobalContext, edito
                     });
                 }
 
-                if (imIf(c) && selected && ui.isRenaming) {
+                if (im.If(c) && selected && ui.isRenaming) {
                     const ev = imTextInputOneLine(c, preset.name, undefined, true);
                     if (ev) {
                         if (ev.newName !== undefined) {
@@ -372,12 +372,12 @@ function imKeyboardConfigEditorPresetsList(c: ImCache, ctx: GlobalContext, edito
                         ctx.handled = true;
                     } 
                 } else {
-                    imIfElse(c);
+                    im.IfElse(c);
 
-                    imStr(c, preset.name);
-                } imIfEnd(c);
+                    imdom.Str(c, preset.name);
+                } im.IfEnd(c);
             } imLayoutEnd(c);
-        } imForEnd(c);
+        } im.ForEnd(c);
     } imLayoutEnd(c);
 
     if (!ctx.handled) {

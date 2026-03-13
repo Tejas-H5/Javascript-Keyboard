@@ -9,8 +9,8 @@ import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "src/state/se
 import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "src/state/ui-state";
 import { unreachable } from "src/utils/assert";
 import { AsyncCb, Done, CANCELLED, done, newError, toTrackedCallback } from "src/utils/async-utils";
-import { ImCache, imIf, imIfElse, imIfEnd, isFirstishRender } from "src/utils/im-core";
-import { elSetStyle, imStr } from "src/utils/im-dom";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { GlobalContext } from "./app";
 import { cssVarsApp } from "./styling";
 
@@ -29,19 +29,19 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     let escape = false;
 
     imModalBegin(c); {
-        if (isFirstishRender(c)) {
-            elSetStyle(c, "zIndex", "100");
+        if (im.isFirstishRender(c)) {
+            imdom.setStyle(c, "zIndex", "100");
         }
 
         imLayoutBegin(c, COL); imBg(c, cssVars.bg); imSize(c, 70, PERCENT, 0, NA); imPadding(c,10, PX, 10, PX, 10, PX, 10, PX); {
-            if (imIf(c) && !s.isUpdating) {
+            if (im.If(c) && !s.isUpdating) {
                 imLayoutBegin(c, ROW); imJustify(c); {
-                    imStr(c, s.message);
+                    imdom.Str(c, s.message);
                 } imLayoutEnd(c);
 
                 imLayoutBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
                     imLayoutBegin(c, BLOCK); {
-                        imStr(c, "Enter new name: ");
+                        imdom.Str(c, "Enter new name: ");
                     } imLayoutEnd(c);
 
                     imLayoutBegin(c, BLOCK); imFlex(c); {
@@ -55,11 +55,11 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
                             }
                         }
 
-                        if (imIf(c) && s.error) {
+                        if (im.If(c) && s.error) {
                             imLayoutBegin(c, ROW); imFg(c, cssVarsApp.error); {
-                                imStr(c, s.error);
+                                imdom.Str(c, s.error);
                             } imLayoutEnd(c);
-                        } imIfEnd(c);
+                        } im.IfEnd(c);
                     } imLayoutEnd(c);
 
                     if (imButtonIsClicked(c, getButtonText(s.operation))) {
@@ -71,14 +71,14 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
                     }
                 } imLayoutEnd(c);
             } else {
-                imIfElse(c);
+                im.IfElse(c);
 
                 imLayoutBegin(c, ROW); imJustify(c); {
-                    imStr(c, s.message);
+                    imdom.Str(c, s.message);
                 } imLayoutEnd(c);
 
                 imInfiniteProgress(c);
-            } imIfEnd(c);
+            } im.IfEnd(c);
         } imLayoutEnd(c);
     } imModalEnd(c);
 

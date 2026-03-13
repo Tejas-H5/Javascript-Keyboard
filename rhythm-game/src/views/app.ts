@@ -3,7 +3,7 @@ import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-co
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
 import { debugFlags } from "src/debug-flags.ts";
 import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface.ts";
-import { DataRepository, loadChartMetadataList, loadChart, SequencerChartMetadata } from "src/state/data-repository.ts";
+import { DataRepository, loadChart, loadChartMetadataList, SequencerChartMetadata } from "src/state/data-repository.ts";
 import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state.ts";
 import {
     startPlaying,
@@ -26,15 +26,15 @@ import { filterInPlace } from "src/utils/array-utils.ts";
 import { assert, unreachable } from "src/utils/assert.ts";
 import { AsyncCallback, AsyncCallbackResult, done, DONE, getTrackedAsyncActions } from "src/utils/async-utils.ts";
 import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils.ts";
-import { ImCache, imFor, imForEnd, imIf, imIfElse, imIfEnd, imSwitch, imSwitchEnd } from "src/utils/im-core.ts";
-import { EL_H2, getGlobalEventSystem, imElBegin, imElEnd, imStr } from "src/utils/im-dom.ts";
+import { el, im, ImCache, imdom } from "src/utils/im-js";
+
 import { imChartSelect } from "src/views/chart-select.ts";
 import { imEditView } from "src/views/edit-view.ts";
 import { imPlayView } from "src/views/play-view.ts";
 import { imStartupView } from "src/views/startup-view.ts";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay.ts";
 import { runSaveCurrentChartTask } from "./saving-chart.ts";
-import { imSoundLab, SoundLabState } from "./sound-lab.ts";
+import { imSoundLab } from "./sound-lab.ts";
 import { imUpdateModal } from "./update-modal.ts";
 
 export type GlobalContext = {
@@ -410,7 +410,8 @@ export function imApp(
 ) {
     const { ui } = ctx;
 
-    const { blur, keyboard } = getGlobalEventSystem();
+    const blur = imdom.getBlur();
+    const keyboard = imdom.getKeyboard();
     const { keyDown, keyUp } = keyboard;
 
     ctx.keyPressState = null;
@@ -469,22 +470,22 @@ export function imApp(
     }
 
     imLayoutBegin(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-        if (imIf(c) && ui.unitTestModal) {
+        if (im.If(c) && ui.unitTestModal) {
             imUnitTestsModal(c, ctx, ui.unitTestModal);
-        } else if (imIfElse(c) && ui.updateModal) {
+        } else if (im.IfElse(c) && ui.updateModal) {
             imUpdateModal(c, ctx, ui.updateModal);
-        } imIfEnd(c);
+        } im.IfEnd(c);
 
-        imSwitch(c, ui.currentView); switch(ui.currentView) { 
+        im.Switch(c, ui.currentView); switch(ui.currentView) { 
             case APP_VIEW_STARTUP:      imStartupView(c, ctx); break;
             case APP_VIEW_CHART_SELECT: imChartSelect(c, ctx); break;
             case APP_VIEW_PLAY_CHART:   imPlayView(c, ctx);    break;
             case APP_VIEW_EDIT_CHART:   imEditView(c, ctx);    break;
             case APP_VIEW_SOUND_LAB:    imSoundLab(c, ctx);    break;
             default: {
-                imElBegin(c, EL_H2); imStr(c, `TODO: implement ${ui.currentView} ...`); imElEnd(c, EL_H2);
+                imdom.ElBegin(c, el.H2); imdom.Str(c, `TODO: implement ${ui.currentView} ...`); imdom.ElEnd(c, el.H2);
             } break;
-        } imSwitchEnd(c);
+        } im.SwitchEnd(c);
 
     } imLayoutEnd(c);
 
@@ -513,43 +514,43 @@ export function imDiagnosticInfo(c: ImCache, ctx: GlobalContext | undefined) {
 
         // What's playing?
 
-        if (imIf(c) && ctx) {
+        if (im.If(c) && ctx) {
             imLayoutBegin(c, BLOCK); {
                 const info = getDspInfo();
-                imFor(c); for (const [keyId, signal] of info.currentlyPlaying) {
+                im.For(c); for (const [keyId, signal] of info.currentlyPlaying) {
                     const key = ctx.keyboard.flatKeys[keyId];
                     imLayoutBegin(c, BLOCK); {
-                        imStr(c, "[");
-                        imStr(c, key.text);
-                        imStr(c, ",");
-                        imStr(c, signal.toFixed(1));
-                        imStr(c, "]");
+                        imdom.Str(c, "[");
+                        imdom.Str(c, key.text);
+                        imdom.Str(c, ",");
+                        imdom.Str(c, signal.toFixed(1));
+                        imdom.Str(c, "]");
                     } imLayoutEnd(c);
-                } imForEnd(c);
+                } im.ForEnd(c);
 
                 imLayoutBegin(c, BLOCK); {
-                    imStr(c, "volume="); imStr(c, getPlaybackVolume());
-                    imStr(c, "speed="); imStr(c, getPlaybackSpeed());
+                    imdom.Str(c, "volume="); imdom.Str(c, getPlaybackVolume());
+                    imdom.Str(c, "speed="); imdom.Str(c, getPlaybackSpeed());
                 } imLayoutEnd(c);
             } imLayoutEnd(c);
-        } imIfEnd(c);
+        } im.IfEnd(c);
 
         // Info about background tasks
         imLayoutBegin(c, BLOCK); {
             const asyncActions = getTrackedAsyncActions();
-            imFor(c); for (const slot of asyncActions.values()) {
-                imFor(c); for (const action of slot) {
+            im.For(c); for (const slot of asyncActions.values()) {
+                im.For(c); for (const action of slot) {
                     imLayoutBegin(c, BLOCK); imBg(c, action.error ? `rgba(255, 0, 0, 0.5)` : `rgba(0, 255, 255, 1)`); {
                         const t1 = action.t1 ?? performance.now();
                         const ms = t1 - action.t0;
-                        imStr(c, Math.round(ms));
-                        imStr(c, "ms |");
-                        imStr(c, action.name);
+                        imdom.Str(c, Math.round(ms));
+                        imdom.Str(c, "ms |");
+                        imdom.Str(c, action.name);
                     } imLayoutEnd(c);
-                } imForEnd(c);
+                } im.ForEnd(c);
 
                 imLine(c, LINE_HORIZONTAL, 1);
-            } imForEnd(c);
+            } im.ForEnd(c);
         } imLayoutEnd(c);
     } imLayoutEnd(c);
 }

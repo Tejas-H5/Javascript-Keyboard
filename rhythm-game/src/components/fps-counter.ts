@@ -1,22 +1,13 @@
-import {
-    CACHE_ITEMS_ITERATED_LAST_FRAME,
-    CACHE_TOTAL_DESTRUCTORS,
-    CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME,
-    ImCache,
-    imGet,
-    getFpsCounterState,
-    imSet,
-    inlineTypeId
-} from "src/utils/im-core.ts";
-import { imStr } from "src/utils/im-dom.ts";
+import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+
 import { BLOCK, imLayoutBegin, imLayoutEnd } from "./core/layout.ts";
 
 export function imFpsCounterSimple(c: ImCache) {
-    const fpsCounter = getFpsCounterState(c);
+    const fpsCounter = im.getFpsCounterState(c);
 
     const RINGBUFFER_SIZE = 20;
-    let arr; arr = imGet(c, inlineTypeId(Array));
-    if (!arr) arr = imSet(c, {
+    let arr; arr = im.GetInline(c, Array);
+    if (!arr) arr = im.Set(c, {
         frameMsRingbuffer: new Array(RINGBUFFER_SIZE).fill(0),
         idx1: 0,
         renderMsRingbuffer: new Array(RINGBUFFER_SIZE).fill(0),
@@ -38,26 +29,26 @@ export function imFpsCounterSimple(c: ImCache) {
     renderMs /= arr.frameMsRingbuffer.length;
     frameMs /= arr.frameMsRingbuffer.length;
 
-    imLayoutBegin(c, BLOCK); imStr(c, Math.round(renderMs) + "ms/" + Math.round(frameMs) + "ms"); imLayoutEnd(c);
+    imLayoutBegin(c, BLOCK); imdom.Str(c, Math.round(renderMs) + "ms/" + Math.round(frameMs) + "ms"); imLayoutEnd(c);
 }
 
 export function imExtraDiagnosticInfo(c: ImCache) {
-    const itemsIterated  = c[CACHE_ITEMS_ITERATED_LAST_FRAME];
-    const numDestructors = c[CACHE_TOTAL_DESTRUCTORS];
-    const numMapEntries  = c[CACHE_TOTAL_MAP_ENTRIES_LAST_FRAME];
+    const itemsIterated  = im.getItemsIterated(c);
+    const numDestructors = im.getTotalDestructors(c);
+    const numMapEntries  = im.getTotalMapEntries(c);
 
-    const fps = getFpsCounterState(c);
+    const fps = im.getFpsCounterState(c);
 
     imLayoutBegin(c, BLOCK); {
-        imStr(c, itemsIterated);
-        imStr(c, "i ");
+        imdom.Str(c, itemsIterated);
+        imdom.Str(c, "i ");
 
         // If either of these just keep increasing forever, you have a memory leak.
-        imStr(c, numDestructors);
-        imStr(c, "d ");
-        imStr(c, numMapEntries);
-        imStr(c, "m ");
-        imStr(c, fps.lastRenderCount);
-        imStr(c, "r");
+        imdom.Str(c, numDestructors);
+        imdom.Str(c, "d ");
+        imdom.Str(c, numMapEntries);
+        imdom.Str(c, "m ");
+        imdom.Str(c, fps.lastRenderCount);
+        imdom.Str(c, "r");
     } imLayoutEnd(c);
 }
