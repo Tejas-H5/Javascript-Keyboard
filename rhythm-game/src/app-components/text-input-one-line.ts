@@ -1,6 +1,6 @@
-import { imFlex } from "src/components/core/layout.ts";
 import { imTextInputBegin, imTextInputEnd } from "src/components/text-input.ts";
 import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { imui } from "src/utils/im-js/im-ui";
 
 
 export function imTextInputOneLine(
@@ -15,7 +15,7 @@ export function imTextInputOneLine(
     const input = imTextInputBegin(c, {
         value: currentName,
         placeholder: placeholder,
-    }); imFlex(c); {
+    }); imui.Flex(c); {
         if (im.Memo(c, canFocusWithTab)) {
             imdom.setAttr(c, "tabindex", "-1", input.root);
         }

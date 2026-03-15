@@ -11,43 +11,15 @@ import { imVerticalText } from "src/app-components/misc";
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
 import { imCheckbox } from "src/components/checkbox";
-import {
-    BLOCK,
-    COL,
-    DisplayType,
-    EM,
-    imAlign,
-    imBg,
-    imFlex,
-    imFlex1,
-    imFlexWrap,
-    imGap,
-    imJustify,
-    imLayoutBegin,
-    imLayoutEnd,
-    imNoWrap,
-    imOpacity,
-    imPadding,
-    imRelative,
-    imSize,
-    INLINE_BLOCK,
-    NA,
-    PERCENT,
-    PX,
-    ROW,
-    ROW_REVERSE,
-    SPACE_EVENLY,
-    STRETCH,
-    SvgContext
-} from "src/components/core/layout";
-import { cssVars } from "src/components/core/stylesheets";
+import { BLOCK, COL, CssColor, cssVars, DisplayType, EM, imui, INLINE_BLOCK, NA, PERCENT, PX, ROW, ROW_REVERSE, SPACE_EVENLY, STRETCH } from "src/utils/im-js/im-ui";
+
 import { DragAndDropState, imDragAndDrop, imDragHandle, imDragZoneBegin, imDragZoneEnd, imDropZoneForPrototyping } from "src/components/drag-and-drop";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
 import { imRangeSlider } from "src/components/range-slider";
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { DspLoopMessage, dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
 import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, newKeyboardConfigOnePreset, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { createEffectRackPreset, DEFAULT_GROUP_NAME, deleteEffectRackPreset, loadEffectRackPreset, updateEffectRackPreset } from "src/state/data-repository";
+import { createEffectRackPreset, DEFAULT_GROUP_NAME, deleteEffectRackPreset, updateEffectRackPreset } from "src/state/data-repository";
 import {
     asRegisterIdx,
     BIQUAD2_TYPE__ALLPASS,
@@ -123,15 +95,14 @@ import {
     SWITCH_OP_LT,
     ValueRef
 } from "src/state/effect-rack";
-import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, keyboardConfigDeleteSlot, presetToEffectRack } from "src/state/keyboard-config";
+import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, presetToEffectRack } from "src/state/keyboard-config";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { arrayAt, arrayMove, copyArray, filterInPlace, removeItem } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
 import { DONE, done } from "src/utils/async-utils";
-import { CssColor, newColor, newColorFromHsv, rgbaToCssString } from "src/utils/colour";
-import { newCssBuilder } from "src/utils/cssb";
+
 import { fft, fftToReal, resizeNumberArrayPowerOf2 } from "src/utils/fft";
-import { im, ImCache, imdom, el, ev, elsvg, } from "src/utils/im-js";
+import { el, elsvg, im, ImCache, imdom } from "src/utils/im-js";
 
 import { arrayMax, arrayMin } from "src/utils/math-utils";
 import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
@@ -143,7 +114,8 @@ import { SoundLabState } from "./sound-lab";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 import { imEffectRackList, newPresetsListState, selectEffectRackPreset, startRenamingPreset } from "./sound-lab-effect-rack-list";
 import { imKeyboardConfigEditorKeyboard, KeyboardConfigEditorState } from "./sound-lab-keyboard-editor";
-import { cssVarsApp, getCurrentTheme } from "./styling";
+import { SvgContext } from "src/components/svg-context";
+import { cssVarsApp } from "./styling";
 
 const MAX_NUM_FREQUENCIES = 16384;
 
@@ -402,18 +374,18 @@ export function imHeading(c: ImCache, text: string) {
 }
 
 export function imHeadingBegin(c: ImCache) {
-    imLayoutBegin(c, ROW); imJustify(c); imdom.ElBegin(c, el.B); {
-    } // imdom.ElEnd(c, el.B); imLayoutEnd(c);
+    imui.Begin(c, ROW); imui.Justify(c); imdom.ElBegin(c, el.B); {
+    } // imdom.ElEnd(c, el.B); imui.End(c);
 }
 
 export function imHeadingEnd(c: ImCache) {
-    // imLayoutBegin(c, ROW); imJustify(c); imdom.ElBegin(c, el.B); 
+    // imui.Begin(c, ROW); imui.Justify(c); imdom.ElBegin(c, el.B); 
     {
-    } imdom.ElEnd(c, el.B); imLayoutEnd(c);
+    } imdom.ElEnd(c, el.B); imui.End(c);
 }
 
 
-const cssb = newCssBuilder();
+const cssb = imui.newCssBuilder();
 const cnEffectRackEditor = cssb.cn("effectRackEditor", [
     // TODO: better styling xD
     ` .hoverable { cursor: pointer; margin: 2px; border-radius: 4px; }`,
@@ -427,7 +399,7 @@ function createConnection(editor: EffectRackEditorState, src: RegisterOutputId, 
     onEdited(editor);
 }
 
-const dragColour = newColor(0, 0, 0, 1);
+const dragColour = imui.newColor(0, 0, 0, 1);
 
 
 
@@ -510,7 +482,7 @@ export function imEffectRackEditor(
                         inUse: false,
                         x: 0,
                         y: 0,
-                        colour: newColor(0, 0, 0, 1),
+                        colour: imui.newColor(0, 0, 0, 1),
                     }
                     wires.outputPositions.set(outputId, outputUi);
                     wireUiChanged = true;
@@ -530,7 +502,7 @@ export function imEffectRackEditor(
         if (wireUiChanged) {
             let i = 0;
             for (const [outputId, outputUi] of wires.outputPositions) {
-                outputUi.colour = newColorFromHsv((i / editor.effectRack.effects.length) % 1, 1, 0.5)
+                outputUi.colour = imui.newColorFromHsv((i / editor.effectRack.effects.length) % 1, 1, 0.5)
                 i += 1;
             }
         }
@@ -744,15 +716,15 @@ export function imEffectRackEditor(
     const svgCtx = editor.svgCtx;
     assert(!!svgCtx);
 
-    imLayoutBegin(c, ROW); imFlex(c); {
-        imLayoutBegin(c, COL); imFlex(c, 4); {
-            imLayoutBegin(c, COL); imFlex(c); {
+    imui.Begin(c, ROW); imui.Flex(c); {
+        imui.Begin(c, COL); imui.Flex(c, 4); {
+            imui.Begin(c, COL); imui.Flex(c); {
                 if (im.isFirstishRender(c)) imdom.setStyle(c, "fontSize", "20px");
                 if (im.isFirstishRender(c)) imdom.setClass(c, cnEffectRackEditor);
 
-                imLayoutBegin(c, COL); imFlex(c); {
-                    imLayoutBegin(c, ROW); imAlign(c); {
-                        imLayoutBegin(c, ROW); imGap(c, 10, PX); {
+                imui.Begin(c, COL); imui.Flex(c); {
+                    imui.Begin(c, ROW); imui.Align(c); {
+                        imui.Begin(c, ROW); imui.Gap(c, 10, PX); {
                             if (imButtonIsClicked(c, "Import")) {
                                 editor.ui.modal = MODAL_IMPORT;
                             }
@@ -773,9 +745,9 @@ export function imEffectRackEditor(
                                     onEdited(editor);
                                 }
                             }
-                        } imLayoutEnd(c);
+                        } imui.End(c);
 
-                        imFlex1(c);
+                        imui.Flex1(c);
 
                         imHeadingBegin(c); {
                             if (im.If(c) && lab.keyboardConfig) {
@@ -785,7 +757,7 @@ export function imEffectRackEditor(
                             imdom.Str(c, " Slot ");
                             imdom.Str(c, lab.editingSlotIdx);
 
-                            imLayoutBegin(c, INLINE_BLOCK); {
+                            imui.Begin(c, INLINE_BLOCK); {
                                 const ev = imTextInputOneLine(c, rack.name, undefined, false);
                                 if (ev) {
                                     if (ev.newName !== undefined) {
@@ -793,12 +765,12 @@ export function imEffectRackEditor(
                                         onEdited(editor);
                                     }
                                 }
-                            } imLayoutEnd(c);
+                            } imui.End(c);
                         } imHeadingEnd(c);
 
-                        imFlex1(c);
+                        imui.Flex1(c);
 
-                        imLayoutBegin(c, ROW); imGap(c, 10, PX); {
+                        imui.Begin(c, ROW); imui.Gap(c, 10, PX); {
                             if (imButtonIsClicked(c, "Undo", false, canUndo(editor.undoBuffer))) {
                                 editor.deferredAction = () => editorUndo(editor);
                             }
@@ -810,10 +782,10 @@ export function imEffectRackEditor(
                             if (imButtonIsClicked(c, "Back")) {
                                 lab.editingSlotIdx = -1;
                             }
-                        } imLayoutEnd(c);
-                    } imLayoutEnd(c);
+                        } imui.End(c);
+                    } imui.End(c);
 
-                    imLayoutBegin(c, COL); imFlex(c); {
+                    imui.Begin(c, COL); imui.Flex(c); {
                         const sc = im.State(c, newScrollContainer);
                         imScrollContainerBegin(c, sc); {
 
@@ -858,19 +830,19 @@ export function imEffectRackEditor(
                                 } im.KeyedEnd(c);
                             } im.ForEnd(c);
 
-                            imLayoutBegin(c, ROW); imJustify(c); {
+                            imui.Begin(c, ROW); imui.Justify(c); {
                                 imDropZoneForPrototyping(c, effectsDnd, rack.effects.length);
                                 imInsertButton(c, editor, rack.effects.length - 1);
-                            } imLayoutEnd(c);
+                            } imui.End(c);
 
                         } imScrollContainerEnd(c);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
+                    } imui.End(c);
+                } imui.End(c);
 
-                imLayoutBegin(c, ROW); {
+                imui.Begin(c, ROW); {
                     const s = editor.compileStats;
                     const samplesPerMs = s.numSamples / s.computeSamplesTime;
-                    imLayoutBegin(c, ROW); imAlign(c); imFlex(c); {
+                    imui.Begin(c, ROW); imui.Align(c); imui.Flex(c); {
                         if (im.If(c) && s.completed) {
                             imdom.Str(c, "Compiled in ");
                             imdom.Str(c, s.compileTime.toFixed(3))
@@ -886,25 +858,25 @@ export function imEffectRackEditor(
                             im.IfElse(c);
                             imdom.Str(c, "...");
                         } im.IfEnd(c);
-                    } imLayoutEnd(c);
+                    } imui.End(c);
 
-                    imLayoutBegin(c, COL); {
+                    imui.Begin(c, COL); {
                         if (im.isFirstishRender(c)) imdom.setStyle(c, "borderTop", "1px solid " + cssVars.fg);
                         if (im.isFirstishRender(c)) imdom.setStyle(c, "borderLeft", "1px solid " + cssVars.fg);
                         if (im.isFirstishRender(c)) imdom.setStyle(c, "borderTopLeftRadius", "5px");
                         if (im.isFirstishRender(c)) imdom.setStyle(c, "padding", "5px");
                         imValueOrBindingEditor(c, editor, rack.effects.length, rack.output);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
+                    } imui.End(c);
+                } imui.End(c);
+            } imui.End(c);
+        } imui.End(c);
 
         imLine(c, LINE_VERTICAL);
 
-        imLayoutBegin(c, COL); imFlex(c, 2); {
+        imui.Begin(c, COL); imui.Flex(c, 2); {
             imEffectRackRightPanel(c, ctx, editor, keyboardEditor, lab);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 
     if (editor.deferredAction) {
         const action = editor.deferredAction;
@@ -982,11 +954,11 @@ function getEffectTypeShortName(type: EffectRackItemType): string {
 }
 
 export function imEffectRackEditorWaveformPreview(c: ImCache, ctx: GlobalContext, editor: EffectRackEditorState) {
-    imLayoutBegin(c, COL); imFlex(c); {
+    imui.Begin(c, COL); imui.Flex(c); {
         const s = editor.signalPreview;
         imOscilloscope(c, s.oscilloscope, s.samples);
         imSampleRangeSlider(c, s.signalPressRange, s.samples.length, "Signal: ");
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 export function imEffectRackActualWaveform(c: ImCache, ctx: GlobalContext, editor: EffectRackEditorState) {
@@ -1016,25 +988,25 @@ function imEffectRackEditorEffect(
     const effect = rack.effects[effectPos];
 
     const z = imDragZoneBegin(c, effectsDnd, effectPos); {
-        imLayoutBegin(c, COL); imFlex(c); {
-            imLayoutBegin(c, ROW); imAlign(c);
-            imPadding(c, 5, PX, 5, PX, 0, PX, 5, PX); imGap(c, 5, PX); {
+        imui.Begin(c, COL); imui.Flex(c); {
+            imui.Begin(c, ROW); imui.Align(c);
+            imui.Padding(c, 5, PX, 5, PX, 0, PX, 5, PX); imui.Gap(c, 5, PX); {
                 imDropZoneForPrototyping(c, effectsDnd, effectPos);
 
-                imVerticalText(c); imAlign(c); imGap(c, 10, PX); {
-                    imLayoutBegin(c, ROW); {
+                imVerticalText(c); imui.Align(c); imui.Gap(c, 10, PX); {
+                    imui.Begin(c, ROW); {
                         imDragHandle(c, effectsDnd, effectPos);
 
                         imdom.StrFmt(c, effect.value.type, getEffectTypeShortName);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
+                    } imui.End(c);
+                } imui.End(c);
 
                 imLine(c, LINE_VERTICAL, 5);
 
                 // imLine(c, LINE_VERTICAL, 5);
 
-                imDspVisualGroupBegin(c, ROW); imFlex(c); imFlexWrap(c); imJustify(c); {
-                    imLayoutBegin(c, ROW); imFlex(c); imGap(c, 10, PX);  {
+                imDspVisualGroupBegin(c, ROW); imui.Flex(c); imui.FlexWrap(c); imui.Justify(c); {
+                    imui.Begin(c, ROW); imui.Flex(c); imui.Gap(c, 10, PX);  {
                         const effectValue = effect.value;
                         im.Switch(c, effectValue.type); switch (effectValue.type) {
                             case EFFECT_RACK_ITEM__OSCILLATOR: {
@@ -1042,8 +1014,8 @@ function imEffectRackEditorEffect(
 
                                 imValueOrBindingEditor(c, editor, effectPos, osc.amplitudeUI);
 
-                                imDspVisualGroupBegin(c, COL); imFlex(c); {
-                                    imLayoutBegin(c, ROW); imGap(c, 20, PX); imAlign(c); {
+                                imDspVisualGroupBegin(c, COL); imui.Flex(c); {
+                                    imui.Begin(c, ROW); imui.Gap(c, 20, PX); imui.Align(c); {
                                         const ev = imSelectChoice(c, osc.waveType, allWaveTypes, getEffectRackOscillatorWaveTypeName);
                                         if (ev) {
                                             osc.waveType = ev.choice;
@@ -1060,9 +1032,9 @@ function imEffectRackEditorEffect(
                                         imdom.Str(c, "+");
 
                                         imValueOrBindingEditor(c, editor, effectPos, osc.offsetUI);
-                                    } imLayoutEnd(c);
+                                    } imui.End(c);
 
-                                    imDspVisualGroupBegin(c, ROW); imGap(c, 20, PX); imAlign(c);  {
+                                    imDspVisualGroupBegin(c, ROW); imui.Gap(c, 20, PX); imui.Align(c);  {
                                         imHeading(c, "unison");
                                         imValueOrBindingEditor(c, editor, effectPos, osc.unisonPhaseOffsetUi);
                                         imValueOrBindingEditor(c, editor, effectPos, osc.unisonCountUi);
@@ -1079,7 +1051,7 @@ function imEffectRackEditorEffect(
                             case EFFECT_RACK_ITEM__ENVELOPE: {
                                 const envelope = effectValue;
 
-                                imDspVisualGroupBegin(c, ROW); imFlex(c); imJustify(c, SPACE_EVENLY); {
+                                imDspVisualGroupBegin(c, ROW); imui.Flex(c); imui.Justify(c, SPACE_EVENLY); {
                                     imValueOrBindingEditor(c, editor, effectPos, envelope.amplitudeUi);
                                     imValueOrBindingEditor(c, editor, effectPos, envelope.signalUI);
                                     imValueOrBindingEditor(c, editor, effectPos, envelope.attackUI);
@@ -1096,21 +1068,21 @@ function imEffectRackEditorEffect(
                             case EFFECT_RACK_ITEM__MATHS: {
                                 const math = effectValue;
 
-                                imLayoutBegin(c, COL); imAlign(c); imFlex(c); {
+                                imui.Begin(c, COL); imui.Align(c); imui.Flex(c); {
                                     // dont want the contents to be aligned, but I do want this thing's
                                     // final size to be aligned. like
                                     // [   |[           ]   |   ]
                                     // [   |[         ]     |   ]
                                     // [   |[              ]|   ]
                                     
-                                    imLayoutBegin(c, COL); imGap(c, 10, PX); {
+                                    imui.Begin(c, COL); imui.Gap(c, 10, PX); {
                                         im.For(c); for (let termIdx = 0; termIdx < math.terms.length; termIdx++) {
                                             const term = math.terms[termIdx];
 
-                                            imLayoutBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
-                                                imDspVisualGroupBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                                            imui.Begin(c, ROW); imui.Align(c); imui.Gap(c, 10, PX); {
+                                                imDspVisualGroupBegin(c, ROW); imui.Align(c); imui.Gap(c, 10, PX); {
 
-                                                    imLayoutBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                                                    imui.Begin(c, ROW); imui.Align(c); imui.Gap(c, 10, PX); {
                                                         imMathsCoefficientsList(c, editor, effectPos, math, termIdx, term.coefficients, true);
 
                                                         if (im.If(c) && term.coefficientsDivide.length === 0) {
@@ -1131,14 +1103,14 @@ function imEffectRackEditorEffect(
                                                             term.termOut._name = "";
                                                             imRegisterOutput(c, editor, effectPos, term.termOut);
                                                         } imDspVisualGroupEnd(c);
-                                                    } imLayoutEnd(c);
+                                                    } imui.End(c);
 
                                                 } imDspVisualGroupEnd(c);
 
                                                 if (im.If(c) && termIdx < math.terms.length - 1) {
                                                     imdom.Str(c, " + ");
                                                 } im.IfEnd(c);
-                                            } imLayoutEnd(c);
+                                            } imui.End(c);
                                         } im.ForEnd(c);
 
                                         if (imButtonIsClicked(c, "+")) {
@@ -1146,8 +1118,8 @@ function imEffectRackEditorEffect(
                                             math.terms.push(term);
                                             onEdited(editor);
                                         }
-                                    } imLayoutEnd(c);
-                                } imLayoutEnd(c);
+                                    } imui.End(c);
+                                } imui.End(c);
 
                                 imDspVisualGroupBegin(c, COL); {
                                     imRegisterOutput(c, editor, effectPos, math.sumOut);
@@ -1156,9 +1128,9 @@ function imEffectRackEditorEffect(
                             case EFFECT_RACK_ITEM__SWITCH: {
                                 const switchEffect = effectValue;
 
-                                imFlex1(c);
+                                imui.Flex1(c);
 
-                                imLayoutBegin(c, COL); {
+                                imui.Begin(c, COL); {
                                     im.For(c); for (let i = 0; i < switchEffect.conditions.length; i++) {
                                         const cond = switchEffect.conditions[i];
 
@@ -1197,7 +1169,7 @@ function imEffectRackEditorEffect(
                                     imDspVisualGroupBegin(c, BLOCK); {
                                         imValueOrBindingEditor(c, editor, effectPos, switchEffect.defaultUi);
                                     } imDspVisualGroupEnd(c);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
                                 imDspVisualGroupBegin(c, COL); {
                                     imRegisterOutput(c, editor, effectPos, switchEffect.valueOut);
@@ -1206,7 +1178,7 @@ function imEffectRackEditorEffect(
                             case EFFECT_RACK_ITEM__NOISE: {
                                 const noise = effectValue;
 
-                                imDspVisualGroupBegin(c, ROW); imFlex(c); imJustify(c, SPACE_EVENLY); {
+                                imDspVisualGroupBegin(c, ROW); imui.Flex(c); imui.Justify(c, SPACE_EVENLY); {
                                     imValueOrBindingEditor(c, editor, effectPos, noise.amplitudeUi);
                                     imValueOrBindingEditor(c, editor, effectPos, noise.amplitudeMultUi);
 
@@ -1222,7 +1194,7 @@ function imEffectRackEditorEffect(
                             case EFFECT_RACK_ITEM__DELAY: {
                                 const delay = effectValue;
 
-                                imLayoutBegin(c, BLOCK); {
+                                imui.Begin(c, BLOCK); {
                                     imDspVisualGroupBegin(c, ROW); {
                                         imValueOrBindingEditor(c, editor, effectPos, delay.signalUi);
 
@@ -1232,7 +1204,7 @@ function imEffectRackEditorEffect(
 
                                         imSpacingSymbol(c, " -> ");
 
-                                        imDspVisualGroupBegin(c, ROW); imJustify(c, SPACE_EVENLY); {
+                                        imDspVisualGroupBegin(c, ROW); imui.Justify(c, SPACE_EVENLY); {
                                             imValueOrBindingEditor(c, editor, effectPos, delay.originalUi);
 
                                             imValueOrBindingEditor(c, editor, effectPos, delay.delayedUi);
@@ -1240,10 +1212,10 @@ function imEffectRackEditorEffect(
                                             imSpacingSymbol(c, " -> ");
                                         } imDspVisualGroupEnd(c);
                                     } imDspVisualGroupEnd(c);
-                                    imLayoutBegin(c, BLOCK); {
+                                    imui.Begin(c, BLOCK); {
                                         imdom.Str(c, "Due to the high memory usage of this effect, the max delay has been artifically limited to 1 second");
-                                    } imLayoutEnd(c);
-                                } imLayoutEnd(c);
+                                    } imui.End(c);
+                                } imui.End(c);
 
                                 imDspVisualGroupBegin(c, COL); {
                                     imRegisterOutput(c, editor, effectPos, delay.delayedOut);
@@ -1258,10 +1230,10 @@ function imEffectRackEditorEffect(
                                 });
                                 if (im.Memo(c, effect)) filterUi.compact = true;
 
-                                imLayoutBegin(c, COL); imFlex(c); {
-                                    imLayoutBegin(c, ROW); {
+                                imui.Begin(c, COL); imui.Flex(c); {
+                                    imui.Begin(c, ROW); {
 
-                                        imLayoutBegin(c, filterUi.compact ? ROW : COL); imJustify(c); imGap(c, 20, PX); {
+                                        imui.Begin(c, filterUi.compact ? ROW : COL); imui.Justify(c); imui.Gap(c, 20, PX); {
 
                                             imValueOrBindingEditor(c, editor, effectPos, filter.signalUi);
 
@@ -1272,38 +1244,38 @@ function imEffectRackEditorEffect(
                                                 filterUi.compact = !filterUi.compact;
                                             }
 
-                                        } imLayoutEnd(c);
+                                        } imui.End(c);
 
                                         imSpacingSymbol(c, " -> ");
 
-                                        imDspVisualGroupBegin(c, ROW); imFlex(c); {
+                                        imDspVisualGroupBegin(c, ROW); imui.Flex(c); {
                                             if (im.If(c) && filterUi.compact) {
-                                                imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                                imui.Begin(c, ROW); imui.Align(c); imui.Justify(c); imui.Flex(c); {
                                                     imValueOrBindingEditor(c, editor, effectPos, filter.a1Ui);
                                                     imValueOrBindingEditor(c, editor, effectPos, filter.a2Ui);
-                                                } imLayoutEnd(c);
-                                                imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imFlex(c); {
+                                                } imui.End(c);
+                                                imui.Begin(c, ROW); imui.Align(c); imui.Justify(c); imui.Flex(c); {
                                                     imValueOrBindingEditor(c, editor, effectPos, filter.b0Ui);
                                                     imValueOrBindingEditor(c, editor, effectPos, filter.b1Ui);
                                                     imValueOrBindingEditor(c, editor, effectPos, filter.b2Ui);
-                                                } imLayoutEnd(c);
+                                                } imui.End(c);
                                             } else {
                                                 im.IfElse(c);
 
-                                                imLayoutBegin(c, COL); imFlex(c); {
+                                                imui.Begin(c, COL); imui.Flex(c); {
                                                     function imCellBegin(c: ImCache, height: number = 2) {
-                                                        imLayoutBegin(c, ROW); imSize(c, 20, PERCENT, height, EM); imAlign(c); imJustify(c); imRelative(c); {
-                                                        } // imLayoutEnd
+                                                        imui.Begin(c, ROW); imui.Size(c, 20, PERCENT, height, EM); imui.Align(c); imui.Justify(c); imui.Relative(c); {
+                                                        } // imui.End
                                                     }
 
                                                     function imCellEnd(c: ImCache) {
-                                                        // imLayoutBegin
-                                                        imLayoutEnd(c);
+                                                        // imui.Begin
+                                                        imui.End(c);
                                                     }
 
                                                     // there was an attempt. xd
-                                                    imLayoutBegin(c, COL); imFlex(c); imAlign(c, STRETCH); {
-                                                        imLayoutBegin(c, ROW); imJustify(c); {
+                                                    imui.Begin(c, COL); imui.Flex(c); imui.Align(c, STRETCH); {
+                                                        imui.Begin(c, ROW); imui.Justify(c); {
                                                             imCellBegin(c); {
                                                                 imSpacingSymbol(c, " -> ");
                                                             } imCellEnd(c);
@@ -1313,8 +1285,8 @@ function imEffectRackEditorEffect(
                                                             imCellBegin(c); {
                                                                 imValueOrBindingEditor(c, editor, effectPos, filter.b0Ui);
                                                             } imCellEnd(c);
-                                                        } imLayoutEnd(c);
-                                                        imLayoutBegin(c, ROW); imJustify(c); {
+                                                        } imui.End(c);
+                                                        imui.Begin(c, ROW); imui.Justify(c); {
                                                             imCellBegin(c, 1.2); {
                                                                 imLine(c, LINE_VERTICAL);
                                                             } imCellEnd(c);
@@ -1323,8 +1295,8 @@ function imEffectRackEditorEffect(
                                                             imCellBegin(c, 1.2); {
                                                                 imLine(c, LINE_VERTICAL);
                                                             } imCellEnd(c);
-                                                        } imLayoutEnd(c);
-                                                        imLayoutBegin(c, ROW); imJustify(c); {
+                                                        } imui.End(c);
+                                                        imui.Begin(c, ROW); imui.Justify(c); {
                                                             imCellBegin(c); {
                                                                 imValueOrBindingEditor(c, editor, effectPos, filter.a1Ui);
                                                             } imCellEnd(c);
@@ -1334,8 +1306,8 @@ function imEffectRackEditorEffect(
                                                             imCellBegin(c); {
                                                                 imValueOrBindingEditor(c, editor, effectPos, filter.b1Ui);
                                                             } imCellEnd(c);
-                                                        } imLayoutEnd(c);
-                                                        imLayoutBegin(c, ROW); imJustify(c); {
+                                                        } imui.End(c);
+                                                        imui.Begin(c, ROW); imui.Justify(c); {
                                                             imCellBegin(c, 1.2); {
                                                                 imLine(c, LINE_VERTICAL);
                                                             } imCellEnd(c);
@@ -1344,8 +1316,8 @@ function imEffectRackEditorEffect(
                                                             imCellBegin(c, 1.2); {
                                                                 imLine(c, LINE_VERTICAL);
                                                             } imCellEnd(c);
-                                                        } imLayoutEnd(c);
-                                                        imLayoutBegin(c, ROW); imJustify(c); {
+                                                        } imui.End(c);
+                                                        imui.Begin(c, ROW); imui.Justify(c); {
                                                             imCellBegin(c); {
                                                                 imValueOrBindingEditor(c, editor, effectPos, filter.a2Ui);
                                                             } imCellEnd(c);
@@ -1355,13 +1327,13 @@ function imEffectRackEditorEffect(
                                                             imCellBegin(c); {
                                                                 imValueOrBindingEditor(c, editor, effectPos, filter.b2Ui);
                                                             } imCellEnd(c);
-                                                        } imLayoutEnd(c);
-                                                    } imLayoutEnd(c);
-                                                } imLayoutEnd(c);
+                                                        } imui.End(c);
+                                                    } imui.End(c);
+                                                } imui.End(c);
                                             } im.IfEnd(c);
 
                                         } imDspVisualGroupEnd(c);
-                                    } imLayoutEnd(c);
+                                    } imui.End(c);
 
                                     if (im.If(c) && filterUi.analyzing) {
                                         let hasAllManualInputs =
@@ -1373,7 +1345,7 @@ function imEffectRackEditorEffect(
 
                                         imFilterAnalyzer(c, editor, hasAllManualInputs, effect);
                                     } im.IfEnd(c);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
                                 imDspVisualGroupBegin(c, COL); {
                                     imRegisterOutput(c, editor, effectPos, filter.filterOut);
@@ -1386,20 +1358,20 @@ function imEffectRackEditorEffect(
                                     analyzing: false,
                                 });
 
-                                imLayoutBegin(c, COL); imFlex(c); {
-                                    imLayoutBegin(c, ROW); imAlign(c); {
-                                        imLayoutBegin(c, COL); imJustify(c); imGap(c, 20, PX); {
+                                imui.Begin(c, COL); imui.Flex(c); {
+                                    imui.Begin(c, ROW); imui.Align(c); {
+                                        imui.Begin(c, COL); imui.Justify(c); imui.Gap(c, 20, PX); {
                                             imValueOrBindingEditor(c, editor, effectPos, conv.signalUi);
 
                                             if (imButtonIsClicked(c, filterUi.analyzing ? "Analyzing" : "Analyze", filterUi.analyzing)) {
                                                 filterUi.analyzing = !filterUi.analyzing;
                                             }
-                                        } imLayoutEnd(c);
+                                        } imui.End(c);
 
                                         imSpacingSymbol(c, " -> ");
 
-                                        imDspVisualGroupBegin(c, ROW); imFlex(c); {
-                                            imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imFlex(c); imGap(c, 10, PX); {
+                                        imDspVisualGroupBegin(c, ROW); imui.Flex(c); {
+                                            imui.Begin(c, ROW); imui.Align(c); imui.Justify(c); imui.Flex(c); imui.Gap(c, 10, PX); {
 
                                                 imDspVisualGroupBegin(c, ROW); {
                                                     imValueOrBindingEditor(c, editor, effectPos, conv.cutoffFrequencyUi);
@@ -1415,7 +1387,7 @@ function imEffectRackEditorEffect(
                                                     onEdited(editor);
                                                 }
 
-                                                imLayoutBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
+                                                imui.Begin(c, ROW); imui.Align(c); imui.Gap(c, 10, PX); {
                                                     const ev = imCheckbox(c, conv.highpass);
                                                     if (ev) {
                                                         conv.highpass = ev.checked
@@ -1423,18 +1395,18 @@ function imEffectRackEditorEffect(
                                                     }
 
                                                     imdom.Str(c, "Highpass"); effect
-                                                } imLayoutEnd(c);
-                                            } imLayoutEnd(c);
+                                                } imui.End(c);
+                                            } imui.End(c);
                                         } imDspVisualGroupEnd(c);
-                                    } imLayoutEnd(c);
+                                    } imui.End(c);
 
                                     const isHighStopband =
                                         conv.stopbandUi.valueRef.value === undefined ||
                                         conv.stopbandUi.valueRef.value > 20;
                                     if (im.If(c) && isHighStopband) {
-                                        imLayoutBegin(c, BLOCK); {
+                                        imui.Begin(c, BLOCK); {
                                             imdom.Str(c, "WARNING: a high stopband will cripple the efficiency of this filter");
-                                        } imLayoutEnd(c);
+                                        } imui.End(c);
                                     } im.IfEnd(c);
 
                                     if (im.If(c) && filterUi.analyzing) {
@@ -1445,7 +1417,7 @@ function imEffectRackEditorEffect(
 
                                         imFilterAnalyzer(c, editor, hasAllManualInputs, effect);
                                     } im.IfEnd(c);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
                                 imDspVisualGroupBegin(c, COL); {
                                     imRegisterOutput(c, editor,  effectPos, conv.filterOut);
@@ -1455,18 +1427,18 @@ function imEffectRackEditorEffect(
                                 const reverb = effectValue;
 
 
-                                imLayoutBegin(c, ROW); imAlign(c); {
+                                imui.Begin(c, ROW); imui.Align(c); {
                                     imValueOrBindingEditor(c, editor, effectPos, reverb.signalUi);
 
                                     imSpacingSymbol(c, " -> ", true);
 
-                                    imDspVisualGroupBegin(c, ROW); imFlex(c); {
+                                    imDspVisualGroupBegin(c, ROW); imui.Flex(c); {
                                         imValueOrBindingEditor(c, editor, effectPos, reverb.densityUi);
                                         imValueOrBindingEditor(c, editor, effectPos, reverb.decayUi);
                                     } imDspVisualGroupEnd(c);
 
                                     imSpacingSymbol(c, " -> ", true);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
                             } break;
                             case EFFECT_RACK_ITEM__BIQUAD_FILTER_2: {
                                 const filter = effectValue;
@@ -1475,19 +1447,19 @@ function imEffectRackEditorEffect(
                                     analyzing: false,
                                 });
 
-                                imLayoutBegin(c, COL); imFlex(c); {
-                                    imLayoutBegin(c, ROW); imAlign(c); {
-                                        imLayoutBegin(c, COL); imJustify(c); imGap(c, 20, PX); {
+                                imui.Begin(c, COL); imui.Flex(c); {
+                                    imui.Begin(c, ROW); imui.Align(c); {
+                                        imui.Begin(c, COL); imui.Justify(c); imui.Gap(c, 20, PX); {
                                             imValueOrBindingEditor(c, editor, effectPos, filter.signalUi);
 
                                             if (imButtonIsClicked(c, filterUi.analyzing ? "Analyzing" : "Analyze", filterUi.analyzing)) {
                                                 filterUi.analyzing = !filterUi.analyzing;
                                             }
-                                        } imLayoutEnd(c);
+                                        } imui.End(c);
 
                                         imSpacingSymbol(c, " -> ", true);
 
-                                        imDspVisualGroupBegin(c, ROW); imFlex(c); {
+                                        imDspVisualGroupBegin(c, ROW); imui.Flex(c); {
                                             const ev = imSelectChoice(c, filter.filterType, allFilterTypeChoices, getBiquad2FilterTypeName);
                                             if (ev) {
                                                 filter.filterType = ev.choice;
@@ -1510,7 +1482,7 @@ function imEffectRackEditorEffect(
                                         } imDspVisualGroupEnd(c);
 
                                         imSpacingSymbol(c, " -> ", true);
-                                    } imLayoutEnd(c);
+                                    } imui.End(c);
 
 
                                     if (im.If(c) && filterUi.analyzing) {
@@ -1520,7 +1492,7 @@ function imEffectRackEditorEffect(
 
                                         imFilterAnalyzer(c, editor, hasAllManualInputs, effect);
                                     } im.IfEnd(c);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
                                 imDspVisualGroupBegin(c, COL); {
                                     imRegisterOutput(c, editor, effectPos, filter.filterOut);
@@ -1531,24 +1503,24 @@ function imEffectRackEditorEffect(
                                 let wavePos = table.wavePosUi.valueRef.value;
                                 const falloff = table.falloffUi.valueRef.value;
 
-                                imLayoutBegin(c, COL); imAlign(c, STRETCH); imGap(c, 10, PX); imFlex(c); {
+                                imui.Begin(c, COL); imui.Align(c, STRETCH); imui.Gap(c, 10, PX); imui.Flex(c); {
                                     im.For(c); for (let i = 0; i < table.items.length; i++) {
                                         const item = table.items[i];
-                                        imDspVisualGroupBegin(c, ROW); imFlex(c); imAlign(c); {
+                                        imDspVisualGroupBegin(c, ROW); imui.Flex(c); imui.Align(c); {
                                             if (im.If(c) && falloff !== undefined && wavePos !== undefined) {
                                                 wavePos = wavePos % table.items.length;
                                                 if (wavePos < 0) {
                                                     wavePos = table.items.length + wavePos;
                                                 }
 
-                                                imLayoutBegin(c, BLOCK); imSize(c, 30, PX, 30, PX); imBg(c, cssVars.fg); {
+                                                imui.Begin(c, BLOCK); imui.Size(c, 30, PX, 30, PX); imui.Bg(c, cssVars.fg); {
                                                     let mask = 1 - falloff * Math.abs(i - wavePos);
                                                     if (mask < 0) mask = 0;
-                                                    imOpacity(c, mask);
-                                                } imLayoutEnd(c);
+                                                    imui.Opacity(c, mask);
+                                                } imui.End(c);
                                             } im.IfEnd(c);
 
-                                            imFlex1(c);
+                                            imui.Flex1(c);
 
                                             const ev = imSelectChoice(c, item.waveType, allWaveTypes, getEffectRackOscillatorWaveTypeName);
                                             if (ev) {
@@ -1579,12 +1551,12 @@ function imEffectRackEditorEffect(
                                         };
                                     }
 
-                                    imDspVisualGroupBegin(c, ROW); imGap(c, 10, PX); {
+                                    imDspVisualGroupBegin(c, ROW); imui.Gap(c, 10, PX); {
                                         imValueOrBindingEditor(c, editor, effectPos, table.gainUi);
                                         imValueOrBindingEditor(c, editor, effectPos, table.falloffUi);
                                         imValueOrBindingEditor(c, editor, effectPos, table.wavePosUi);
                                     } imDspVisualGroupEnd(c);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
                                 imDspVisualGroupBegin(c, ROW); {
                                     imRegisterOutput(c, editor, effectPos, table.totalOut);
@@ -1592,12 +1564,12 @@ function imEffectRackEditorEffect(
                             } break;
                             default: unreachable(effectValue);
                         } im.SwitchEnd(c);
-                    } imLayoutEnd(c);
+                    } imui.End(c);
 
                     // Might want to put something else here later ...
                 } imDspVisualGroupEnd(c);
 
-                imLayoutBegin(c, COL); imGap(c, 5, PX); imJustify(c); {
+                imui.Begin(c, COL); imui.Gap(c, 5, PX); imui.Justify(c); {
                     if (imButtonIsClicked(c, "-")) {
                         editor.deferredAction = () => {
                             effect._toDelete = true;
@@ -1606,9 +1578,9 @@ function imEffectRackEditorEffect(
                     }
 
                     imInsertButton(c, editor, effectPos);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
+                } imui.End(c);
+            } imui.End(c);
+        } imui.End(c);
     } imDragZoneEnd(c, z, effectPos);
 }
 
@@ -1621,7 +1593,7 @@ function imRegisterOutput(
     const outputUi = editor.ui.wires.outputPositions.get(output.id);
     assert(outputUi !== undefined);
 
-    imLayoutBegin(c, ROW); imAlign(c); {
+    imui.Begin(c, ROW); imui.Align(c); {
         imSpacingSymbol(c, " -> ");
 
         elDropWireToEffectOutput(c, editor, output.id);
@@ -1630,7 +1602,7 @@ function imRegisterOutput(
 
         imResultName(c, output, effectPos + 1);
 
-        imLayoutBegin(c, BLOCK); imSize(c, 4, PX, 10, NA); imLayoutEnd(c);
+        imui.Begin(c, BLOCK); imui.Size(c, 4, PX, 10, NA); imui.End(c);
 
         const root = imWireDragEndpoint(c, editor, null, output);
         const rect = root.getBoundingClientRect();
@@ -1639,7 +1611,7 @@ function imRegisterOutput(
 
         outputUi.x = x;
         outputUi.y = y;
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 function imMathsCoefficientsList(
@@ -1651,22 +1623,22 @@ function imMathsCoefficientsList(
     coefficients: EffectRackMathsItemTermCoefficient[],
     isFirst: boolean,
 ) {
-    imDspVisualGroupBegin(c, ROW); imAlign(c); imGap(c, 10, PX); {
+    imDspVisualGroupBegin(c, ROW); imui.Align(c); imui.Gap(c, 10, PX); {
         if (im.isFirstishRender(c)) {
             imdom.setStyle(c, "flexFlow", "wrap");
         }
 
         if (im.If(c) && isFirst) {
-            imLayoutBegin(c, ROW); imJustify(c); imAlign(c); imGap(c, 10, PX); {
+            imui.Begin(c, ROW); imui.Justify(c); imui.Align(c); imui.Gap(c, 10, PX); {
                 imdom.ElBegin(c, el.I); {
                     imdom.ElBegin(c, el.B); imdom.Str(c, termIdx); imdom.ElEnd(c, el.B);
                 } imdom.ElEnd(c, el.I);
-            } imLayoutEnd(c);
+            } imui.End(c);
         } im.IfEnd(c);
 
         im.For(c); for (let coIdx = 0; coIdx < coefficients.length; coIdx++) {
             const co = coefficients[coIdx];
-            imLayoutBegin(c, ROW); imJustify(c); imGap(c, 5, PX); {
+            imui.Begin(c, ROW); imui.Justify(c); imui.Gap(c, 5, PX); {
                 if (
                     im.Memo(c, termIdx) |
                     im.Memo(c, coIdx) 
@@ -1682,11 +1654,11 @@ function imMathsCoefficientsList(
                         onEdited(editor);
                     };
                 }
-            } imLayoutEnd(c);
+            } imui.End(c);
             if (im.If(c) && coIdx < coefficients.length - 1) {
-                imLayoutBegin(c, ROW); imJustify(c); {
+                imui.Begin(c, ROW); imui.Justify(c); {
                     imdom.Str(c, " * ");
-                } imLayoutEnd(c);
+                } imui.End(c);
             } im.IfEnd(c);
         } im.ForEnd(c);
 
@@ -1735,9 +1707,9 @@ function imFilterAnalyzer(
     effect: EffectRackItem,
 ) {
     if (im.If(c) && !hasAllManualInputs) {
-        imLayoutBegin(c, ROW); imJustify(c); {
+        imui.Begin(c, ROW); imui.Justify(c); {
             imdom.Str(c, "Analysis will only work as expected when all value inputs are manual");
-        } imLayoutEnd(c);
+        } imui.End(c);
     } im.IfEnd(c);
 
     const effectChanged = im.Memo(c, effect);
@@ -1807,12 +1779,12 @@ function imFilterAnalyzer(
         s.impulseResponseFft.frequenciesMin = arrayMin(s.impulseResponseFft.frequencies);
     }
 
-    imLayoutBegin(c, BLOCK); imdom.Str(c, "Impulse response (time)"); imLayoutEnd(c);
-    imLayoutBegin(c, COL); imSize(c, 0, NA, 200, PX); {
+    imui.Begin(c, BLOCK); imdom.Str(c, "Impulse response (time)"); imui.End(c);
+    imui.Begin(c, COL); imui.Size(c, 0, NA, 200, PX); {
         imOscilloscope(c, s.osc, s.impulseResponse, "blue");
-    } imLayoutEnd(c);
-    imLayoutBegin(c, BLOCK); imdom.Str(c, "Impulse response (frequency)"); imLayoutEnd(c);
-    imLayoutBegin(c, COL); imSize(c, 0, NA, 200, PX); {
+    } imui.End(c);
+    imui.Begin(c, BLOCK); imdom.Str(c, "Impulse response (frequency)"); imui.End(c);
+    imui.Begin(c, COL); imui.Size(c, 0, NA, 200, PX); {
         imOscilloscope(
             c,
             s.impulseResponseFft.osc,
@@ -1821,14 +1793,14 @@ function imFilterAnalyzer(
             s.impulseResponseFft.frequenciesMin,
             s.impulseResponseFft.frequenciesMax
         );
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 
 function imSpacingSymbol(c: ImCache, symbol: string, flex = false) {
-    imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imNoWrap(c); imSize(c, 50, PX, 0, NA); imFlex(c, flex ? 1 : - 1); {
+    imui.Begin(c, ROW); imui.Align(c); imui.Justify(c); imui.NoWrap(c); imui.Size(c, 50, PX, 0, NA); imui.Flex(c, flex ? 1 : - 1); {
         imdom.Str(c, symbol);
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 function editorUndo(editor: EffectRackEditorState): boolean {
@@ -1880,7 +1852,7 @@ function registerValueToString(num: number) {
 const BINDING_IS_OUTPUT = 1 << 1;
 
 function imDspVisualGroupBegin(c: ImCache, type: DisplayType, enabled: boolean = true) {
-    imLayoutBegin(c, type); imAlign(c); imJustify(c); imGap(c, 5, PX); {
+    imui.Begin(c, type); imui.Align(c); imui.Justify(c); imui.Gap(c, 5, PX); {
         if (im.Memo(c, enabled)) {
             imdom.setStyle(c, "flexWrap", "wrap");
             imdom.setStyle(c, "border", !enabled ? "" : "1px solid " + cssVars.fg);
@@ -1888,13 +1860,13 @@ function imDspVisualGroupBegin(c: ImCache, type: DisplayType, enabled: boolean =
             imdom.setStyle(c, "borderRadius", !enabled ? "" : "5px");
         }
 
-    } // imLayoutEnd
+    } // imui.End
 }
 
 function imDspVisualGroupEnd(c: ImCache) {
-    // imLayout
+    // imui.Layout
     {
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 function imValueOrBindingEditor(
@@ -1909,7 +1881,7 @@ function imValueOrBindingEditor(
     const row = false; //!!(flags & BINDING_UI_ROW);
     const isOutput = !!(flags & BINDING_IS_OUTPUT);
 
-    imDspVisualGroupBegin(c, ROW, false); imNoWrap(c); imGap(c, 4, row ? PX : NA); {
+    imDspVisualGroupBegin(c, ROW, false); imui.NoWrap(c); imui.Gap(c, 4, row ? PX : NA); {
         if (im.isFirstishRender(c)) {
             imdom.setStyle(c, "fontSize", "1.25rem");
         }
@@ -1923,8 +1895,8 @@ function imValueOrBindingEditor(
             imWireDragEndpoint(c, editor, regIdxUi, null);
         } im.IfEnd(c);
 
-        imLayoutBegin(c, row ? ROW_REVERSE : COL); imAlign(c); imJustify(c); imGap(c, 4, row ? PX : NA); {
-            imLayoutBegin(c, BLOCK); {
+        imui.Begin(c, row ? ROW_REVERSE : COL); imui.Align(c); imui.Justify(c); imui.Gap(c, 4, row ? PX : NA); {
+            imui.Begin(c, BLOCK); {
                 if (im.If(c) && regIdxUi.valueRef.value !== undefined && !isOutput) {
                     imdom.StrFmt(c, regIdxUi.valueRef.value, registerValueToString);
 
@@ -1937,31 +1909,31 @@ function imValueOrBindingEditor(
                         editor.ui.rightPanel.presets = false;
                     }
                 } else if (im.IfElse(c) && regIdxUi.valueRef.regIdx !== undefined && !isOutput) {
-                    imLayoutBegin(c, ROW); {
+                    imui.Begin(c, ROW); {
                         imRegisterHighlightBg(c, editor, regIdxUi.valueRef.regIdx, regIdxUi.valueRef.regOutputId);
 
                         imdom.Str(c, "<var=");
                         imdom.Str(c, defaultBindings[regIdxUi.valueRef.regIdx].name);
                         imdom.Str(c, ">");
-                    } imLayoutEnd(c);
+                    } imui.End(c);
                 } else if (im.IfElse(c) && regIdxUi.valueRef.regOutputId !== undefined) {
-                    imLayoutBegin(c, ROW); {
+                    imui.Begin(c, ROW); {
                         imRegisterHighlightBg(c, editor, regIdxUi.valueRef.regIdx, regIdxUi.valueRef.regOutputId);
 
                         const regOutput = rack._effectRackOutputIdToRegOutput.get(regIdxUi.valueRef.regOutputId);
                         assert(regOutput !== undefined);
 
                         imResultName(c, regOutput, effectPos);
-                    } imLayoutEnd(c);
+                    } imui.End(c);
                     im.IfElse(c);
                 } else {
                     im.IfElse(c);
 
                     imdom.Str(c, "????");
                 } im.IfEnd(c);
-            } imLayoutEnd(c);
+            } imui.End(c);
 
-            imLayoutBegin(c, BLOCK); {
+            imui.Begin(c, BLOCK); {
                 if (im.isFirstishRender(c)) {
                     imdom.setStyle(c, "fontSize", "1rem");
                     imdom.setStyle(c, "userSelect", "none");
@@ -1973,8 +1945,8 @@ function imValueOrBindingEditor(
                 imdom.Str(c, row ? ":" : "");
 
                 imBindingEditorContextMenu(c, editor, regIdxUi);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
+            } imui.End(c);
+        } imui.End(c);
     } imDspVisualGroupEnd(c);
 }
 
@@ -2082,8 +2054,8 @@ function imWireDragEndpoint(
         }
     }
 
-    const root = imLayoutBegin(c, ROW); imAlign(c); imJustify(c); imSize(c, 30, PX, 30, PX);
-    imBg(c, isEligibleDropZone ? cssVars.mg : cssVars.bg2); {
+    const root = imui.Begin(c, ROW); imui.Align(c); imui.Justify(c); imui.Size(c, 30, PX, 30, PX);
+    imui.Bg(c, isEligibleDropZone ? cssVars.mg : cssVars.bg2); {
         if (im.isFirstishRender(c)) {
             imdom.setStyle(c, "borderRadius", "1000px");
             imdom.setStyle(c, "cursor", "move");
@@ -2125,7 +2097,7 @@ function imWireDragEndpoint(
                 );
             } imdom.RootExistingEnd(c, editor.svgCtx.root);
         } im.IfEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     return root;
 }
@@ -2192,7 +2164,7 @@ function imWire(
 ) {
     imdom.ElSvgBegin(c, elsvg.PATH); {
         if (im.Memo(c, r) | im.Memo(c, g) | im.Memo(c, b) | im.Memo(c, a)) {
-            imdom.setAttr(c, "stroke", rgbaToCssString(r, g, b, a));
+            imdom.setAttr(c, "stroke", imui.rgbaToCssString(r, g, b, a));
         }
 
         if (im.isFirstishRender(c)) {
@@ -2235,7 +2207,7 @@ function imOscilloscope(
     min = -1,
     max = 1,
 ): boolean {
-    imLayoutBegin(c, COL); imFlex(c); {
+    imui.Begin(c, COL); imui.Flex(c); {
         const plotState = imPlotBegin(c); {
             const { ctx, width, height } = plotState;
 
@@ -2257,7 +2229,7 @@ function imOscilloscope(
                 }
             }
         } imPlotEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     const dragged = imSampleRangeSlider(c, s.range, samples.length, "Samples: ");
 
@@ -2267,11 +2239,11 @@ function imOscilloscope(
 function imSampleRangeSlider(c: ImCache, range: SampleRange, samplesLen: number, label: string): boolean {
     let dragged = false;
 
-    imLayoutBegin(c, ROW); imAlign(c); {
-        imLayoutBegin(c, BLOCK); imSize(c, 150, PX, 0, NA); {
+    imui.Begin(c, ROW); imui.Align(c); {
+        imui.Begin(c, BLOCK); imui.Size(c, 150, PX, 0, NA); {
             imdom.Str(c, label);
-        } imLayoutEnd(c);
-        imLayoutBegin(c, COL); imFlex(c); {
+        } imui.End(c);
+        imui.Begin(c, COL); imui.Flex(c); {
             const [start, end, draggingStart, draggingEnd] = imRangeSlider(
                 c,
                 0, samplesLen,
@@ -2282,8 +2254,8 @@ function imSampleRangeSlider(c: ImCache, range: SampleRange, samplesLen: number,
             range.idx = start;
             range.len = end - start;
             dragged = draggingStart || draggingEnd;
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 
     return dragged;
 }
@@ -2299,7 +2271,7 @@ function imRegisterHighlightBg(
         (hv.regIdx !== undefined && hv.regIdx === regIdx) ||
         (hv.regOutputId !== undefined && hv.regOutputId === regOutId);
 
-    imBg(c, isHighlighted ? cssVarsApp.codeHighlight : "");
+    imui.Bg(c, isHighlighted ? cssVarsApp.codeHighlight : "");
 
     if (imdom.hasMouseOver(c)) {
         editor.highlightedValueRefNext.regOutputId = regOutId;
@@ -2440,14 +2412,14 @@ function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
         fftToReal(state.frequencies, state.frequenciesReal, state.frequenciesIm);
     }
 
-    imLayoutBegin(c, COL); imFlex(c); {
-        imLayoutBegin(c, COL); imFlex(c); {
-            imLayoutBegin(c, BLOCK); {
+    imui.Begin(c, COL); imui.Flex(c); {
+        imui.Begin(c, COL); imui.Flex(c); {
+            imui.Begin(c, BLOCK); {
                 imdom.Str(c, "Frequencies (hz) (?)");
                 imdom.Str(c, " -> ");
                 imdom.Str(c, state.frequenciesReal.length);
                 imdom.Str(c, "hz (?)");
-            } imLayoutEnd(c);
+            } imui.End(c);
 
             const plotState = imPlotBegin(c); {
                 const { ctx, width, height } = plotState;
@@ -2475,9 +2447,9 @@ function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
             if (draggingStart || draggingEnd) {
                 state.frequenciesLength = end - start;
             }
-        } imLayoutEnd(c);
-        imLayoutBegin(c, COL); imFlex(c); {
-            imLayoutBegin(c, ROW); imAlign(c); {
+        } imui.End(c);
+        imui.Begin(c, COL); imui.Flex(c); {
+            imui.Begin(c, ROW); imui.Align(c); {
                 imdom.Str(c, "Waveform ");
 
                 imdom.Str(c, " t=");
@@ -2486,7 +2458,7 @@ function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
                 imdom.Str(c, state.allSamplesStartIdx);
                 imdom.Str(c, " -> ");
                 imdom.Str(c, state.allSamplesStartIdx + state.allSamplesWindowLength);
-            } imLayoutEnd(c);
+            } imui.End(c);
 
             const plotState = imPlotBegin(c); {
                 const { ctx, width, height, isNewFrame } = plotState;
@@ -2495,7 +2467,7 @@ function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
 
                     const samples = state.allSamples;
 
-                    const theme = getCurrentTheme();
+                    const theme = imui.getCurrentTheme();
                     ctx.strokeStyle = theme.fg.toString();
                     ctx.lineWidth = 3;
                     drawSamples(samples, -1, 1, plotState, ctx, state.allSamplesStartIdx, state.allSamplesWindowLength);
@@ -2525,8 +2497,8 @@ function imOscilloscope2(c: ImCache, state: DspMockHarnessState) {
             }
 
 
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 
 
@@ -2537,10 +2509,10 @@ function imEffectRackRightPanel(
     keyboardEditorForKeyboard: KeyboardConfigEditorState,
     labForKeyboard: SoundLabState,
 ) {
-    imLayoutBegin(c, COL); imFlex(c, 3); {
+    imui.Begin(c, COL); imui.Flex(c, 3); {
         imLine(c, LINE_HORIZONTAL, 2);
 
-        imLayoutBegin(c, ROW); imGap(c, 5, PX); {
+        imui.Begin(c, ROW); imui.Gap(c, 5, PX); {
             if (imButtonIsClicked(c, "Wave preview", !effectRackEditor.ui.rightPanel.presets)) {
                 effectRackEditor.ui.rightPanel.presets = false;
             }
@@ -2548,16 +2520,16 @@ function imEffectRackRightPanel(
             if (imButtonIsClicked(c, "Presets", effectRackEditor.ui.rightPanel.presets)) {
                 effectRackEditor.ui.rightPanel.presets = true;
             }
-        } imLayoutEnd(c);
+        } imui.End(c);
 
         if (im.If(c) && effectRackEditor.ui.rightPanel.presets) {
-            imLayoutBegin(c, COL); imFlex(c); {
+            imui.Begin(c, COL); imui.Flex(c); {
                 imHeading(c, "Effect rack presets");
 
                 const presetsList = im.State(c, newPresetsListState);
 
-                imLayoutBegin(c, ROW); imGap(c, 5, PX); imFlexWrap(c); {
-                    imFlex1(c);
+                imui.Begin(c, ROW); imui.Gap(c, 5, PX); imui.FlexWrap(c); {
+                    imui.Flex1(c);
 
                     let selectedPreset = presetsList.selectedLoaded;
 
@@ -2586,7 +2558,7 @@ function imEffectRackRightPanel(
                             return DONE;
                         });
                     }
-                } imLayoutEnd(c);
+                } imui.End(c);
 
                 const ev = imEffectRackList(c, ctx, presetsList);
                 if (ev) {
@@ -2595,11 +2567,11 @@ function imEffectRackRightPanel(
                         editorImport(effectRackEditor, ev.selectionLoaded.serialized);
                     }
                 }
-            } imLayoutEnd(c);
+            } imui.End(c);
         } else {
             im.IfElse(c);
 
-            imLayoutBegin(c, ROW); imHeading(c, "Waveform preview"); imLayoutEnd(c);
+            imui.Begin(c, ROW); imHeading(c, "Waveform preview"); imui.End(c);
 
             imEffectRackEditorWaveformPreview(c, ctx, effectRackEditor);
 
@@ -2607,13 +2579,13 @@ function imEffectRackRightPanel(
             // different keys or key ranges, and that is when this will become handy.
             imKeyboardConfigEditorKeyboard(c, ctx, keyboardEditorForKeyboard, false, labForKeyboard.editingSlotIdx);
         } im.IfEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     imLine(c, LINE_HORIZONTAL);
 
-    imLayoutBegin(c, ROW); imHeading(c, "Actual waveform"); imLayoutEnd(c);
+    imui.Begin(c, ROW); imHeading(c, "Actual waveform"); imui.End(c);
 
-    imLayoutBegin(c, COL); imFlex(c, 2); {
+    imui.Begin(c, COL); imui.Flex(c, 2); {
         imEffectRackActualWaveform(c, ctx, effectRackEditor);
-    } imLayoutEnd(c);
+    } imui.End(c);
 }

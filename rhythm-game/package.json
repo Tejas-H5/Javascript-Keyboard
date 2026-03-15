@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-	"dev":   "node ./build/build.ts dev",
+	"dev":   "node ./build/build.ts devserver",
 	"build": "node ./build/build.ts build"
   },
   "devDependencies": {

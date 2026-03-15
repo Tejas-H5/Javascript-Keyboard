@@ -1,8 +1,8 @@
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { im, ImCache, imdom, } from "src/utils/im-js";
+import { BLOCK, imui } from "src/utils/im-js/im-ui";
 
 import { clamp } from "src/utils/math-utils.ts";
 import { cssVarsApp } from "src/views/styling.ts";
-import { BLOCK, imLayoutBegin, imLayoutEnd } from "./core/layout.ts";
 
 
 type RangeSliderHandle = {
@@ -61,12 +61,12 @@ export function imRangeSlider(
         });
     }
 
-    const body = imLayoutBegin(c, BLOCK); 
+    const body = imui.Begin(c, BLOCK); 
     const bodySize = imdom.TrackSize(c);
-        const sliderMiddle = imLayoutBegin(c, BLOCK); imLayoutEnd(c);
-        const startHandle = imLayoutBegin(c, BLOCK); imLayoutEnd(c);
-        const endHandle = imLayoutBegin(c, BLOCK); imLayoutEnd(c);
-    imLayoutEnd(c);
+        const sliderMiddle = imui.Begin(c, BLOCK); imui.End(c);
+        const startHandle = imui.Begin(c, BLOCK); imui.End(c);
+        const endHandle = imui.Begin(c, BLOCK); imui.End(c);
+    imui.End(c);
 
     if (im.isFirstishRender(c)) {
         const handleBodyColor = cssVarsApp.mg;

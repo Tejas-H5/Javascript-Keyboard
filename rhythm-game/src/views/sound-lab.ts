@@ -1,13 +1,5 @@
-import {
-    imBg,
-    imLayoutBegin,
-    imLayoutEnd,
-    imSize,
-    imSvgContext,
-    PERCENT,
-    ROW
-} from "src/components/core/layout";
-import { cn, cssVars } from "src/components/core/stylesheets";
+import { imui, BLOCK, ROW, COL, PX, NA, cssVars, PERCENT } from "src/utils/im-js/im-ui";
+
 import { getCurrentPlaySettings, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { im, ImCache, imdom } from "src/utils/im-js";
 
@@ -20,12 +12,13 @@ import { assert } from "src/utils/assert";
 import { DONE, done } from "src/utils/async-utils";
 import { imEffectRackEditor, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
 import { imKeyboardConfigEditor, newKeyboardConfigEditorState } from "./sound-lab-keyboard-editor";
+import { imSvgContext } from "src/components/svg-context";
 
 function log(...messages: any[]) {
-	console.log("[sound lab]", ...messages);
+    console.log("[sound lab]", ...messages);
 }
 
-export const LAB_EDITING_EFFECT_RACK     = 0;
+export const LAB_EDITING_EFFECT_RACK = 0;
 export const LAB_EDITING_KEYBOARD_CONFIG = 1;
 
 export type SoundLabState = {
@@ -54,7 +47,7 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
                 const defaultConfig = newKeyboardConfig();
                 return createKeyboardConfigPreset(ctx.repo, defaultConfig, (config, err) => {
                     if (!config || err) return DONE;
-                    
+
                     lab.keyboardConfig = config.data;
                     return DONE;
                 });
@@ -79,10 +72,10 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
 
 export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLabState) {
     const keyboard = lab.keyboardConfig; assert(!!keyboard);
-    const slotIdx  = lab.editingSlotIdx;
+    const slotIdx = lab.editingSlotIdx;
 
     const keyboardChanged = im.Memo(c, keyboard);
-    const slotIdxChanged  = im.Memo(c, slotIdx);
+    const slotIdxChanged = im.Memo(c, slotIdx);
     const isEditingSynth = slotIdx >= 0 && !!arrayAt(keyboard.synthSlots, slotIdx);
 
     if (keyboardChanged || slotIdxChanged) {
@@ -104,12 +97,7 @@ export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLab
         keyboardConfigEditor = im.Set(c, newKeyboardConfigEditorState(keyboard));
     }
 
-    imLayoutBegin(c, ROW); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
-        if (im.isFirstishRender(c)) {
-            // Should be the default for web apps tbh. Only on documents, would you ever want to select the text ...
-            imdom.setClass(c, cn.userSelectNone);
-        }
-
+    imui.Begin(c, ROW); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Bg(c, cssVars.bg); imui.NoSelect(c); {
         const svgCtx = imSvgContext(c);
         if (effectRackEditor) effectRackEditor.svgCtx = svgCtx;
         imdom.RootExistingBegin(c, svgCtx.root); {
@@ -146,7 +134,7 @@ export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLab
 
         if (effectRackEditor) effectRackEditor.svgCtx = null;
 
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     if (!ctx.handled) {
         if (ctx.blurredState) {

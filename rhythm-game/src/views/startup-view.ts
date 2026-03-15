@@ -1,6 +1,6 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAbsolute, imAlign, imFlex, imLayoutBegin, imLayoutEnd, imRelative, NA, PERCENT } from "src/components/core/layout";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { im, ImCache, imdom } from "src/utils/im-js";
+import { BLOCK, COL, imui, NA, PERCENT } from "src/utils/im-js/im-ui";
 
 import { GlobalContext, setViewChartSelect } from "./app";
 
@@ -44,12 +44,12 @@ export function imStartupView(c: ImCache, ctx: GlobalContext) {
     } 
     s.fontSizeAnimated = s.fontSize + s.animateScale * Math.sin(s.t * 2 * Math.PI);
 
-    imLayoutBegin(c, COL); imFlex(c); imAlign(c); imRelative(c); {
-        imLayoutBegin(c, COL); imFlex(c); imAlign(c); imRelative(c); {
+    imui.Begin(c, COL); imui.Flex(c); imui.Align(c); imui.Relative(c); {
+        imui.Begin(c, COL); imui.Flex(c); imui.Align(c); imui.Relative(c); {
             imdom.setStyle(c,"fontSize", s.fontSizeAnimated + "px");
             imdom.Str(c, gameName);
-        } imLayoutEnd(c);
-        imLayoutBegin(c, BLOCK); imAbsolute(c, 25, PERCENT, 0, NA, 25, PERCENT, 0, NA); {
+        } imui.End(c);
+        imui.Begin(c, BLOCK); imui.Absolute(c, 25, PERCENT, 0, NA, 25, PERCENT, 0, NA); {
             if (im.isFirstishRender(c)) {
                 imdom.setStyle(c,"fontSize", "24px");
             }
@@ -57,7 +57,7 @@ export function imStartupView(c: ImCache, ctx: GlobalContext) {
             if (imButtonIsClicked(c, "Play")) {
                 setViewChartSelect(ctx);
             }
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 

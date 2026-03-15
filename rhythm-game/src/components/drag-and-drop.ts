@@ -1,7 +1,5 @@
 import { im, ImCache, imdom } from "src/utils/im-js";
-
-import { COL, imBg, imFlex, imLayoutBegin, imLayoutEnd } from "./core/layout.ts";
-import { cssVars } from "./core/stylesheets.ts";
+import { COL, cssVars, imui } from "src/utils/im-js/im-ui";
 
 export type DragAndDropState =  {
     move: { a: number; b: number; } | null;
@@ -124,7 +122,7 @@ export function imDragZoneBegin(c: ImCache, dnd: DragAndDropState, idx: number):
         isDragging = true;
     }
 
-    const outer = imLayoutBegin(c, COL); {
+    const outer = imui.Begin(c, COL); {
         const isDraggingChanged = im.Memo(c, isDragging);
         if (isDraggingChanged) {
             if (isDragging) {
@@ -133,8 +131,8 @@ export function imDragZoneBegin(c: ImCache, dnd: DragAndDropState, idx: number):
             }
         }
 
-        imLayoutBegin(c, COL); imFlex(c); {
-            imBg(c, cssVars.bg);
+        imui.Begin(c, COL); imui.Flex(c); {
+            imui.Bg(c, cssVars.bg);
 
             const dXChanged = im.Memo(c, dX);
             const dYChanged = im.Memo(c, dY);
@@ -160,19 +158,19 @@ export function imDragZoneBegin(c: ImCache, dnd: DragAndDropState, idx: number):
                 imdom.setStyle(c, "width", isDragging ? (s.startWidth + "px") : "", outer);
                 imdom.setStyle(c, "height", isDragging ? (s.startHeight + "px") : "", outer);
             }
-        } // imLayoutEnd(c);
-    } // imLayoutEnd(c);
+        } // imui.End(c);
+    } // imui.End(c);
 
     return s;
 }
 
 export function imDragZoneEnd(c: ImCache, z: DragZoneState, idx: number) {
-    // imLayout
+    // imui.Layout
     {
-        // imLayout
+        // imui.Layout
         {
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 
 function setMoveToEvent(dnd: DragAndDropState, idx: number, moveTo: number) {

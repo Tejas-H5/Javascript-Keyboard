@@ -55,7 +55,7 @@ export const debugFlags: DebugFlags = {
     testPracticeMode:  OFF,
     testResultsView:   OFF,
 
-    testChart:           "Snarky puppy we like it here",
+    testChart:           "We like it here",
 
     testFixDatabase: OFF,
 

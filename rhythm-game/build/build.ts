@@ -33,7 +33,7 @@ const BASE_DIR = path.join(__dirname, "../");
 
 const TEMPLATE_PATH = path.join(BASE_DIR, "/template.html");
 const OUTPUT_FILE = path.join(BASE_DIR, "/dist/index.html");
-const ENTRYPOINT = path.join(BASE_DIR, "/src/main.ts");
+const ENTRYPOINT = path.join(BASE_DIR, "/src/entrypoint.ts");
 
 // NOTE: faster-reload is only really noticeable if you have your code and your website open at once.
 // If you use a single-monitor alt-tab setup like me, you won't notice the difference.
@@ -78,7 +78,7 @@ const commonBuildOptions: esbuild.BuildOptions = {
 	define: Object.fromEntries(
 		Object
 			.entries(IMPORT_META_ENV)
-			.map(([k, v]) => [k, JSON.stringify(v)])
+			.map(([k, v]) => ["import.meta.env." + k, JSON.stringify(v)])
 	),
 	write: false,
 	sourcemap: config === "devserver" ? "inline" : undefined,

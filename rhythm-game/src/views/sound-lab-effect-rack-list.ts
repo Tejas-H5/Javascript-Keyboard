@@ -1,19 +1,7 @@
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonIsClicked } from "src/components/button";
-import {
-    BLOCK,
-    COL,
-    imAlign,
-    imBg,
-    imFg,
-    imFlex,
-    imFlex1,
-    imLayoutBegin,
-    imLayoutEnd,
-    imScrollOverflow,
-    ROW
-} from "src/components/core/layout";
-import { cn, cssVars } from "src/components/core/stylesheets";
+import { imui, BLOCK, ROW, COL, PX, NA, cssVars } from "src/utils/im-js/im-ui";
+
 import { loadEffectRackPreset, updateEffectRackPreset } from "src/state/data-repository";
 import { EffectRackPreset, EffectRackPresetMetadata } from "src/state/keyboard-config";
 import { assert } from "src/utils/assert";
@@ -92,27 +80,27 @@ export function imEffectRackList(
     const loading = ctx.repo.effectRackPresets.loading;
 
     // UI could be better but for now I don't care too much.
-    imLayoutBegin(c, COL); imFlex(c); {
+    imui.Begin(c, COL); imui.Flex(c); {
         if (im.If(c) && loading) {
-            imLayoutBegin(c, COL); imFlex(c, 2); {
+            imui.Begin(c, COL); imui.Flex(c, 2); {
                 imdom.Str(c, "Loading...");
-            } imLayoutEnd(c);
+            } imui.End(c);
         } else {
             im.IfElse(c);
 
             if (im.If(c) && s.error) {
-                imLayoutBegin(c, BLOCK); imFg(c, "red"); {
+                imui.Begin(c, BLOCK); imui.Fg(c, "red"); {
                     imdom.Str(c, s.error);
-                } imLayoutEnd(c);
+                } imui.End(c);
             } im.IfEnd(c);
 
-            imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c); {
+            imui.Begin(c, COL); imui.Flex(c); imui.ScrollOverflow(c); {
                 im.For(c); for (const [groupName, group] of ctx.repo.effectRackPresets.groups) {
                     const open = s.openGroup === groupName;
 
                     im.KeyedBegin(c, groupName); {
-                        imLayoutBegin(c, BLOCK); {
-                            imLayoutBegin(c, ROW); imAlign(c); {
+                        imui.Begin(c, BLOCK); {
+                            imui.Begin(c, ROW); imui.Align(c); {
 
                                 if (imButtonIsClicked(c, open ? "v" : ">")) {
                                     if (open) {
@@ -122,10 +110,10 @@ export function imEffectRackList(
                                     }
                                 }
 
-                                imLayoutBegin(c, ROW); imFlex(c); {
+                                imui.Begin(c, ROW); imui.Flex(c); {
                                     imdom.Str(c, groupName);
-                                } imLayoutEnd(c);
-                            } imLayoutEnd(c);
+                                } imui.End(c);
+                            } imui.End(c);
 
                             if (im.If(c) && open) {
                                 const itemEv = imPresetsArray(c, ctx, s, group);
@@ -133,12 +121,12 @@ export function imEffectRackList(
                                     result = itemEv;
                                 }
                             } im.IfEnd(c);
-                        } imLayoutEnd(c);
+                        } imui.End(c);
                     } im.KeyedEnd(c);
                 } im.ForEnd(c);
-            } imLayoutEnd(c);
+            } imui.End(c);
         } im.IfEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     return result;
 }
@@ -155,11 +143,10 @@ function imPresetsArray(
         const selected = preset === s.selected;
 
         im.KeyedBegin(c, preset); {
-            imLayoutBegin(c, BLOCK); imBg(c, selected ? cssVars.bg2 : ""); {
+            imui.Begin(c, BLOCK); imui.Bg(c, selected ? cssVars.bg2 : ""); imui.NoSelect(c); {
                 if (im.isFirstishRender(c)) {
                     imdom.setStyle(c, "cursor", "pointer");
                     imdom.setClass(c, "hoverable");
-                    imdom.setClass(c, cn.userSelectNone);
                 }
 
                 if (imdom.hasMousePress(c)) {
@@ -201,15 +188,15 @@ function imPresetsArray(
                 } else {
                     im.IfElse(c);
 
-                    imLayoutBegin(c, ROW); {
+                    imui.Begin(c, ROW); {
                         imdom.Str(c, preset.name);
 
-                        imFlex1(c);
+                        imui.Flex1(c);
 
                         imdom.Str(c, preset.serializedBytes); imdom.Str(c, "b");
-                    } imLayoutEnd(c);
+                    } imui.End(c);
                 } im.IfEnd(c);
-            } imLayoutEnd(c);
+            } imui.End(c);
 
         } im.KeyedEnd(c);
     } im.ForEnd(c);

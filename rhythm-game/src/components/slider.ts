@@ -1,7 +1,6 @@
 import { ImCache, im, imdom } from 'src/utils/im-js';
+import { BLOCK, cssVars, imui } from 'src/utils/im-js/im-ui';
 import { clamp, inverseLerp, lerp } from 'src/utils/math-utils.ts';
-import { BLOCK, imLayoutBegin, imLayoutEnd } from './core/layout.ts';
-import { cssVars } from './core/stylesheets.ts';
 
 const MIN_STEP = 0.0001;
 
@@ -26,7 +25,7 @@ export function imSliderInput(
     const sliderEndChanged = im.Memo(c, end);
     const width = end - start;
 
-    const sliderBody = imLayoutBegin(c, BLOCK); {
+    const sliderBody = imui.Begin(c, BLOCK); {
         const { size } = imdom.TrackSize(c);
 
         const widthChanged = im.Memo(c, size.width);
@@ -51,7 +50,7 @@ export function imSliderInput(
                     let t = (i + 1) / count;
                     const sliderPos = lerp(0, size.width - sliderHandleSize, t);
 
-                    imLayoutBegin(c, BLOCK); {
+                    imui.Begin(c, BLOCK); {
                         if (im.isFirstishRender(c)) {
                             imdom.setStyle(c, "position", "absolute");
                             imdom.setStyle(c, "aspectRatio", "1 / 1");
@@ -62,13 +61,13 @@ export function imSliderInput(
                         }
 
                         imdom.setStyle(c, "left", sliderPos + "px");
-                    } imLayoutEnd(c);
+                    } imui.End(c);
                 }
             }
         } im.ForEnd(c);
 
         // slider handle
-        imLayoutBegin(c, BLOCK); {
+        imui.Begin(c, BLOCK); {
             if (im.isFirstishRender(c)) {
                 imdom.setStyle(c, "position", "absolute");
                 imdom.setStyle(c, "backgroundColor", cssVars.fg);
@@ -84,7 +83,7 @@ export function imSliderInput(
                 const sliderPos = lerp(0, size.width - sliderHandleSize, t);
                 imdom.setStyle(c, "left", sliderPos + "px");
             }
-        } imLayoutEnd(c);
+        } imui.End(c);
 
         const mouse = imdom.getMouse();
 
@@ -111,7 +110,7 @@ export function imSliderInput(
             }
             value = clamp(value, start, end);
         }
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     return value;
 }

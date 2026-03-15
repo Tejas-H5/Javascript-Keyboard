@@ -1,6 +1,5 @@
-import { BLOCK, imBg, imFg, imFixed, imFixedXY, imLayoutBegin, imLayoutEnd, imOpacity, imSize, PX } from "src/components/core/layout.ts";
-import { cssVars } from "src/components/core/stylesheets.ts";
 import { ev, im, ImCache, imdom } from "src/utils/im-js";
+import { imui, BLOCK, PX, cssVars } from "src/utils/im-js/im-ui";
 
 import { clamp, deltaAngle, gridsnapRound, lerp01 } from "src/utils/math-utils.ts";
 
@@ -234,7 +233,7 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
 
     if (im.If(c) && s.isDragging) {
         // Cursor handles
-        imLayoutBegin(c, BLOCK); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+        imui.Begin(c, BLOCK); imui.Fixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
             if (im.isFirstishRender(c)) imdom.setStyle(c, "zIndex", "100000");
 
             const ctxEv = imdom.On(c, ev.CONTEXTMENU);
@@ -251,22 +250,22 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
             const wantedCursorIdx = Math.floor((positiveAngle - sectorStart) / sectorSize);
 
             wantedCursor = cursorsPerSector[wantedCursorIdx];
-        } imLayoutEnd(c);
+        } imui.End(c);
 
         const angleChanged = im.Memo(c, s.angle);
         const ringDistanceChanged = im.Memo(c, s.ringDistance);
 
         // centerpoint
-        imLayoutBegin(c, BLOCK); {
-            imSize(c, 20, PX, 20, PX);
-            imOpacity(c, lerp01(0, 0.5, s.distance / s.ringSize));
-            imFixedXY(c, s.startMouseX, PX, s.startMouseY, PX);
+        imui.Begin(c, BLOCK); {
+            imui.Size(c, 20, PX, 20, PX);
+            imui.Opacity(c, lerp01(0, 0.5, s.distance / s.ringSize));
+            imui.FixedXY(c, s.startMouseX, PX, s.startMouseY, PX);
             if (im.isFirstishRender(c)) imdom.setStyle(c, "border", "2px solid " + cssVars.fg);
 
             if (angleChanged) {
                 imdom.setStyle(c, "transform", `translate(-50%, -50%) rotateZ(${s.angle - Math.PI / 2}rad)`);
             }
-        } imLayoutEnd(c);
+        } imui.End(c);
 
 
         // dynamic dials
@@ -283,15 +282,15 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
                 let tickAngle = isSolid ? s.angle : i * tickSpacing + s.startAngle;
                 tickAngle -= Math.PI / 2;
 
-                imLayoutBegin(c, BLOCK); {
-                    imSize(c, width, PX, height, PX);
-                    imOpacity(c, isSolid ? 1 : 0.3); imFg(c, cssVars.bg); imBg(c, cssVars.fg);
-                    imFixedXY(c, s.startMouseX, PX, s.startMouseY, PX);
+                imui.Begin(c, BLOCK); {
+                    imui.Size(c, width, PX, height, PX);
+                    imui.Opacity(c, isSolid ? 1 : 0.3); imui.Fg(c, cssVars.bg); imui.Bg(c, cssVars.fg);
+                    imui.FixedXY(c, s.startMouseX, PX, s.startMouseY, PX);
 
                     if (ringDistanceChanged || angleChanged) {
                         imdom.setStyle(c, "transform", `translate(-50%, -50%) rotateZ(${tickAngle}rad) translate(0, calc(50% + ${s.ringDistance}px)`);
                     }
-                } imLayoutEnd(c);
+                } imui.End(c);
             } im.ForEnd(c);
         } im.IfEnd(c);
 

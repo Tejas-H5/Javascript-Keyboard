@@ -1,4 +1,4 @@
-import { BLOCK, COL, imAlign, imFlex, imJustify, imLayoutBegin, imLayoutEnd, imSize, NA, PERCENT, REM, ROW } from "src/components/core/layout";
+import { imui, BLOCK, ROW, COL, NA, PERCENT, REM } from "src/utils/im-js/im-ui";
 import { chooseItem } from "src/utils/array-utils";
 import { el, im, ImCache, imdom } from "src/utils/im-js";
 
@@ -30,7 +30,7 @@ export function imPlayView(c: ImCache, ctx: GlobalContext) {
     // NOTE: strange code boundary here between the results screen and the gameplay screen, because I wrote this code a while ago.
     // but it seems to work ok for now.
 
-    imLayoutBegin(c, COL); imFlex(c); {
+    imui.Begin(c, COL); imui.Flex(c); {
         if (im.If(c) && ctx.ui.playView.result) {
             imResultsScreen(ctx, c, ctx.ui.playView.result);
         } else {
@@ -38,7 +38,7 @@ export function imPlayView(c: ImCache, ctx: GlobalContext) {
 
             imGameplay(c, ctx);
         } im.IfEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     if (!ctx.handled) {
         ctx.handled = handlePlayViewKeyDown(ctx);
@@ -119,62 +119,62 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
     s.fontSize = s.baseFontSize + s.wiggle * Math.sin(Math.PI * 2 * s.t);
 
-    imLayoutBegin(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
-        imLayoutBegin(c, COL); imSize(c, 80, PERCENT, 80, PERCENT); {
+    imui.Begin(c, ROW); imui.Flex(c); imui.Align(c); imui.Justify(c); {
+        imui.Begin(c, COL); imui.Size(c, 80, PERCENT, 80, PERCENT); {
             if (im.isFirstishRender(c)) {
                 imdom.setStyle(c,"border", "1px solid currentColor");
             }
 
             let currentStart = 0.1;
 
-            imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); imSize(c, 0, NA, s.baseFontSize + s.wiggle, REM); {
+            imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); imui.Size(c, 0, NA, s.baseFontSize + s.wiggle, REM); {
                 currentStart += 0.3;
                 imdom.setStyle(c, "fontSize", s.fontSize + "rem");
 
                 imdom.ElBegin(c, el.B); imdom.Str(c, result.chartName); imdom.ElEnd(c, el.B);
-            } imLayoutEnd(c);
+            } imui.End(c);
 
-            imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+            imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
                 currentStart += 0.3;
 
-                imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Size(c, 25, PERCENT, 0, NA); imui.End(c);
 
                 imdom.Str(c, "Best possible score: "); 
 
-                imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
                 imAnimatedNumber(c, result.bestPossibleScore, s.t, currentStart, 0.3);
                 currentStart += 0.3;
 
-                imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
-            } imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Size(c, 25, PERCENT, 0, NA); imui.End(c);
+            } imui.End(c);
 
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
                 currentStart += 0.3;
 
-                imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Size(c, 25, PERCENT, 0, NA); imui.End(c);
 
                 imdom.Str(c, "Score: "); 
 
-                imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
                 imAnimatedNumber(c, result.score, s.t, currentStart, 0.3);
                 currentStart += 0.3;
 
-                imLayoutBegin(c, BLOCK); imSize(c, 25, PERCENT, 0, NA); imLayoutEnd(c);
-            } imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Size(c, 25, PERCENT, 0, NA); imui.End(c);
+            } imui.End(c);
 
-            imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+            imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
             imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
                 currentStart += 0.3;
                 imdom.Str(c, s.message);
-            } imLayoutEnd(c);
+            } imui.End(c);
 
             const root = imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); 
-            imAlign(c); imJustify(c); imFlex(c, 4); {
+            imui.Align(c); imui.Justify(c); imui.Flex(c, 4); {
                 currentStart += 0.3;
 
                 const height = root.clientHeight;
@@ -201,7 +201,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
                 }
 
                 im.For(c); for (let i = 0; i < designation.length; i++) {
-                    imLayoutBegin(c, BLOCK); {
+                    imui.Begin(c, BLOCK); {
                         if (im.isFirstishRender(c)) {
                             imdom.setStyle(c, "position", `absolute`);
                         }
@@ -209,11 +209,11 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
                         imdom.setStyle(c, "transform", `scaleX(${scale}) rotateY(${angle}rad) translate3d(${i * 0.05 * height}px, ${i * 0.05 * height}px, ${i * 10}px)`);
 
                         imdom.ElBegin(c, el.I); imdom.Str(c, designation[i]); imdom.ElEnd(c, el.I);
-                    } imLayoutEnd(c);
+                    } imui.End(c);
                 } im.ForEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+            } imui.End(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 
 
@@ -231,7 +231,7 @@ function imBeginAnimatedRow(
 
     t = clamp((t - inTime) / duration, 0, 1);
 
-    const root = imLayoutBegin(c, ROW); imJustify(c); {
+    const root = imui.Begin(c, ROW); imui.Justify(c); {
         imdom.setStyle(c,"opacity", t + "");
         imdom.setStyle(c,"transform", `translate(0, ${downAmount * (1 - t)}px)`);
     } // user specified end

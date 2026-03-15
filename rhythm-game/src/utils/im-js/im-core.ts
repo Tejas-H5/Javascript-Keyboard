@@ -870,7 +870,7 @@ function __BlockDerivedBegin(c: ImCache, internalType: number): ImCacheEntries {
 // as it doesn't require an additional im-state entry. 
 // For example, if you have an API like this:
 // ```ts
-// Div(c); imRow(c); imCode(c); imJustifyCenter(c); imBg(c, cssVars.bg); {
+// Div(c); imRow(c); imCode(c); imJustifyCenter(c); imui.Bg(c, cssVars.bg); {
 // } DivEnd(c);
 // ```
 // Each of those methods that 'augment' the call to `Div` may have their own initialization logic.

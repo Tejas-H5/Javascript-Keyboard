@@ -1,14 +1,14 @@
-import {COL, imAbsolute, imAlign, imBg, imFixed, imJustify, imLayoutBegin, imLayoutEnd, imZIndex, PX, ROW} from "src/components/core/layout.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { ImCache } from "src/utils/im-js";
+import { COL, imui, PX } from "src/utils/im-js/im-ui";
 
 export function imModalBegin(c: ImCache, zIndex = 100) {
-    imLayoutBegin(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, zIndex); {
-        imLayoutBegin(c, COL); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
-        } // imLayoutEnd(c);
-    } // imLayoutEnd(c);
+    imui.Begin(c, COL); imui.Fixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.ZIndex(c, zIndex); {
+        imui.Begin(c, COL); imui.Align(c); imui.Justify(c); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0, 0, 0, 0.3)`); {
+        } // imui.End(c);
+    } // imui.End(c);
 }
 
 export function imModalEnd(c: ImCache) {
-    imLayoutEnd(c);
-    imLayoutEnd(c);
+    imui.End(c);
+    imui.End(c);
 }

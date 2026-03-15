@@ -1,4 +1,4 @@
-import { BLOCK, COL, imAbsolute, imAlign, imFlex, imGap, imJustify, imLayoutBegin, imLayoutEnd, imRelative, imSize, NA, PX, ROW, START } from "src/components/core/layout";
+import { imui, BLOCK, ROW, COL, PX, NA, CssColor, START } from "src/utils/im-js/im-ui";
 import {
     getCurrentOscillatorGain,
     pressKey,
@@ -12,7 +12,6 @@ import {
 } from "src/state/sequencer-state";
 import { APP_VIEW_EDIT_CHART } from "src/state/ui-state";
 import { arrayAt, filterInPlace } from "src/utils/array-utils";
-import { CssColor } from "src/utils/colour";
 import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 
 import { lerp } from "src/utils/math-utils";
@@ -69,7 +68,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
         maxOffset = Math.max(maxOffset, computedOffset);
     }
 
-    imLayoutBegin(c, COL); imFlex(c); imAlign(c); {
+    imui.Begin(c, COL); imui.Flex(c); imui.Align(c); {
         imdom.setClass(c, "keyboard");
 
         const mouse = imdom.getMouse();
@@ -85,13 +84,13 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
         const height  = parent.clientHeight;
         const keySize = Math.min(width / maxOffset, height / (keyboard.keys.length));
 
-        imLayoutBegin(c, COL); imFlex(c); {
+        imui.Begin(c, COL); imui.Flex(c); {
             im.For(c); for (let rowIdx = 0; rowIdx < keys.length; rowIdx++) {
                 const keyRow      = keyboard.keys[rowIdx];
                 const startOffset = KEYBOARD_OFFSETS[rowIdx];
 
-                imLayoutBegin(c, ROW); imGap(c, 5, PX); imJustify(c, START); {
-                    imLayoutBegin(c, BLOCK); imSize(c, startOffset * keySize, PX, 0, NA); imLayoutEnd(c);
+                imui.Begin(c, ROW); imui.Gap(c, 5, PX); imui.Justify(c, START); {
+                    imui.Begin(c, BLOCK); imui.Size(c, startOffset * keySize, PX, 0, NA); imui.End(c);
 
                     im.For(c); for (
                         let keyIdx = 0;
@@ -117,7 +116,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
 
                         const pressEffect = PRESS_EFFECT * Math.max(signal, hasNote ? 1 : 0);
 
-                        imLayoutBegin(c, BLOCK); imRelative(c); {
+                        imui.Begin(c, BLOCK); imui.Relative(c); {
                             if (im.isFirstishRender(c)) {
                                 imdom.setStyle(c, "fontFamily", "monospace");
                                 imdom.setStyle(c, "outline", `1px solid ${cssVarsApp.fg}`);
@@ -170,13 +169,13 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                             }
 
                             // indicator that shows if it's pressed on the sequencer
-                            imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                            imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
                                 if (im.Memo(c, hasNote)) {
                                     imdom.setStyle(c, "backgroundColor", hasNote ? cssVarsApp.mg : cssVarsApp.bg);
                                 }
-                            } imLayoutEnd(c);
+                            } imui.End(c);
                             // letter bg
-                            imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                            imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
                                 let color;
 
                                 if (state.config && state.slotColours) {
@@ -200,13 +199,13 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                                 if (im.Memo(c, isSelected)) {
                                     imdom.setStyle(c, "border", !isSelected ? "" : "3px solid " + cssVarsApp.fg);
                                 }
-                            } imLayoutEnd(c);
+                            } imui.End(c);
                             // letter text
-                            imLayoutBegin(c, BLOCK); imAbsolute(c, 5, PX, 0, PX, 0, PX, 0, PX); {
+                            imui.Begin(c, BLOCK); imui.Absolute(c, 5, PX, 0, PX, 0, PX, 0, PX); {
                                 imdom.Str(c, key.text);
-                            } imLayoutEnd(c);
+                            } imui.End(c);
                             // note text
-                            imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, 5, PX, 0, PX); {
+                            imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, 5, PX, 0, PX); {
                                 if (im.isFirstishRender(c)) {
                                     imdom.setStyle(c, "textAlign", "right");
                                 }
@@ -217,11 +216,11 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                                 }
 
                                 imdom.Str(c, key.noteText);
-                            } imLayoutEnd(c);
+                            } imui.End(c);
 
                             if (im.If(c) && state.config) {
                                 // slot text
-                                imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, NA, 5, PX, 8, PX); {
+                                imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, NA, 5, PX, 8, PX); {
                                     if (im.Memo(c, keySize)) {
                                         imdom.setStyle(c, "fontSize", (keySize / 4) + "px");
                                         imdom.setStyle(c, "paddingRight", (keySize / 10) + "px");
@@ -229,7 +228,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
 
                                     imdom.Str(c, "s");
                                     imdom.Str(c, state.config.keymaps[key.index]);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
                             } im.IfEnd(c);
 
                             // approach square(s)
@@ -261,29 +260,29 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                                     const t = -relativeTime / APPROACH_WINDOW;
                                     const scale = 250 * Math.max(0, t)
 
-                                    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+                                    imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
                                         if (im.isFirstishRender(c)) {
                                             imdom.setStyle(c, "backgroundColor", cssVarsApp.playback);
                                         }
                                         if (im.Memo(c, t)) {
                                             imdom.setStyle(c, "opacity", t + "");
                                         }
-                                    } imLayoutEnd(c);
+                                    } imui.End(c);
                                     // This osu! style border kinda whack ngl.
-                                    imLayoutBegin(c, BLOCK); imAbsolute(c, -scale, PX, -scale, PX, scale, PX, scale, PX); {
+                                    imui.Begin(c, BLOCK); imui.Absolute(c, -scale, PX, -scale, PX, scale, PX, scale, PX); {
                                         if (im.isFirstishRender(c)) {
                                             imdom.setStyle(c, "border", `5px solid ${cssVarsApp.fg}`);
                                             imdom.setStyle(c, "opacity", "1");
                                         }
-                                    } imLayoutEnd(c);
+                                    } imui.End(c);
                                 } im.ForEnd(c);
                             } im.IfEnd(c);
-                        } imLayoutEnd(c);
+                        } imui.End(c);
                     } im.ForEnd(c);
-                } imLayoutEnd(c);
+                } imui.End(c);
             } im.ForEnd(c);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 
     return state;
 }

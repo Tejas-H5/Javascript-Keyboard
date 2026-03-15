@@ -1,21 +1,17 @@
 import { imVerticalText } from "src/app-components/misc.ts";
 import { imButtonIsClicked } from "src/components/button.ts";
-import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imFlex1, imGap, imJustify, imLayoutBegin, imLayoutEnd, imPadding, imScrollOverflow, imSize, NA, PERCENT, PX, ROW, STRETCH } from "src/components/core/layout.ts";
-import { cssVars } from "src/components/core/stylesheets.ts";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
 import { InstrumentKey } from "src/state/keyboard-state.ts";
 import { CHART_STATUS_READONLY, getChartDurationInBeats, isBundledChartId, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart.ts";
 import { getCurrentChartOrNullIfLoading } from "src/state/sequencer-state.ts";
-import { ChartSelectState, getCurrentChartMetadata, NAME_OPERATION_COPY } from "src/state/ui-state.ts";
+import { ChartSelectState, getCurrentChartMetadata } from "src/state/ui-state.ts";
 import { assert } from "src/utils/assert.ts";
 import { AsyncCallback, AsyncCallbackResult, done } from "src/utils/async-utils.ts";
-import { scrollIntoViewVH } from "src/utils/dom-utils.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-
+import { el, im, ImCache, imdom } from "src/utils/im-js";
+import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, ROW, scrollIntoViewVH, STRETCH } from "src/utils/im-js/im-ui";
 import { arrayMax, clamp, lerp } from "src/utils/math-utils.ts";
 import {
     GlobalContext,
-    openChartUpdateModal,
     playKeyPressForUI,
     setCurrentChartMeta,
     setViewEditChart,
@@ -23,8 +19,8 @@ import {
     setViewSoundLab,
     setViewStartScreen
 } from "./app.ts";
-import { cssVarsApp } from "./styling.ts";
 import { imHoverable } from "./button.ts";
+import { cssVarsApp } from "./styling.ts";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
     if (!ctx.keyPressState) return false;
@@ -104,10 +100,10 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
     const availableCharts = ctx.repo.charts.allChartMetadata;
     const currentChart = getCurrentChartOrNullIfLoading(ctx);
 
-    imLayoutBegin(c, COL); imFlex(c); {
-        imLayoutBegin(c, ROW); imAlign(c, STRETCH); imFlex(c); {
-            imLayoutBegin(c, COL); imSize(c, 30, PERCENT, 0, NA); imJustify(c); imGap(c, 10, PX); {
-                const scrollContainer = imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c, true); {
+    imui.Begin(c, COL); imui.Flex(c); {
+        imui.Begin(c, ROW); imui.Align(c, STRETCH); imui.Flex(c); {
+            imui.Begin(c, COL); imui.Size(c, 30, PERCENT, 0, NA); imui.Justify(c); imui.Gap(c, 10, PX); {
+                const scrollContainer = imui.Begin(c, COL); imui.Flex(c); imui.ScrollOverflow(c, true); {
                     if (im.If(c) && availableCharts.length > 0) {
                         const lastSelected = im.GetInline(c, imChartSelect) ?? im.Set(c, { id: 0 });
 
@@ -115,7 +111,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                             const metadata = availableCharts[i];
                             const chartSelected = s.currentChartMeta === metadata;
 
-                            const root = imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
+                            const root = imui.Begin(c, ROW); imui.Gap(c, 5, PX); imui.Align(c); {
                                 imHoverable(c, chartSelected);
                                 if (imdom.hasMouseOver(c)) {
                                     if (lastSelected.id !== metadata.id) {
@@ -134,14 +130,14 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                     setViewPlayCurrentChart(ctx);
                                 }
 
-                                imFlex1(c);
+                                imui.Flex1(c);
 
                                 imdom.Str(c, isBundledChartId(metadata.id) ? "[bundled]" : "");
-                            } imLayoutEnd(c);
+                            } imui.End(c);
                         } im.ForEnd(c);
                     } else {
                         im.IfElse(c);
-                        imLayoutBegin(c, BLOCK); {
+                        imui.Begin(c, BLOCK); {
                             // We have react-suspense at home. xD
                             // Actually we don't. I'm pretty sure it can be done though, but prob not worth the effort yet.
                             // It is a combination of pushing promises onto a global state stack,
@@ -151,10 +147,10 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                             // The API would be similar to im.If()/im.IfElse()/im.IfEnd() but without
                             // an actual if statement. 
                             imdom.Str(c, "Loading...");
-                        } imLayoutEnd(c);
+                        } imui.End(c);
                     } im.IfEnd(c);
-                } imLayoutEnd(c);
-                imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
+                } imui.End(c);
+                imui.Begin(c, ROW); imui.Gap(c, 5, PX); imui.Align(c); {
                     if (im.If(c) && currentChart) {
                         if (im.If(c) && currentChart.timeline.length === 0) {
                             imdom.Str(c, "Empty chart");
@@ -172,12 +168,12 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                     } else {
                         im.IfElse(c);
 
-                        imLayoutBegin(c, BLOCK); {
+                        imui.Begin(c, BLOCK); {
                             imdom.Str(c, "Loading....");
-                        } imLayoutEnd(c);
+                        } imui.End(c);
                     } im.IfEnd(c);
 
-                    imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+                    imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
                     if (imButtonIsClicked(c, "Back")) {
                         setViewStartScreen(ctx);
@@ -187,56 +183,56 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                         // But, maybe this should be the selected chart?
                         setViewSoundLab(ctx);
                     }
-                } imLayoutEnd(c);
+                } imui.End(c);
 
-            } imLayoutEnd(c);
+            } imui.End(c);
 
             imLine(c, LINE_VERTICAL, 1);
 
             if (im.If(c) && currentChart) {
                 const bundled = currentChart._savedStatus === CHART_STATUS_READONLY;
-                imLayoutBegin(c, COL); imFlex(c); {
-                    imLayoutBegin(c, COL); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+                imui.Begin(c, COL); imui.Flex(c); {
+                    imui.Begin(c, COL); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                         imdom.ElBegin(c, el.H2); {
-                            imLayoutBegin(c, ROW); {
-                                imLayoutBegin(c, ROW); {
+                            imui.Begin(c, ROW); {
+                                imui.Begin(c, ROW); {
                                     imdom.Str(c, currentChart.name);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
-                                imLayoutBegin(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
+                                imui.Begin(c, BLOCK); imui.Flex(c, 1); imui.End(c);
 
-                                imLayoutBegin(c, ROW); {
+                                imui.Begin(c, ROW); {
                                     imdom.Str(c, "<Artist Name>");
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
-                                imLayoutBegin(c, BLOCK); imFlex(c, 1); imLayoutEnd(c);
+                                imui.Begin(c, BLOCK); imui.Flex(c, 1); imui.End(c);
 
-                                imLayoutBegin(c, ROW); {
+                                imui.Begin(c, ROW); {
                                     imdom.Str(c, bundled ? "[Bundled]" : "Some player");
-                                } imLayoutEnd(c);
-                            } imLayoutEnd(c);
+                                } imui.End(c);
+                            } imui.End(c);
                         } imdom.ElEnd(c, el.H2);
 
-                        imLayoutBegin(c, BLOCK); {
+                        imui.Begin(c, BLOCK); {
                             if (im.isFirstishRender(c)) {
                                 imdom.setStyle(c, "whiteSpace", "pre-wrap");
                             }
 
                             imdom.Str(c, "<Artist name>\n<View link> | <purchase link>\nI made this map because blah blah blah balh. blah blah blah. I hope you like it!");
-                        } imLayoutEnd(c);
-                    } imLayoutEnd(c);
+                        } imui.End(c);
+                    } imui.End(c);
 
                     imChartStatistics(c, ctx, currentChart);
-                } imLayoutEnd(c);
+                } imui.End(c);
             } else {
                 im.IfElse(c);
 
-                imLayoutBegin(c, BLOCK); {
+                imui.Begin(c, BLOCK); {
                     imdom.Str(c, "Loading....");
-                } imLayoutEnd(c);
+                } imui.End(c);
             } im.IfEnd(c);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 
     if (!ctx.handled) {
         ctx.handled = handleChartSelectKeyDown(ctx, s);
@@ -283,22 +279,22 @@ function imChartStatistics(
         s = im.Set(c, val);
     }
 
-    imLayoutBegin(c, COL); imFlex(c); {
+    imui.Begin(c, COL); imui.Flex(c); {
         imLine(c, LINE_HORIZONTAL, 1);
 
-        imLayoutBegin(c, ROW); imAlign(c, STRETCH); imFlex(c); {
+        imui.Begin(c, ROW); imui.Align(c, STRETCH); imui.Flex(c); {
 
-            imLayoutBegin(c, BLOCK); imSize(c, 20, PERCENT, 0, NA); imPadding(c, 5, PX, 10, PX, 10, PX, 10, PX); {
-                imLayoutBegin(c, BLOCK); {
+            imui.Begin(c, BLOCK); imui.Size(c, 20, PERCENT, 0, NA); imui.Padding(c, 5, PX, 10, PX, 10, PX, 10, PX); {
+                imui.Begin(c, BLOCK); {
                     imdom.Str(c, currentChart.timeline.length);
                     imdom.Str(c, " notes");
-                } imLayoutEnd(c);
+                } imui.End(c);
 
                 // Flexbox has to be the most overpowered layout concept. Can literally make any layout.
                 // can literally derive table layout from flexbox. lmao. As much as I shit on web,
                 // they got several things right
 
-                const root = imLayoutBegin(c, ROW); imSize(c, 0, NA, 100, PERCENT); {
+                const root = imui.Begin(c, ROW); imui.Size(c, 0, NA, 100, PERCENT); {
                     const height = root.clientHeight;
                     if (im.Memo(c, height)) {
                         const fontSize = (height - (ctx.keyboard.keys.length * 2)) / ctx.keyboard.flatKeys.length;
@@ -306,54 +302,54 @@ function imChartStatistics(
                         imdom.setStyle(c, "fontSize", fontSize + "px");
                     }
 
-                    imLayoutBegin(c, COL); {
+                    imui.Begin(c, COL); {
                         im.For(c); for (const row of ctx.keyboard.keys) {
                             for (const key of row) {
-                                imLayoutBegin(c, BLOCK); {
+                                imui.Begin(c, BLOCK); {
                                     imdom.Str(c, key.keyboardKey);
                                     imdom.Str(c, " -> ");
                                     imdom.Str(c, key.noteText);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
                             }
 
                             imLine(c, LINE_HORIZONTAL, 2);
                         } im.ForEnd(c);
-                    } imLayoutEnd(c);
-                    imLayoutBegin(c, COL); imFlex(c); {
+                    } imui.End(c);
+                    imui.Begin(c, COL); imui.Flex(c); {
                         im.For(c); for (const row of ctx.keyboard.keys) {
                             for (const key of row) {
                                 const count = s.keyFrequencies[key.index];
                                 const normalized = count / s.maxFrequency;
-                                imLayoutBegin(c, BLOCK); imBg(c, cssVarsApp.fg); {
+                                imui.Begin(c, BLOCK); imui.Bg(c, cssVarsApp.fg); {
                                     if (im.isFirstishRender(c)) {
                                         imdom.setStyle(c, "color", cssVars.bg);
                                     }
 
-                                    imSize(c, 100 * normalized, PERCENT, 0, NA);
+                                    imui.Size(c, 100 * normalized, PERCENT, 0, NA);
                                     imdom.Str(c, count);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
                             }
 
-                            imLayoutBegin(c, BLOCK); imBg(c, cssVarsApp.fg); imSize(c, 0, NA, 2, PX); imLayoutEnd(c);
+                            imui.Begin(c, BLOCK); imui.Bg(c, cssVarsApp.fg); imui.Size(c, 0, NA, 2, PX); imui.End(c);
                         } im.ForEnd(c);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
+                    } imui.End(c);
+                } imui.End(c);
+            } imui.End(c);
 
             imLine(c, LINE_VERTICAL, 1);
 
-            const root = imLayoutBegin(c, COL); imFlex(c); imAlign(c, STRETCH); {
+            const root = imui.Begin(c, COL); imui.Flex(c); imui.Align(c, STRETCH); {
                 const width = root.clientWidth;
                 const widthChanged = im.Memo(c, root.clientWidth);
 
-                imLayoutBegin(c, ROW); imFlex(c); {
+                imui.Begin(c, ROW); imui.Flex(c); {
                     imVerticalText(c); {
                         imdom.Str(c, "Transitions");
-                    } imLayoutEnd(c);
+                    } imui.End(c);
 
                     imLine(c, LINE_VERTICAL, 1);
 
-                    imLayoutBegin(c, ROW); imFlex(c); {
+                    imui.Begin(c, ROW); imui.Flex(c); {
                         let vis; vis = im.GetInline(c, imChartStatistics);
                         if (!vis || currentChartChanged || widthChanged) {
                             const n = Math.floor(width / 4);
@@ -383,19 +379,19 @@ function imChartStatistics(
                         }
 
                         imVerticalHistogram(c, vis.transitions, vis.maxTransitions);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
+                    } imui.End(c);
+                } imui.End(c);
 
                 imLine(c, LINE_HORIZONTAL, 1);
 
-                imLayoutBegin(c, ROW); imFlex(c); {
+                imui.Begin(c, ROW); imui.Flex(c); {
                     imVerticalText(c); {
                         imdom.Str(c, "Concurrency");
-                    } imLayoutEnd(c);
+                    } imui.End(c);
 
                     imLine(c, LINE_VERTICAL, 1);
 
-                    imLayoutBegin(c, ROW); imFlex(c); {
+                    imui.Begin(c, ROW); imui.Flex(c); {
                         let vis; vis = im.GetInline(c, imChartStatistics);
                         if (!vis || currentChartChanged || widthChanged) {
                             const n = Math.floor(width / 4);
@@ -414,19 +410,19 @@ function imChartStatistics(
                         }
 
                         imVerticalHistogram(c, vis.concurrency, vis.maxConcurrency);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
+                    } imui.End(c);
+                } imui.End(c);
 
                 imLine(c, LINE_HORIZONTAL, 1);
 
-                imLayoutBegin(c, ROW); imFlex(c); {
+                imui.Begin(c, ROW); imui.Flex(c); {
                     imVerticalText(c); {
                         imdom.Str(c, "Speed");
-                    } imLayoutEnd(c);
+                    } imui.End(c);
 
                     imLine(c, LINE_VERTICAL, 1);
 
-                    imLayoutBegin(c, ROW); imFlex(c); {
+                    imui.Begin(c, ROW); imui.Flex(c); {
                         let vis; vis = im.GetInline(c, imChartStatistics);
                         if (!vis || currentChartChanged || widthChanged) {
                             const n = Math.floor(width / 4);
@@ -452,28 +448,28 @@ function imChartStatistics(
                             vis = im.Set(c, { speed, maxSpeed });
                         }
                         imVerticalHistogram(c, vis.speed, vis.maxSpeed);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+                    } imui.End(c);
+                } imui.End(c);
+            } imui.End(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 
 function imVerticalHistogram(c: ImCache, arr: number[], arrMax: number) {
     // Avoid div by 0 issues
     arrMax = Math.max(arrMax, 0.000001);
 
-    imLayoutBegin(c, ROW); imAlign(c, STRETCH); imFlex(c); {
+    imui.Begin(c, ROW); imui.Align(c, STRETCH); imui.Flex(c); {
         im.For(c); for (const val of arr) {
-            imLayoutBegin(c, COL); imFlex(c); {
-                imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+            imui.Begin(c, COL); imui.Flex(c); {
+                imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
                 const percent = 100 * val / arrMax;
-                imLayoutBegin(c, BLOCK); {
-                    imBg(c, cssVars.fg); imSize(c, 0, NA, percent, PERCENT);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
+                imui.Begin(c, BLOCK); {
+                    imui.Bg(c, cssVars.fg); imui.Size(c, 0, NA, percent, PERCENT);
+                } imui.End(c);
+            } imui.End(c);
         } im.ForEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 function getItemStart01(chart: SequencerChart, item: TimelineItem) {

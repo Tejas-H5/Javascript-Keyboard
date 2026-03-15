@@ -1,6 +1,6 @@
 import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, imAlign, imBg, imGap, imLayoutBegin, imLayoutEnd, imNoWrap, imPadding, imPre, imSize, NA, PERCENT, PX, ROW } from "src/components/core/layout";
-import { cssVars } from "src/components/core/stylesheets";
+import { imui, BLOCK, ROW, COL, PX, NA, cssVars, PERCENT } from "src/utils/im-js/im-ui";
+
 import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
 import { resizeObjectPool } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
@@ -79,9 +79,9 @@ export function imTestHarness(c: ImCache) {
 
             const sc = im.State(c, newScrollContainer);
             imScrollContainerBegin(c, sc); {
-                imLayoutBegin(c, BLOCK); imBg(c, cssVars.bg); {
-                    imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
-                        imLayoutBegin(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Bg(c, cssVars.bg); {
+                    imui.Begin(c, ROW); imui.Gap(c, 5, PX); imui.Align(c); {
+                        imui.Begin(c, BLOCK); imui.Size(c, 0, PX, 0, NA); imui.End(c);
 
                         imdom.ElBegin(c, el.H3); imdom.Str(c, "Tests"); imdom.ElEnd(c, el.H3);
 
@@ -98,19 +98,19 @@ export function imTestHarness(c: ImCache) {
                         if (imButtonIsClicked(c, "Run all")) {
                             runAll(s, tests);
                         }
-                    } imLayoutEnd(c);
+                    } imui.End(c);
 
                     im.For(c); for (let testIdx = 0; testIdx < tests.length; testIdx++) {
                         const test = tests[testIdx]; assert(!!test);
                         const testUi = s.testUi[testIdx]; assert(!!testUi);
 
-                        imLayoutBegin(c, COL); imGap(c, 10, PX); {
-                            imLayoutBegin(c, ROW); imGap(c, 5, PX); imAlign(c); {
-                                imLayoutBegin(c, BLOCK); imSize(c, 0, PX, 0, NA); imLayoutEnd(c);
+                        imui.Begin(c, COL); imui.Gap(c, 10, PX); {
+                            imui.Begin(c, ROW); imui.Gap(c, 5, PX); imui.Align(c); {
+                                imui.Begin(c, BLOCK); imui.Size(c, 0, PX, 0, NA); imui.End(c);
 
                                 imdom.ElBegin(c, el.H4); imdom.Str(c, test.name); imdom.ElEnd(c, el.H4);
 
-                                imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 100, PERCENT); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); imCode(c); {
+                                imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 100, PERCENT); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); imCode(c); {
                                     let bg = "";
                                     let text: Stringifyable = "";
                                     let textCol = "";
@@ -144,7 +144,7 @@ export function imTestHarness(c: ImCache) {
                                     }
 
                                     imdom.Str(c, text);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
                                 if (im.If(c) && testUi.result) {
                                     const text = `forks=${testUi.result.expectationsPerFork.length}, expectations=${testUi.result.totalExpectations}`;
@@ -156,8 +156,8 @@ export function imTestHarness(c: ImCache) {
                                 if (imButtonIsClicked(c, "Rerun")) {
                                     runTestHarnessTest(s, test, testUi);
                                 }
-                            } imLayoutEnd(c);
-                            imLayoutBegin(c, COL); imPadding(c, 0, NA, 0, NA, 0, NA, 10, PX); imGap(c, 5, PX); {
+                            } imui.End(c);
+                            imui.Begin(c, COL); imui.Padding(c, 0, NA, 0, NA, 0, NA, 10, PX); imui.Gap(c, 5, PX); {
                                 if (im.If(c) && testUi.result && testUi.result.expectationsPerFork.length > 0) {
                                     im.For(c); for (const expectations of testUi.result.expectationsPerFork) {
                                         const anyFailed = expectations.some(ex => ex.failure);
@@ -167,17 +167,17 @@ export function imTestHarness(c: ImCache) {
 
                                         im.For(c); for (const ex of expectations) {
                                             if (im.If(c) && (ex.failure || testUi.viewingExpectations)) {
-                                                imLayoutBegin(c, ROW); {
-                                                    imLayoutBegin(c, BLOCK); imPre(c); {
+                                                imui.Begin(c, ROW); {
+                                                    imui.Begin(c, BLOCK); imui.Pre(c); {
                                                         imdom.Str(c, ex.desc);
-                                                    } imLayoutEnd(c);
+                                                    } imui.End(c);
 
-                                                    imLayoutBegin(c, BLOCK); imSize(c, 20, PX, 0, NA); imLayoutEnd(c);
+                                                    imui.Begin(c, BLOCK); imui.Size(c, 20, PX, 0, NA); imui.End(c);
 
-                                                    imLayoutBegin(c, BLOCK); imGap(c, 10, PX); {
+                                                    imui.Begin(c, BLOCK); imui.Gap(c, 10, PX); {
                                                         let first = true;
                                                         im.For(c); ex.failure?.permutation.forEach(f => {
-                                                            imLayoutBegin(c, BLOCK); imNoWrap(c); {
+                                                            imui.Begin(c, BLOCK); imui.NoWrap(c); {
                                                                 if (im.If(c) && !first) {
                                                                     imdom.Str(c, " -> ");
                                                                 } im.IfEnd(c);
@@ -186,31 +186,31 @@ export function imTestHarness(c: ImCache) {
                                                                 imdom.Str(c, f.name);
                                                                 imdom.Str(c, ": ");
                                                                 imdom.Str(c, f.value ? "true" : "false");
-                                                            } imLayoutEnd(c);
+                                                            } imui.End(c);
                                                         }); im.ForEnd(c);
-                                                    } imLayoutEnd(c);
-                                                } imLayoutEnd(c);
+                                                    } imui.End(c);
+                                                } imui.End(c);
                                             } im.IfEnd(c);
                                         } im.ForEnd(c);
                                     } im.ForEnd(c);
                                 } else if (im.IfElse(c) && testUi.result && testUi.result.expectationsPerFork.length === 0) {
-                                    imLayoutBegin(c, BLOCK); imCode(c); imPre(c); {
+                                    imui.Begin(c, BLOCK); imCode(c); imui.Pre(c); {
                                         imdom.Str(c, "Test had no expectations");
-                                    } imLayoutEnd(c);
+                                    } imui.End(c);
                                 } else if (im.IfElse(c) && !testUi.result) {
                                     imdom.Str(c, "Test not ran");
                                 } im.IfEnd(c);
-                            } imLayoutEnd(c);
-                        } imLayoutEnd(c);
+                            } imui.End(c);
+                        } imui.End(c);
                     } im.ForEnd(c);
-                } imLayoutEnd(c);
+                } imui.End(c);
             } imScrollContainerEnd(c);
         } else {
             im.IfElse(c);
 
-            imLayoutBegin(c, BLOCK); imCode(c); {
+            imui.Begin(c, BLOCK); imCode(c); {
                 imdom.Str(c, tryState.err);
-            } imLayoutEnd(c);
+            } imui.End(c);
 
             if (imButtonIsClicked(c, "OK")) {
                 if (imdom.hasMousePress(c)) {

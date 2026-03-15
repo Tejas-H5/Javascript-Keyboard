@@ -1,4 +1,4 @@
-import { imFlex, imLayoutBegin, imLayoutEnd, ROW } from "src/components/core/layout.ts";
+import { imui, ROW } from "src/utils/im-js/im-ui";
 import { pressKey, setPlaybackSpeed } from "src/dsp/dsp-loop-interface.ts";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state.ts";
 import {
@@ -406,13 +406,13 @@ export function imEditView(c: ImCache, ctx: GlobalContext) {
         stopPlayback(ctx);
     }
 
-    imLayoutBegin(c, ROW); imFlex(c); {
+    imui.Begin(c, ROW); imui.Flex(c); {
         imSequencer(c, ctx);
 
         if (im.If(c) && loadSaveModal._open) {
             imLoadSaveSidebar(c, ctx);
         } im.IfEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     // NOTE: we should actually handle keyboard input at the _end_, so that deeper components
     // can decide to handle inputs for themselves if they want. 

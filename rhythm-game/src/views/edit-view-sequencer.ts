@@ -1,29 +1,5 @@
 import { imButtonIsClicked } from "src/components/button.ts";
-import {
-    BLOCK,
-    COL,
-    END,
-    imAbsolute,
-    imAlign,
-    imBg,
-    imFg,
-    imFlex,
-    imGap,
-    imJustify,
-    imLayoutBegin,
-    imLayoutEnd,
-    imPadding,
-    imRelative,
-    imScrollOverflow,
-    imSize,
-    INLINE_BLOCK,
-    NA,
-    PERCENT,
-    PX,
-    REM,
-    ROW
-} from "src/components/core/layout.ts";
-import { cn, cssVars } from "src/components/core/stylesheets.ts";
+import {BLOCK, COL, END, INLINE_BLOCK, NA, PERCENT, PX, REM, ROW, imui, cssVars } from "src/utils/im-js/im-ui";
 import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area.ts";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
 import { imSliderInput } from "src/components/slider.ts";
@@ -325,41 +301,41 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
         ctx.handled = true;
     } im.IfEnd(c);
 
-    imLayoutBegin(c, COL); imFlex(c); imRelative(c); {
-        imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
-            imLayoutBegin(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
+    imui.Begin(c, COL); imui.Flex(c); imui.Relative(c); {
+        imui.Begin(c, ROW); imui.Align(c); imui.Gap(c, 5, PX); {
+            imui.Begin(c, BLOCK); imui.Size(c, 5, PX, 0, NA); imui.End(c);
 
             if (im.If(c) && !loadSaveModal._open) {
                 if (im.If(c) && sequencer.playingId) {
-                    imLayoutBegin(c, ROW); imGap(c, 20, PX); {
-                        imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
+                    imui.Begin(c, ROW); imui.Gap(c, 20, PX); {
+                        imui.Begin(c, ROW); imui.Align(c); imui.Gap(c, 5, PX); {
                             const speed = getPlaybackSpeed();
                             imdom.Str(c, "Speed: ");
                             imdom.Str(c, speed.toFixed(2));
                             imdom.Str(c, "x");
 
-                            imLayoutBegin(c, COL); imSize(c, 500, PX, 1.5, REM); {
+                            imui.Begin(c, COL); imui.Size(c, 500, PX, 1.5, REM); {
                                 const newSpeed = imSliderInput(c, 0.0, 3, 0.0001, speed);
                                 if (im.Memo(c, newSpeed)) {
                                     setGlobalPlaybackSpeed(ctx, newSpeed);
                                 }
-                            } imLayoutEnd(c);
+                            } imui.End(c);
 
                             if (im.If(c) && speed !== 1) {
                                 if (imButtonIsClicked(c, "<")) {
                                     setGlobalPlaybackSpeed(ctx, 1);
                                 }
                             } im.IfEnd(c);
-                        } imLayoutEnd(c);
+                        } imui.End(c);
 
-                        imLayoutBegin(c, BLOCK); {
+                        imui.Begin(c, BLOCK); {
                             imdom.Str(c, (sequencer._time / 1000).toFixed(3)); imdom.Str(c, "s");
-                        } imLayoutEnd(c);
-                    } imLayoutEnd(c);
+                        } imui.End(c);
+                    } imui.End(c);
                 } else {
                     im.IfElse(c);
 
-                    imLayoutBegin(c, ROW); imGap(c, 20, PX); {
+                    imui.Begin(c, ROW); imui.Gap(c, 20, PX); {
                         // bpm input
                         // TODO: clean this up.
                         {
@@ -382,14 +358,14 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             setCursorSnap(sequencer, newCursorSnap);
                         }
 
-                    } imLayoutEnd(c);
+                    } imui.End(c);
                 } im.IfEnd(c);
 
-                imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imFg(c, cssVarsApp.danger); { 
+                imui.Begin(c, ROW); imui.Flex(c); imui.Justify(c); imui.Fg(c, cssVarsApp.danger); { 
                     if (im.If(c) && isReadonlyChart(chart)) {
                         imdom.Str(c, "Readonly");
                     } im.IfEnd(c);
-                } imLayoutEnd(c);
+                } imui.End(c);
 
                 if (imButtonIsClicked(c, "Test", s.importModalOpen)) {
                     const time = getTimeForBeats(chart, sequencer.cursor);
@@ -418,14 +394,14 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
             } im.IfEnd(c);
 
-            imLayoutBegin(c, BLOCK); imSize(c, 5, PX, 0, NA); imLayoutEnd(c);
-        } imLayoutEnd(c);
+            imui.Begin(c, BLOCK); imui.Size(c, 5, PX, 0, NA); imui.End(c);
+        } imui.End(c);
 
         imLine(c, LINE_HORIZONTAL, 1);
 
-        imLayoutBegin(c, COL); imFlex(c); {
+        imui.Begin(c, COL); imui.Flex(c); {
             if (im.If(c) && isRangeSelecting) {
-                imLayoutBegin(c, BLOCK); imRelative(c); {
+                imui.Begin(c, BLOCK); imui.Relative(c); {
                     const [start, end] = getSelectionStartEndIndexes(sequencer);
                     let str;
                     if (start === -1 || end === -1) {
@@ -435,27 +411,27 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                     }
 
                     imdom.Str(c, str);
-                } imLayoutEnd(c);
+                } imui.End(c);
             } im.IfEnd(c);
 
             if (!!debugFlags.debuUndoBuffer) {
                 // Debug visualizer for the undo buffer
-                imLayoutBegin(c, BLOCK); {
+                imui.Begin(c, BLOCK); {
                     let i = 0;
                     const chart = sequencer._currentChart;
                     im.For(c); for (const item of chart._undoBuffer.items) {
-                        imLayoutBegin(c, INLINE_BLOCK); imPadding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
+                        imui.Begin(c, INLINE_BLOCK); imui.Padding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
                             imdom.Str(c, chart._undoBuffer.idx === i ? "->" : "");
                             imdom.Str(c, "Entry " + (i++) + ": ");
                             im.For(c); for (const tlItem of item.items) {
                                 imdom.Str(c, timelineItemToString(tlItem));
                             } im.ForEnd(c);
-                        } imLayoutEnd(c);
+                        } imui.End(c);
                     } im.ForEnd(c);
-                } imLayoutEnd(c);
+                } imui.End(c);
             }
 
-            imLayoutBegin(c, BLOCK); imFlex(c); imRelative(c); {
+            imui.Begin(c, BLOCK); imui.Flex(c); imui.Relative(c); {
                 if (im.isFirstishRender(c)) {
                     imdom.setStyle(c, "overflowY", "auto");
                     imdom.setStyle(c, "overflowX", "hidden");
@@ -480,13 +456,13 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         s.leftExtentBeatsAnimated,
                     ) * 100;
 
-                    imLayoutBegin(c, BLOCK);
-                    imAbsolute(
+                    imui.Begin(c, BLOCK);
+                    imui.Absolute(
                         c,
                         0, PX, rightAbsolutePercent, PERCENT,
                         0, PX, leftAbsolutePercent, PERCENT);
-                    imBg(c, `rgba(0, 0, 255, 0.25)`);
-                    imLayoutEnd(c);
+                    imui.Bg(c, `rgba(0, 0, 255, 0.25)`);
+                    imui.End(c);
 
                     // range select lines
                     imSequencerVerticalLine(c, s, sequencer.rangeSelectStart, cssVarsApp.mg, 3);
@@ -527,7 +503,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
                 let hasFilter = sequencer.notesFilter.size > 0;
 
-                imLayoutBegin(c, COL); imJustify(c); imSize(c, 0, NA, 100, PERCENT); {
+                imui.Begin(c, COL); imui.Justify(c); imui.Size(c, 0, NA, 100, PERCENT); {
                     imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s, false);
                     imSequencerNotesUI(c, "measures", s.measures, null, ctx, s, false);
 
@@ -571,8 +547,8 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             );
                         } im.ForEnd(c);
                     } im.IfEnd(c);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
+                } imui.End(c);
+            } imui.End(c);
 
             imLine(c, LINE_HORIZONTAL, 1);
 
@@ -583,7 +559,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 const lastItem = chart.timeline[chart.timeline.length - 1]
                 const totalBeats = itemEnd(lastItem);
 
-                imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 50, PX); imRelative(c); {
+                imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 50, PX); imui.Relative(c); {
                     const leftAbsolutePercent = 100.0 * s.leftExtentBeatsAnimated / totalBeats;
                     const rightAbsolutePercent = 100.0 * s.rightExtentBeatsAnimated / totalBeats;
                     const color = `rgba(0, 0, 0, 0.25)`;
@@ -603,11 +579,11 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             case TIMELINE_ITEM_NOTE: {
                                 const absoluteTop = 100 * (1 - item.noteId / (ctx.keyboard.maxNoteIdx + 1));
 
-                                imLayoutBegin(c, BLOCK); 
-                                imAbsolute(c, absoluteTop, PERCENT, 0, NA, 0, NA, absoluteLeftStart, PERCENT);
-                                imSize(c, width, PERCENT, 2, PX); {
-                                    imBg(c, cssVars.fg);
-                                } imLayoutEnd(c);
+                                imui.Begin(c, BLOCK); 
+                                imui.Absolute(c, absoluteTop, PERCENT, 0, NA, 0, NA, absoluteLeftStart, PERCENT);
+                                imui.Size(c, width, PERCENT, 2, PX); {
+                                    imui.Bg(c, cssVars.fg);
+                                } imui.End(c);
                             } break;
                         } im.SwitchEnd(c);
                     } im.ForEnd(c);
@@ -616,28 +592,28 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
                     // the currently viewed sliding window
                     {
-                        imLayoutBegin(c, BLOCK); {
-                            imAbsolute(c, 0, PX, 0, NA, 0, PX, 0, PX);
-                            imSize(c, leftAbsolutePercent, PERCENT, 0, NA);
-                            imBg(c, color);
-                        } imLayoutEnd(c);
+                        imui.Begin(c, BLOCK); {
+                            imui.Absolute(c, 0, PX, 0, NA, 0, PX, 0, PX);
+                            imui.Size(c, leftAbsolutePercent, PERCENT, 0, NA);
+                            imui.Bg(c, color);
+                        } imui.End(c);
 
-                        imLayoutBegin(c, BLOCK); {
-                            imAbsolute(c, 0, PX, 0, PX, 0, PX, rightAbsolutePercent, PERCENT);
-                            imBg(c, color);
-                        } imLayoutEnd(c);
+                        imui.Begin(c, BLOCK); {
+                            imui.Absolute(c, 0, PX, 0, PX, 0, PX, rightAbsolutePercent, PERCENT);
+                            imui.Bg(c, color);
+                        } imui.End(c);
                     }
-                } imLayoutEnd(c);
+                } imui.End(c);
             } im.IfEnd(c);
 
             imLine(c, LINE_HORIZONTAL, 1);
 
-            imLayoutBegin(c, ROW); imJustify(c); imGap(c, 10, PX); {
+            imui.Begin(c, ROW); imui.Justify(c); imui.Gap(c, 10, PX); {
                 imdom.ElBegin(c, el.B); { 
                     imdom.Str(c, sequencer._currentChart.name); 
                 } imdom.ElEnd(c, el.B);
 
-                imLayoutBegin(c, BLOCK); imFlex(c); {
+                imui.Begin(c, BLOCK); imui.Flex(c); {
                     let isSaving = isSavingAnyChart();
 
                     // We never want our '|' sperator to:
@@ -677,7 +653,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             imdom.Str(c, numCopied + " items copied");
                         } im.IfEnd(c);
                     } im.IfEnd(c);
-                } imLayoutEnd(c);
+                } imui.End(c);
 
                 imdom.Str(c, "note_idx=");
                 imdom.Str(c, s.cursorIdx);
@@ -685,18 +661,18 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                 imdom.Str(c, "(integer_beats="); imdom.Str(c, sequencer.cursor); imdom.Str(c, ")");
                 imdom.Str(c, ", time="); imdom.Str(c, (sequencer._time / 1000).toFixed(3)); imdom.Str(c, "s");
 
-                imLayoutBegin(c, ROW); imFlex(c); imJustify(c, END); {
+                imui.Begin(c, ROW); imui.Flex(c); imui.Justify(c, END); {
                     if (im.If(c) && sequencer.notesToPreview.length > 0) {
                         imdom.Str(c, "TAB -> place, DEL or ~ -> delete");
                     } im.IfEnd(c);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
+                } imui.End(c);
+            } imui.End(c);
+        } imui.End(c);
 
         if (im.If(c) && sequencer.keyEditFilterModalOpen) {
             imFilterModal(c, s, ctx, sequencer, ctx.keyboard); 
         } im.IfEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     if (!ctx.handled) {
         const keyPress = ctx.keyPressState;
@@ -749,14 +725,14 @@ function imAbsoluteVerticalLine(
     thickness: number,
 ) {
     if (im.If(c) && absolutePercent >= 0 && absolutePercent <= 100) {
-        imLayoutBegin(c, BLOCK); imAbsolute(
+        imui.Begin(c, BLOCK); imui.Absolute(
             c,
             0, PX, 0, NA,
             0, PX, absolutePercent, PERCENT,
         ); {
             if (im.Memo(c, thickness)) imdom.setStyle(c,"width", thickness + "px");
             if (im.Memo(c, color)) imdom.setStyle(c,"backgroundColor", color);
-        } imLayoutEnd(c);
+        } imui.End(c);
     } im.IfEnd(c);
 }
 
@@ -774,7 +750,7 @@ function imSequencerNotesUI(
 
     const compact = !!s.allNotesVisible;
 
-    imLayoutBegin(c, BLOCK); imRelative(c); imPadding(
+    imui.Begin(c, BLOCK); imui.Relative(c); imui.Padding(
         c,
         compact ? 0 : 10, PX, 3, PX, 
         compact ? 0 : 10, PX, 3, PX, 
@@ -798,7 +774,7 @@ function imSequencerNotesUI(
                 imSequencerTrackTimelineItem(c, text, item, ctx, s, compact);
             } im.ForEnd(c);
         } im.IfEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 function imSequencerTrackTimelineItem(
@@ -838,13 +814,9 @@ function imSequencerTrackTimelineItem(
         isBeingPlayed = isItemBeingPlayed(sequencer, item);
     }
 
-    imLayoutBegin(c, BLOCK); imAbsolute(
-        c,
-        0, NA, 0, NA,
-        0, PX, leftPercent, PERCENT,
-    ); {
+    imui.Begin(c, BLOCK); 
+    imui.Absolute(c, 0, NA, 0, NA, 0, PX, leftPercent, PERCENT); imui.NoWrap(c); {
         if (im.isFirstishRender(c)) {
-            imdom.setClass(c, cn.noWrap);
             imdom.setStyle(c,"overflowX", "clip");
             imdom.setStyle(c,"border", `1px solid ${cssVarsApp.fg}`);
             imdom.setStyle(c,"boxSizing", "border-box");
@@ -861,7 +833,7 @@ function imSequencerTrackTimelineItem(
         imdom.setStyle(c,"backgroundColor", isBeingPlayed ? cssVarsApp.playback : isUnderCursor ? cssVarsApp.bg2 : cssVarsApp.bg);
         imdom.setStyle(c,"width", width + "%");
         imdom.Str(c, text);
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 
@@ -916,7 +888,7 @@ function getNextDivisor(val: number) {
 function imCursorDivisor(c: ImCache, val: number): number | null {
     let result: number | null = null;
 
-    imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
+    imui.Begin(c, ROW); imui.Align(c); imui.Gap(c, 5, PX); {
         if (imButtonIsClicked(c, "<-")) {
             result =  getPrevDivisor(val);
         }
@@ -924,12 +896,12 @@ function imCursorDivisor(c: ImCache, val: number): number | null {
             result = clamp(val - 1, 1, 16);
         }
 
-        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
         imdom.Str(c, "Divisor: ");
         imdom.Str(c, "1 / " + val);
 
-        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
         if (imButtonIsClicked(c, "+")) {
             result = clamp(val + 1, 1, 16);
@@ -937,7 +909,7 @@ function imCursorDivisor(c: ImCache, val: number): number | null {
         if (imButtonIsClicked(c, "->")) {
             result = getNextDivisor(val);
         }
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     return result;
 }
@@ -946,7 +918,7 @@ function imCursorDivisor(c: ImCache, val: number): number | null {
 function imBpmInput(c: ImCache, value: number): number | null {
     let result: number | null = null;
 
-    imLayoutBegin(c, ROW); imAlign(c); imGap(c, 5, PX); {
+    imui.Begin(c, ROW); imui.Align(c); imui.Gap(c, 5, PX); {
         if (imButtonIsClicked(c, "<-")) {
             result = value - 10;
         }
@@ -954,12 +926,12 @@ function imBpmInput(c: ImCache, value: number): number | null {
             result = value -=1;
         }
 
-        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
         imdom.Str(c, "Last BPM: ");
         imdom.Str(c, value.toFixed(1) + "");
 
-        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
         if (imButtonIsClicked(c, "+")) {
             result = value + 1;
@@ -967,7 +939,7 @@ function imBpmInput(c: ImCache, value: number): number | null {
         if (imButtonIsClicked(c, "->")) {
             result = value + 10;
         }
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     return result;
 }
@@ -984,17 +956,17 @@ function imFilterModal(
         sequencer.keyEditFilterRangeIdx0 = -1;
     }
 
-    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+    imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0, 0, 0, 0.3)`); {
         if (im.isFirstishRender(c)) {
             imdom.setStyle(c, "zIndex", "100");
         }
 
-        imLayoutBegin(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
-            imLayoutBegin(c, ROW); imAlign(c); imJustify(c); {
+        imui.Begin(c, COL); imui.Absolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imui.Bg(c, cssVars.bg); {
+            imui.Begin(c, ROW); imui.Align(c); imui.Justify(c); {
                 imdom.Str(c, "Edit filter - shift to range-select");
-            } imLayoutEnd(c);
+            } imui.End(c);
 
-            const root = imLayoutBegin(c, ROW); imFlex(c); imAlign(c); imJustify(c); {
+            const root = imui.Begin(c, ROW); imui.Flex(c); imui.Align(c); imui.Justify(c); {
                 if (im.isFirstishRender(c)) {
                     imdom.setStyle(c, "lineHeight", "1");
                 }
@@ -1004,44 +976,44 @@ function imFilterModal(
                     imdom.setStyle(c, "fontSize", (root.clientHeight / ctx.keyboard.flatKeys.length) + "px");
                 }
 
-                imLayoutBegin(c, COL); imAlign(c, END); {
+                imui.Begin(c, COL); imui.Align(c, END); {
                     im.For(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
-                        imLayoutBegin(c, BLOCK); {
+                        imui.Begin(c, BLOCK); {
                             let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
 
-                            imBg(c, hasPress ? cssVars.fg : "");
-                            imFg(c, hasPress ? cssVars.bg : "");
+                            imui.Bg(c, hasPress ? cssVars.fg : "");
+                            imui.Fg(c, hasPress ? cssVars.bg : "");
 
                             imdom.Str(c, getMusicNoteText(key.noteId));
-                        } imLayoutEnd(c);
+                        } imui.End(c);
                     } im.ForEnd(c);
-                } imLayoutEnd(c);
+                } imui.End(c);
 
-                imLayoutBegin(c, COL); {
+                imui.Begin(c, COL); {
                     im.For(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
-                        imLayoutBegin(c, BLOCK); {
+                        imui.Begin(c, BLOCK); {
 
                             let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
 
-                            imBg(c, hasPress ? cssVars.fg : "");
-                            imFg(c, hasPress ? cssVars.bg : "");
+                            imui.Bg(c, hasPress ? cssVars.fg : "");
+                            imui.Fg(c, hasPress ? cssVars.bg : "");
 
                             imdom.Str(c, "(");
                             imdom.Str(c, key.text);
                             imdom.Str(c, ")");
-                        } imLayoutEnd(c);
+                        } imui.End(c);
                     } im.ForEnd(c);
-                } imLayoutEnd(c);
+                } imui.End(c);
 
-                imLayoutBegin(c, BLOCK); imSize(c, 10, PX, 0, NA); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Size(c, 10, PX, 0, NA); imui.End(c);
 
-                imLayoutBegin(c, COL); imFlex(c); {
+                imui.Begin(c, COL); imui.Flex(c); {
                     im.For(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
                         const key = ctx.keyboard.flatKeys[i];
                         const normalized = 1;
-                        imLayoutBegin(c, BLOCK); {
+                        imui.Begin(c, BLOCK); {
                             if (im.isFirstishRender(c)) {
                                 imdom.setStyle(c, "color", cssVars.bg);
                             }
@@ -1096,20 +1068,20 @@ function imFilterModal(
 
                             let isVisible = !!s.notesMap.has(key.noteId);
 
-                            imBg(c, inFilter ? cssVars.fg : "");
-                            imFg(c, inFilter ? cssVars.bg : (isVisible ? "" : cssVars.mg));
+                            imui.Bg(c, inFilter ? cssVars.fg : "");
+                            imui.Fg(c, inFilter ? cssVars.bg : (isVisible ? "" : cssVars.mg));
 
-                            imSize(c, 100 * normalized, PERCENT, 100, PERCENT);
+                            imui.Size(c, 100 * normalized, PERCENT, 100, PERCENT);
 
 
                             // HACK: Load-bearing text!
                             imdom.Str(c, isVisible ? "onscreen" : "offscreen");
-                        } imLayoutEnd(c);
+                        } imui.End(c);
                     } im.ForEnd(c);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+                } imui.End(c);
+            } imui.End(c);
+        } imui.End(c);
+    } imui.End(c);
 
     if (!ctx.handled) {
         let handled = false;
@@ -1156,11 +1128,11 @@ function imExportModal(
     ctx: GlobalContext,
     chart: SequencerChart
 ) {
-    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
+    imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0, 0, 0, 0.3)`); {
         if (im.isFirstishRender(c)) {
             imdom.setStyle(c, "zIndex", "10");
         }
-        imLayoutBegin(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
+        imui.Begin(c, COL); imui.Absolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imui.Bg(c, cssVars.bg); {
             let s; s = im.GetInline(c, imExportModal) ?? im.Set(c, {
                 buttonText: "Copy to clipboard",
                 serializedJson: "",
@@ -1175,17 +1147,17 @@ function imExportModal(
                 s.sizeMb = bytesToMegabytes(sizeInBytes);
             }
 
-            imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c, true); {
-                imLayoutBegin(c, BLOCK); {
+            imui.Begin(c, COL); imui.Flex(c); imui.ScrollOverflow(c, true); {
+                imui.Begin(c, BLOCK); {
                     imdom.setStyle(c, "userSelect", "none");
                     imdom.Str(c, s.sizeMb.toPrecision(3));
                     imdom.Str(c, "mb");
-                } imLayoutEnd(c);
-                imLayoutBegin(c, BLOCK); imFlex(c); {
+                } imui.End(c);
+                imui.Begin(c, BLOCK); imui.Flex(c); {
                     imdom.setStyle(c, "wordBreak", "break-all");
                     imdom.Str(c, s.serializedJson);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
+                } imui.End(c);
+            } imui.End(c);
             if (imButtonIsClicked(c, s.buttonText)) {
                 copyToClipboard(s.serializedJson)
                     .then(() => {
@@ -1194,16 +1166,16 @@ function imExportModal(
                     })
                     .catch(e => console.error(e));
             }
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 
 function imImportModal(
     c: ImCache,
     ctx: GlobalContext,
 ) {
-    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0, 0, 0, 0.3)`); {
-        imLayoutBegin(c, COL); imAbsolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imBg(c, cssVars.bg); {
+    imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0, 0, 0, 0.3)`); {
+        imui.Begin(c, COL); imui.Absolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imui.Bg(c, cssVars.bg); {
             let s; s = im.GetInline(c, imExportModal) ?? im.Set(c, {
                 importJson: "",
                 nameOverride: "",
@@ -1213,10 +1185,10 @@ function imImportModal(
                 s.importJson = "";
             }
 
-            imLayoutBegin(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+            imui.Begin(c, BLOCK); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 imdom.Str(c, "Data to import:");
-            } imLayoutEnd(c);
-            imLayoutBegin(c, COL); imFlex(c); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+            } imui.End(c);
+            imui.Begin(c, COL); imui.Flex(c); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 const [, textArea] = imTextAreaBegin(c, {
                     value: s.importJson,
                     placeholder: "Paste in the JSON you exported"
@@ -1226,11 +1198,11 @@ function imImportModal(
                         s.importJson = textArea.value;
                     }
                 } imTextAreaEnd(c);
-            } imLayoutEnd(c);
-            imLayoutBegin(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+            } imui.End(c);
+            imui.Begin(c, BLOCK); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 imdom.Str(c, "New name (optional):");
-            } imLayoutEnd(c);
-            imLayoutBegin(c, BLOCK); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+            } imui.End(c);
+            imui.Begin(c, BLOCK); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
                 const input = imTextInputBegin(c, {
                     value: s.nameOverride,
                     placeholder: "Provide a new name here"
@@ -1240,9 +1212,9 @@ function imImportModal(
                         s.nameOverride = input.root.value;
                     }
                 } imTextInputEnd(c);
-            } imLayoutEnd(c);
+            } imui.End(c);
             if (imButtonIsClicked(c, "Import")) {
             }
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 }

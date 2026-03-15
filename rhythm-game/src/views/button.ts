@@ -1,5 +1,5 @@
-import { imBg, imFg } from "src/components/core/layout";
-import { cssVars } from "src/components/core/stylesheets";
+import { imui, cssVars } from "src/utils/im-js/im-ui";
+
 import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 
 
@@ -18,6 +18,6 @@ export function imHoverable(c: ImCache, selected: boolean) {
         imdom.setStyle(c, "cursor", hasHover ? "pointer" : "");
     }
 
-    imBg(c, (hasHover || selected) ? (selected ? cssVars.mg : cssVars.bg2) : "");
-    imFg(c, (hasHover || selected) ? (selected ? cssVars.bg : "") : "");
+    imui.Bg(c, (hasHover || selected) ? (selected ? cssVars.mg : cssVars.bg2) : "");
+    imui.Fg(c, (hasHover || selected) ? (selected ? cssVars.bg : "") : "");
 }

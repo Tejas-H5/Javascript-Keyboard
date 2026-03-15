@@ -1,30 +1,5 @@
 import { imButtonIsClicked } from "src/components/button.ts";
-import {
-    BLOCK,
-    COL,
-    EM,
-    END,
-    imAbsolute,
-    imAlign,
-    imBg,
-    imFg,
-    imFlex,
-    imFontSize,
-    imGap,
-    imJustify,
-    imLayoutBegin,
-    imLayoutEnd,
-    imRelative,
-    imSize,
-    imZIndex,
-    NA,
-    PERCENT,
-    PX,
-    ROW,
-    START,
-    STRETCH
-} from "src/components/core/layout.ts";
-import { cn, cssVars } from "src/components/core/stylesheets.ts";
+import { BLOCK, COL, EM, END, NA, PERCENT, PX, ROW, START, STRETCH, imui, cssVars, CssColor } from "src/utils/im-js/im-ui";
 import { imLine, LINE_VERTICAL } from "src/components/im-line.ts";
 import { debugFlags } from "src/debug-flags.ts";
 import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setPlaybackTime } from "src/dsp/dsp-loop-interface.ts";
@@ -54,9 +29,7 @@ import {
 } from "src/state/sequencer-state.ts";
 import { arrayAt } from "src/utils/array-utils.ts";
 import { assert } from "src/utils/assert.ts";
-import { copyColor, CssColor, lerpColor, newColor } from "src/utils/colour.ts";
 import { im, ImCache, imdom, el, ev, Stringifyable, } from "src/utils/im-js";
-
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils.ts";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
 import { cssVarsApp, getCurrentTheme } from "./styling.ts";
@@ -137,7 +110,7 @@ function newBarState() {
 function newVerticalNoteThreadState() {
     return { 
         backgroundColor: "",
-        currentBgColor: newColor(0, 0, 0, 1),
+        currentBgColor: imui.newColor(0, 0, 0, 1),
     };
 }
 
@@ -413,7 +386,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     const practiceMode = gameplayState.practiceMode;
     updatePracticeMode(ctx, gameplayState, chart);
 
-    imLayoutBegin(c, COL); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
+    imui.Begin(c, COL); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
         if (im.isFirstishRender(c)) {
             imdom.setStyle(c, "userSelect", "none");
         }
@@ -441,56 +414,51 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
         {
             // Top and bottom 
             {
-                imLayoutBegin(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
-                imAbsolute(c, 0, PX, 0, PX, (100 - heightReduction / 2), PERCENT, 0, PX); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Justify(c); imui.Bg(c, cssVars.fg);
+                imui.Absolute(c, 0, PX, 0, PX, (100 - heightReduction / 2), PERCENT, 0, PX); imui.End(c);
 
-                imLayoutBegin(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
-                imAbsolute(c, (100 - heightReduction / 2), PERCENT, 0, PX, 0, PX, 0, PX); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Justify(c); imui.Bg(c, cssVars.fg);
+                imui.Absolute(c, (100 - heightReduction / 2), PERCENT, 0, PX, 0, PX, 0, PX); imui.End(c);
             }
 
             // Left and right
             {
-                imLayoutBegin(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
-                imAbsolute(c, 0, PX, (100 - widthReduction / 2), PERCENT, 0, PX, 0, PX); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Justify(c); imui.Bg(c, cssVars.fg);
+                imui.Absolute(c, 0, PX, (100 - widthReduction / 2), PERCENT, 0, PX, 0, PX); imui.End(c);
 
-                imLayoutBegin(c, BLOCK); imJustify(c); imBg(c, cssVars.fg);
-                imAbsolute(c, 0, PX, 0, PX, 0, PX, (100 - widthReduction / 2), PERCENT); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imui.Justify(c); imui.Bg(c, cssVars.fg);
+                imui.Absolute(c, 0, PX, 0, PX, 0, PX, (100 - widthReduction / 2), PERCENT); imui.End(c);
             }
         }
 
-        imLayoutBegin(c, ROW); imJustify(c); 
-        imAbsolute(c, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT); {
+        imui.Begin(c, ROW); imui.Justify(c); 
+        imui.Absolute(c, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT); {
             const { size: playfieldSize } = imdom.TrackSize(c);
             const dividerWidth = 2;
             const playfieldWidth = playfieldSize.width - (ctx.keyboard.keys.length * dividerWidth);
             const letterWidth = playfieldWidth / ctx.keyboard.flatKeys.length;
 
-            imLayoutBegin(c, COL); imAbsolute(c, 0, PX, 0, PX, 0, NA, 0, PX); imZIndex(c, 10); imBg(c, `rgba(255, 255, 255, 0.4)`); {
-                imLayoutBegin(c, ROW); {
-                    if (im.isFirstishRender(c)) {
-                        imdom.setClass(c, cn.mediumFont);
-                        imdom.setClass(c, cn.noWrap);
-                    }
-
+            imui.Begin(c, COL); imui.Absolute(c, 0, PX, 0, PX, 0, NA, 0, PX); imui.ZIndex(c, 10); imui.Bg(c, `rgba(255, 255, 255, 0.4)`); {
+                imui.Begin(c, ROW); imui.FontSizeCss(c, cssVars.mediumText); imui.NoWrap(c); {
                     // using runway doesn' look as nice.
                     const runway = PENALTY_QUANTIZATION_START_SECONDS + PENALTY_QUANTIZATION_SECONDS;
                     const amountPenalized01 = (gameplayState.penaltyTimer + PENALTY_QUANTIZATION_START_SECONDS) / PENALTY_QUANTIZATION_START_SECONDS;
 
                     const colours = im.GetInline(c, imGameplay) ?? im.Set(c, {
-                        barColor: newColor(0, 0, 0, 0),
-                        textColor: newColor(0, 0, 0, 0),
+                        barColor: imui.newColor(0, 0, 0, 0),
+                        textColor: imui.newColor(0, 0, 0, 0),
                     });
 
                     const theme = getCurrentTheme();
-                    lerpColor(theme.calm, theme.danger, amountPenalized01, colours.barColor);
+                    imui.lerpColor(theme.calm, theme.danger, amountPenalized01, colours.barColor);
                     colours.barColor.a = 0.5;
-                    // lerpColor(theme.bg, theme.fg, amountPenalized01, colours.textColor);
-                    lerpColor(theme.fg, theme.fg, amountPenalized01, colours.textColor);
+                    // imui.lerpColor(theme.bg, theme.fg, amountPenalized01, colours.textColor);
+                    imui.lerpColor(theme.fg, theme.fg, amountPenalized01, colours.textColor);
 
-                    imLayoutBegin(c, BLOCK); imZIndex(c, -1); {
-                        // imAbsolute(c, 0, PX, amountPenalized01 * 50, PERCENT, 0, PX, amountPenalized01 * 50, PERCENT);
-                        imAbsolute(c, 0, PX, 0, PX, 0, NA, 0, PX);
-                        imSize(c, 0, NA, 2, EM);
+                    imui.Begin(c, BLOCK); imui.ZIndex(c, -1); {
+                        // imui.Absolute(c, 0, PX, amountPenalized01 * 50, PERCENT, 0, PX, amountPenalized01 * 50, PERCENT);
+                        imui.Absolute(c, 0, PX, 0, PX, 0, NA, 0, PX);
+                        imui.Size(c, 0, NA, 2, EM);
 
                         if (im.isFirstishRender(c)) {
                             imdom.setStyle(c, "background", "rgba(0, 0, 0, 0");
@@ -501,21 +469,21 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             imdom.setStyle(c, "background", `linear-gradient(180deg,${c1} 0%, ${c2} 100%)`);
                         }
 
-                        // imBg(c, colours.barColor.toString());
-                    } imLayoutEnd(c);
+                        // imui.Bg(c, colours.barColor.toString());
+                    } imui.End(c);
 
-                    imLayoutBegin(c, ROW); imGap(c, 10, PX); imFlex(c); imJustify(c); imFg(c, colours.textColor.toCssString()); {
-                        imLayoutBegin(c, COL); imAlign(c, START); imFlex(c); {
-                            imLayoutBegin(c, ROW); imFontSize(c, 1, EM); {
+                    imui.Begin(c, ROW); imui.Gap(c, 10, PX); imui.Flex(c); imui.Justify(c); imui.Fg(c, colours.textColor.toCssString()); {
+                        imui.Begin(c, COL); imui.Align(c, START); imui.Flex(c); {
+                            imui.Begin(c, ROW); imui.FontSize(c, 1, EM); {
                                 im3DLookingText(c, chart.name);
 
                                 if (im.If(c) && debugFlags.testGameplaySpeed !== 1) {
                                     im3DLookingText(c, "[TEST:" + debugFlags.testGameplaySpeed.toFixed(2) + "x]");
                                 } im.IfEnd(c);
-                            } imLayoutEnd(c);
-                        } imLayoutEnd(c);
+                            } imui.End(c);
+                        } imui.End(c);
 
-                        imLayoutBegin(c, ROW); imRelative(c); imFlex(c); {
+                        imui.Begin(c, ROW); imui.Relative(c); imui.Flex(c); {
                             let val;
                             const anim = practiceMode.rewindAnimation;
                             if (anim.started) {
@@ -530,9 +498,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             }
 
                             im3DLookingText(c, val);
-                        } imLayoutEnd(c);
+                        } imui.End(c);
 
-                        imLayoutBegin(c, ROW); imFlex(c); imJustify(c, END); {
+                        imui.Begin(c, ROW); imui.Flex(c); imui.Justify(c, END); {
                             if (im.If(c) && gameplayState.practiceMode.enabled) {
                                 let measuresCount = 0;
                                 for (const item of chart.timeline) {
@@ -544,12 +512,12 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                 const requiredScore = practiceMode.scoreThisMeasure + practiceMode.maxScoreThisMeasure;
                                 im3DLookingText(c, gameplayState.score + " / " + requiredScore);
                             } im.IfEnd(c);
-                        } imLayoutEnd(c);
-                    } imLayoutEnd(c);
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
+                        } imui.End(c);
+                    } imui.End(c);
+                } imui.End(c);
+            } imui.End(c);
 
-            imLayoutBegin(c, ROW); imFlex(c); imAlign(c, STRETCH); imJustify(c); imRelative(c); {
+            imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
                 gameplayState.avoidPenalty = true;
 
                 im.For(c); for (let rowIdx = 0; rowIdx < keyboard.keys.length; rowIdx++) {
@@ -596,18 +564,17 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
 
                             const theme = getCurrentTheme();
-
-                            copyColor(theme.bg, s.currentBgColor);
+                            imui.copyColor(theme.bg, s.currentBgColor);
 
                             if (im.If(c) && instrumentKey.isLeftmost) {
-                                imLayoutBegin(c, BLOCK); imSize(c, 2, PX, 0, NA); imBg(c, cssVarsApp.fg); imLayoutEnd(c);
+                                imui.Begin(c, BLOCK); imui.Size(c, 2, PX, 0, NA); imui.Bg(c, cssVarsApp.fg); imui.End(c);
                             } im.IfEnd(c);
 
-                            imLayoutBegin(c, COL); imAlign(c, STRETCH); imJustify(c, START); {
-                                imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 2, PX); imBg(c, cssVarsApp.fg); {
-                                } imLayoutEnd(c);
+                            imui.Begin(c, COL); imui.Align(c, STRETCH); imui.Justify(c, START); {
+                                imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 2, PX); imui.Bg(c, cssVarsApp.fg); {
+                                } imui.End(c);
 
-                                imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 0, NA); imRelative(c); imFlex(c); {
+                                imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 0, NA); imui.Relative(c); imui.Flex(c); {
                                     im.For(c); for (let i = 0; i < thread.length; i++) {
                                         const item = thread[i];
                                         const s = im.State(c, newBarState);
@@ -646,16 +613,16 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                             color = cssVarsApp.fg;
                                         }
 
-                                        imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, heightPercent, PERCENT); {
+                                        imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imui.Size(c, 0, NA, heightPercent, PERCENT); {
                                             if (im.isFirstishRender(c)) {
                                                 imdom.setStyle(c, "color", "transparent");
                                             }
 
-                                            imLayoutBegin(c, BLOCK); imSize(c, 100, PERCENT, 100, PERCENT); imRelative(c); imBg(c, cssVarsApp.fg); {
-                                                imLayoutBegin(c, BLOCK); imAbsolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imBg(c, color); {
-                                                } imLayoutEnd(c);
-                                            } imLayoutEnd(c);
-                                        } imLayoutEnd(c);
+                                            imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Relative(c); imui.Bg(c, cssVarsApp.fg); {
+                                                imui.Begin(c, BLOCK); imui.Absolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imui.Bg(c, color); {
+                                                } imui.End(c);
+                                            } imui.End(c);
+                                        } imui.End(c);
                                     } im.ForEnd(c);
 
                                     im.For(c); for (const measure of gameplayState.measures) {
@@ -663,17 +630,17 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                         if (bottomPercent > 100) continue;
                                         if (bottomPercent < -5) continue;
 
-                                        imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imSize(c, 0, NA, 2, PX);
-                                        imBg(c, cssVars.mg); {
-                                        } imLayoutEnd(c);
+                                        imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imui.Size(c, 0, NA, 2, PX);
+                                        imui.Bg(c, cssVars.mg); {
+                                        } imui.End(c);
                                     } im.ForEnd(c);
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
-                                imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 2, PX); {
+                                imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 2, PX); {
                                     if (im.isFirstishRender(c)) {
                                         imdom.setStyle(c, "backgroundColor", cssVarsApp.fg);
                                     }
-                                } imLayoutEnd(c);
+                                } imui.End(c);
 
 
                                 let letterColor;
@@ -692,7 +659,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                                 }
 
                                 imLetter(c, gameplayState, instrumentKey, thread, keyGain, letterColor, letterWidth);
-                            } imLayoutEnd(c);
+                            } imui.End(c);
                         }
                     } im.ForEnd(c);
                     imLine(c, LINE_VERTICAL, dividerWidth);
@@ -701,25 +668,25 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 if (gameplayState.avoidPenalty) {
                     gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
                 }
-            } imLayoutEnd(c);
-            imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 10, PX); imRelative(c); {
-                imLayoutBegin(c, BLOCK); imAbsolute(c, 0, PX, (100 - progressPercent), PERCENT, 0, PX, 0, PX); imBg(c, cssVars.fg); {
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+            } imui.End(c);
+            imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 10, PX); imui.Relative(c); {
+                imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, (100 - progressPercent), PERCENT, 0, PX, 0, PX); imui.Bg(c, cssVars.fg); {
+                } imui.End(c);
+            } imui.End(c);
+        } imui.End(c);
+    } imui.End(c);
 
     if (im.If(c) && gameplayState.pauseMenu.isPaused) {
         // Pause menu
 
-        imLayoutBegin(c, COL); imAlign(c); imJustify(c); imAbsolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imBg(c, `rgba(0,0,0, 0.4`); imZIndex(c, 100); {
+        imui.Begin(c, COL); imui.Align(c); imui.Justify(c); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0,0,0, 0.4`); imui.ZIndex(c, 100); {
             if (im.isFirstishRender(c)) {
                 imdom.setStyle(c, "fontSize", "3em");
             }
 
-            imLayoutBegin(c, BLOCK); {
+            imui.Begin(c, BLOCK); {
                 im3DLookingText(c, "Paused");
-            } imLayoutEnd(c);
+            } imui.End(c);
 
 
             let uiIdx = 0;
@@ -735,7 +702,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                     setViewChartSelect(ctx);
                 }
             }
-        } imLayoutEnd(c);
+        } imui.End(c);
 
         if (!ctx.handled) {
             if (ctx.keyPressState) {
@@ -759,7 +726,7 @@ function imPauseMenuButton(
     text: string
 ): boolean {
     let result = false;
-    imLayoutBegin(c, ROW); {
+    imui.Begin(c, ROW); {
         const isSelected = uiIdx === gameplayState.pauseMenu.idx;
 
         const hasMouseOver = imdom.hasMouseOver(c);
@@ -770,7 +737,7 @@ function imPauseMenuButton(
         if (im.If(c) && isSelected) {
             // The Inter font we're using for this game has a ligature that converts -> into a legit arrow character. 
             // Pretty crazy
-            imLayoutBegin(c, BLOCK); imdom.Str(c, "->"); imLayoutEnd(c);
+            imui.Begin(c, BLOCK); imdom.Str(c, "->"); imui.End(c);
 
             if (!ctx.handled && ctx.keyPressState?.key === "Enter") {
                 result = true;
@@ -781,7 +748,7 @@ function imPauseMenuButton(
         if (imButtonIsClicked(c, text)) {
             result = true;
         }
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     return result;
 }
@@ -796,8 +763,8 @@ function imLetter(
     width: number,
 ) {
     let s; s = im.GetInline(c, imLetter) ?? im.Set(c, {
-        textColor: newColor(0, 0, 0, 1),
-        bgColor: newColor(0, 0, 0, 1),
+        textColor: imui.newColor(0, 0, 0, 1),
+        bgColor: imui.newColor(0, 0, 0, 1),
     });
 
     const theme = getCurrentTheme();
@@ -828,15 +795,15 @@ function imLetter(
         }
     }
 
-    lerpColor(theme.fg, theme.bg2, clamp(distanceToNextNoteNormalized, 0, 1), s.textColor);
+    imui.lerpColor(theme.fg, theme.bg2, clamp(distanceToNextNoteNormalized, 0, 1), s.textColor);
 
     s.bgColor = letterColor ?? theme.bg;
 
-    imLayoutBegin(c, COL); imSize(c, width, PX, 0, NA); imFontSize(c, Math.floor(width * 0.55), PX); imAlign(c); imJustify(c); imZIndex(c, 10); {
-        imBg(c, s.bgColor.toString());
-        imFg(c, s.textColor.toString());
+    imui.Begin(c, COL); imui.Size(c, width, PX, 0, NA); imui.FontSize(c, Math.floor(width * 0.55), PX); imui.Align(c); imui.Justify(c); imui.ZIndex(c, 10); {
+        imui.Bg(c, s.bgColor.toString());
+        imui.Fg(c, s.textColor.toString());
 
-        imLayoutBegin(c, BLOCK); {
+        imui.Begin(c, BLOCK); {
             if (im.isFirstishRender(c)) {
                 imdom.setStyle(c, "fontSize", "2em");
                 imdom.setStyle(c, "height", "1.3em");
@@ -845,21 +812,21 @@ function imLetter(
             imdom.ElBegin(c, el.B); {
                 imdom.Str(c, instrumentKey ? instrumentKey.text : "?");
             } imdom.ElEnd(c, el.B);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 
 function im3DLookingText(c: ImCache, value: Stringifyable) {
-    imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imRelative(c); {
-        imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imAbsolute(c, 3, PX, 0, PX, 0, PX, 3, PX); {
-            imFg(c, cssVars.bg);
+    imui.Begin(c, ROW); imui.Flex(c); imui.Justify(c); imui.Relative(c); {
+        imui.Begin(c, ROW); imui.Flex(c); imui.Justify(c); imui.Absolute(c, 3, PX, 0, PX, 0, PX, 3, PX); {
+            imui.Fg(c, cssVars.bg);
             imdom.Str(c, value);
-        } imLayoutEnd(c);
-        imLayoutBegin(c, ROW); imFlex(c); imJustify(c); imZIndex(c, 2); {
-            imFg(c, cssVars.fg2);
+        } imui.End(c);
+        imui.Begin(c, ROW); imui.Flex(c); imui.Justify(c); imui.ZIndex(c, 2); {
+            imui.Fg(c, cssVars.fg2);
             imdom.Str(c, value);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 
 // TODO: I want to be able to press such that I can miss exactly half of the same note:

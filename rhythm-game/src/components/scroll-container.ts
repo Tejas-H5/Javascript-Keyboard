@@ -1,6 +1,5 @@
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-import { COL, imFlex, imLayoutBegin, imLayoutEnd, imRelative, imScrollOverflow, ROW } from "./core/layout.ts";
-import { getScrollVHEx } from "src/utils/dom-utils.ts";
+import { im, ImCache } from "src/utils/im-js";
+import { COL, getScrollVHEx, imui, ROW } from "src/utils/im-js/im-ui";
 
 
 // NOTE: if all we need is idx, let's just inline it.
@@ -60,16 +59,16 @@ export function imScrollContainerBegin(
     sc: ScrollContainer,
     orientation: typeof ROW | typeof COL = COL
 ): HTMLElement {
-    const scrollParent = imLayoutBegin(c, orientation); 
-    imFlex(c); 
-    imScrollOverflow(c, orientation === COL, orientation === ROW); 
-    imRelative(c);
+    const scrollParent = imui.Begin(c, orientation); 
+    imui.Flex(c); 
+    imui.ScrollOverflow(c, orientation === COL, orientation === ROW); 
+    imui.Relative(c);
     sc.root = scrollParent;
     return scrollParent;
 }
 
 export function imScrollContainerEnd(c: ImCache) {
-    imLayoutEnd(c);
+    imui.End(c);
 }
 
 // NOTE: it's up to you to only ever call this on one item at a time

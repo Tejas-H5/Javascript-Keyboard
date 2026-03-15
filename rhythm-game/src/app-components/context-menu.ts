@@ -1,7 +1,6 @@
-import { COL, imAbsolute, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX, ROW } from "src/components/core/layout.ts";
-import { cssVars } from "src/components/core/stylesheets.ts";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { im, ImCache, imdom } from "src/utils/im-js";
+import { imui, COL, PX, NA, cssVars, ROW } from "src/utils/im-js/im-ui";
 
 
 export type ContextMenuState = {
@@ -26,8 +25,8 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState) {
     const x = s.position.x;
     const y = s.position.y;
 
-    imLayoutBegin(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imZIndex(c, 10000); {
-        const root = imLayoutBegin(c, COL); imAbsolute(c, y, PX, 0, NA, 0, NA, x, PX); {
+    imui.Begin(c, COL); imui.Fixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.ZIndex(c, 10000); {
+        const root = imui.Begin(c, COL); imui.Absolute(c, y, PX, 0, NA, 0, NA, x, PX); {
             const mouse = imdom.getMouse();
             const rect = root.getBoundingClientRect();
 
@@ -56,32 +55,32 @@ export function imContextMenuBegin(c: ImCache, s: ContextMenuState) {
                 imdom.setStyle(c, "border", "1px solid rgba(0,0,0,0.37)");
             }
 
-        } // imLayoutEnd(c);
-    } // imLayoutEnd(c);
+        } // imui.End(c);
+    } // imui.End(c);
 }
 
 export function imContextMenuEnd(c: ImCache, s: ContextMenuState) {
-    // imLayout
+    // imui.Layout
     {
-        // imLayout
+        // imui.Layout
         {
             if (imdom.hasMousePress(c)) {
                 const mouse = imdom.getMouse();
                 mouse.mouseDownElements.clear();
                 mouse.mouseClickElements.clear();
             }
-        } imLayoutEnd(c);
+        } imui.End(c);
 
         if (imdom.hasMousePress(c)) {
             s.open = false;
         }
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 // This is not as important as imContextMenuBegin/End, and can be changed for something else.
 export function imContextMenuItemBegin(c: ImCache) {
-    imLayoutBegin(c, ROW); {
-    } // imLayoutEnd
+    imui.Begin(c, ROW); {
+    } // imui.End
 }
 
 export function imContextMenuDivider(c: ImCache) {
@@ -89,9 +88,9 @@ export function imContextMenuDivider(c: ImCache) {
 }
 
 export function imContextMenuItemEnd(c: ImCache) {
-    // imLayout
+    // imui.Layout
     {
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 export function openContextMenu(c: ImCache, s: ContextMenuState, x: number, y: number) {

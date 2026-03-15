@@ -1,8 +1,7 @@
-import { newColorFromHsv } from "src/utils/colour.ts";
-
 import { getNoteText } from "src/utils/music-theory-utils.ts";
 import { KEYBOARD_LAYOUT } from "./keyboard-config";
 import { imdom, NormalizedKey } from "src/utils/im-js";
+import { imui } from "src/utils/im-js/im-ui";
 
 export type KeyboardState = {
     keys: InstrumentKey[][];
@@ -127,9 +126,9 @@ export function newKeyboardState(): KeyboardState {
             flatKeys[i].index = i;
 
             // colors!
-            flatKeys[i].cssColours.normal = "" + newColorFromHsv(((2 * i + 1) / flatKeys.length) % 1, 1, 0.5);
-            flatKeys[i].cssColours.light = "" + newColorFromHsv(((2 * i + 1) / flatKeys.length) % 1, 1, 0.75);
-            flatKeys[i].cssColours.dark = "" + newColorFromHsv(((2 * i + 1) / flatKeys.length) % 1, 1, 0.25);
+            flatKeys[i].cssColours.normal = "" + imui.newColorFromHsv(((2 * i + 1) / flatKeys.length) % 1, 1, 0.5);
+            flatKeys[i].cssColours.light = "" + imui.newColorFromHsv(((2 * i + 1) / flatKeys.length) % 1, 1, 0.75);
+            flatKeys[i].cssColours.dark = "" + imui.newColorFromHsv(((2 * i + 1) / flatKeys.length) % 1, 1, 0.25);
         }
     }
 

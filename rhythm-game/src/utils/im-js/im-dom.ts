@@ -174,20 +174,20 @@ function GraphMappingsEditorView(c: im.Cache) {
         if (elHasMousePress(c)) useDiv1 = !useDiv1;
     } LayoutEnd(c);
 
-    LayoutBegin(c, COL); imFlex(c); {
+    LayoutBegin(c, COL); imui.Flex(c); {
         let div1, div2
-        LayoutBegin(c, ROW); imFlex(c); {
-            LayoutBegin(c, COL); imFlex(c); {
+        LayoutBegin(c, ROW); imui.Flex(c); {
+            LayoutBegin(c, COL); imui.Flex(c); {
                 Str(c, "Div 1");
 
-                div1 = LayoutBeginInternal(c, COL); imFinalizeDeferred(c); imLayoutEnd(c);
+                div1 = LayoutBeginInternal(c, COL); imFinalizeDeferred(c); imui.End(c);
 
                 Str(c, "Div 1 end");
             } LayoutEnd(c);
-            LayoutBegin(c, COL); imFlex(c); {
+            LayoutBegin(c, COL); imui.Flex(c); {
                 Str(c, "Div 2");
 
-                div2 = LayoutBeginInternal(c, COL); imFinalizeDeferred(c); imLayoutEnd(c);
+                div2 = LayoutBeginInternal(c, COL); imFinalizeDeferred(c); imui.End(c);
 
                 Str(c, "Div 2 end");
             } LayoutEnd(c);

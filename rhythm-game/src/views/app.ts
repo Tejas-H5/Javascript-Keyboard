@@ -1,4 +1,4 @@
-import { BLOCK, COL, imAbsolute, imBg, imFixed, imLayoutBegin, imLayoutEnd, imZIndex, NA, PX } from "src/components/core/layout.ts";
+import { imui, isEditingTextSomewhereInDocument, BLOCK, COL, NA, PX } from "src/utils/im-js/im-ui";
 import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter.ts";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
 import { debugFlags } from "src/debug-flags.ts";
@@ -25,7 +25,6 @@ import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests.ts";
 import { filterInPlace } from "src/utils/array-utils.ts";
 import { assert, unreachable } from "src/utils/assert.ts";
 import { AsyncCallback, AsyncCallbackResult, done, DONE, getTrackedAsyncActions } from "src/utils/async-utils.ts";
-import { isEditingTextSomewhereInDocument } from "src/utils/dom-utils.ts";
 import { el, im, ImCache, imdom } from "src/utils/im-js";
 
 import { imChartSelect } from "src/views/chart-select.ts";
@@ -469,7 +468,7 @@ export function imApp(
         ctx.blurredState = true;
     }
 
-    imLayoutBegin(c, COL); imFixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
+    imui.Begin(c, COL); imui.Fixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
         if (im.If(c) && ui.unitTestModal) {
             imUnitTestsModal(c, ctx, ui.unitTestModal);
         } else if (im.IfElse(c) && ui.updateModal) {
@@ -487,7 +486,7 @@ export function imApp(
             } break;
         } im.SwitchEnd(c);
 
-    } imLayoutEnd(c);
+    } imui.End(c);
 
     if (!ctx.handled) {
         if (ctx.keyPressState?.key === "F1") {
@@ -508,51 +507,51 @@ export function imApp(
 
 export function imDiagnosticInfo(c: ImCache, ctx: GlobalContext | undefined) {
     // diagnostic info
-    imLayoutBegin(c, BLOCK); imAbsolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imBg(c, `rgba(255, 255, 255, 0.6)`); imZIndex(c, 10000); {
+    imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 10, PX, 10, PX, 0, NA); imui.Bg(c, `rgba(255, 255, 255, 0.6)`); imui.ZIndex(c, 10000); {
         imFpsCounterSimple(c);
         imExtraDiagnosticInfo(c);
 
         // What's playing?
 
         if (im.If(c) && ctx) {
-            imLayoutBegin(c, BLOCK); {
+            imui.Begin(c, BLOCK); {
                 const info = getDspInfo();
                 im.For(c); for (const [keyId, signal] of info.currentlyPlaying) {
                     const key = ctx.keyboard.flatKeys[keyId];
-                    imLayoutBegin(c, BLOCK); {
+                    imui.Begin(c, BLOCK); {
                         imdom.Str(c, "[");
                         imdom.Str(c, key.text);
                         imdom.Str(c, ",");
                         imdom.Str(c, signal.toFixed(1));
                         imdom.Str(c, "]");
-                    } imLayoutEnd(c);
+                    } imui.End(c);
                 } im.ForEnd(c);
 
-                imLayoutBegin(c, BLOCK); {
+                imui.Begin(c, BLOCK); {
                     imdom.Str(c, "volume="); imdom.Str(c, getPlaybackVolume());
                     imdom.Str(c, "speed="); imdom.Str(c, getPlaybackSpeed());
-                } imLayoutEnd(c);
-            } imLayoutEnd(c);
+                } imui.End(c);
+            } imui.End(c);
         } im.IfEnd(c);
 
         // Info about background tasks
-        imLayoutBegin(c, BLOCK); {
+        imui.Begin(c, BLOCK); {
             const asyncActions = getTrackedAsyncActions();
             im.For(c); for (const slot of asyncActions.values()) {
                 im.For(c); for (const action of slot) {
-                    imLayoutBegin(c, BLOCK); imBg(c, action.error ? `rgba(255, 0, 0, 0.5)` : `rgba(0, 255, 255, 1)`); {
+                    imui.Begin(c, BLOCK); imui.Bg(c, action.error ? `rgba(255, 0, 0, 0.5)` : `rgba(0, 255, 255, 1)`); {
                         const t1 = action.t1 ?? performance.now();
                         const ms = t1 - action.t0;
                         imdom.Str(c, Math.round(ms));
                         imdom.Str(c, "ms |");
                         imdom.Str(c, action.name);
-                    } imLayoutEnd(c);
+                    } imui.End(c);
                 } im.ForEnd(c);
 
                 imLine(c, LINE_HORIZONTAL, 1);
             } im.ForEnd(c);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 
 export function setLoadSaveModalOpen(ctx: GlobalContext) {

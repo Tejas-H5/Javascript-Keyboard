@@ -1,13 +1,13 @@
-import { imLayoutBegin, ROW } from "src/components/core/layout.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { im, ImCache, imdom } from "src/utils/im-js";
+import { imui, ROW } from "src/utils/im-js/im-ui";
 
 
 export function imVerticalText(c: ImCache) {
-    imLayoutBegin(c, ROW); {
+    imui.Begin(c, ROW); {
         if (im.isFirstishRender(c)) {
             imdom.setStyle(c, "writingMode", "sideways-lr");
             imdom.setStyle(c, "textOrientation", "mixed");
         }
-    } // imLayoutEnd
+    } // imui.End
 }
 

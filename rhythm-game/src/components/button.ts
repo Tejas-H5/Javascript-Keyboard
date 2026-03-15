@@ -1,10 +1,7 @@
-import { DisplayType, imAlign, imLayoutBegin, imLayoutEnd, imNoWrap, INLINE, ROW } from "src/components/core/layout.ts";
-import { newCssBuilder } from "src/utils/cssb.ts";
 import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { cssVars, DisplayType, imui, INLINE, ROW } from "src/utils/im-js/im-ui";
 
-import { cssVars } from "./core/stylesheets.ts";
-
-const cssb = newCssBuilder();
+const cssb = imui.newCssBuilder();
 
 const cnButton = (() => {
     const transiton = `0.05s linear`;
@@ -62,12 +59,12 @@ export function imButtonBegin(
 ): boolean {
     let result = false;
 
-    imLayoutBegin(c, type); imButton(c, flags); imAlign(c); imNoWrap(c); {
+    imui.Begin(c, type); imButton(c, flags); imui.Align(c); imui.NoWrap(c); {
         if (im.Memo(c, compact)) {
             imdom.setClass(c, "compact", compact);
         }
 
-        imLayoutBegin(c, INLINE); {
+        imui.Begin(c, INLINE); {
             if (im.isFirstishRender(c)) {
                 imdom.setClass(c, "inner");
             }
@@ -77,8 +74,8 @@ export function imButtonBegin(
             if (!(flags & BUTTON_HIDDEN)) {
                 result = imdom.hasMousePress(c);
             }
-        } // imLayoutEnd(c);
-    } // imLayoutEnd(c);
+        } // imui.End(c);
+    } // imui.End(c);
 
     return result;
 }
@@ -86,8 +83,8 @@ export function imButtonBegin(
 export function imButtonEnd(c: ImCache) {
     {
         {
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 }
 
 export function imButtonIsClicked(

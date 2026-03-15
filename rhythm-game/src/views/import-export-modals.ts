@@ -1,21 +1,6 @@
 import { imModalBegin, imModalEnd } from "src/app-components/modal.ts";
 import { imButtonIsClicked } from "src/components/button.ts";
-import {
-    BLOCK,
-    COL,
-    imBg,
-    imFlex,
-    imJustify,
-    imLayoutBegin,
-    imLayoutEnd,
-    imPadding,
-    imScrollOverflow,
-    imSize,
-    PERCENT,
-    PX,
-    ROW
-} from "src/components/core/layout.ts";
-import { cssVars } from "src/components/core/stylesheets.ts";
+import {BLOCK, COL, PERCENT, PX, ROW, imui, cssVars, } from "src/utils/im-js/im-ui";
 import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area.ts";
 import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 
@@ -47,9 +32,9 @@ export function imImportModal(c: ImCache): ImportModalState {
         s = im.Set(c, newImportModalState());
     }
 
-    imModalBegin(c, 200); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-        imLayoutBegin(c, COL); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
-            imLayoutBegin(c, COL); imFlex(c); imScrollOverflow(c); {
+    imModalBegin(c, 200); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+        imui.Begin(c, COL); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Bg(c, cssVars.bg); {
+            imui.Begin(c, COL); imui.Flex(c); imui.ScrollOverflow(c); {
                 const [_, textArea] = imTextAreaBegin(c, {
                     value: s.json,
                     placeholder: "Paste in your wave program JSON!"
@@ -63,29 +48,29 @@ export function imImportModal(c: ImCache): ImportModalState {
                         s.event = { previewUpdated: true };
                     }
                 } imTextAreaEnd(c);
-            } imLayoutEnd(c);
+            } imui.End(c);
 
             if (im.If(c) && s.importError) {
-                imLayoutBegin(c, BLOCK); imBg(c, cssVarsApp.error); {
+                imui.Begin(c, BLOCK); imui.Bg(c, cssVarsApp.error); {
                     imdom.Str(c, s.importError);
-                } imLayoutEnd(c);
+                } imui.End(c);
             } im.IfEnd(c);
 
-            imLayoutBegin(c, ROW); {
+            imui.Begin(c, ROW); {
                 if (imButtonIsClicked(c, "Import")) {
                     s.event = { import: true };
                 }
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
+            } imui.End(c);
+        } imui.End(c);
     } imModalEnd(c);
 
     return s;
 }
 
 function imHeading(c: ImCache, text: string) {
-    imLayoutBegin(c, ROW); imJustify(c); {
+    imui.Begin(c, ROW); imui.Justify(c); {
         imdom.ElBegin(c, el.B); imdom.Str(c, text); imdom.ElEnd(c, el.B);
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 
@@ -105,14 +90,14 @@ export function imExportModal<T>(c: ImCache, jsonSerializable: T, customSerializ
         s.json = customSerializer ? customSerializer(jsonSerializable) : JSON.stringify(jsonSerializable);
     }
 
-    imModalBegin(c, 200); imPadding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
-        imLayoutBegin(c, COL); imSize(c, 100, PERCENT, 100, PERCENT); imBg(c, cssVars.bg); {
+    imModalBegin(c, 200); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+        imui.Begin(c, COL); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Bg(c, cssVars.bg); {
             imHeading(c, "Paste this JSON somewhere safe!");
 
-            imLayoutBegin(c, BLOCK); imFlex(c); imScrollOverflow(c); {
+            imui.Begin(c, BLOCK); imui.Flex(c); imui.ScrollOverflow(c); {
                 imdom.Str(c, s.json);
-            } imLayoutEnd(c);
-        } imLayoutEnd(c);
+            } imui.End(c);
+        } imui.End(c);
     } imModalEnd(c);
 
     return s;

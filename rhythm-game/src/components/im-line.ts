@@ -1,10 +1,7 @@
-import { BLOCK, imBg, imLayoutBegin, imLayoutEnd, imOpacity, imSize, NA, PERCENT, PX } from "src/components/core/layout.ts";
-import { newCssBuilder } from "src/utils/cssb.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { im, ImCache, imdom } from "src/utils/im-js";
+import { BLOCK, cssVars, imui, NA, PERCENT, PX } from "src/utils/im-js/im-ui";
 
-import { cssVars } from "./core/stylesheets.ts";
-
-const cssb = newCssBuilder();
+const cssb = imui.newCssBuilder();
 const cnLine = cssb.cn("line", [
     ` { transition: opacity 0.1s linear, height 0.1s linear; }`
 ]);
@@ -30,17 +27,17 @@ export function imLine(
     const isH = type === LINE_HORIZONTAL || type === LINE_HORIZONTAL_PADDING;
     const isOpaque = type === LINE_HORIZONTAL || type === LINE_VERTICAL;
 
-    imLayoutBegin(c, BLOCK); 
-    imSize(c, !isH ? widthPx : 100, !isH ? heightUnit : PERCENT,
+    imui.Begin(c, BLOCK); 
+    imui.Size(c, !isH ? widthPx : 100, !isH ? heightUnit : PERCENT,
                isH ? widthPx : 100,  isH ? heightUnit : PERCENT); 
-    imBg(c, isOpaque ? cssVars.fg : ""); imOpacity(c, opacity); {
+    imui.Bg(c, isOpaque ? cssVars.fg : ""); imui.Opacity(c, opacity); {
         if (im.isFirstishRender(c)) {
             imdom.setClass(c, cnLine);
         }
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 export function imHLineDivider(c: ImCache) {
-    imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 10, PX); imLayoutEnd(c);
+    imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 10, PX); imui.End(c);
 }
 

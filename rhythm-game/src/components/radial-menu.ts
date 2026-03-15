@@ -1,7 +1,5 @@
-import { newCssBuilder } from "src/utils/cssb.ts";
 import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-
-import { BLOCK, DisplayType, EM, imFixed, imLayoutBegin, imLayoutEnd, imRelative, imSize, NA, PX } from "./core/layout.ts";
+import { BLOCK, DisplayType, EM, imui, NA, PX } from "src/utils/im-js/im-ui";
 
 // NOTE: This work is incomplete. We might not even need this. Circle back around to it
 
@@ -26,7 +24,7 @@ export function newRadialMenuState(): RadialMenuState {
 }
 
 
-const cssb = newCssBuilder();
+const cssb = imui.newCssBuilder();
 
 const cnRadialMenuCenter = cssb.cn("radialMenuCenter", [
     ` { border-radius: 1000px; opacity: 0.5; }`,
@@ -40,13 +38,13 @@ export function imRadialMenuBegin(c: ImCache, s: RadialMenuState) {
     s.angle = 0;
     s.itemIdx = 0;
 
-    s.root = imLayoutBegin(c, BLOCK); imSize(c, 3, EM, 3, EM); imRelative(c); {
-        imFixed(c, s.position.y, PX, 0, NA, 0, NA, s.position.x, PX);
+    s.root = imui.Begin(c, BLOCK); imui.Size(c, 3, EM, 3, EM); imui.Relative(c); {
+        imui.Fixed(c, s.position.y, PX, 0, NA, 0, NA, s.position.x, PX);
         if (im.isFirstishRender(c)) {
             imdom.setClass(c, cnRadialMenuCenter);
             imdom.setStyle(c, "transform", "translate(-50%, -50%)");
         }
-    } imLayoutEnd(c);
+    } imui.End(c);
 }
 
 export function imRadialMenuEnd(c: ImCache, s: RadialMenuState) {
@@ -55,16 +53,16 @@ export function imRadialMenuEnd(c: ImCache, s: RadialMenuState) {
 }
 
 export function imRadialMenuItemBegin(c: ImCache, s: RadialMenuState, type: DisplayType) {
-    const item = imLayoutBegin(c, type);
-    imFixed(c, s.position.y, PX, 0, NA, 0, NA, s.position.x, PX); {
+    const item = imui.Begin(c, type);
+    imui.Fixed(c, s.position.y, PX, 0, NA, 0, NA, s.position.x, PX); {
         if (im.isFirstishRender(c)) {
             imdom.setClass(c, "item");
         }
-    } // imLayoutEnd(c);
+    } // imui.End(c);
 }
 
 export function imRadialMenuItemEnd(c: ImCache, s: RadialMenuState) {
     s.itemIdx++;
     {
-    } imLayoutEnd(c);
+    } imui.End(c);
 }

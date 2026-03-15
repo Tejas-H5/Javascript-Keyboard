@@ -1,8 +1,6 @@
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-import { BLOCK, COL, imAlign, imBg, imFg, imLayoutBegin, imLayoutEnd, imPadding, imRelative, imSize, NA, PERCENT, PX, REM, STRETCH } from "src/components/core/layout.ts";
-
 import { imLink } from "src/components/im-link.ts";
-import { cssVars } from "src/components/core/stylesheets.ts";
+import { im, ImCache, imdom } from "src/utils/im-js";
+import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, REM, STRETCH } from "src/utils/im-js/im-ui";
 
 function newInfiniteLoadState() {
     return { t: 0 };
@@ -25,13 +23,13 @@ export function imInfiniteProgress(c: ImCache): number {
     // animate t -> 1. However, animation speed is inversly proportional to how far we've come.
     s.t = lerp(s.t, 1, (1 - s.t) * im.getDeltaTimeSeconds(c) * INFINTE_LOAD_SPEED)
 
-    imLayoutBegin(c, COL); imAlign(c, STRETCH); imRelative(c); imPadding(c, 0.5, REM, 0, NA, 0.5, REM, 0, NA); {
-        imLayoutBegin(c, BLOCK); imSize(c, 100 * (s.t), PERCENT, 20, PX); {
-            imLayoutBegin(c, BLOCK); imSize(c, 0, NA, 100, PERCENT); imBg(c, cssVars.fg); imFg(c, cssVars.bg); imLayoutEnd(c);
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+    imui.Begin(c, COL); imui.Align(c, STRETCH); imui.Relative(c); imui.Padding(c, 0.5, REM, 0, NA, 0.5, REM, 0, NA); {
+        imui.Begin(c, BLOCK); imui.Size(c, 100 * (s.t), PERCENT, 20, PX); {
+            imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 100, PERCENT); imui.Bg(c, cssVars.fg); imui.Fg(c, cssVars.bg); imui.End(c);
+        } imui.End(c);
+    } imui.End(c);
 
-    imLayoutBegin(c, BLOCK); {
+    imui.Begin(c, BLOCK); {
         if (im.If(c) && s.t > 0.93) {
             imdom.Str(c, "This action should have completed by now, but it hasn't. Submit this bug to ");
             imLink(c, "https://github.com/Tejas-H5/Javascript-Keyboard/issues");
@@ -40,7 +38,7 @@ export function imInfiniteProgress(c: ImCache): number {
             im.IfElse(c);
             imdom.Str(c, Math.round(s.t * 100) + "%");
         } im.IfEnd(c);
-    } imLayoutEnd(c);
+    } imui.End(c);
 
 
     return s.t;

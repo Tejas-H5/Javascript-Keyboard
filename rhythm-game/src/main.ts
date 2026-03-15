@@ -1,5 +1,4 @@
 import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface.ts";
-import { BLOCK, imLayoutBegin, imLayoutEnd } from "./components/core/layout.ts";
 import { debugFlags } from "./debug-flags.ts";
 import { cleanupChartRepo, loadAllEffectRackPresets, loadChartMetadataList, newDataRepository } from "./state/data-repository.ts";
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state.ts";
@@ -9,6 +8,7 @@ import { AsyncCb, Done, done, toAsyncCallback } from "./utils/async-utils.ts";
 import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
 
 import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app.ts";
+import { BLOCK, imui } from "src/utils/im-js/im-ui/im-ui.ts";
 
 "use strict"
 
@@ -117,23 +117,23 @@ function imMainInner(c: ImCache) {
             } else {
                 im.IfElse(c);
 
-                imLayoutBegin(c, BLOCK); {
+                imui.Begin(c, BLOCK); {
                     imdom.ElBegin(c, el.H2); imdom.Str(c, "An error occured..."); imdom.ElEnd(c, el.H2);
-                    imLayoutBegin(c, BLOCK); {
+                    imui.Begin(c, BLOCK); {
                         imdom.Str(c, err);
-                    } imLayoutEnd(c);
+                    } imui.End(c);
 
                     if (im.If(c) && err instanceof Error && err.stack) {
-                        imLayoutBegin(c, BLOCK); {
+                        imui.Begin(c, BLOCK); {
                             if (im.isFirstishRender(c)) {
                                 imdom.setStyle(c, "fontFamily", "monospace");
                                 imdom.setStyle(c, "whiteSpace", "pre");
                             }
 
                             imdom.Str(c, err.stack);
-                        } imLayoutEnd(c);
+                        } imui.End(c);
                     } im.IfEnd(c);
-                } imLayoutEnd(c);
+                } imui.End(c);
             } im.IfEnd(c);
 
             imDiagnosticInfo(c, globalContext);
@@ -144,7 +144,7 @@ function imMainInner(c: ImCache) {
     } else {
         im.IfElse(c);
 
-        imLayoutBegin(c, BLOCK); imdom.Str(c, "Loading..."); imLayoutEnd(c);
+        imui.Begin(c, BLOCK); imdom.Str(c, "Loading..."); imui.End(c);
     } im.IfEnd(c);
 }
 

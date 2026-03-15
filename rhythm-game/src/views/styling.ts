@@ -1,23 +1,8 @@
-import { ComponentsCoreTheme, cssVars, defaultCoreTheme } from "src/components/core/stylesheets";
 import { INTER_FONT_CSS } from "src/fonts/fonts";
-import { CssColor, newColorFromHex } from "src/utils/colour";
-import { newCssBuilder, setCssVars } from "src/utils/cssb";
+import { cssVars, imui } from "src/utils/im-js/im-ui";
 
-type AppTheme = ComponentsCoreTheme & {
-    playback:  CssColor;
-    bpmMarker: CssColor;
-    error:     CssColor;
-    calm:      CssColor;
-    danger:    CssColor;
-    unhit:     CssColor;
-    lowHit:    CssColor;
-    mediumHit: CssColor;
-    fullyHit:  CssColor;
 
-    codeHighlight: CssColor;
-};
-
-export const cssVarsApp: Record<keyof AppTheme, string> = {
+export const cssVarsApp = imui.getCssVarsDict({
     ...cssVars,
     playback:  "var(--playback)",
     bpmMarker: "var(--bpmMarker)",
@@ -30,9 +15,9 @@ export const cssVarsApp: Record<keyof AppTheme, string> = {
     fullyHit:  "var(--fullyHit)",
 
     codeHighlight:  "var(--codeHighlight)",
-} as const;
+});
 
-const cssb = newCssBuilder();
+const cssb = imui.newCssBuilder();
 
 cssb.s(`
 
@@ -81,20 +66,22 @@ export const cnApp = {
     h1: cssb.cn("header1", [` { font-size: 64px }`]),
 };
 
-const mainTheme = Object.freeze<AppTheme>({
-    ...defaultCoreTheme,
-    playback:  newColorFromHex("#0000FF"),
-    bpmMarker: newColorFromHex("#AA0000"),
-    error:     newColorFromHex("#FF0000"),
-    calm:      newColorFromHex("#00AAFF"),
-    danger:    newColorFromHex("#FF0000"),
-    unhit:     newColorFromHex("#FF0000"),
-    lowHit:    newColorFromHex("#FF9100"),
-    mediumHit: newColorFromHex("#FFCC00"),
-    fullyHit:  newColorFromHex("#00FF00"),
+const mainTheme = Object.freeze({
+    ...imui.defaultTheme,
+    playback:  imui.newColorFromHex("#0000FF"),
+    bpmMarker: imui.newColorFromHex("#AA0000"),
+    error:     imui.newColorFromHex("#FF0000"),
+    calm:      imui.newColorFromHex("#00AAFF"),
+    danger:    imui.newColorFromHex("#FF0000"),
+    unhit:     imui.newColorFromHex("#FF0000"),
+    lowHit:    imui.newColorFromHex("#FF9100"),
+    mediumHit: imui.newColorFromHex("#FFCC00"),
+    fullyHit:  imui.newColorFromHex("#00FF00"),
 
-    codeHighlight: newColorFromHex("#FFAAFF"),
-});
+    codeHighlight: imui.newColorFromHex("#FFAAFF"),
+} as const);
+
+type AppTheme = typeof mainTheme;
 
 let currentTheme: AppTheme = mainTheme;
 
@@ -105,7 +92,7 @@ export function getCurrentTheme(): Readonly<AppTheme> {
 // Eventually, we may have more themes!
 export function updateTheme() {
     currentTheme = mainTheme
-    setCssVars(currentTheme);
+    imui.setCurrentTheme(currentTheme);
 }
 
 updateTheme();

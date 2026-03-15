@@ -1,9 +1,7 @@
-import { newCssBuilder } from "src/utils/cssb";
-import { cssVars } from "./core/stylesheets";
+import { el, im, ImCache, imdom } from "src/utils/im-js";
+import { cssVars, imui } from "src/utils/im-js/im-ui";
 
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-
-const cssb = newCssBuilder();
+const cssb = imui.newCssBuilder();
 
 const cnInput = cssb.newClassName("im-text-input");
 cssb.s(`
@@ -50,5 +48,3 @@ export function imTextInputBegin(c: ImCache, {
 export function imTextInputEnd(c: ImCache) {
     imdom.ElEnd(c, el.INPUT);
 }
-
-

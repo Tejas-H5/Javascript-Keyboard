@@ -1,5 +1,5 @@
 import { imTextInputOneLine } from "src/app-components/text-input-one-line.ts";
-import { BLOCK, COL, imAlign, imBg, imFg, imFlex, imLayoutBegin, imLayoutEnd, imSize, INLINE, NA, PERCENT, ROW, STRETCH } from "src/components/core/layout.ts";
+import {imui, BLOCK, COL, INLINE, NA, PERCENT, ROW, STRETCH,} from "src/utils/im-js/im-ui";
 import { deleteChart } from "src/state/data-repository.ts";
 import {
     playAll,
@@ -34,14 +34,14 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
     const chartSelect = ui.chartSelect;
     const currentChart = getCurrentChart(ctx);
 
-    imLayoutBegin(c, COL); imSize(c, 25, PERCENT, 0, NA); imAlign(c, STRETCH); {
+    imui.Begin(c, COL); imui.Size(c, 25, PERCENT, 0, NA); imui.Align(c, STRETCH); {
         const allAvailableCharts = ctx.repo.charts.allChartMetadata;
         im.For(c); for (let i = 0; i < allAvailableCharts.length; i++) {
             const chart = allAvailableCharts[i];
             const isFocused = chart === chartSelect.currentChartMeta;
             const shouldRename = isFocused && s.isRenaming && chart;
 
-            imLayoutBegin(c, ROW); imBg(c, isFocused ? cssVarsApp.bg2 : ""); {
+            imui.Begin(c, ROW); imui.Bg(c, isFocused ? cssVarsApp.bg2 : ""); {
                 if (im.If(c) && shouldRename) {
                     const ev = imTextInputOneLine(c, chart.name);
                     if (ev) {
@@ -56,36 +56,36 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                 } else {
                     im.Else(c);
 
-                    imLayoutBegin(c, BLOCK); {
+                    imui.Begin(c, BLOCK); {
                         let name = chart.name || "untitled"
                         imdom.Str(c, name);
                         if (im.If(c) && isBundledChartId(chart.id)) {
-                            imLayoutBegin(c, INLINE); imFg(c, cssVarsApp.error); {
+                            imui.Begin(c, INLINE); imui.Fg(c, cssVarsApp.error); {
                                 imdom.Str(c, " (readonly)");
-                            } imLayoutEnd(c);
+                            } imui.End(c);
                         } im.IfEnd(c);
-                    } imLayoutEnd(c);
+                    } imui.End(c);
                 } im.IfEnd(c);
-            } imLayoutEnd(c);
+            } imui.End(c);
         } im.ForEnd(c);
 
-        imLayoutBegin(c, BLOCK); imFlex(c); imLayoutEnd(c);
+        imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
-        imLayoutBegin(c, BLOCK); {
+        imui.Begin(c, BLOCK); {
             if (!ctx.handled && ctx.keyPressState?.keyUpper === "H") {
                 s.helpEnabled = !s.helpEnabled;
                 ctx.handled = true;
             }
 
             if (im.If(c) && s.helpEnabled) {
-                imLayoutBegin(c, BLOCK); imdom.Str(c, "[Up/Down] -> move, preview"); imLayoutEnd(c);
-                imLayoutBegin(c, BLOCK); imdom.Str(c, "[Enter] -> start editing"); imLayoutEnd(c);
-                imLayoutBegin(c, BLOCK); imdom.Str(c, "[R] -> rename"); imLayoutEnd(c);
-                imLayoutBegin(c, BLOCK); imdom.Str(c, "[N] -> new"); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imdom.Str(c, "[Up/Down] -> move, preview"); imui.End(c);
+                imui.Begin(c, BLOCK); imdom.Str(c, "[Enter] -> start editing"); imui.End(c);
+                imui.Begin(c, BLOCK); imdom.Str(c, "[R] -> rename"); imui.End(c);
+                imui.Begin(c, BLOCK); imdom.Str(c, "[N] -> new"); imui.End(c);
                 if (im.If(c) && currentChart) {
-                    imLayoutBegin(c, BLOCK); imdom.Str(c, "[C] -> copy"); imLayoutEnd(c);
+                    imui.Begin(c, BLOCK); imdom.Str(c, "[C] -> copy"); imui.End(c);
                 } im.IfEnd(c);
-                imLayoutBegin(c, BLOCK); imdom.Str(c, "[X] -> delete"); imLayoutEnd(c);
+                imui.Begin(c, BLOCK); imdom.Str(c, "[X] -> delete"); imui.End(c);
             } else {
                 im.IfElse(c);
 
@@ -93,8 +93,8 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
             } im.IfEnd(c);
 
 
-        } imLayoutEnd(c);
-    } imLayoutEnd(c);
+        } imui.End(c);
+    } imui.End(c);
 
     // handle keys
     if (!ctx.handled && ctx.keyPressState) {

@@ -1,21 +1,8 @@
-import { IS_PROD } from "./debug-flags";
 import { imMain } from "./main";
-import { initCssbStyles } from "./utils/cssb";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { imui } from "./utils/im-js/im-ui";
 
-// export let hmr: HmrState | undefined;
+imui.init();
 
-// TODO: needs to clean up the specific styles that were patched after HMR
-// (or dont bother)
-initCssbStyles();
+// For now, removed HMR, we may want to try again later.
 
-// if (IS_PROD) {
-    imMain([]);
-// } else {
-//     hmr = startRenderingWithHMR(imMain);
-//     if (import.meta.hot) {
-//         import.meta.hot.accept((newModule) => {
-//             hmr!.accept(newModule, import.meta.hot?.invalidate);
-//         });
-//     }
-// }
+imMain([]);
