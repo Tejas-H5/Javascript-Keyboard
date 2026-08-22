@@ -16,21 +16,19 @@ type UndoBufferEntry = {
     // estimate undo buffer size easier, and the `string` datatype will enforce immutability for us.
     // NOTE: Highly inefficient - copies entire object.
     json: string;
-    // Used to 'batch' multiple actions. 
-    // A non-zero type will replace the last undo entry instead of appending a new one
-    actionType?: number;
 };
 
 
 export type JSONUndoBuffer<T> = {
     fileVersionsJSON: UndoBufferEntry[];
     fileVersionsJSONSizeMb: number;
-    maxVersions: number;
+    capacity: number;
 
     position: number;
 
     // NOTE: still some race conditions in here, but it's all good. xD
     timer: number;
+    pendingWrite: T | undefined;
 
     serializeFn: (val: T) => string;
     deserializeFn: (str: string) => T;
@@ -46,6 +44,7 @@ function jsonDeserialize<T>(val: string): T {
 }
 
 export function newJSONUndoBuffer<T>(
+    firstVersion: T,
     maxVersions: number,
     serializeFn: (val: T) => string = jsonSerialize,
     deserializeFn: (str: string) => T = jsonDeserialize,
@@ -54,9 +53,10 @@ export function newJSONUndoBuffer<T>(
     assert(maxVersions > 1);
 
     return {
-        fileVersionsJSON: [],
+        fileVersionsJSON: [{ json: serializeFn(firstVersion) }],
         fileVersionsJSONSizeMb: 0,
-        maxVersions: maxVersions,
+        capacity: maxVersions,
+        pendingWrite: undefined,
         position: 0,
         timer: -1,
         serializeFn,
@@ -65,63 +65,58 @@ export function newJSONUndoBuffer<T>(
 }
 
 // TODO: maybe use javascript timeout ?? xD
-export function stepUndoBufferTimer<T>(undoBuffer: JSONUndoBuffer<T>, dt: number, file: T) {
+export function stepUndoBufferTimer<T>(undoBuffer: JSONUndoBuffer<T>, dt: number) {
     if (undoBuffer.timer > 0) {
         undoBuffer.timer -= dt;
         if (undoBuffer.timer <= 0) {
-            writeToUndoBuffer(undoBuffer, file);
+            writePendingUndoToUndoBuffer(undoBuffer);
         }
     }
 }
 
 export function writeToUndoBufferDebounced<T>(
     undoBuffer: JSONUndoBuffer<T>,
-    // Might need later if we want to use setTimeout instead of the current polling approach
-    _file: T,
+    file: T,
     debounceSeconds: number
 ) {
     undoBuffer.timer = debounceSeconds;
+    undoBuffer.pendingWrite = file;
 }
 
-export function writeToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T, actionType?: number) {
+export function writeToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T) {
+    writePendingUndoToUndoBuffer(undoBuffer);
+
     undoBuffer.timer = -1;
+    undoBuffer.pendingWrite = undefined;
 
     const currentProgramJSON = undoBuffer.serializeFn(file)
-    const entry: UndoBufferEntry = {
-        json: currentProgramJSON,
-        actionType,
-    };
+    const entry: UndoBufferEntry = { json: currentProgramJSON };
 
+    let lastFile;
     if (undoBuffer.fileVersionsJSON.length > 0) {
-        const lastProgram = undoBuffer.fileVersionsJSON[undoBuffer.fileVersionsJSON.length - 1];
-        if (lastProgram.json === currentProgramJSON) {
-            // Don't write anything if its literally the same program
-            return;
-        }
-
-        if (lastProgram.actionType !== undefined && actionType !== undefined) {
-            if (lastProgram.actionType === actionType) {
-                // Overwrite last entry instead of appending new entry
-                undoBuffer.fileVersionsJSON[undoBuffer.fileVersionsJSON.length - 1] = entry;
-                return;
-            }
-        }
+        lastFile = undoBuffer.fileVersionsJSON[undoBuffer.fileVersionsJSON.length - 1];
     }
 
-    if (undoBuffer.position < undoBuffer.maxVersions - 1) {
-        undoBuffer.position++;
-        if (undoBuffer.position > undoBuffer.fileVersionsJSON.length) {
-            undoBuffer.position = undoBuffer.fileVersionsJSON.length;
-        }
+    if (lastFile && lastFile.json === currentProgramJSON) {
+        // Don't write anything if its literally the same file
+        return;
+    }
 
-        if (undoBuffer.position + 1 !== undoBuffer.fileVersionsJSON.length) {
-            undoBuffer.fileVersionsJSON.length = undoBuffer.position + 1;
-        }
-    } else {
+    assert(undoBuffer.position < undoBuffer.fileVersionsJSON.length)
+
+    if (undoBuffer.position + 1 < undoBuffer.fileVersionsJSON.length) {
+        // Truncate undo buffer to where we are now
+        undoBuffer.fileVersionsJSON.length = undoBuffer.position + 1;
+    }
+
+    if (undoBuffer.fileVersionsJSON.length === undoBuffer.capacity) {
+        // TODO: this is highly inefficient, use a ringbuffer
         undoBuffer.fileVersionsJSON.shift();
+        undoBuffer.fileVersionsJSON.push(entry);
+    } else {
+        undoBuffer.fileVersionsJSON.push(entry);
+        undoBuffer.position++;
     }
-
-    undoBuffer.fileVersionsJSON[undoBuffer.position] = entry;
 
     // track size for the lolz
     let sizeBytes = 0;
@@ -131,29 +126,33 @@ export function writeToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T, act
     undoBuffer.fileVersionsJSONSizeMb = bytesToMegabytes(sizeBytes);
 }
 
-function writePendingUndoToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>, file: T) {
-    if (undoBuffer.timer > 0) {
-        writeToUndoBuffer(undoBuffer, file);
+function writePendingUndoToUndoBuffer<T>(undoBuffer: JSONUndoBuffer<T>) {
+    if (undoBuffer.pendingWrite) {
+        // Breaks infinite recursion, and is idempotent in the face of exceptions
+        const fileToWrite = undoBuffer.pendingWrite;
+        undoBuffer.pendingWrite = undefined;
+
+        undoBuffer.timer = -1;
+        writeToUndoBuffer(undoBuffer, fileToWrite);
     }
 }
 
 export function canUndo<T>(undoBuffer: JSONUndoBuffer<T>): boolean {
-    return undoBuffer.position > 0;
-}
-
-export function undo<T>(undoBuffer: JSONUndoBuffer<T>, file: T): T {
-    writePendingUndoToUndoBuffer(undoBuffer, file);
-
-    if (canUndo(undoBuffer)) {
-        undoBuffer.position--;
+    if (undoBuffer.pendingWrite) {
+        return true;
     }
 
-    return getCurrentFile(undoBuffer);
+    return undoBuffer.position >= 1;
 }
 
-export function getCurrentFile<T>(undoBuffer: JSONUndoBuffer<T>): T {
-    assert(!undoBufferIsEmpty(undoBuffer));
-    return undoBuffer.deserializeFn(undoBuffer.fileVersionsJSON[undoBuffer.position].json);
+export function undo<T>(undoBuffer: JSONUndoBuffer<T>): T {
+    writePendingUndoToUndoBuffer(undoBuffer);
+
+    assert(canUndo(undoBuffer));
+
+    undoBuffer.position--;
+    const currentEntry = undoBuffer.fileVersionsJSON[undoBuffer.position];
+    return undoBuffer.deserializeFn(currentEntry.json);
 }
 
 export function undoBufferIsEmpty<T>(undoBuffer: JSONUndoBuffer<T>): boolean {
@@ -169,6 +168,7 @@ export function redo<T>(undoBuffer: JSONUndoBuffer<T>) {
         undoBuffer.position++;
     }
 
-    return getCurrentFile(undoBuffer);
+    const currentEntry = undoBuffer.fileVersionsJSON[undoBuffer.position];
+    return undoBuffer.deserializeFn(currentEntry.json);
 }
 
