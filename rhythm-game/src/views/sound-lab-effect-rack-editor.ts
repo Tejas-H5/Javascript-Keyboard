@@ -291,6 +291,7 @@ export function newEffectRackEditorState(effectRackPreset: EffectRackPreset): Ef
     const state: EffectRackEditorState = {
         effectRack: presetToEffectRack(effectRackPreset),
         undoBuffer: newJSONUndoBuffer<EffectRack>(
+            newEffectRack(),
             1000,
             serializeEffectRack,
             deserializeEffectRack,
@@ -360,7 +361,7 @@ function onEdited(editor: EffectRackEditorState, wasUndoTraversed = false, editU
 
     if (editUndoActionId !== undefined) {
         // We actually want to write to the undo buffer immediately
-        writeToUndoBuffer(editor.undoBuffer, editor.effectRack, editUndoActionId);
+        writeToUndoBuffer(editor.undoBuffer, editor.effectRack);
         editUndoActionId = undefined;
     } else {
         if (!wasUndoTraversed) {
@@ -513,7 +514,7 @@ export function imEffectRackEditor(
     editor.highlightedValueRefNext.regIdx = undefined;
     editor.highlightedValueRefNext.regOutputId = undefined;
 
-    stepUndoBufferTimer(editor.undoBuffer, ctx.deltaTime, editor.effectRack);
+    stepUndoBufferTimer(editor.undoBuffer, ctx.deltaTime);
 
     // Recompute oscilloscope as neeed, just once instead of per oscilloscope.
     // Wanted to have one oscilloscpe per UI but prob not worth it I reckon.
@@ -1806,7 +1807,7 @@ function imSpacingSymbol(c: ImCache, symbol: string, flex = false) {
 function editorUndo(editor: EffectRackEditorState): boolean {
     if (!canUndo(editor.undoBuffer)) return false;
 
-    editor.effectRack = undo(editor.undoBuffer, editor.effectRack);
+    editor.effectRack = undo(editor.undoBuffer);
     onEdited(editor, true);
     return true;
 }

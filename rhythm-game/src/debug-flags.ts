@@ -70,5 +70,15 @@ export const debugFlags: DebugFlags = {
     testUnitTests: OFF,
 };
 
+export type FeatureFlags = {
+    layout: number;
+}
+
+export const featureFlags: FeatureFlags = {
+    layout: 2,
+};
+
 // You're welcome
 (window as any).debugFlags = debugFlags;
+(window as any).featureFlags = featureFlags;
+

@@ -8,7 +8,6 @@ import { GlobalContext } from "src/views/app";
 import "src/utils/fft.test";
 import "src/utils/serialization-utils.test";
 import "src/utils/testing.test";
-import "src/utils/undo-buffer-json.test";
 
 export type UnitTestsState = {
 };

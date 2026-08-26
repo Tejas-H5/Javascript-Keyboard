@@ -2,6 +2,8 @@ import { getNoteText } from "src/utils/music-theory-utils.ts";
 import { KEYBOARD_LAYOUT } from "./keyboard-config";
 import { imdom, NormalizedKey } from "src/utils/im-js";
 import { imui } from "src/utils/im-js/im-ui";
+import { assert } from "src/utils/assert";
+import { featureFlags } from "src/debug-flags";
 
 export type KeyboardState = {
     keys: InstrumentKey[][];
@@ -16,8 +18,6 @@ export type InstrumentKey = {
     text: string;
     noteText: string;
     noteId: number;
-    isLeftmost: boolean;
-    isRightmost: boolean;
     cssColours: {
         light: string;
         normal: string;
@@ -75,8 +75,6 @@ function newKey(k: string): InstrumentKey {
         index: -1,
         noteId: 0,
         remainingDuration: 0,
-        isLeftmost: false,
-        isRightmost: false,
         cssColours: {
             light: "",
             normal: "",
@@ -97,14 +95,20 @@ export function newKeyboardState(): KeyboardState {
 
     // initialize keys
     {
+        keys.push(...pianoKeys);
+
         // piano rows
-        {
-            keys.push(...pianoKeys);
+        if (featureFlags.layout === 0) {
+            // The first approach is to make every row it's own octave.
+            // This is how a normal piano works, in some sense.
+            // The pitch of a key does not naturally ascend from the left
+            // of the keyboard to the right - they can wrap around the keyboard.
+            // It is very logical, but that is probably why I've found it VERY hard to learn. 
 
             let noteIndexOffset = 0;
-            for (let i = 0; i < pianoKeys.length; i++) {
-                for (let j = 0; j < pianoKeys[i].length; j++) {
-                    const key = pianoKeys[i][j];
+            for (let row = 0; row < pianoKeys.length; row++) {
+                for (let idx = 0; idx < pianoKeys[row].length; idx++) {
+                    const key = pianoKeys[row][idx];
 
                     flatKeys.push(key);
 
@@ -114,9 +118,69 @@ export function newKeyboardState(): KeyboardState {
                     key.noteText = getNoteText(noteIndex);
                     key.noteId = noteIndex;
                     maxNoteIdx = noteIndex;
+                }
+            }
+        } else if (featureFlags.layout === 1) {
+            // Another approach is to make sure that notes ascend from left to right, more or less.
 
-                    key.isLeftmost = j === 0;
-                    key.isRightmost = j === pianoKeys[i].length -1;
+            let totalNumCols = 0;
+            for (const row of pianoKeys) {
+                totalNumCols = Math.max(totalNumCols, row.length)
+            }
+            assert(totalNumCols > 0);
+
+            let noteIndexOffset = 0;
+            for (let colIdx = 0; colIdx < totalNumCols; colIdx++) {
+                for (let rowIdx = 0; rowIdx < pianoKeys.length; rowIdx++) {
+                    const row = pianoKeys[rowIdx];
+                    if (!row) continue;
+
+                    const key = row[colIdx];
+                    if (!key) break;
+
+                    flatKeys.push(key);
+
+                    const noteIndex = BASE_NOTE + noteIndexOffset;
+                    noteIndexOffset++;
+
+                    key.noteText = getNoteText(noteIndex);
+                    key.noteId = noteIndex;
+                    maxNoteIdx = noteIndex;
+                }
+            }
+        } else {
+            // THe transiton from the number row to the lowest letter row
+            // can still be a bit brutal. maybe we copy layout 1 but
+            // with 1q and az ?
+
+            let totalNumCols = 0;
+            for (const row of pianoKeys) {
+                totalNumCols = Math.max(totalNumCols, row.length)
+            }
+            assert(totalNumCols > 0);
+
+            assert(pianoKeys.length === 4)
+
+            let noteIndexOffset = 0;
+            for (let rowOffset = 0; rowOffset <= 2; rowOffset += 2) {
+                for (let colIdx = 0; colIdx < totalNumCols; colIdx++) {
+                    for (let rowIdxOff = 0; rowIdxOff < 2; rowIdxOff++) {
+                        const rowIdx = rowOffset + rowIdxOff;
+                        const row = pianoKeys[rowIdx];
+                        if (!row) continue;
+
+                        const key = row[colIdx];
+                        if (!key) break;
+
+                        flatKeys.push(key);
+
+                        const noteIndex = BASE_NOTE + noteIndexOffset;
+                        noteIndexOffset++;
+
+                        key.noteText = getNoteText(noteIndex);
+                        key.noteId = noteIndex;
+                        maxNoteIdx = noteIndex;
+                    }
                 }
             }
         }

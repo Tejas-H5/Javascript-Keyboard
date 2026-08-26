@@ -433,10 +433,16 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
         imui.Begin(c, ROW); imui.Justify(c); 
         imui.Absolute(c, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT); {
+            let totalNumCols = 0;
+            for (const row of ctx.keyboard.keys) {
+                totalNumCols = Math.max(totalNumCols, row.length)
+            }
+
             const { size: playfieldSize } = imdom.TrackSize(c);
             const dividerWidth = 2;
             const playfieldWidth = playfieldSize.width - (ctx.keyboard.keys.length * dividerWidth);
-            const letterWidth = playfieldWidth / ctx.keyboard.flatKeys.length;
+            // const letterWidth = playfieldWidth / ctx.keyboard.flatKeys.length;
+            const letterWidth = playfieldWidth / (totalNumCols * 4);
 
             imui.Begin(c, COL); imui.Absolute(c, 0, PX, 0, PX, 0, NA, 0, PX); imui.ZIndex(c, 10); imui.Bg(c, `rgba(255, 255, 255, 0.4)`); {
                 imui.Begin(c, ROW); imui.FontSizeCss(c, cssVars.mediumText); imui.NoWrap(c); {
@@ -474,7 +480,8 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
 
                     imui.Begin(c, ROW); imui.Gap(c, 10, PX); imui.Flex(c); imui.Justify(c); imui.Fg(c, colours.textColor.toCssString()); {
                         imui.Begin(c, COL); imui.Align(c, START); imui.Flex(c); {
-                            imui.Begin(c, ROW); imui.FontSize(c, 1, EM); {
+                            // TODO: font size should just fit horizontally
+                            imui.Begin(c, ROW); imui.FontSize(c, 0.5, EM); {
                                 im3DLookingText(c, chart.name);
 
                                 if (im.If(c) && debugFlags.testGameplaySpeed !== 1) {
@@ -517,158 +524,56 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 } imui.End(c);
             } imui.End(c);
 
-            imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
-                gameplayState.avoidPenalty = true;
+            gameplayState.avoidPenalty = true;
+            
+            // imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
+            //     im.For(c); for (const instrumentKey of keyboard.flatKeys) {
+            //         const isLeftmost = 
+            //         imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isLeftmost);
+            //     } im.ForEnd(c);
+            // } imui.End(c);
+            //
 
-                im.For(c); for (let rowIdx = 0; rowIdx < keyboard.keys.length; rowIdx++) {
-                    const row = keyboard.keys[rowIdx];
-                    im.For(c); for (let keyRowIdx = 0; keyRowIdx < row.length; keyRowIdx++) {
-                        const instrumentKey = row[keyRowIdx];
+            imui.Begin(c, COL); {
+                imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
+                    if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
 
-                        const thread = gameplayState.keysMap.get(instrumentKey)?._items;
-                        assert(!!thread);
+                    im.For(c); 
+                    for (let j = 0; j < totalNumCols; j++) {
+                        for (let i = 0; i < 2; i++) {
+                            const row = ctx.keyboard.keys[i];
+                            if (j >= row.length) break;
 
-                        const sGameplay = gameplayState;
-
-                        const keyIdx = instrumentKey.index;
-                        const keyState = gameplayState.keyState[keyIdx];
-                        assert(!!keyState);
-
-                        const keySignal = isKeyPressed(instrumentKey.index);
-                        let keyGain = getCurrentOscillatorGainForOwner(instrumentKey.index, 0);
-
-                        if (!gameplayState.pauseMenu.isPaused) {
-                            // Handle input
-
-                            keyState.keyPressedThisFrame = false;
-                            keyState.keyReleasedThisFrame = false;
-                            if (keySignal && !keyState.keyHeld) {
-                                keyState.keyPressedThisFrame = true;
-                                keyState.keyHeld = true;
-                            } else if (!keySignal && keyState.keyHeld) {
-                                keyState.keyHeld = false;
-                                keyState.keyReleasedAtLeastOnce = true;
-                                keyState.keyReleasedThisFrame = true;
-                            }
-
-                            if (keyState.keyHeld) {
-                                // Enable the penalty mechanic, only after we press any key at least once.
-                                gameplayState.penaltyEnabled = true;
-                            }
+                            const instrumentKey = row[j];
+                            const isTopRowKey = i % 2 === 0;
+                            imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey);
                         }
+                    }
+                    im.ForEnd(c);
+                } imui.End(c);
+                imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
+                    if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
 
+                    im.For(c); 
+                    for (let j = 0; j < totalNumCols; j++) {
+                        for (let i = 2; i < 4; i++) {
+                            const row = ctx.keyboard.keys[i];
+                            if (j >= row.length) break;
 
-                        // Vertical note
-                        {
-                            const s = im.State(c, newVerticalNoteThreadState);
-
-
-                            const theme = getCurrentTheme();
-                            imui.copyColor(theme.bg, s.currentBgColor);
-
-                            if (im.If(c) && instrumentKey.isLeftmost) {
-                                imui.Begin(c, BLOCK); imui.Size(c, 2, PX, 0, NA); imui.Bg(c, cssVarsApp.fg); imui.End(c);
-                            } im.IfEnd(c);
-
-                            imui.Begin(c, COL); imui.Align(c, STRETCH); imui.Justify(c, START); {
-                                imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 2, PX); imui.Bg(c, cssVarsApp.fg); {
-                                } imui.End(c);
-
-                                imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 0, NA); imui.Relative(c); imui.Flex(c); {
-                                    im.For(c); for (let i = 0; i < thread.length; i++) {
-                                        const item = thread[i];
-                                        const s = im.State(c, newBarState);
-                                        const currentBeatInItem = isBeatWithinInclusve(item, gameplayState.currentBeatAnimated);
-
-                                        if (item.type !== TIMELINE_ITEM_NOTE) continue;
-
-                                        updateCurrentItemScore(gameplayState, keyState, item);
-
-                                        let heightPercent = 100 * item.length / GAMEPLAY_BEATS_VIEWPORT;
-                                        let bottomPercent = 100 * inverseLerp(item.start, gameplayState.currentBeatAnimated, sGameplay.endAnimated);
-                                        if (bottomPercent <= 0) {
-                                            // the bar is below the thing. 
-                                            heightPercent += bottomPercent;
-                                            if (heightPercent < 0) heightPercent = 0;
-                                            bottomPercent = 0;
-                                        }
-
-                                        const dt = gameplayState.dt;
-                                        if (currentBeatInItem && !keyState.keyHeld) {
-                                            // give user an indication that they should care about the fact that this bar has reached the bottom.
-                                            // hopefully they'll see the keyboard letter just below it, and try pressing it.
-                                            s.animation += dt;
-                                            if (s.animation > 1) {
-                                                s.animation = 0;
-                                            }
-                                        } else {
-                                            s.animation = 0;
-                                        }
-
-
-                                        let color;
-                                        if (s.animation > 0.5) {
-                                            color = theme.unhit.toCssString();
-                                        } else {
-                                            color = cssVarsApp.fg;
-                                        }
-
-                                        imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imui.Size(c, 0, NA, heightPercent, PERCENT); {
-                                            if (im.isFirstishRender(c)) {
-                                                imdom.setStyle(c, "color", "transparent");
-                                            }
-
-                                            imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Relative(c); imui.Bg(c, cssVarsApp.fg); {
-                                                imui.Begin(c, BLOCK); imui.Absolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imui.Bg(c, color); {
-                                                } imui.End(c);
-                                            } imui.End(c);
-                                        } imui.End(c);
-                                    } im.ForEnd(c);
-
-                                    im.For(c); for (const measure of gameplayState.measures) {
-                                        let bottomPercent = 100 * inverseLerp2(gameplayState.currentBeatAnimated, measure.start, gameplayState.endAnimated);
-                                        if (bottomPercent > 100) continue;
-                                        if (bottomPercent < -5) continue;
-
-                                        imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imui.Size(c, 0, NA, 2, PX);
-                                        imui.Bg(c, cssVars.mg); {
-                                        } imui.End(c);
-                                    } im.ForEnd(c);
-                                } imui.End(c);
-
-                                imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 2, PX); {
-                                    if (im.isFirstishRender(c)) {
-                                        imdom.setStyle(c, "backgroundColor", cssVarsApp.fg);
-                                    }
-                                } imui.End(c);
-
-
-                                let letterColor;
-                                if (keyState.keyHeld && keyState.lastPressedItem && !keyState.keyReleasedAtLeastOnce) {
-                                    const itemBestPossibleScore = getBestPossibleScoreForNote(keyState.lastPressedItem);
-                                    const progress = (keyState.lastItemScore / itemBestPossibleScore);
-                                    if (progress < 0.4)       letterColor = theme.lowHit;
-                                    else if (progress < 0.95) letterColor = theme.mediumHit;
-                                    else                      letterColor = theme.fullyHit;
-                                } else {
-                                    if (keyState.keyHeld) {
-                                        letterColor = theme.unhit;
-                                    } else {
-                                        letterColor = null;
-                                    }
-                                }
-
-                                imLetter(c, gameplayState, instrumentKey, thread, keyGain, letterColor, letterWidth);
-                            } imui.End(c);
+                            const instrumentKey = row[j];
+                            const isTopRowKey = i % 2 === 0;
+                            imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey);
                         }
-                    } im.ForEnd(c);
-                    imLine(c, LINE_VERTICAL, dividerWidth);
-                } im.ForEnd(c);
-
-                if (gameplayState.avoidPenalty) {
-                    gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
-                }
+                    }
+                    im.ForEnd(c);
+                } imui.End(c);
             } imui.End(c);
+
+            // Can be set by multiple imGameplayKeyLane's
+            if (gameplayState.avoidPenalty) {
+                gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
+            }
+
             imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 10, PX); imui.Relative(c); {
                 imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, (100 - progressPercent), PERCENT, 0, PX, 0, PX); imui.Bg(c, cssVars.fg); {
                 } imui.End(c);
@@ -761,6 +666,7 @@ function imLetter(
     signal: number,
     letterColor: CssColor | null,
     width: number,
+    isTopRowKey: boolean,
 ) {
     let s; s = im.GetInline(c, imLetter) ?? im.Set(c, {
         textColor: imui.newColor(0, 0, 0, 1),
@@ -803,6 +709,13 @@ function imLetter(
         imui.Bg(c, s.bgColor.toString());
         imui.Fg(c, s.textColor.toString());
 
+        const raisedHeight = 20;
+        const raisedUnit = PX;
+
+        if (im.If(c) && !isTopRowKey) {
+            imui.Begin(c, BLOCK); imui.Size(c, 0, NA, raisedHeight, raisedUnit); imui.End(c);
+        } im.IfEnd(c);
+
         imui.Begin(c, BLOCK); {
             if (im.isFirstishRender(c)) {
                 imdom.setStyle(c, "fontSize", "2em");
@@ -813,6 +726,10 @@ function imLetter(
                 imdom.Str(c, instrumentKey ? instrumentKey.text : "?");
             } imdom.ElEnd(c, el.B);
         } imui.End(c);
+
+        if (im.If(c) && isTopRowKey) {
+            imui.Begin(c, BLOCK); imui.Size(c, 0, NA, raisedHeight, raisedUnit); imui.End(c);
+        } im.IfEnd(c);
     } imui.End(c);
 }
 
@@ -1032,4 +949,142 @@ function updatePracticeMode(
 
         practiceMode.maxScoreThisMeasure = getBestPossibleScore(chart, thisMeasureBeat, nextMeasureBeat);
     }
+}
+
+function imGameplayKeyLane(
+    c: ImCache,
+    gameplayState: GameplayState,
+    instrumentKey: InstrumentKey,
+    laneWidth: number,
+    isTopRowKey: boolean,
+) {
+    const thread = gameplayState.keysMap.get(instrumentKey)?._items;
+    assert(!!thread);
+
+    const sGameplay = gameplayState;
+
+    const keyIdx = instrumentKey.index;
+    const keyState = gameplayState.keyState[keyIdx];
+    assert(!!keyState);
+
+    const keySignal = isKeyPressed(instrumentKey.index);
+    let keyGain = getCurrentOscillatorGainForOwner(instrumentKey.index, 0);
+
+    if (!gameplayState.pauseMenu.isPaused) {
+        // Handle input for this lane
+
+        keyState.keyPressedThisFrame = false;
+        keyState.keyReleasedThisFrame = false;
+        if (keySignal && !keyState.keyHeld) {
+            keyState.keyPressedThisFrame = true;
+            keyState.keyHeld = true;
+        } else if (!keySignal && keyState.keyHeld) {
+            keyState.keyHeld = false;
+            keyState.keyReleasedAtLeastOnce = true;
+            keyState.keyReleasedThisFrame = true;
+        }
+
+        if (keyState.keyHeld) {
+            // Enable the penalty mechanic, only after we press any key at least once.
+            gameplayState.penaltyEnabled = true;
+        }
+    }
+
+
+    // Vertical note
+    const s = im.State(c, newVerticalNoteThreadState);
+
+    const theme = getCurrentTheme();
+    imui.copyColor(theme.bg, s.currentBgColor);
+
+    imui.Begin(c, COL); imui.Align(c, STRETCH); imui.Justify(c, START); {
+        imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 2, PX); imui.Bg(c, cssVarsApp.fg); {
+        } imui.End(c);
+
+        imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 0, NA); imui.Relative(c); imui.Flex(c); {
+            im.For(c); for (let i = 0; i < thread.length; i++) {
+                const item = thread[i];
+                const s = im.State(c, newBarState);
+                const currentBeatInItem = isBeatWithinInclusve(item, gameplayState.currentBeatAnimated);
+
+                if (item.type !== TIMELINE_ITEM_NOTE) continue;
+
+                updateCurrentItemScore(gameplayState, keyState, item);
+
+                let heightPercent = 100 * item.length / GAMEPLAY_BEATS_VIEWPORT;
+                let bottomPercent = 100 * inverseLerp(item.start, gameplayState.currentBeatAnimated, sGameplay.endAnimated);
+                if (bottomPercent <= 0) {
+                    // the bar is below the thing. 
+                    heightPercent += bottomPercent;
+                    if (heightPercent < 0) heightPercent = 0;
+                    bottomPercent = 0;
+                }
+
+                const dt = gameplayState.dt;
+                if (currentBeatInItem && !keyState.keyHeld) {
+                    // give user an indication that they should care about the fact that this bar has reached the bottom.
+                    // hopefully they'll see the keyboard letter just below it, and try pressing it.
+                    s.animation += dt;
+                    if (s.animation > 1) {
+                        s.animation = 0;
+                    }
+                } else {
+                    s.animation = 0;
+                }
+
+
+                let color;
+                if (s.animation > 0.5) {
+                    color = theme.unhit.toCssString();
+                } else {
+                    color = cssVarsApp.fg;
+                }
+
+                imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imui.Size(c, 0, NA, heightPercent, PERCENT); {
+                    if (im.isFirstishRender(c)) {
+                        imdom.setStyle(c, "color", "transparent");
+                    }
+
+                    imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Relative(c); imui.Bg(c, cssVarsApp.fg); {
+                        imui.Begin(c, BLOCK); imui.Absolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imui.Bg(c, color); {
+                        } imui.End(c);
+                    } imui.End(c);
+                } imui.End(c);
+            } im.ForEnd(c);
+
+            im.For(c); for (const measure of gameplayState.measures) {
+                let bottomPercent = 100 * inverseLerp2(gameplayState.currentBeatAnimated, measure.start, gameplayState.endAnimated);
+                if (bottomPercent > 100) continue;
+                if (bottomPercent < -5) continue;
+
+                imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imui.Size(c, 0, NA, 2, PX);
+                imui.Bg(c, cssVars.mg); {
+                } imui.End(c);
+            } im.ForEnd(c);
+        } imui.End(c);
+
+        imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 2, PX); {
+            if (im.isFirstishRender(c)) {
+                imdom.setStyle(c, "backgroundColor", cssVarsApp.fg);
+            }
+        } imui.End(c);
+
+
+        let letterColor;
+        if (keyState.keyHeld && keyState.lastPressedItem && !keyState.keyReleasedAtLeastOnce) {
+            const itemBestPossibleScore = getBestPossibleScoreForNote(keyState.lastPressedItem);
+            const progress = (keyState.lastItemScore / itemBestPossibleScore);
+            if (progress < 0.4) letterColor = theme.lowHit;
+            else if (progress < 0.95) letterColor = theme.mediumHit;
+            else letterColor = theme.fullyHit;
+        } else {
+            if (keyState.keyHeld) {
+                letterColor = theme.unhit;
+            } else {
+                letterColor = null;
+            }
+        }
+
+        imLetter(c, gameplayState, instrumentKey, thread, keyGain, letterColor, laneWidth, isTopRowKey);
+    } imui.End(c);
 }

@@ -37,7 +37,8 @@ export const SEQUENCER_ROW_COLS = 8;
 // NOTE: probably schedulePlayback should return a PlayingId type.
 let playingId = 0;
 export function getNextPlayingId(): number {
-    let id = playingId++;
+    playingId += 1;
+    let id = playingId;
     if (id > 10000000) {
         id = 1;
     }
