@@ -42,7 +42,7 @@ export type DebugFlags = {
 };
 
 export const debugFlags: DebugFlags = {
-    testEditView: OFF,
+    testEditView: ON,
     testLoadSave: OFF,
 
     testEditViewExport:  OFF,
@@ -51,7 +51,7 @@ export const debugFlags: DebugFlags = {
     debuUndoBuffer:      OFF,
     testChartSelectView: OFF,
 
-    testGameplay:      ON,
+    testGameplay:      OFF,
     testGameplaySpeed: getSpeed(1),
     testPracticeMode:  OFF,
     testResultsView:   OFF,
@@ -72,11 +72,9 @@ export const debugFlags: DebugFlags = {
 };
 
 export type FeatureFlags = {
-    layout: number;
 }
 
 export const featureFlags: FeatureFlags = {
-    layout: 2,
 };
 
 // You're welcome

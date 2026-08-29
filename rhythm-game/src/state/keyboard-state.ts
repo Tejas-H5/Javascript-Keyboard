@@ -3,7 +3,6 @@ import { KEYBOARD_LAYOUT } from "./keyboard-config";
 import { imdom, NormalizedKey } from "src/utils/im-js";
 import { imui } from "src/utils/im-js/im-ui";
 import { assert } from "src/utils/assert";
-import { featureFlags } from "src/debug-flags";
 
 export type KeyboardState = {
     keys: InstrumentKey[][];
@@ -97,61 +96,19 @@ export function newKeyboardState(): KeyboardState {
     {
         keys.push(...pianoKeys);
 
-        // piano rows
-        if (featureFlags.layout === 0) {
-            // The first approach is to make every row it's own octave.
-            // This is how a normal piano works, in some sense.
-            // The pitch of a key does not naturally ascend from the left
-            // of the keyboard to the right - they can wrap around the keyboard.
-            // It is very logical, but that is probably why I've found it VERY hard to learn. 
-
-            let noteIndexOffset = 0;
-            for (let row = 0; row < pianoKeys.length; row++) {
-                for (let idx = 0; idx < pianoKeys[row].length; idx++) {
-                    const key = pianoKeys[row][idx];
-
-                    flatKeys.push(key);
-
-                    const noteIndex = BASE_NOTE + noteIndexOffset;
-                    noteIndexOffset++;
-
-                    key.noteText = getNoteText(noteIndex);
-                    key.noteId = noteIndex;
-                    maxNoteIdx = noteIndex;
-                }
-            }
-        } else if (featureFlags.layout === 1) {
-            // Another approach is to make sure that notes ascend from left to right, more or less.
-
-            let totalNumCols = 0;
-            for (const row of pianoKeys) {
-                totalNumCols = Math.max(totalNumCols, row.length)
-            }
-            assert(totalNumCols > 0);
-
-            let noteIndexOffset = 0;
-            for (let colIdx = 0; colIdx < totalNumCols; colIdx++) {
-                for (let rowIdx = 0; rowIdx < pianoKeys.length; rowIdx++) {
-                    const row = pianoKeys[rowIdx];
-                    if (!row) continue;
-
-                    const key = row[colIdx];
-                    if (!key) break;
-
-                    flatKeys.push(key);
-
-                    const noteIndex = BASE_NOTE + noteIndexOffset;
-                    noteIndexOffset++;
-
-                    key.noteText = getNoteText(noteIndex);
-                    key.noteId = noteIndex;
-                    maxNoteIdx = noteIndex;
-                }
-            }
-        } else {
-            // THe transiton from the number row to the lowest letter row
-            // can still be a bit brutal. maybe we copy layout 1 but
-            // with 1q and az ?
+        {
+            // This layout was the result of some experimentation.
+            // If we sequentially allocate all our notes by iterating every column per row,
+            // there are 4 points where you need to remember to 'transition' from one side
+            // of the keyboard to the other despite the notes increasing. 
+            // It's far more intuitive to just have the left side of the keyboard
+            // be low notes and the right side of the keyboard be high notes. 
+            // We can achieve this by allocating notes by iterating every row per column instead!
+            // However, we arrive at another problem. Transitioning from the top row to the 
+            // bottom row, while more spatially intuitive, is still a pain for my hand to do. 
+            // A tradeoff is to sequentually allocate every row per column, once for
+            // the top tow rows and again for the bottom two rows. 
+            // I've found this to be the best layout for my keys so far.
 
             let totalNumCols = 0;
             for (const row of pianoKeys) {
