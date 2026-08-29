@@ -345,20 +345,12 @@ export function itemLength(item: TimelineItem): number {
 }
 
 
-export function isNoteInFilter(notesFilter: Set<number> | null, item: TimelineItem) {
-    if (notesFilter === null) return true;
-    if (notesFilter.size === 0) return true;
-    if (item.type !== TIMELINE_ITEM_NOTE) return true;
-    return notesFilter.has(item.noteId);
-}
-
-
-export function sequencerChartInsertItems(chart: SequencerChart, itemsToInsert: TimelineItem[], notesFilter: Set<number> | null) {
+export function sequencerChartInsertItems(chart: SequencerChart, itemsToInsert: TimelineItem[]) {
     if (isReadonlyChart(chart)) return;
 
     chart._lastUpdated = Date.now();
 
-    itemsToInsert = itemsToInsert.filter(item => !isDegenerateItem(item) && isNoteInFilter(notesFilter, item));
+    itemsToInsert = itemsToInsert.filter(item => !isDegenerateItem(item));
 
     if (itemsToInsert.length === 0) return;
 
@@ -402,10 +394,10 @@ function traverseUndoBuffer(chart: SequencerChart, forwards: boolean) {
 
             switch (mutationToRedo.t) {
                 case MUTATION_INSERT: {
-                    sequencerChartInsertItems(chart, mutationToRedo.items, null);
+                    sequencerChartInsertItems(chart, mutationToRedo.items);
                 } break;
                 case MUTATION_REMOVE: {
-                    sequencerChartRemoveItems(chart, mutationToRedo.items, null);
+                    sequencerChartRemoveItems(chart, mutationToRedo.items);
                 } break;
             }
         }
@@ -414,10 +406,10 @@ function traverseUndoBuffer(chart: SequencerChart, forwards: boolean) {
             const mutationToUndo = undoBuffer.items[undoBuffer.idx];
             switch (mutationToUndo.t) {
                 case MUTATION_INSERT: {
-                    sequencerChartRemoveItems(chart, mutationToUndo.items, null);
+                    sequencerChartRemoveItems(chart, mutationToUndo.items);
                 } break;
                 case MUTATION_REMOVE: {
-                    sequencerChartInsertItems(chart, mutationToUndo.items, null);
+                    sequencerChartInsertItems(chart, mutationToUndo.items);
                 } break;
             }
             undoBuffer.idx--;
@@ -443,12 +435,10 @@ function isDegenerateItem(item: TimelineItem) {
  * {@link sequencerChartInsertItems}, which also copies items to the undo buffer. 
  * When we remove the items from the timeline, in theory, nothing else is referencing those items.
  */
-export function sequencerChartRemoveItems(chart: SequencerChart, items: TimelineItem[], notesFilter: Set<number> | null): TimelineItem[] {
+export function sequencerChartRemoveItems(chart: SequencerChart, items: TimelineItem[]): TimelineItem[] {
     if (isReadonlyChart(chart)) return[];
 
     chart._lastUpdated = Date.now();
-
-    items = items.filter(item => isNoteInFilter(notesFilter, item));
 
     if (items.length === 0) return [];
 
@@ -656,7 +646,6 @@ export function getTimeForBeats(chart: SequencerChart, beats: number): number {
 
 export function transposeItems(
     chart: SequencerChart,
-    notesFilter: Set<number>,
     startIdx: number,
     endIdx: number,
     halfSteps: number,
@@ -675,19 +664,16 @@ export function transposeItems(
         }
     }
 
-    notesToEdit = sequencerChartRemoveItems(chart, notesToEdit, notesFilter) as NoteItem[];
+    notesToEdit = sequencerChartRemoveItems(chart, notesToEdit) as NoteItem[];
 
     for (const note of notesToEdit) {
         note.noteId += halfSteps;
     }
-
-    sequencerChartInsertItems(chart, notesToEdit, notesFilter);
 }
 
 
 export function sequencerChartShiftItems(
     chart: SequencerChart,
-    notesFilter: Set<number>,
     startIdx: number, endIdx: number,
     amountBeats: number,
 ) {
@@ -703,13 +689,11 @@ export function sequencerChartShiftItems(
         toEdit.push(item);
     }
 
-    toEdit = sequencerChartRemoveItems(chart, toEdit, notesFilter);
+    toEdit = sequencerChartRemoveItems(chart, toEdit);
 
     for (const item of toEdit) {
         item.start += amountBeats;
     }
-
-    sequencerChartInsertItems(chart, toEdit, notesFilter);
 }
 
 

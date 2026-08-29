@@ -21,6 +21,9 @@ import {
 import { imHoverable } from "./button.ts";
 import { cssVarsApp } from "./styling.ts";
 import { Done, DONE, Then } from "src/utils/async-utils.ts";
+import { imGameplay, imGameplayKeyboard, newGameplayState, recomputeGameplayStuff } from "./gameplay.ts";
+import { playAll, startPlaying } from "src/state/playing-pausing.ts";
+import { imGameplayContainerBegin, imGameplayContainerEnd } from "./gameplay-elements.ts";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
     if (!ctx.keyPressState) return false;
@@ -222,7 +225,22 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                         } imui.End(c);
                     } imui.End(c);
 
-                    imChartStatistics(c, ctx, currentChart);
+                    // imChartStatistics(c, ctx, currentChart);
+
+                    const chartChanged = im.Memo(c, currentChart);
+
+                    let gameplayState = im.Get(c, newGameplayState);
+                    if (!gameplayState || chartChanged) {
+                        gameplayState = im.Set(c, newGameplayState(ctx.keyboard, currentChart));
+                        playAll(ctx, { isUserDriven: false });
+                    }
+                    recomputeGameplayStuff(ctx, gameplayState, im.getDeltaTimeSeconds(c));
+
+                    imui.Begin(c, BLOCK); imui.Flex(c); imui.Relative(c); {
+                        imGameplayContainerBegin(c, true); {
+                            imGameplayKeyboard(c, ctx, gameplayState);
+                        } imGameplayContainerEnd(c);
+                    } imui.End(c);
                 } imui.End(c);
             } else {
                 im.IfElse(c);
@@ -239,11 +257,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
     }
 }
 
-// TODO: 
-// replace these with:
-// - [ ] Rhythm - frequency of the keys
-// - [ ] Melody - chord usage, total number of keys covered in the last 4 beat window
-// - [ ] Harmony - How many different 'tracks' there are. I don't know how to code this one yet. Some simple windowed 1d clustering.
+// TODO: Remove completely
 function imChartStatistics(
     c: ImCache,
     ctx: GlobalContext,

@@ -32,6 +32,7 @@ import { BLOCK, COL, CssColor, cssVars, EM, END, imui, NA, PERCENT, PX, ROW, STA
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils.ts";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
 import { cssVarsApp, getCurrentTheme } from "./styling.ts";
+import { imGameplayContainerBegin, imGameplayContainerEnd } from "./gameplay-elements.ts";
 
 const SIGNAL_LOOKAHEAD_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
 const GAMEPLAY_BEATS_VIEWPORT  = 3 * FRACTIONAL_UNITS_PER_BEAT;
@@ -163,7 +164,7 @@ export type GameplayState = {
     pauseMenu: {
         isPaused: boolean;
         idx: number;
-    }
+    },
 };
 
 
@@ -249,7 +250,7 @@ export function newGameplayState(
         pauseMenu: {
             isPaused: false,
             idx: 0,
-        }
+        },
     };
 }
 
@@ -376,11 +377,10 @@ export function recomputeGameplayStuff(ctx: GlobalContext, gameplayState: Gamepl
     gameplayState.midpoint = Math.floor(gameplayState.keysMap.size / 2);
 }
 
-export function imGameplay(c: ImCache, ctx: GlobalContext) {
+
+export function imGameplay(c: ImCache, ctx: GlobalContext, gameplayState: GameplayState) {
     const chart = ctx.sequencer._currentChart;
     const keyboard = ctx.keyboard;
-    const gameplayState = ctx.gameplay;
-    assert(!!gameplayState);
 
     recomputeGameplayStuff(ctx, gameplayState, im.getDeltaTimeSeconds(c));
 
@@ -396,53 +396,12 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
             imdom.setStyle(c, "userSelect", "none");
         }
 
-        const { size: rootContainerSize } = imdom.TrackSize(c);
 
-        // We want to put the game inside a container that maintains it's aspect ratio, so that 
-        // I can play this on my 4:3 screen as well.
-        // It also means there are fewer edge-cases I need to account for r.e playfield sizes
-
-        const wantedAspectRatio = 16 / 9;
-        let currentAspectRatio = rootContainerSize.width / rootContainerSize.height;
-        let widthReduction = 0, heightReduction = 0;
-        if (currentAspectRatio > wantedAspectRatio) {
-            let wantedWidth = rootContainerSize.height * wantedAspectRatio;
-            let wantedWidthPercent = 100 * (wantedWidth / rootContainerSize.width);
-            widthReduction = 100 - wantedWidthPercent;
-        } else {
-            let wantedHeight = rootContainerSize.width / wantedAspectRatio;
-            let wantedHeightPercent = 100 * (wantedHeight / rootContainerSize.height);
-            heightReduction = 100 - wantedHeightPercent;
-        }
-
-        // Curtains
-        {
-            // Top and bottom 
-            {
-                imui.Begin(c, BLOCK); imui.Justify(c); imui.Bg(c, cssVars.fg);
-                imui.Absolute(c, 0, PX, 0, PX, (100 - heightReduction / 2), PERCENT, 0, PX); imui.End(c);
-
-                imui.Begin(c, BLOCK); imui.Justify(c); imui.Bg(c, cssVars.fg);
-                imui.Absolute(c, (100 - heightReduction / 2), PERCENT, 0, PX, 0, PX, 0, PX); imui.End(c);
-            }
-
-            // Left and right
-            {
-                imui.Begin(c, BLOCK); imui.Justify(c); imui.Bg(c, cssVars.fg);
-                imui.Absolute(c, 0, PX, (100 - widthReduction / 2), PERCENT, 0, PX, 0, PX); imui.End(c);
-
-                imui.Begin(c, BLOCK); imui.Justify(c); imui.Bg(c, cssVars.fg);
-                imui.Absolute(c, 0, PX, 0, PX, 0, PX, (100 - widthReduction / 2), PERCENT); imui.End(c);
-            }
-        }
-
-        imui.Begin(c, ROW); imui.Justify(c); 
-        imui.Absolute(c, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT, heightReduction / 2, PERCENT, widthReduction / 2, PERCENT); {
+        imGameplayContainerBegin(c, false); {
             let totalNumCols = 0;
             for (const row of ctx.keyboard.keys) {
                 totalNumCols = Math.max(totalNumCols, row.length)
             }
-
 
             imui.Begin(c, COL); imui.Absolute(c, 0, PX, 0, PX, 0, NA, 0, PX); imui.ZIndex(c, 10); imui.Bg(c, `rgba(255, 255, 255, 0.4)`); {
                 imui.Begin(c, ROW); imui.FontSizeCss(c, cssVars.mediumText); imui.NoWrap(c); {
@@ -564,7 +523,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, (100 - progressPercent), PERCENT, 0, PX, 0, PX); imui.Bg(c, cssVars.fg); {
                 } imui.End(c);
             } imui.End(c);
-        } imui.End(c);
+        } imGameplayContainerEnd(c);
     } imui.End(c);
 
     if (im.If(c) && gameplayState.pauseMenu.isPaused) {
@@ -1063,9 +1022,8 @@ export function imGameplayKeyboard(
         totalNumCols = Math.max(totalNumCols, row.length)
     }
 
-    const dividerWidth = 2;
-    const playfieldWidth = playfieldSize.width - (ctx.keyboard.keys.length * dividerWidth);
-    const letterWidth = playfieldWidth / (totalNumCols * 4);
+    const playfieldWidth = playfieldSize.width;
+    const letterWidth =  playfieldWidth / (totalNumCols * 2);
 
     imui.Begin(c, COL); imui.Flex(c); {
         imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
@@ -1102,3 +1060,5 @@ export function imGameplayKeyboard(
         } imui.End(c);
     } imui.End(c);
 }
+
+

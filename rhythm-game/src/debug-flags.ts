@@ -42,21 +42,21 @@ export type DebugFlags = {
 };
 
 export const debugFlags: DebugFlags = {
-    testEditView: ON,
+    testEditView: OFF,
     testLoadSave: OFF,
 
     testEditViewExport:  OFF,
     testEditViewImport:  OFF,
     testCopyModal:       OFF,
     debuUndoBuffer:      OFF,
-    testChartSelectView: OFF,
+    testChartSelectView: ON,
 
     testGameplay:      OFF,
     testGameplaySpeed: getSpeed(1),
     testPracticeMode:  OFF,
     testResultsView:   OFF,
 
-    testChart:           "We like it here",
+    testChart:         "We like it here",
 
     testFixDatabase: OFF,
 

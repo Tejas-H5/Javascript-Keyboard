@@ -201,7 +201,7 @@ export function pasteNotesFromTempStore(ctx: GlobalContext): boolean {
         return newItem;
     });
 
-    sequencerChartInsertItems(sequencer._currentChart, newNotes, sequencer.notesFilter);
+    sequencerChartInsertItems(sequencer._currentChart, newNotes);
 
     return true;
 }

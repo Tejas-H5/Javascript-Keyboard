@@ -46,10 +46,6 @@ export function getNextPlayingId(): number {
 }
 
 export type SequencerState = {
-    keyEditFilterModalOpen: boolean;
-    notesFilter: Set<number>;
-    keyEditFilterRangeIdx0: number; 
-
     cursor: number; 
     cursorSnap: number;
 
@@ -162,7 +158,6 @@ export function getCurrentItemIdx(state: SequencerState): number {
 // else, it union-differences itself from any notes of the same note. (there will only be one such note if all you do is call `setTimelineNoteAtPosition` all the time)
 export function setTimelineNoteAtPosition(
     chart: SequencerChart,
-    notesFilter: Set<number>,
     rangeStart: number, 
     rangeLen: number,
     noteId: number,
@@ -203,14 +198,14 @@ export function setTimelineNoteAtPosition(
             notesToRemove.push(item);
         }
 
-        sequencerChartRemoveItems(chart, notesToRemove, notesFilter);
+        sequencerChartRemoveItems(chart, notesToRemove);
 
         if (isNoteValid) {
             const newNoteStart = newNoteStartBeats;
             const newNoteLen = newNoteEndBeats - newNoteStartBeats;
             const newNote = newTimelineItemNote(noteId, newNoteStart, newNoteLen);
 
-            sequencerChartInsertItems(chart, [newNote], notesFilter);
+            sequencerChartInsertItems(chart, [newNote]);
         }
     } else {
         const notesToAdd: NoteItem[] = [];
@@ -257,8 +252,8 @@ export function setTimelineNoteAtPosition(
             }
         }
 
-        sequencerChartRemoveItems(chart, notesToRemove, notesFilter);
-        sequencerChartInsertItems(chart, notesToAdd, notesFilter);
+        sequencerChartRemoveItems(chart, notesToRemove);
+        sequencerChartInsertItems(chart, notesToAdd);
     }
 }
 
@@ -271,9 +266,9 @@ export function recomputeSequencerState(sequencer: SequencerState) {
     }
 }
 
-export function deleteRange(chart: SequencerChart, notesFilter: Set<number>, start: number, end: number) {
+export function deleteRange(chart: SequencerChart, start: number, end: number) {
     const toRemove = chart.timeline.slice(start, end + 1).filter(item => item.type !== TIMELINE_ITEM_MEASURE);
-    sequencerChartRemoveItems(chart, toRemove, notesFilter);
+    sequencerChartRemoveItems(chart, toRemove);
 }
 
 
@@ -301,10 +296,6 @@ export function newSequencerState(): SequencerState {
         _timelineTempBuffer: [],
         _nonOverlappingItems: [],
         _visitedBuffer: [],
-
-        keyEditFilterModalOpen: false,
-        notesFilter: new Set<number>(),
-        keyEditFilterRangeIdx0: -1,
 
         cursor: 0,
         cursorSnap: FRACTIONAL_UNITS_PER_BEAT / 4,
@@ -651,7 +642,7 @@ export function shiftSelectedItems(s: SequencerState, beats: number) {
         return;
     }
 
-    sequencerChartShiftItems(s._currentChart, s.notesFilter, startIdx, endIdx, beats);
+    sequencerChartShiftItems(s._currentChart, startIdx, endIdx, beats);
 
     s.rangeSelectStart += beats;
     s.rangeSelectEnd   += beats;
@@ -662,7 +653,7 @@ export function shiftItemsAfterCursor(s: SequencerState, beats: number) {
     const cursorStart = s.cursor;
     const rightOfCursorIdx = getBeatIdxAfter(s._currentChart, cursorStart);
 
-    sequencerChartShiftItems(s._currentChart, s.notesFilter, rightOfCursorIdx, s._currentChart.timeline.length - 1, beats);
+    sequencerChartShiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, beats);
 }
 
 export function transposeSelectedItems(s: SequencerState, halfSteps: number) {
@@ -671,13 +662,7 @@ export function transposeSelectedItems(s: SequencerState, halfSteps: number) {
         return;
     }
 
-    if (s.notesFilter.size > 0) {
-        // notes just dissapear, due to implementation.
-        // can't be bothered fixing atm.
-        return;
-    }
-
-    transposeItems(s._currentChart, s.notesFilter, startIdx, endIdx, halfSteps);
+    transposeItems(s._currentChart, startIdx, endIdx, halfSteps);
 }
 
 export function setSequencerChart(sequencer: SequencerState, chart: SequencerChart) {

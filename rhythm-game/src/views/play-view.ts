@@ -5,6 +5,7 @@ import { el, im, ImCache, imdom } from "src/utils/im-js";
 import { clamp } from "src/utils/math-utils";
 import { GlobalContext, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./app";
 import { GameplayState, imGameplay } from "./gameplay";
+import { assert } from "src/utils/assert";
 
 function handlePlayViewKeyDown(ctx: GlobalContext) {
     if (!ctx.keyPressState) return false;
@@ -36,7 +37,8 @@ export function imPlayView(c: ImCache, ctx: GlobalContext) {
         } else {
             im.Else(c);
 
-            imGameplay(c, ctx);
+            assert(!!ctx.gameplay);
+            imGameplay(c, ctx, ctx.gameplay);
         } im.IfEnd(c);
     } imui.End(c);
 

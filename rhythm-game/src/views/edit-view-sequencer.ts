@@ -344,12 +344,12 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             const value = imBpmInput(c, getBpm(lastBpmChange));
                             if (value !== null) {
                                 if (lastBpmChange) {
-                                    sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange], sequencer.notesFilter);
+                                    sequencerChartRemoveItems(sequencer._currentChart, [lastBpmChange]);
                                     lastBpmChange.bpm = value;
                                 } else {
                                     lastBpmChange = newTimelineItemBpmChange(0, value);
                                 }
-                                sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange], sequencer.notesFilter);
+                                sequencerChartInsertItems(sequencer._currentChart, [lastBpmChange]);
                             }
                         }
 
@@ -551,20 +551,12 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             } imui.End(c);
         } imui.End(c);
 
-        if (im.If(c) && sequencer.keyEditFilterModalOpen) {
-            imFilterModal(c, s, ctx, sequencer, ctx.keyboard); 
-        } im.IfEnd(c);
     } imui.End(c);
 
     if (!ctx.handled) {
         const keyPress = ctx.keyPressState;
         if (keyPress) {
             let handled = false; 
-
-            if (keyPress.keyUpper === "F" && keyPress.shiftPressed) {
-                sequencer.keyEditFilterModalOpen = !sequencer.keyEditFilterModalOpen;
-                handled = true;
-            }
 
             ctx.handled = handled;
 
@@ -625,7 +617,6 @@ function imSequencerNotesUI(
     previewItems: TimelineItem[] | null, 
     ctx: GlobalContext, 
     s: SequencerUIState,
-    faded: boolean,
 ) {
     let count = items.length;
     if (previewItems) count += previewItems.length;
@@ -637,10 +628,6 @@ function imSequencerNotesUI(
         compact ? 0 : 10, PX, 3, PX, 
         compact ? 0 : 10, PX, 3, PX, 
     ); {
-        if (im.Memo(c, faded)) {
-            imdom.setStyle(c, "color", faded ? cssVars.mg : "");
-        }
-
         imdom.Str(c, text);
 
         im.For(c); for (const item of items) {
@@ -826,184 +813,6 @@ function imBpmInput(c: ImCache, value: number): number | null {
     return result;
 }
 
-function imFilterModal(
-    c: ImCache,
-    s: SequencerUIState,
-    ctx: GlobalContext,
-    sequencer: SequencerState,
-    keyboard: KeyboardState,
-) {
-
-    if (im.Memo(c, true)) {
-        sequencer.keyEditFilterRangeIdx0 = -1;
-    }
-
-    imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0, 0, 0, 0.3)`); {
-        if (im.isFirstishRender(c)) {
-            imdom.setStyle(c, "zIndex", "100");
-        }
-
-        imui.Begin(c, COL); imui.Absolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imui.Bg(c, cssVars.bg); {
-            imui.Begin(c, ROW); imui.Align(c); imui.Justify(c); {
-                imdom.Str(c, "Edit filter - shift to range-select");
-            } imui.End(c);
-
-            const root = imui.Begin(c, ROW); imui.Flex(c); imui.Align(c); imui.Justify(c); {
-                if (im.isFirstishRender(c)) {
-                    imdom.setStyle(c, "lineHeight", "1");
-                }
-
-                const height = root.clientHeight;
-                if (im.Memo(c, height)) {
-                    imdom.setStyle(c, "fontSize", (root.clientHeight / ctx.keyboard.flatKeys.length) + "px");
-                }
-
-                imui.Begin(c, COL); imui.Align(c, END); {
-                    im.For(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
-                        const key = ctx.keyboard.flatKeys[i];
-                        imui.Begin(c, BLOCK); {
-                            let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
-
-                            imui.Bg(c, hasPress ? cssVars.fg : "");
-                            imui.Fg(c, hasPress ? cssVars.bg : "");
-
-                            imdom.Str(c, getMusicNoteText(key.noteId));
-                        } imui.End(c);
-                    } im.ForEnd(c);
-                } imui.End(c);
-
-                imui.Begin(c, COL); {
-                    im.For(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
-                        const key = ctx.keyboard.flatKeys[i];
-                        imui.Begin(c, BLOCK); {
-
-                            let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
-
-                            imui.Bg(c, hasPress ? cssVars.fg : "");
-                            imui.Fg(c, hasPress ? cssVars.bg : "");
-
-                            imdom.Str(c, "(");
-                            imdom.Str(c, key.text);
-                            imdom.Str(c, ")");
-                        } imui.End(c);
-                    } im.ForEnd(c);
-                } imui.End(c);
-
-                imui.Begin(c, BLOCK); imui.Size(c, 10, PX, 0, NA); imui.End(c);
-
-                imui.Begin(c, COL); imui.Flex(c); {
-                    im.For(c); for (let i = 0; i < ctx.keyboard.flatKeys.length; i++) {
-                        const key = ctx.keyboard.flatKeys[i];
-                        const normalized = 1;
-                        imui.Begin(c, BLOCK); {
-                            if (im.isFirstishRender(c)) {
-                                imdom.setStyle(c, "color", cssVars.bg);
-                            }
-
-                            const inFilter = sequencer.notesFilter.has(key.noteId);
-
-                            let hasPress = getCurrentOscillatorGainForOwner(key.index, 0) > 0.9;
-                            if (im.Memo(c, hasPress) && hasPress) {
-                                const keys = imdom.getKeyboard();
-
-                                if (imdom.isKeyHeld(keys, KEY.SHIFT)) {
-                                    let min = Math.min(sequencer.keyEditFilterRangeIdx0, key.index);
-                                    if (min === -1) min = 0;
-                                    let max = Math.max(sequencer.keyEditFilterRangeIdx0, key.index);
-
-                                    let value = true;
-                                    for (let i = min; i <= max; i++) {
-                                        if (i === sequencer.keyEditFilterRangeIdx0) {
-                                            continue;
-                                        }
-
-                                        const key = keyboard.flatKeys[i];
-                                        if (sequencer.notesFilter.has(key.noteId)) {
-                                            // if any other keys are true, we want to erase.
-                                            value = false;
-                                            break;
-                                        }
-                                    }
-
-                                    for (let i = min; i <= max; i++) {
-                                        const key = keyboard.flatKeys[i];
-                                        if (value) {
-                                            sequencer.notesFilter.add(key.noteId);
-                                        } else {
-                                            sequencer.notesFilter.delete(key.noteId);
-                                        }
-                                    }
-                                    sequencer.keyEditFilterRangeIdx0 = key.index;
-                                } else {
-                                    if (inFilter) {
-                                        sequencer.notesFilter.delete(key.noteId);
-                                    } else {
-                                        sequencer.notesFilter.add(key.noteId);
-                                    }
-                                    sequencer.keyEditFilterRangeIdx0 = key.index;
-                                }
-                            }
-
-                            if (im.isFirstishRender(c)) {
-                                imdom.setStyle(c, "transition", "background-color 0.2s");
-                            }
-
-                            let isVisible = !!s.notesMap.has(key.noteId);
-
-                            imui.Bg(c, inFilter ? cssVars.fg : "");
-                            imui.Fg(c, inFilter ? cssVars.bg : (isVisible ? "" : cssVars.mg));
-
-                            imui.Size(c, 100 * normalized, PERCENT, 100, PERCENT);
-
-
-                            // HACK: Load-bearing text!
-                            imdom.Str(c, isVisible ? "onscreen" : "offscreen");
-                        } imui.End(c);
-                    } im.ForEnd(c);
-                } imui.End(c);
-            } imui.End(c);
-        } imui.End(c);
-    } imui.End(c);
-
-    if (!ctx.handled) {
-        let handled = false;
-        const keyPress = ctx.keyPressState;
-
-        if (keyPress) {
-            const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, keyPress.key);
-
-            if (keyPress.key === "Escape") {
-                sequencer.keyEditFilterModalOpen = false;
-                handled = true;
-            }
-
-            // We want to handle shift, actually
-            if (instrumentKey && !keyPress.altPressed && !keyPress.ctrlPressed) {
-                pressKey(instrumentKey.index, instrumentKey.noteId, keyPress.isRepeat);
-                handled = true;
-            }
-        }
-
-        if (ctx.keyReleaseState) {
-            const instrumentKey = getKeyForKeyboardKey(ctx.keyboard, ctx.keyReleaseState.key);
-            
-            if (instrumentKey) {
-                releaseKey(instrumentKey.index, instrumentKey.noteId);
-            }
-
-            handled = true;
-        }
-
-        if (ctx.blurredState) {
-            releaseAllKeys();
-        }
-
-        ctx.handled = handled;
-    }
-
-    // Block other UI while open
-    ctx.handled = true;
-}
 
 function imExportModal(
     c: ImCache,
@@ -1176,11 +985,9 @@ function imSequencerInternal(c: ImCache, ctx: GlobalContext, s: SequencerUIState
                 } im.ForEnd(c);
             }
 
-            let hasFilter = sequencer.notesFilter.size > 0;
-
             imui.Begin(c, COL); imui.Justify(c); imui.Size(c, 0, NA, 100, PERCENT); {
-                imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s, false);
-                imSequencerNotesUI(c, "measures", s.measures, null, ctx, s, false);
+                imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s);
+                imSequencerNotesUI(c, "measures", s.measures, null, ctx, s);
 
                 if (im.Memo(c, s.allNotesVisible)) {
                     imdom.setStyle(c, "fontSize", s.allNotesVisible ? "13px" : "");
@@ -1190,13 +997,12 @@ function imSequencerInternal(c: ImCache, ctx: GlobalContext, s: SequencerUIState
                     im.For(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
                         const key = ctx.keyboard.flatKeys[i];
                         const entry = s.notesMap.get(key.noteId);
-                        const faded = hasFilter && !sequencer.notesFilter.has(key.noteId);
                         if (entry?.firstItem) {
                             const text = getItemSequencerText(entry.firstItem, key);
-                            imSequencerNotesUI(c, text, entry.items, entry.previewItems, ctx, s, faded);
+                            imSequencerNotesUI(c, text, entry.items, entry.previewItems, ctx, s);
                         } else {
                             const text = getMusicNoteText(key.noteId);
-                            imSequencerNotesUI(c, text, noItems, noItems, ctx, s, faded);
+                            imSequencerNotesUI(c, text, noItems, noItems, ctx, s);
                         }
                     } im.ForEnd(c);
                 } else {
@@ -1210,7 +1016,6 @@ function imSequencerInternal(c: ImCache, ctx: GlobalContext, s: SequencerUIState
                         }
 
                         const text = getItemSequencerText(entry.firstItem, key);
-                        const faded = hasFilter && !sequencer.notesFilter.has(key.noteId);
                         imSequencerNotesUI(
                             c,
                             text,
@@ -1218,7 +1023,6 @@ function imSequencerInternal(c: ImCache, ctx: GlobalContext, s: SequencerUIState
                             entry.previewItems,
                             ctx,
                             s,
-                            faded
                         );
                     } im.ForEnd(c);
                 } im.IfEnd(c);

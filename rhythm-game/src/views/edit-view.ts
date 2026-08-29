@@ -122,7 +122,6 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
         for (const note of sequencer.notesToPreview) {
             setTimelineNoteAtPosition(
                 chart,
-                sequencer.notesFilter,
                 note.start,
                 sequencer.cursorSnap,
                 note.noteId,
@@ -138,7 +137,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
         if (hasRangeSelection(sequencer)) {
             const [start, end] = getSelectionStartEndIndexes(sequencer);
             if (start !== -1 && end !== -1) {
-                deleteRange(chart, sequencer.notesFilter, start, end);
+                deleteRange(chart, start, end);
                 clearRangeSelection(sequencer, false);
                 return true;
             }
@@ -154,7 +153,6 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
             for (const note of sequencer.notesToPreview) {
                 setTimelineNoteAtPosition(
                     chart,
-                    sequencer.notesFilter,
                     note.start,
                     sequencer.cursorSnap,
                     note.noteId,
@@ -305,7 +303,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
     if ((keyUpper === "X") && ctrlPressed) {
         const [startIdx, endIdx] = getSelectionStartEndIndexes(sequencer);
         if (copyNotesToTempStore(ctx, startIdx, endIdx)) {
-            deleteRange(chart, sequencer.notesFilter, startIdx, endIdx);
+            deleteRange(chart, startIdx, endIdx);
 
             return true;
         }
@@ -348,10 +346,10 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
         const idx = timelineMeasureAtBeatsIdx(chart, cursorStartBeats);
         if (idx === -1) {
             const start = sequencer.cursor;
-            sequencerChartInsertItems(chart, [newTimelineItemMeasure(start)], sequencer.notesFilter);
+            sequencerChartInsertItems(chart, [newTimelineItemMeasure(start)]);
         } else {
             const measure = chart.timeline[idx];
-            sequencerChartRemoveItems(chart, [measure], sequencer.notesFilter);
+            sequencerChartRemoveItems(chart, [measure]);
         }
         return true;
     }
@@ -360,12 +358,12 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
         const start = sequencer.cursor;
         const bpmChange = getBpmChangeItemBeforeBeats(chart, start);
         if (bpmChange && start ===  bpmChange.start) {
-            sequencerChartRemoveItems(chart, [bpmChange], sequencer.notesFilter);
+            sequencerChartRemoveItems(chart, [bpmChange]);
         } else {
             const start = sequencer.cursor;
             const bpm = getBpm(bpmChange);
             const newBpmChange = newTimelineItemBpmChange(start, bpm);
-            sequencerChartInsertItems(chart, [newBpmChange], sequencer.notesFilter);
+            sequencerChartInsertItems(chart, [newBpmChange]);
         }
         return true;
     }
