@@ -1,6 +1,4 @@
 import { imButtonIsClicked } from "src/components/button.ts";
-import { BLOCK, COL, EM, END, NA, PERCENT, PX, ROW, START, STRETCH, imui, cssVars, CssColor } from "src/utils/im-js/im-ui";
-import { imLine, LINE_VERTICAL } from "src/components/im-line.ts";
 import { debugFlags } from "src/debug-flags.ts";
 import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setPlaybackTime } from "src/dsp/dsp-loop-interface.ts";
 import {
@@ -29,7 +27,8 @@ import {
 } from "src/state/sequencer-state.ts";
 import { arrayAt } from "src/utils/array-utils.ts";
 import { assert } from "src/utils/assert.ts";
-import { im, ImCache, imdom, el, ev, Stringifyable, } from "src/utils/im-js";
+import { el, im, ImCache, imdom, Stringifyable } from "src/utils/im-js";
+import { BLOCK, COL, CssColor, cssVars, EM, END, imui, NA, PERCENT, PX, ROW, START, STRETCH } from "src/utils/im-js/im-ui";
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils.ts";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
 import { cssVarsApp, getCurrentTheme } from "./styling.ts";
@@ -169,16 +168,16 @@ export type GameplayState = {
 
 
 type GameplayKeyState = {
-    keyHeld: boolean;
-    keyPressedThisFrame: boolean;
+    keyHeld:              boolean;
+    keyPressedThisFrame:  boolean;
     keyReleasedThisFrame: boolean;
 
     // Shouldn't be able to move between multiple keys without releasing and pressing.
     // Don't want the game to award people full score for just holding down all the keys all the time.
     keyReleasedAtLeastOnce: boolean; 
-    lastPressedItem: NoteItem | null;
-    lastItemScore: number;
-    lastItemScoreMissed: number;
+    lastPressedItem:        NoteItem | null;
+    lastItemScore:          number;
+    lastItemScoreMissed:    number;
 
     lastPressedBeatQuantized: number;
 };
@@ -293,8 +292,6 @@ function handleGameplayKeyDown(ctx: GlobalContext, s: GameplayState): boolean {
         if (ctx.keyPressState && !ctx.keyPressState.isRepeat) {
             if (ctx.keyPressState.key === "Backspace") {
                 if (s.practiceMode.enabled) {
-                    // gamplayPracticeModeRewind(ctx, gameplayState, measureBeat);
-
                     const practiceMode = s.practiceMode;
                     const nextMeasureIdxPrev = practiceMode.nextMeasureIdx
                     const measureToRewindTo = arrayAt(s.measures, nextMeasureIdxPrev - 2);
@@ -438,16 +435,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 totalNumCols = Math.max(totalNumCols, row.length)
             }
 
-            const { size: playfieldSize } = imdom.TrackSize(c);
-            const dividerWidth = 2;
-            const playfieldWidth = playfieldSize.width - (ctx.keyboard.keys.length * dividerWidth);
-            // const letterWidth = playfieldWidth / ctx.keyboard.flatKeys.length;
-            const letterWidth = playfieldWidth / (totalNumCols * 4);
 
             imui.Begin(c, COL); imui.Absolute(c, 0, PX, 0, PX, 0, NA, 0, PX); imui.ZIndex(c, 10); imui.Bg(c, `rgba(255, 255, 255, 0.4)`); {
                 imui.Begin(c, ROW); imui.FontSizeCss(c, cssVars.mediumText); imui.NoWrap(c); {
-                    // using runway doesn' look as nice.
-                    const runway = PENALTY_QUANTIZATION_START_SECONDS + PENALTY_QUANTIZATION_SECONDS;
                     const amountPenalized01 = (gameplayState.penaltyTimer + PENALTY_QUANTIZATION_START_SECONDS) / PENALTY_QUANTIZATION_START_SECONDS;
 
                     const colours = im.GetInline(c, imGameplay) ?? im.Set(c, {
@@ -458,11 +448,9 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                     const theme = getCurrentTheme();
                     imui.lerpColor(theme.calm, theme.danger, amountPenalized01, colours.barColor);
                     colours.barColor.a = 0.5;
-                    // imui.lerpColor(theme.bg, theme.fg, amountPenalized01, colours.textColor);
                     imui.lerpColor(theme.fg, theme.fg, amountPenalized01, colours.textColor);
 
                     imui.Begin(c, BLOCK); imui.ZIndex(c, -1); {
-                        // imui.Absolute(c, 0, PX, amountPenalized01 * 50, PERCENT, 0, PX, amountPenalized01 * 50, PERCENT);
                         imui.Absolute(c, 0, PX, 0, PX, 0, NA, 0, PX);
                         imui.Size(c, 0, NA, 2, EM);
 
@@ -474,8 +462,6 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                             const c2 = `rgba(255, 255, 255, 0)`;
                             imdom.setStyle(c, "background", `linear-gradient(180deg,${c1} 0%, ${c2} 100%)`);
                         }
-
-                        // imui.Bg(c, colours.barColor.toString());
                     } imui.End(c);
 
                     imui.Begin(c, ROW); imui.Gap(c, 10, PX); imui.Flex(c); imui.Justify(c); imui.Fg(c, colours.textColor.toCssString()); {
@@ -524,55 +510,47 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
                 } imui.End(c);
             } imui.End(c);
 
-            gameplayState.avoidPenalty = true;
-            
-            // imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
-            //     im.For(c); for (const instrumentKey of keyboard.flatKeys) {
-            //         const isLeftmost = 
-            //         imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isLeftmost);
-            //     } im.ForEnd(c);
-            // } imui.End(c);
-            //
+            // Handle keyboad input logic
+            if (!gameplayState.pauseMenu.isPaused) {
+                gameplayState.avoidPenalty = true;
 
-            imui.Begin(c, COL); {
-                imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
-                    if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
+                for (const instrumentKey of keyboard.flatKeys) {
+                    const keyIdx = instrumentKey.index;
+                    const keyState = gameplayState.keyState[keyIdx]; assert(!!keyState);
+                    const keySignal = isKeyPressed(instrumentKey.index);
 
-                    im.For(c); 
-                    for (let j = 0; j < totalNumCols; j++) {
-                        for (let i = 0; i < 2; i++) {
-                            const row = ctx.keyboard.keys[i];
-                            if (j >= row.length) break;
+                    // Handle input for this lane
 
-                            const instrumentKey = row[j];
-                            const isTopRowKey = i % 2 === 0;
-                            imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey);
-                        }
+                    keyState.keyPressedThisFrame = false;
+                    keyState.keyReleasedThisFrame = false;
+                    if (keySignal && !keyState.keyHeld) {
+                        keyState.keyPressedThisFrame = true;
+                        keyState.keyHeld = true;
+                    } else if (!keySignal && keyState.keyHeld) {
+                        keyState.keyHeld = false;
+                        keyState.keyReleasedAtLeastOnce = true;
+                        keyState.keyReleasedThisFrame = true;
                     }
-                    im.ForEnd(c);
-                } imui.End(c);
-                imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
-                    if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
 
-                    im.For(c); 
-                    for (let j = 0; j < totalNumCols; j++) {
-                        for (let i = 2; i < 4; i++) {
-                            const row = ctx.keyboard.keys[i];
-                            if (j >= row.length) break;
-
-                            const instrumentKey = row[j];
-                            const isTopRowKey = i % 2 === 0;
-                            imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey);
-                        }
+                    if (keyState.keyHeld) {
+                        // Enable the penalty mechanic, only after we press any key at least once.
+                        gameplayState.penaltyEnabled = true;
                     }
-                    im.ForEnd(c);
-                } imui.End(c);
-            } imui.End(c);
 
-            // Can be set by multiple imGameplayKeyLane's
-            if (gameplayState.avoidPenalty) {
-                gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
+                    const thread = gameplayState.keysMap.get(instrumentKey)?._items;
+                    assert(!!thread);
+
+                    for (const noteItem of thread) {
+                        updateCurrentItemScoreIfWithinCurrentBeat(gameplayState, keyState, noteItem);
+                    }
+                }
+
+                if (gameplayState.avoidPenalty) {
+                    gameplayState.penaltyTimer = -PENALTY_QUANTIZATION_START_SECONDS;
+                }
             }
+
+            imGameplayKeyboard(c, ctx, gameplayState);
 
             imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 10, PX); imui.Relative(c); {
                 imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, (100 - progressPercent), PERCENT, 0, PX, 0, PX); imui.Bg(c, cssVars.fg); {
@@ -758,7 +736,7 @@ function im3DLookingText(c: ImCache, value: Stringifyable) {
 // It's good enough for most gameplay, because it will correctly count all hits
 // and all misses on a single note without overcounting or undercounting, so I will fix this 
 // toggling mecahnic edge case later. There are far more important things to be coding
-function updateCurrentItemScore(
+function updateCurrentItemScoreIfWithinCurrentBeat(
     gameplayState: GameplayState,
     keyState: GameplayKeyState,
     item: NoteItem,
@@ -967,29 +945,7 @@ function imGameplayKeyLane(
     const keyState = gameplayState.keyState[keyIdx];
     assert(!!keyState);
 
-    const keySignal = isKeyPressed(instrumentKey.index);
     let keyGain = getCurrentOscillatorGainForOwner(instrumentKey.index, 0);
-
-    if (!gameplayState.pauseMenu.isPaused) {
-        // Handle input for this lane
-
-        keyState.keyPressedThisFrame = false;
-        keyState.keyReleasedThisFrame = false;
-        if (keySignal && !keyState.keyHeld) {
-            keyState.keyPressedThisFrame = true;
-            keyState.keyHeld = true;
-        } else if (!keySignal && keyState.keyHeld) {
-            keyState.keyHeld = false;
-            keyState.keyReleasedAtLeastOnce = true;
-            keyState.keyReleasedThisFrame = true;
-        }
-
-        if (keyState.keyHeld) {
-            // Enable the penalty mechanic, only after we press any key at least once.
-            gameplayState.penaltyEnabled = true;
-        }
-    }
-
 
     // Vertical note
     const s = im.State(c, newVerticalNoteThreadState);
@@ -1008,8 +964,6 @@ function imGameplayKeyLane(
                 const currentBeatInItem = isBeatWithinInclusve(item, gameplayState.currentBeatAnimated);
 
                 if (item.type !== TIMELINE_ITEM_NOTE) continue;
-
-                updateCurrentItemScore(gameplayState, keyState, item);
 
                 let heightPercent = 100 * item.length / GAMEPLAY_BEATS_VIEWPORT;
                 let bottomPercent = 100 * inverseLerp(item.start, gameplayState.currentBeatAnimated, sGameplay.endAnimated);
@@ -1086,5 +1040,57 @@ function imGameplayKeyLane(
         }
 
         imLetter(c, gameplayState, instrumentKey, thread, keyGain, letterColor, laneWidth, isTopRowKey);
+    } imui.End(c);
+}
+
+function imGameplayKeyboard(
+    c: ImCache,
+    ctx: GlobalContext,
+    gameplayState: GameplayState,
+) {
+    const { size: playfieldSize } = imdom.TrackSize(c);
+
+    let totalNumCols = 0;
+    for (const row of ctx.keyboard.keys) {
+        totalNumCols = Math.max(totalNumCols, row.length)
+    }
+
+    const dividerWidth = 2;
+    const playfieldWidth = playfieldSize.width - (ctx.keyboard.keys.length * dividerWidth);
+    const letterWidth = playfieldWidth / (totalNumCols * 4);
+
+    imui.Begin(c, COL); {
+        imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
+            if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
+
+            im.For(c);
+            for (let j = 0; j < totalNumCols; j++) {
+                for (let i = 0; i < 2; i++) {
+                    const row = ctx.keyboard.keys[i];
+                    if (j >= row.length) break;
+
+                    const instrumentKey = row[j];
+                    const isTopRowKey = i % 2 === 0;
+                    imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey);
+                }
+            }
+            im.ForEnd(c);
+        } imui.End(c);
+        imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
+            if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
+
+            im.For(c);
+            for (let j = 0; j < totalNumCols; j++) {
+                for (let i = 2; i < 4; i++) {
+                    const row = ctx.keyboard.keys[i];
+                    if (j >= row.length) break;
+
+                    const instrumentKey = row[j];
+                    const isTopRowKey = i % 2 === 0;
+                    imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey);
+                }
+            }
+            im.ForEnd(c);
+        } imui.End(c);
     } imui.End(c);
 }
