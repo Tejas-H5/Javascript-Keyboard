@@ -250,6 +250,10 @@ function imBg(c: ImCache, colour: string) {
     if (im.Memo(c, colour)) imdom.setStyle(c, "backgroundColor", colour);
 }
 
+function imDebugOutline(c: ImCache, colour: string) {
+    if (im.Memo(c, colour)) imdom.setStyle(c, "outline", "1px solid " + colour);
+}
+
 function imFg(c: ImCache, colour: string) {
     if (im.Memo(c, colour)) imdom.setStyle(c, "color", colour);
 }
@@ -710,6 +714,7 @@ export const imui = {
 
     // Styling logic
     Opacity: imOpacity, Bg: imBg, Fg: imFg, FontSize: imFontSize,  FontSizeCss: imFontSizeCss,
+    DebugOutline: imDebugOutline,
     
     // Common space reserving component
     Flex1: imFlex1,

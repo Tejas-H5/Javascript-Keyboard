@@ -319,15 +319,10 @@ function handleGameplayKeyDown(ctx: GlobalContext, s: GameplayState): boolean {
     return handled;
 }
 
-export function imGameplay(c: ImCache, ctx: GlobalContext) {
+export function recomputeGameplayStuff(ctx: GlobalContext, gameplayState: GameplayState, dt: number) {
     const chart = ctx.sequencer._currentChart;
-    const keyboard = ctx.keyboard;
-    const gameplayState = ctx.gameplay;
-    assert(!!gameplayState);
 
     const durationBeats = getChartDurationInBeats(chart);
-
-    const progressPercent = max(100 * gameplayState.currentBeat / durationBeats, 0);
 
     if (gameplayState.currentBeat >= durationBeats) {
         if (gameplayState.practiceMode.enabled) {
@@ -348,7 +343,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     gameplayState.end = gameplayState.currentBeat + GAMEPLAY_BEATS_LOADAHEAD;
     gameplayState.endAnimated = gameplayState.currentBeatAnimated + GAMEPLAY_BEATS_VIEWPORT;
 
-    gameplayState.dt = gameplayState.pauseMenu.isPaused ? 0 : im.getDeltaTimeSeconds(c);
+    gameplayState.dt = dt;gameplayState.pauseMenu.isPaused ? 0 : dt;
 
     if (gameplayState.penaltyEnabled) {
         gameplayState.penaltyTimer += gameplayState.dt;
@@ -379,9 +374,22 @@ export function imGameplay(c: ImCache, ctx: GlobalContext) {
     notesMapToKeysMap(ctx.keyboard, gameplayState.notesMap, gameplayState.keysMap);
 
     gameplayState.midpoint = Math.floor(gameplayState.keysMap.size / 2);
+}
+
+export function imGameplay(c: ImCache, ctx: GlobalContext) {
+    const chart = ctx.sequencer._currentChart;
+    const keyboard = ctx.keyboard;
+    const gameplayState = ctx.gameplay;
+    assert(!!gameplayState);
+
+    recomputeGameplayStuff(ctx, gameplayState, im.getDeltaTimeSeconds(c));
 
     const practiceMode = gameplayState.practiceMode;
     updatePracticeMode(ctx, gameplayState, chart);
+
+    const durationBeats = getChartDurationInBeats(chart);
+
+    const progressPercent = max(100 * gameplayState.currentBeat / durationBeats, 0);
 
     imui.Begin(c, COL); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
         if (im.isFirstishRender(c)) {
@@ -1043,7 +1051,7 @@ function imGameplayKeyLane(
     } imui.End(c);
 }
 
-function imGameplayKeyboard(
+export function imGameplayKeyboard(
     c: ImCache,
     ctx: GlobalContext,
     gameplayState: GameplayState,
@@ -1059,7 +1067,7 @@ function imGameplayKeyboard(
     const playfieldWidth = playfieldSize.width - (ctx.keyboard.keys.length * dividerWidth);
     const letterWidth = playfieldWidth / (totalNumCols * 4);
 
-    imui.Begin(c, COL); {
+    imui.Begin(c, COL); imui.Flex(c); {
         imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
             if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
 

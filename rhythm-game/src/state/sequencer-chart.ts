@@ -16,6 +16,7 @@ export type SequencerChart = {
     _lastUpdated: number;
     _lastUpdatedWithSave: number;
     _tempBuffer: TimelineItem[];
+    // TODO: just use json undo buffer if we find there are issues here. lmao.
     _undoBuffer: { 
         enabled: boolean;
         items: TimelineMutation[];

@@ -61,6 +61,7 @@ import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, setVi
 import { isSavingAnyChart } from "./saving-chart.ts";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view.ts";
 import { cssVarsApp } from "./styling.ts";
+import { imGameplayKeyboard, newGameplayState, recomputeGameplayStuff } from "./gameplay.ts";
 
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
@@ -163,7 +164,6 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
     const loadSaveModal = ui.loadSave.modal;
 
     const chart = sequencer._currentChart;
-    const isRangeSelecting = hasRangeSelection(sequencer);
 
     const s = im.State(c, newSequencerState);
 
@@ -302,6 +302,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
     } im.IfEnd(c);
 
     imui.Begin(c, COL); imui.Flex(c); imui.Relative(c); {
+        // Top bar
         imui.Begin(c, ROW); imui.Align(c); imui.Gap(c, 5, PX); {
             imui.Begin(c, BLOCK); imui.Size(c, 5, PX, 0, NA); imui.End(c);
 
@@ -399,273 +400,154 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
 
         imLine(c, LINE_HORIZONTAL, 1);
 
-        imui.Begin(c, COL); imui.Flex(c); {
-            if (im.If(c) && isRangeSelecting) {
-                imui.Begin(c, BLOCK); imui.Relative(c); {
-                    const [start, end] = getSelectionStartEndIndexes(sequencer);
-                    let str;
-                    if (start === -1 || end === -1) {
-                        str = "none selected";
-                    } else {
-                        str = (end - start + 1) + " selected";
-                    }
-
-                    imdom.Str(c, str);
-                } imui.End(c);
-            } im.IfEnd(c);
-
-            if (!!debugFlags.debuUndoBuffer) {
-                // Debug visualizer for the undo buffer
-                imui.Begin(c, BLOCK); {
-                    let i = 0;
-                    const chart = sequencer._currentChart;
-                    im.For(c); for (const item of chart._undoBuffer.items) {
-                        imui.Begin(c, INLINE_BLOCK); imui.Padding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
-                            imdom.Str(c, chart._undoBuffer.idx === i ? "->" : "");
-                            imdom.Str(c, "Entry " + (i++) + ": ");
-                            im.For(c); for (const tlItem of item.items) {
-                                imdom.Str(c, timelineItemToString(tlItem));
-                            } im.ForEnd(c);
-                        } imui.End(c);
-                    } im.ForEnd(c);
-                } imui.End(c);
-            }
-
-            imui.Begin(c, BLOCK); imui.Flex(c); imui.Relative(c); {
-                if (im.isFirstishRender(c)) {
-                    imdom.setStyle(c, "overflowY", "auto");
-                    imdom.setStyle(c, "overflowX", "hidden");
+        const isRangeSelecting = hasRangeSelection(sequencer);
+        if (im.If(c) && isRangeSelecting) {
+            imui.Begin(c, BLOCK); imui.Relative(c); {
+                const [start, end] = getSelectionStartEndIndexes(sequencer);
+                let str;
+                if (start === -1 || end === -1) {
+                    str = "none selected";
+                } else {
+                    str = (end - start + 1) + " selected";
                 }
 
-                if (im.If(c) && isRangeSelecting) {
-                    const beatsA = sequencer.rangeSelectStart;
-                    const beatsB = sequencer.rangeSelectEnd;
+                imdom.Str(c, str);
+            } imui.End(c);
+        } im.IfEnd(c);
 
-                    let min = Math.min(beatsA, beatsB);
-                    let max = Math.max(beatsA, beatsB);
+        if (!!debugFlags.debuUndoBuffer) {
+            // Debug visualizer for the undo buffer
+            imui.Begin(c, BLOCK); {
+                let i = 0;
+                const chart = sequencer._currentChart;
+                im.For(c); for (const item of chart._undoBuffer.items) {
+                    imui.Begin(c, INLINE_BLOCK); imui.Padding(c, 0, NA, 30, PX, 0, NA, 0, NA); {
+                        imdom.Str(c, chart._undoBuffer.idx === i ? "->" : "");
+                        imdom.Str(c, "Entry " + (i++) + ": ");
+                        im.For(c); for (const tlItem of item.items) {
+                            imdom.Str(c, timelineItemToString(tlItem));
+                        } im.ForEnd(c);
+                    } imui.End(c);
+                } im.ForEnd(c);
+            } imui.End(c);
+        }
 
-                    const leftAbsolutePercent = inverseLerp(
-                        min,
-                        s.leftExtentBeatsAnimated,
-                        s.rightExtentBeatsAnimated,
-                    ) * 100;
+        // Sequencer veiw
+        imSequencerInternal(c, ctx, s);
 
-                    const rightAbsolutePercent = inverseLerp(
-                        max,
-                        s.rightExtentBeatsAnimated,
-                        s.leftExtentBeatsAnimated,
-                    ) * 100;
+        imLine(c, LINE_HORIZONTAL, 1);
 
-                    imui.Begin(c, BLOCK);
-                    imui.Absolute(
-                        c,
-                        0, PX, rightAbsolutePercent, PERCENT,
-                        0, PX, leftAbsolutePercent, PERCENT);
-                    imui.Bg(c, `rgba(0, 0, 255, 0.25)`);
-                    imui.End(c);
+        // minimap of the entire chart
+        if (im.If(c) && chart.timeline.length > 0) {
+            const lastItem = chart.timeline[chart.timeline.length - 1]
+            const totalBeats = itemEnd(lastItem);
 
-                    // range select lines
-                    imSequencerVerticalLine(c, s, sequencer.rangeSelectStart, cssVarsApp.mg, 3);
-                    imSequencerVerticalLine(c, s, sequencer.rangeSelectEnd, cssVarsApp.mg, 3);
-                } im.IfEnd(c);
+            imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 50, PX); imui.Relative(c); {
+                const leftAbsolutePercent = 100.0 * s.leftExtentBeatsAnimated / totalBeats;
+                const rightAbsolutePercent = 100.0 * s.rightExtentBeatsAnimated / totalBeats;
+                const color = `rgba(0, 0, 0, 0.25)`;
 
+                im.For(c); for (let i = 0; i < chart.timeline.length; i++) {
+                    const item = chart.timeline[i];
+                    const absoluteLeftStart = 100 * item.start / totalBeats;
+                    const absoluteLeftEnd = 100 * itemEnd(item) / totalBeats;
+                    const width = absoluteLeftEnd - absoluteLeftStart;
+                    im.Switch(c, item.type); switch (item.type) {
+                        case TIMELINE_ITEM_MEASURE: {
+                            imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.playback, 2);
+                        } break;
+                        case TIMELINE_ITEM_BPM: {
+                            imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.bpmMarker, 2);
+                        } break;
+                        case TIMELINE_ITEM_NOTE: {
+                            const absoluteTop = 100 * (1 - item.noteId / (ctx.keyboard.maxNoteIdx + 1));
+
+                            imui.Begin(c, BLOCK);
+                            imui.Absolute(c, absoluteTop, PERCENT, 0, NA, 0, NA, absoluteLeftStart, PERCENT);
+                            imui.Size(c, width, PERCENT, 2, PX); {
+                                imui.Bg(c, cssVars.fg);
+                            } imui.End(c);
+                        } break;
+                    } im.SwitchEnd(c);
+                } im.ForEnd(c);
+
+                imAbsoluteVerticalLine(c, 100.0 * s.currentCursorAnimated / totalBeats, cssVarsApp.fg, 4);
+
+                // the currently viewed sliding window
                 {
-                    const start = sequencer.cursorSnap * Math.floor(s.leftExtentBeats / sequencer.cursorSnap);
-                    const end   = sequencer.cursorSnap * Math.floor(s.rightExtentBeats / sequencer.cursorSnap);
+                    imui.Begin(c, BLOCK); {
+                        imui.Absolute(c, 0, PX, 0, NA, 0, PX, 0, PX);
+                        imui.Size(c, leftAbsolutePercent, PERCENT, 0, NA);
+                        imui.Bg(c, color);
+                    } imui.End(c);
 
-                    // grid lines
-                    im.For(c); for (let x = start; x < end; x += sequencer.cursorSnap) {
-                        if (x < 0) {
-                            continue;
-                        }
-
-                        let color = cssVars.bg2;
-                        let thickness = 1;
-
-                        if (x % FRACTIONAL_UNITS_PER_BEAT === 0) {
-                            thickness = 3;
-                        } else if (x % (FRACTIONAL_UNITS_PER_BEAT / 2) === 0) {
-                            thickness = 2;
-                        }
-                        imSequencerVerticalLine(c, s, x, color, thickness);
-                    } im.ForEnd(c);
-
-                    // cursor start vertical line
-                    imSequencerVerticalLine(c, s, s.lastCursor, cssVarsApp.mg, 3);
-
-                    // add blue vertical lines for all the measures
-                    im.For(c); for (const item of s.commandsList) {
-                        if (item.type !== TIMELINE_ITEM_MEASURE) continue;
-                        const beats = item.start;
-                        imSequencerVerticalLine(c, s, beats, cssVarsApp.playback, 4);
-                    } im.ForEnd(c);
+                    imui.Begin(c, BLOCK); {
+                        imui.Absolute(c, 0, PX, 0, PX, 0, PX, rightAbsolutePercent, PERCENT);
+                        imui.Bg(c, color);
+                    } imui.End(c);
                 }
+            } imui.End(c);
+        } im.IfEnd(c);
 
-                let hasFilter = sequencer.notesFilter.size > 0;
+        imLine(c, LINE_HORIZONTAL, 1);
 
-                imui.Begin(c, COL); imui.Justify(c); imui.Size(c, 0, NA, 100, PERCENT); {
-                    imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s, false);
-                    imSequencerNotesUI(c, "measures", s.measures, null, ctx, s, false);
+        imui.Begin(c, ROW); imui.Justify(c); imui.Gap(c, 10, PX); {
+            imdom.ElBegin(c, el.B); {
+                imdom.Str(c, sequencer._currentChart.name);
+            } imdom.ElEnd(c, el.B);
 
-                    if (im.Memo(c, s.allNotesVisible)) {
-                        imdom.setStyle(c, "fontSize", s.allNotesVisible ? "13px" : "");
-                    }
+            imui.Begin(c, BLOCK); imui.Flex(c); {
+                let isSaving = isSavingAnyChart();
 
-                    if (im.If(c) && s.allNotesVisible) {
-                        im.For(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
-                            const key = ctx.keyboard.flatKeys[i];
-                            const entry = s.notesMap.get(key.noteId);
-                            const faded = hasFilter && !sequencer.notesFilter.has(key.noteId);
-                            if (entry?.firstItem) {
-                                const text = getItemSequencerText(entry.firstItem, key);
-                                imSequencerNotesUI(c, text, entry.items, entry.previewItems, ctx, s, faded);
-                            } else {
-                                const text = getMusicNoteText(key.noteId);
-                                imSequencerNotesUI(c, text, noItems, noItems, ctx, s, faded);
-                            }
-                        } im.ForEnd(c);
-                    } else {
-                        im.IfElse(c);
+                // We never want our '|' sperator to:
+                // - occur twice in a row
+                // - occur after nothing
+                // - occur before nothing
+                //
+                // As long as the first item is always present, subsequent items
+                // can be conditionally rendered like
+                // if (condition) { "|" and content }
+                //
+                // And this will always be the case.
 
-                        im.For(c); for (const entry of s.noteOrder) {
-                            assert(!!entry.firstItem);
-                            const key = getKeyForNote(ctx.keyboard, entry.firstItem.noteId);
-                            if (!key) {
-                                continue;
-                            }
+                if (im.If(c) && (ui.editView.chartSaveTimerSeconds > 0 || isSaving)) {
+                    const t = ui.editView.chartSaveTimerSeconds / CHART_SAVE_DEBOUNCE_SECONDS;
+                    const numDots = Math.floor((1.0 - t) * 10);
+                    let message = "Awaiting save" + ".".repeat(numDots);
 
-                            const text = getItemSequencerText(entry.firstItem, key);
-                            const faded = hasFilter && !sequencer.notesFilter.has(key.noteId);
-                            imSequencerNotesUI(
-                                c,
-                                text,
-                                entry.items,
-                                entry.previewItems,
-                                ctx,
-                                s,
-                                faded
-                            );
-                        } im.ForEnd(c);
+                    imdom.Str(c, message);
+                } else {
+                    im.IfElse(c);
+
+                    const numToUndo = chart._undoBuffer.idx + 1;
+                    if (im.If(c) && numToUndo > 0) {
+                        imdom.Str(c, "|");
+                        imdom.Str(c, numToUndo + " undo");
                     } im.IfEnd(c);
-                } imui.End(c);
+                    const numToRedo = chart._undoBuffer.items.length - chart._undoBuffer.idx - 1;
+                    if (im.If(c) && numToRedo > 0) {
+                        imdom.Str(c, "|");
+                        imdom.Str(c, numToRedo + " redo");
+                    } im.IfEnd(c);
+
+                    const numCopied = ui.copied.items.length;
+                    if (im.If(c) && numCopied > 0) {
+                        imdom.Str(c, "|");
+                        imdom.Str(c, numCopied + " items copied");
+                    } im.IfEnd(c);
+                } im.IfEnd(c);
             } imui.End(c);
 
-            imLine(c, LINE_HORIZONTAL, 1);
+            imdom.Str(c, "note_idx=");
+            imdom.Str(c, s.cursorIdx);
+            imdom.Str(c, ", beats="); imdom.Str(c, (sequencer.cursor / FRACTIONAL_UNITS_PER_BEAT).toFixed(3));
+            imdom.Str(c, "(integer_beats="); imdom.Str(c, sequencer.cursor); imdom.Str(c, ")");
+            imdom.Str(c, ", time="); imdom.Str(c, (sequencer._time / 1000).toFixed(3)); imdom.Str(c, "s");
 
-
-            // minimap of the entire chart
-            const chart = sequencer._currentChart;
-            if (im.If(c) && chart.timeline.length > 0) {
-                const lastItem = chart.timeline[chart.timeline.length - 1]
-                const totalBeats = itemEnd(lastItem);
-
-                imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 50, PX); imui.Relative(c); {
-                    const leftAbsolutePercent = 100.0 * s.leftExtentBeatsAnimated / totalBeats;
-                    const rightAbsolutePercent = 100.0 * s.rightExtentBeatsAnimated / totalBeats;
-                    const color = `rgba(0, 0, 0, 0.25)`;
-
-                    im.For(c); for (let i = 0; i < chart.timeline.length; i++) {
-                        const item = chart.timeline[i];
-                        const absoluteLeftStart = 100 * item.start / totalBeats;
-                        const absoluteLeftEnd   = 100 * itemEnd(item) / totalBeats;
-                        const width = absoluteLeftEnd - absoluteLeftStart;
-                        im.Switch(c, item.type); switch (item.type) {
-                            case TIMELINE_ITEM_MEASURE: {
-                                imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.playback, 2);
-                            } break;
-                            case TIMELINE_ITEM_BPM: {
-                                imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.bpmMarker, 2);
-                            } break;
-                            case TIMELINE_ITEM_NOTE: {
-                                const absoluteTop = 100 * (1 - item.noteId / (ctx.keyboard.maxNoteIdx + 1));
-
-                                imui.Begin(c, BLOCK); 
-                                imui.Absolute(c, absoluteTop, PERCENT, 0, NA, 0, NA, absoluteLeftStart, PERCENT);
-                                imui.Size(c, width, PERCENT, 2, PX); {
-                                    imui.Bg(c, cssVars.fg);
-                                } imui.End(c);
-                            } break;
-                        } im.SwitchEnd(c);
-                    } im.ForEnd(c);
-
-                    imAbsoluteVerticalLine(c, 100.0 * s.currentCursorAnimated / totalBeats, cssVarsApp.fg, 4);
-
-                    // the currently viewed sliding window
-                    {
-                        imui.Begin(c, BLOCK); {
-                            imui.Absolute(c, 0, PX, 0, NA, 0, PX, 0, PX);
-                            imui.Size(c, leftAbsolutePercent, PERCENT, 0, NA);
-                            imui.Bg(c, color);
-                        } imui.End(c);
-
-                        imui.Begin(c, BLOCK); {
-                            imui.Absolute(c, 0, PX, 0, PX, 0, PX, rightAbsolutePercent, PERCENT);
-                            imui.Bg(c, color);
-                        } imui.End(c);
-                    }
-                } imui.End(c);
-            } im.IfEnd(c);
-
-            imLine(c, LINE_HORIZONTAL, 1);
-
-            imui.Begin(c, ROW); imui.Justify(c); imui.Gap(c, 10, PX); {
-                imdom.ElBegin(c, el.B); { 
-                    imdom.Str(c, sequencer._currentChart.name); 
-                } imdom.ElEnd(c, el.B);
-
-                imui.Begin(c, BLOCK); imui.Flex(c); {
-                    let isSaving = isSavingAnyChart();
-
-                    // We never want our '|' sperator to:
-                    // - occur twice in a row
-                    // - occur after nothing
-                    // - occur before nothing
-                    //
-                    // As long as the first item is always present, subsequent items
-                    // can be conditionally rendered like
-                    // if (condition) { "|" and content }
-                    //
-                    // And this will always be the case.
-
-                    if (im.If(c) && (ui.editView.chartSaveTimerSeconds > 0 || isSaving)) {
-                        const t = ui.editView.chartSaveTimerSeconds / CHART_SAVE_DEBOUNCE_SECONDS;
-                        const numDots = Math.floor((1.0 - t) * 10);
-                        let message = "Awaiting save" + ".".repeat(numDots);
-
-                        imdom.Str(c, message);
-                    } else {
-                        im.IfElse(c);
-
-                        const numToUndo = chart._undoBuffer.idx + 1;
-                        if (im.If(c) && numToUndo > 0) {
-                            imdom.Str(c, "|");
-                            imdom.Str(c, numToUndo + " undo");
-                        } im.IfEnd(c);
-                        const numToRedo = chart._undoBuffer.items.length - chart._undoBuffer.idx - 1;
-                        if (im.If(c) && numToRedo > 0) {
-                            imdom.Str(c, "|");
-                            imdom.Str(c, numToRedo + " redo");
-                        } im.IfEnd(c);
-
-                        const numCopied = ui.copied.items.length;
-                        if (im.If(c) && numCopied > 0) {
-                            imdom.Str(c, "|");
-                            imdom.Str(c, numCopied + " items copied");
-                        } im.IfEnd(c);
-                    } im.IfEnd(c);
-                } imui.End(c);
-
-                imdom.Str(c, "note_idx=");
-                imdom.Str(c, s.cursorIdx);
-                imdom.Str(c, ", beats="); imdom.Str(c, (sequencer.cursor / FRACTIONAL_UNITS_PER_BEAT).toFixed(3)); 
-                imdom.Str(c, "(integer_beats="); imdom.Str(c, sequencer.cursor); imdom.Str(c, ")");
-                imdom.Str(c, ", time="); imdom.Str(c, (sequencer._time / 1000).toFixed(3)); imdom.Str(c, "s");
-
-                imui.Begin(c, ROW); imui.Flex(c); imui.Justify(c, END); {
-                    if (im.If(c) && sequencer.notesToPreview.length > 0) {
-                        imdom.Str(c, "TAB -> place, DEL or ~ -> delete");
-                    } im.IfEnd(c);
-                } imui.End(c);
+            imui.Begin(c, ROW); imui.Flex(c); imui.Justify(c, END); {
+                if (im.If(c) && sequencer.notesToPreview.length > 0) {
+                    imdom.Str(c, "TAB -> place, DEL or ~ -> delete");
+                } im.IfEnd(c);
             } imui.End(c);
         } imui.End(c);
 
@@ -750,7 +632,7 @@ function imSequencerNotesUI(
 
     const compact = !!s.allNotesVisible;
 
-    imui.Begin(c, BLOCK); imui.Relative(c); imui.Padding(
+    imui.Begin(c, COL); imui.Relative(c); imui.Padding(
         c,
         compact ? 0 : 10, PX, 3, PX, 
         compact ? 0 : 10, PX, 3, PX, 
@@ -1215,6 +1097,132 @@ function imImportModal(
             } imui.End(c);
             if (imButtonIsClicked(c, "Import")) {
             }
+        } imui.End(c);
+    } imui.End(c);
+}
+
+function imSequencerInternal(c: ImCache, ctx: GlobalContext, s: SequencerUIState) {
+    const { sequencer } = ctx;
+    const isRangeSelecting = hasRangeSelection(sequencer);
+
+    imui.Begin(c, ROW); imui.Flex(c); {
+        imui.Begin(c, BLOCK); imui.Flex(c); imui.Relative(c); {
+            if (im.isFirstishRender(c)) {
+                imdom.setStyle(c, "overflowY", "auto");
+                imdom.setStyle(c, "overflowX", "hidden");
+            }
+
+            if (im.If(c) && isRangeSelecting) {
+                const beatsA = sequencer.rangeSelectStart;
+                const beatsB = sequencer.rangeSelectEnd;
+
+                let min = Math.min(beatsA, beatsB);
+                let max = Math.max(beatsA, beatsB);
+
+                const leftAbsolutePercent = inverseLerp(
+                    min,
+                    s.leftExtentBeatsAnimated,
+                    s.rightExtentBeatsAnimated,
+                ) * 100;
+
+                const rightAbsolutePercent = inverseLerp(
+                    max,
+                    s.rightExtentBeatsAnimated,
+                    s.leftExtentBeatsAnimated,
+                ) * 100;
+
+                imui.Begin(c, BLOCK);
+                imui.Absolute(
+                    c,
+                    0, PX, rightAbsolutePercent, PERCENT,
+                    0, PX, leftAbsolutePercent, PERCENT);
+                imui.Bg(c, `rgba(0, 0, 255, 0.25)`);
+                imui.End(c);
+
+                // range select lines
+                imSequencerVerticalLine(c, s, sequencer.rangeSelectStart, cssVarsApp.mg, 3);
+                imSequencerVerticalLine(c, s, sequencer.rangeSelectEnd, cssVarsApp.mg, 3);
+            } im.IfEnd(c);
+
+            {
+                const start = sequencer.cursorSnap * Math.floor(s.leftExtentBeats / sequencer.cursorSnap);
+                const end = sequencer.cursorSnap * Math.floor(s.rightExtentBeats / sequencer.cursorSnap);
+
+                // grid lines
+                im.For(c); for (let x = start; x < end; x += sequencer.cursorSnap) {
+                    if (x < 0) {
+                        continue;
+                    }
+
+                    let color = cssVars.bg2;
+                    let thickness = 1;
+
+                    if (x % FRACTIONAL_UNITS_PER_BEAT === 0) {
+                        thickness = 3;
+                    } else if (x % (FRACTIONAL_UNITS_PER_BEAT / 2) === 0) {
+                        thickness = 2;
+                    }
+                    imSequencerVerticalLine(c, s, x, color, thickness);
+                } im.ForEnd(c);
+
+                // cursor start vertical line
+                imSequencerVerticalLine(c, s, s.lastCursor, cssVarsApp.mg, 3);
+
+                // add blue vertical lines for all the measures
+                im.For(c); for (const item of s.commandsList) {
+                    if (item.type !== TIMELINE_ITEM_MEASURE) continue;
+                    const beats = item.start;
+                    imSequencerVerticalLine(c, s, beats, cssVarsApp.playback, 4);
+                } im.ForEnd(c);
+            }
+
+            let hasFilter = sequencer.notesFilter.size > 0;
+
+            imui.Begin(c, COL); imui.Justify(c); imui.Size(c, 0, NA, 100, PERCENT); {
+                imSequencerNotesUI(c, "bpm", s.bpmChanges, null, ctx, s, false);
+                imSequencerNotesUI(c, "measures", s.measures, null, ctx, s, false);
+
+                if (im.Memo(c, s.allNotesVisible)) {
+                    imdom.setStyle(c, "fontSize", s.allNotesVisible ? "13px" : "");
+                }
+
+                if (im.If(c) && s.allNotesVisible) {
+                    im.For(c); for (let i = ctx.keyboard.flatKeys.length - 1; i >= 0; i--) {
+                        const key = ctx.keyboard.flatKeys[i];
+                        const entry = s.notesMap.get(key.noteId);
+                        const faded = hasFilter && !sequencer.notesFilter.has(key.noteId);
+                        if (entry?.firstItem) {
+                            const text = getItemSequencerText(entry.firstItem, key);
+                            imSequencerNotesUI(c, text, entry.items, entry.previewItems, ctx, s, faded);
+                        } else {
+                            const text = getMusicNoteText(key.noteId);
+                            imSequencerNotesUI(c, text, noItems, noItems, ctx, s, faded);
+                        }
+                    } im.ForEnd(c);
+                } else {
+                    im.IfElse(c);
+
+                    im.For(c); for (const entry of s.noteOrder) {
+                        assert(!!entry.firstItem);
+                        const key = getKeyForNote(ctx.keyboard, entry.firstItem.noteId);
+                        if (!key) {
+                            continue;
+                        }
+
+                        const text = getItemSequencerText(entry.firstItem, key);
+                        const faded = hasFilter && !sequencer.notesFilter.has(key.noteId);
+                        imSequencerNotesUI(
+                            c,
+                            text,
+                            entry.items,
+                            entry.previewItems,
+                            ctx,
+                            s,
+                            faded
+                        );
+                    } im.ForEnd(c);
+                } im.IfEnd(c);
+            } imui.End(c);
         } imui.End(c);
     } imui.End(c);
 }
