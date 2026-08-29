@@ -1,8 +1,9 @@
 import { getAllBundledCharts, getAllBundledChartsMetadata } from "src/assets/bundled-charts.ts";
-import { filterInPlace } from "src/utils/array-utils.ts";
 import { assert } from "src/utils/assert.ts";
-import { AsyncCb, Done, AsyncCallback, AsyncCallbackResult, DONE, newError, parallelIterator, toTrackedCallback } from "src/utils/async-utils.ts";
+import { CANCELLED, DONE, Done, PARALLELISM, Result, Then, trackTask } from "src/utils/async-utils.ts";
 import * as idb from "src/utils/indexed-db.ts";
+import { utf16ByteLength } from "src/utils/utf8.ts";
+import { EffectRackPreset, EffectRackPresetMetadata, effectRackPresetToMetadata, KeyboardConfig } from "./keyboard-config.ts";
 import {
     CHART_STATUS_READONLY,
     CHART_STATUS_SAVED,
@@ -13,8 +14,10 @@ import {
     SequencerChartCompressed,
     uncompressChart
 } from "./sequencer-chart.ts";
-import { EffectRackPreset, EffectRackPresetMetadata, effectRackPresetToMetadata, KeyboardConfig, keyboardConfigDeleteSlot } from "./keyboard-config.ts";
-import { utf16ByteLength } from "src/utils/utf8.ts";
+
+function logError(...messages: any[]) {
+    console.error("[data-repository]", ...messages);
+}
 
 /////////////////////////////////////
 // Data repository core utils
@@ -56,7 +59,9 @@ export type DataRepository = {
     };
 };
 
-export function newDataRepository(cb: AsyncCallback<DataRepository>): Done {
+export function newDataRepository(cb: Then<DataRepository>): Done {
+    cb = trackTask("Loading data repository", cb);
+
     return idb.openConnection("KeyboardRhythmGameIDB", tablesVersion, tables, {
         onBlocked(event: IDBVersionChangeEvent) {
             console.error("IDB blocked!", { event });
@@ -66,11 +71,17 @@ export function newDataRepository(cb: AsyncCallback<DataRepository>): Done {
         }
     }, onConnected);
 
-    function onConnected(db: IDBDatabase | undefined, err: any): Done {
-        if (err || !db) return cb(undefined, err);
+    function onConnected(db: Result<IDBDatabase>): Done {
+        if ("error" in db) {
+            // The program simply cannot start without the database. 
+            // I suppose we could run in 'new game' mode without any save data, but I'd rather not).
+            // Imagine spending a bunch of time making a chart, and it didnt save. 
+            // But we knew all along it wouldnt save. xd
+            throw new Error(db.error);
+        }
 
         const repo: DataRepository = {
-            db: db,
+            db: db.value,
             tables: tables,
             charts: {
                 allChartMetadata: [],
@@ -88,7 +99,7 @@ export function newDataRepository(cb: AsyncCallback<DataRepository>): Done {
 
         updateAvailableMetadata(repo, []);
 
-        return cb(repo, undefined);
+        return cb(repo);
     }
 }
 
@@ -105,7 +116,7 @@ function repositoryWriteTx(repo: DataRepository, tables: idb.AnyTableDef[]) {
 /////////////////////////////////////
 // Charts
 
-export function loadChartMetadataList(repo: DataRepository, cb: AsyncCb<SequencerChartMetadata[]>): Done {
+export function loadChartMetadataList(repo: DataRepository, cb: Then<SequencerChartMetadata[]>): Done {
     const tx = repositoryReadTx(repo, [tables.chart]);
     return loadChartMetadataListTx(repo, tx, cb);
 }
@@ -115,7 +126,7 @@ export function loadChartMetadataList(repo: DataRepository, cb: AsyncCb<Sequence
  * From then onwards, all mutations get optimistically forked into a cache and the database, 
  * so subsequent calls should be relatively instant.
  */
-export function loadChartMetadataListTx(repo: DataRepository, tx: idb.ReadTransaction, cb: AsyncCb<SequencerChartMetadata[]>): Done {
+export function loadChartMetadataListTx(repo: DataRepository, tx: idb.ReadTransaction, cb: Then<SequencerChartMetadata[]>): Done {
     repo.charts.loading = true;
 
     return idb.getAllMetadata(tx, tables.chart, (charts) => {
@@ -139,50 +150,48 @@ function updateAvailableMetadata(repo: DataRepository, metadata: SequencerChartM
     });
 }
 
-export function cleanupChartRepo(repo: DataRepository, cb: AsyncCallback<void>): Done {
+export function cleanupChartRepo(repo: DataRepository, cb: Then<void>): Done {
     let cleanedUp: any[] = [];
 
     const tx = repositoryWriteTx(repo, [tables.chart]);
 
     return idb.getAll(tx, tables.chart.metadata, (metadatas) => {
-        if (!metadatas) return DONE;
+        if (!metadatas) return cb();
 
-        return parallelIterator(
-            metadatas,
-            (chart, iter) => {
-                return idb.getOne(tx, tables.chart.data, chart.id, (data) => {
-                    if (!data) {
-                        // Ignore the error
-                        return iter(); 
-                    }
-
-                    if (isBundledChartId(chart.id) || !data) {
-                        cleanedUp.push(chart);
-                        return idb.deleteOne(tx, tables.chart.metadata, chart.id, () => iter());
-                    } 
-
-                    let modified = false;
-
-                    if (data.n.trim() !== data.n) {
-                        data.n = data.n.trim();
-                        modified = true;
-                    }
-
-                    if (modified) {
-                        cleanedUp.push(chart);
-                        return idb.putOne(tx, tables.chart.data, data, () => iter());
-                    }
-
-                    return iter();
-                })
-            },
-            () => {
-                if (cleanedUp.length > 0) {
-                    console.warn("Cleaned up non-matching or wrongly saved records: ", cleanedUp);
+        for (const chart of metadatas) {
+            idb.getOne(tx, tables.chart.data, chart.id, (data) => {
+                if ("error" in data) {
+                    return onProcessedChart();
                 }
-                return cb();
-            }
-        );
+
+                if (isBundledChartId(chart.id) || !data.value) {
+                    cleanedUp.push(chart);
+                    return idb.deleteOne(tx, tables.chart.metadata, chart.id, onProcessedChart);
+                } 
+
+                let modified = false;
+
+                if (data.value.n.trim() !== data.value.n) {
+                    data.value.n = data.value.n.trim();
+                    modified = true;
+                }
+
+                if (modified) {
+                    cleanedUp.push(chart);
+                    return idb.putOne(tx, tables.chart.data, data.value, () => onProcessedChart());
+                }
+
+                return onProcessedChart();
+            })
+        }
+
+        let count = metadatas.length;
+        function onProcessedChart(): Done {
+            count--;
+            return PARALLELISM;
+        }
+
+        return PARALLELISM;
     });
 }
 
@@ -191,10 +200,10 @@ export type SequencerChartMetadata = Pick<SequencerChart, "id" | "name">;
 export function loadChart(
     repo: DataRepository,
     id: number,
-    cb: AsyncCallback<SequencerChart>,
-): AsyncCallbackResult {
+    cb: Then<SequencerChart | undefined>,
+): Done {
     if (isBundledChartId(id)) {
-        // Bundled charts will load substantially faster, since they come with the game
+        // Bundled charts will load substantially faster, since they ship with the game
         const bundled = getAllBundledCharts();
         const chart = bundled.find(c => c.id === id)
 
@@ -203,17 +212,15 @@ export function loadChart(
             console.log(err);
         }
 
-        return cb(chart, err);
+        return cb(chart);
     }
 
     // TODO: cache this codepath
 
     const tx = repositoryReadTx(repo, [tables.chart]);
 
-    return idb.getData(tx, tables.chart, id, (compressedChart, err) => {
-        if (!compressedChart) {
-            return cb(undefined, err);
-        }
+    return idb.getData(tx, tables.chart, id, (compressedChart) => {
+        if (!compressedChart) return cb(undefined);
 
         // TODO: saved/unsaved status system to avoid needless saves/loads.
         // or remove if we think its useless.
@@ -222,44 +229,47 @@ export function loadChart(
     });
 }
 
-export function saveChart(repo: DataRepository, chart: SequencerChart, cb: AsyncCb<boolean>): Done {
-    cb = toTrackedCallback(cb, "saveChart");
+export function saveChart(repo: DataRepository, chart: SequencerChart, cb: Then<Result<boolean>>): Done {
+    cb = trackTask("saveChart", cb);
 
     if (isBundledChartId(chart.id)) {
-        return cb(false, "Can't save a bundled chart. Copy it first");
+        return cb({ error: "Can't save a bundled chart. Copy it first" });
     }
 
     if (chart._savedStatus === CHART_STATUS_READONLY) {
-        return cb(false, "Can't save a readonly chart. Copy it first");
+        return cb({ error: "Can't save a readonly chart. Copy it first" });
     }
 
     const tx = repositoryWriteTx(repo, [tables.chart]);
 
     const compressedChart = compressChart(chart);
-    return idb.saveData(tx, tables.chart, compressedChart, (result, err) => {
-        if (result === undefined) return cb(result, err);
-        
+    return idb.saveData(tx, tables.chart, compressedChart, (result) => {
+        if ("error" in result) return cb({ error: result.error });
+
         if (chart._savedStatus === CHART_STATUS_UNSAVED) {
             chart._savedStatus = CHART_STATUS_SAVED;
         }
 
-        updateAvailableMetadata(repo, tables.chart.allItemsAsync.val);
+        updateAvailableMetadata(repo, tables.chart.allItemsAsync);
 
-        return cb(true);
+        return cb({ value: true });
     });
 }
 
 // Creates a chart, returns it's id
-export function createChart(repo: DataRepository, chart: SequencerChart, cb: AsyncCb<boolean>): Done {
-    cb = toTrackedCallback(cb, "createChart");
+export function createChart(repo: DataRepository, chart: SequencerChart, cb: Then<boolean>): Done {
+    cb = trackTask("createChart", cb);
 
     chart.name = chart.name.trim();
 
     const tx = repositoryWriteTx(repo, [tables.chart]);
 
     const data = compressChart(chart);
-    return idb.createData(tx, tables.chart, data, (val, err) => {
-        if (!val || err) return cb(false, err);
+    return idb.createData(tx, tables.chart, data, (val) => {
+        if ("error" in val) {
+            logError(val.error);
+            return cb(false);
+        }
 
         assert(data.i > 0);
         chart.id = data.i;
@@ -273,16 +283,17 @@ export function createChart(repo: DataRepository, chart: SequencerChart, cb: Asy
     });
 }
 
-export function deleteChart(repo: DataRepository, chartToDelete: SequencerChart, cb: AsyncCb<void>): Done {
-    cb = toTrackedCallback(cb, "deleteChart");
+export function deleteChart(repo: DataRepository, chartToDelete: SequencerChart, cb: Then<void>): Done {
+    cb = trackTask("deleteChart", cb);
 
     if (chartToDelete._savedStatus === CHART_STATUS_READONLY) {
-        return cb(undefined, newError("Can't delete a bundled chart"));
+        logError("Can't delete a bundled chart");
+        return cb();
     }
 
     if (chartToDelete.id <= 0) {
         // Our work here is done :)
-        return cb(undefined);
+        return cb();
     }
 
     const tx = repositoryWriteTx(repo, [tables.chart]);
@@ -300,40 +311,49 @@ export function findChartMetadata(repo: DataRepository, id: number): SequencerCh
 /////////////////////////////////////
 // Effects rack presets
 
-export function loadAllEffectRackPresets(repo: DataRepository, cb: AsyncCb<EffectRackPresetMetadata[]>): Done {
-    cb = toTrackedCallback(cb, "loadAllEffectRackPresets");
+export function loadAllEffectRackPresets(repo: DataRepository, cb: Then<EffectRackPresetMetadata[]>): Done {
+    cb = trackTask("loadAllEffectRackPresets", cb);
     const tx = repositoryReadTx(repo, [tables.effectRackPresets])
-    return idb.getAllMetadata(tx, tables.effectRackPresets, (list, err) => {
-        if (!list || err) return cb(undefined, err);
+    return idb.getAllMetadata(tx, tables.effectRackPresets, (list) => {
         recomputeEffectRackPresets(repo);
         return cb(list);
     });
 }
 
-export function loadEffectRackPreset(repo: DataRepository, meta: EffectRackPresetMetadata, cb: AsyncCb<EffectRackPreset>): Done {
-    cb = toTrackedCallback(cb, "loadEffectRackPreset");
+export function loadEffectRackPreset(repo: DataRepository, meta: EffectRackPresetMetadata, cb: Then<EffectRackPreset>): Done {
+    cb = trackTask("loadEffectRackPreset", cb);
     const tx = repositoryReadTx(repo, [tables.effectRackPresets]);
-    return idb.getData(tx, tables.effectRackPresets, meta.id, cb);
+    return idb.getData(tx, tables.effectRackPresets, meta.id, preset => {
+        if (!preset) {
+            logError("We expected the preset to be present if you were able to have a reference to it's metadata object");
+            return CANCELLED;
+        }
+
+        return cb(preset);
+    });
 }
 
 export function createEffectRackPreset(
     repo: DataRepository,
     preset: EffectRackPreset,
-    cb: AsyncCb<{ data: EffectRackPreset; metadata: EffectRackPresetMetadata }>
+    cb: Then<{ data: EffectRackPreset; metadata: EffectRackPresetMetadata } | undefined>
 ): Done {
-    cb = toTrackedCallback(cb, "createEffectRackPreset");
+    cb = trackTask("createEffectRackPreset", cb);
 
     const tx = repositoryWriteTx(repo, [tables.effectRackPresets]);
-    return idb.createData(tx, tables.effectRackPresets, preset, (val, err) => {
-        if (!val || err) return cb(undefined, err);
+    return idb.createData(tx, tables.effectRackPresets, preset, (val) => {
+        if ("error" in val) {
+            logError(val);
+            return DONE;
+        }
 
         recomputeEffectRackPresets(repo);
-        return cb(val);
+        return cb(val.value);
     });
 }
 
-export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb): Done {
-    cb = toTrackedCallback(cb, "updateEffectRackPreset");
+export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: Then<void>): Done {
+    cb = trackTask("updateEffectRackPreset", cb);
     const tx = repositoryWriteTx(repo, [tables.effectRackPresets]);
     return idb.updateData(tx, tables.effectRackPresets, preset, () => {
         recomputeEffectRackPresets(repo);
@@ -341,8 +361,8 @@ export function updateEffectRackPreset(repo: DataRepository, preset: EffectRackP
     });
 }
 
-export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: AsyncCb): Done {
-    cb = toTrackedCallback(cb, "deleteEffectRackPreset");
+export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackPreset, cb: Then<void>): Done {
+    cb = trackTask("deleteEffectRackPreset", cb);
     const tx = repositoryWriteTx(repo, [tables.effectRackPresets]);
     return idb.deleteData(tx, tables.effectRackPresets, preset.id, () => {
         recomputeEffectRackPresets(repo);
@@ -352,7 +372,7 @@ export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackP
 
 function recomputeEffectRackPresets(repo: DataRepository) {
     repo.effectRackPresets.allEffectRackPresets = [
-        ...repo.tables.effectRackPresets.allItemsAsync.val
+        ...repo.tables.effectRackPresets.allItemsAsync
     ];
 
     const presets = repo.effectRackPresets.allEffectRackPresets;
@@ -395,7 +415,7 @@ export const DEFAULT_GROUP_NAME = "ungrouped";
 /////////////////////////////////////
 // Keyboard Configs
 
-export function loadAllKeyboardConfigPresets(repo: DataRepository, cb: AsyncCb<KeyboardConfigMetadata[]>): Done {
+export function loadAllKeyboardConfigPresets(repo: DataRepository, cb: Then<KeyboardConfigMetadata[]>): Done {
     const tx = repositoryReadTx(repo, [tables.keyboardPresets]);
     return idb.getAllMetadata(tx, tables.keyboardPresets, (list) => {
         recomputeKeyboardConfigPresets(repo);
@@ -407,49 +427,54 @@ export function loadAllKeyboardConfigPresets(repo: DataRepository, cb: AsyncCb<K
 export function saveKeyboardConfig(
     repo: DataRepository,
     config: KeyboardConfig,
-    cb: AsyncCb<boolean>,
+    cb: Then<boolean>,
 ): Done {
-    cb = toTrackedCallback(cb, "saveKeyboardConfig");
+    cb = trackTask("saveKeyboardConfig", cb);
     const tx = repositoryWriteTx(repo, [tables.keyboardPresets]);
-    return idb.updateData(tx, tables.keyboardPresets, config, (val, err) => {
+    return idb.updateData(tx, tables.keyboardPresets, config, (val) => {
         recomputeKeyboardConfigPresets(repo);
-        return cb(val, err);
+        return cb(val);
     });
 }
 
 export function createKeyboardConfigPreset(
     repo: DataRepository,
     preset: KeyboardConfig,
-    cb: AsyncCb<{ data: KeyboardConfig; metadata: KeyboardConfigMetadata }>,
+    cb: Then<{ data: KeyboardConfig; metadata: KeyboardConfigMetadata }>,
 ): Done {
-    cb = toTrackedCallback(cb, "createKeyboardConfigPreset");
+    cb = trackTask("createKeyboardConfigPreset", cb);
     const tx = repositoryWriteTx(repo, [tables.keyboardPresets]);
-    return idb.createData(tx, tables.keyboardPresets, preset, (val, err) => {
+    return idb.createData(tx, tables.keyboardPresets, preset, (val) => {
+        if ("error" in val) {
+            logError(val.error);
+            return DONE;
+        }
+
         recomputeKeyboardConfigPresets(repo);
-        return cb(val, err);
+        return cb(val.value);
     });
 }
 
 export function loadKeyboardConfig(
     repo: DataRepository,
     metadata: KeyboardConfigMetadata,
-    cb: AsyncCb<KeyboardConfig>,
+    cb: Then<KeyboardConfig | undefined>,
 ): Done {
-    cb = toTrackedCallback(cb, "loadKeyboardConfig");
+    cb = trackTask("loadKeyboardConfig", cb);
     const tx = repositoryReadTx(repo, [tables.keyboardPresets]);
     return idb.getData(tx, tables.keyboardPresets, metadata.id, cb);
 }
 
-export function deleteKeyboardConfig(repo: DataRepository, toDelete: KeyboardConfig, cb: AsyncCb<void>): Done {
+export function deleteKeyboardConfig(repo: DataRepository, toDelete: KeyboardConfig, cb: Then<void>): Done {
     if (toDelete.id <= 0) {
         // Our work here is done :)
         return cb(undefined);
     }
 
     const tx = repositoryWriteTx(repo, [tables.chart]);
-    return idb.deleteData(tx, tables.chart, toDelete.id, (val, err) => {
+    return idb.deleteData(tx, tables.chart, toDelete.id, (val) => {
         recomputeKeyboardConfigPresets(repo);
-        return cb(val, err);
+        return cb(val);
     });
 }
 
@@ -475,7 +500,7 @@ export function keyboardConfigToMetadata(config: KeyboardConfig): KeyboardConfig
 function recomputeKeyboardConfigPresets(repo: DataRepository) {
     const groups = repo.keyboardConfigPresets.groups;
     groups.clear();
-    for (const preset of repo.tables.keyboardPresets.allItemsAsync.val) {
+    for (const preset of repo.tables.keyboardPresets.allItemsAsync) {
         forEachPresetGroup(preset.name, group => {
             let presets = groups.get(group) ?? [];
             presets.push(preset);

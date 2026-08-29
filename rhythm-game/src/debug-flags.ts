@@ -32,6 +32,7 @@ export type DebugFlags = {
     testSoundLab: Flag;
     testSoundLabEditingKeyboardConfig: Flag;
     testSoundLabAllEffectRackEffects: Flag;
+    // TODO: This needs to become a keyboard probably.
     testSoundLabLoadPreset: string;
 
     testAsync: Flag;

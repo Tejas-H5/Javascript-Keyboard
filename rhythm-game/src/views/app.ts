@@ -1,6 +1,4 @@
-import { imui, isEditingTextSomewhereInDocument, BLOCK, COL, NA, PX } from "src/utils/im-js/im-ui";
 import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter.ts";
-import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
 import { debugFlags } from "src/debug-flags.ts";
 import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface.ts";
 import { DataRepository, loadChart, loadChartMetadataList, SequencerChartMetadata } from "src/state/data-repository.ts";
@@ -24,9 +22,10 @@ import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VI
 import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests.ts";
 import { filterInPlace } from "src/utils/array-utils.ts";
 import { assert, unreachable } from "src/utils/assert.ts";
-import { AsyncCallback, AsyncCallbackResult, done, DONE, getTrackedAsyncActions } from "src/utils/async-utils.ts";
 import { el, im, ImCache, imdom } from "src/utils/im-js";
+import { BLOCK, COL, imui, isEditingTextSomewhereInDocument, NA, PX } from "src/utils/im-js/im-ui";
 
+import { CANCELLED, DONE, Done, getTasks, Then } from "src/utils/async-utils.ts";
 import { imChartSelect } from "src/views/chart-select.ts";
 import { imEditView } from "src/views/edit-view.ts";
 import { imPlayView } from "src/views/play-view.ts";
@@ -105,26 +104,23 @@ export function playKeyPressForUI(ctx: GlobalContext, normalizedPitch: number) {
 export function setCurrentChartMeta(
     ctx: GlobalContext,
     metadata: SequencerChartMetadata,
-    cb: AsyncCallback<void>
-): AsyncCallbackResult {
+    then: Then<void>,
+): Done {
     const chartSelect = ctx.ui.chartSelect;
     if (chartSelect.currentChartLoadingId === metadata.id) {
-        return cb();
+        return then();
     }
 
     chartSelect.currentChartLoadingId = metadata.id;
     chartSelect.currentChartMeta      = metadata;
 
-    return loadChart(ctx.repo, metadata.id, (chart, err) => {
-        if (!chart) return DONE;
-
-        if (chart.id !== chartSelect.currentChartLoadingId) {
-            return DONE;
+    return loadChart(ctx.repo, metadata.id, (chart) => {
+        if (!chart || chart.id !== chartSelect.currentChartLoadingId) {
+            return CANCELLED;
         }
 
         setSequencerChart(ctx.sequencer, chart);
-
-        return cb(undefined, err);
+        return then();
     });
 }
 
@@ -295,15 +291,13 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 editView.lastCursor = 0;
 
                 loadChartMetadataList(ctx.repo, (availableCharts) => {
-                    if (!availableCharts)             return DONE;
                     if (availableCharts.length === 0) return DONE;
 
                     const currentChartId = ctx.sequencer._currentChart.id;
                     let idx = availableCharts.findIndex(c => c.id === currentChartId);
                     if (idx === -1) idx = 0;
 
-                    setCurrentChartMeta(ctx, availableCharts[idx], done);
-                    return DONE;
+                    return setCurrentChartMeta(ctx, availableCharts[idx], () => DONE);
                 });
             } break;
             case APP_VIEW_PLAY_CHART: {
@@ -536,19 +530,14 @@ export function imDiagnosticInfo(c: ImCache, ctx: GlobalContext | undefined) {
 
         // Info about background tasks
         imui.Begin(c, BLOCK); {
-            const asyncActions = getTrackedAsyncActions();
-            im.For(c); for (const slot of asyncActions.values()) {
-                im.For(c); for (const action of slot) {
-                    imui.Begin(c, BLOCK); imui.Bg(c, action.error ? `rgba(255, 0, 0, 0.5)` : `rgba(0, 255, 255, 1)`); {
-                        const t1 = action.t1 ?? performance.now();
-                        const ms = t1 - action.t0;
-                        imdom.Str(c, Math.round(ms));
-                        imdom.Str(c, "ms |");
-                        imdom.Str(c, action.name);
-                    } imui.End(c);
-                } im.ForEnd(c);
-
-                imLine(c, LINE_HORIZONTAL, 1);
+            const tasks = getTasks();
+            im.For(c); for (const task of tasks.tasks) {
+                imui.Begin(c, BLOCK); {
+                    const ms = performance.now() - task.t0;
+                    imdom.Str(c, Math.round(ms));
+                    imdom.Str(c, "ms |");
+                    imdom.Str(c, task.name);
+                } imui.End(c);
             } im.ForEnd(c);
         } imui.End(c);
     } imui.End(c);

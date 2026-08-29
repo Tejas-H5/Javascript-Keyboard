@@ -1,18 +1,15 @@
-import { imui, BLOCK, ROW, COL, PX, NA, cssVars, PERCENT } from "src/utils/im-js/im-ui";
-
+import { cssVars, imui, PERCENT, ROW } from "src/utils/im-js/im-ui";
 import { getCurrentPlaySettings, updatePlaySettings } from "src/dsp/dsp-loop-interface";
 import { im, ImCache, imdom } from "src/utils/im-js";
-
 import { GlobalContext, setViewChartSelect } from "./app";
-
+import { imSvgContext } from "src/components/svg-context";
 import { createKeyboardConfigPreset, loadAllEffectRackPresets, loadAllKeyboardConfigPresets, loadKeyboardConfig, saveKeyboardConfig } from "src/state/data-repository";
 import { KeyboardConfig, newKeyboardConfig } from "src/state/keyboard-config";
 import { arrayAt } from "src/utils/array-utils";
 import { assert } from "src/utils/assert";
-import { DONE, done } from "src/utils/async-utils";
 import { imEffectRackEditor, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
 import { imKeyboardConfigEditor, newKeyboardConfigEditorState } from "./sound-lab-keyboard-editor";
-import { imSvgContext } from "src/components/svg-context";
+import { DONE } from "src/utils/async-utils";
 
 function log(...messages: any[]) {
     console.log("[sound lab]", ...messages);
@@ -39,24 +36,21 @@ export function imSoundLab(c: ImCache, ctx: GlobalContext) {
     let lab = im.State(c, newSoundLabState);
 
     if (im.Memo(c, 0) === im.MEMO_FIRST_RENDER) {
-        loadAllEffectRackPresets(ctx.repo, done);
-        loadAllKeyboardConfigPresets(ctx.repo, (presets, err) => {
-            if (!presets || err) return DONE;
+        loadAllEffectRackPresets(ctx.repo, () => DONE);
+        loadAllKeyboardConfigPresets(ctx.repo, (presets) => {
             if (presets.length === 0) {
                 // we need to create and load the default preset
                 const defaultConfig = newKeyboardConfig();
-                return createKeyboardConfigPreset(ctx.repo, defaultConfig, (config, err) => {
-                    if (!config || err) return DONE;
-
+                return createKeyboardConfigPreset(ctx.repo, defaultConfig, (config) => {
                     lab.keyboardConfig = config.data;
                     return DONE;
                 });
             }
 
-            return loadKeyboardConfig(ctx.repo, presets[0], (config, err) => {
-                if (!config || err) return DONE;
-
-                lab.keyboardConfig = config;
+            return loadKeyboardConfig(ctx.repo, presets[0], (config) => {
+                if (config) {
+                    lab.keyboardConfig = config;
+                }
                 return DONE;
             });
         });

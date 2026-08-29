@@ -2,17 +2,15 @@ import { imInfiniteProgress } from "src/app-components/infinite-progress";
 import { imModalBegin, imModalEnd } from "src/app-components/modal";
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonIsClicked } from "src/components/button";
-import { imui, BLOCK, ROW, COL, PX, NA, cssVars, PERCENT } from "src/utils/im-js/im-ui";
-
+import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, ROW } from "src/utils/im-js/im-ui";
 import { createChart, saveChart } from "src/state/data-repository";
 import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
 import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "src/state/ui-state";
 import { unreachable } from "src/utils/assert";
-import { AsyncCb, Done, CANCELLED, done, newError, toTrackedCallback } from "src/utils/async-utils";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-
+import { im, ImCache, imdom } from "src/utils/im-js";
 import { GlobalContext } from "./app";
 import { cssVarsApp } from "./styling";
+import { CANCELLED, Done, DONE, Result, Then, trackTask } from "src/utils/async-utils";
 
 function getButtonText(o: OperationType): string {
     switch(o) {
@@ -93,7 +91,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     }
 
     if (copy) {
-        handleCreateCopyOrRenameChart(ctx, s, done);
+        handleCreateCopyOrRenameChart(ctx, s, () => DONE);
     } else if (escape) {
         if (!s.isUpdating) {
             ctx.ui.updateModal = null;
@@ -106,7 +104,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     ctx.handled = true;
 }
 
-function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, cbIn: AsyncCb<boolean>): Done {
+function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, cbIn: Then<Result<boolean>>): Done {
     if (s.isUpdating) return CANCELLED;
 
     // Figure out the message, clear the message
@@ -125,22 +123,26 @@ function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, 
         }
     }
 
-    let cb: AsyncCb<boolean> = (val, err) => {
+    let cb = (val: Result<boolean>) => {
         s.message = "";
         ctx.ui.updateModal = null;
-        return cbIn(val, err);
+        return cbIn(val);
     };
 
-    cb = toTrackedCallback(cb, "handleCreateCopyOrRenameChart " + s.message);
+    cb = trackTask("handleCreateCopyOrRenameChart " + s.message, cb);
 
     s.error = null;
 
     s.newName = s.newName.trim();
-    if (!s.newName) return cb(undefined, newError("Your name is empty"));
+    if (!s.newName) {
+        return cb({ error: "Your name is empty" });
+    }
 
     const charts = ctx.repo.charts.allChartMetadata;
     const existing = charts.find(c => c.name === s.newName);
-    if (existing) return cb(undefined, newError("A chart with this name already exists"));
+    if (existing) {
+        return cb({ error: "A chart with this name already exists" });
+    }
 
     switch (s.operation) {
         case NAME_OPERATION_RENAME:
@@ -153,11 +155,13 @@ function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, 
         case NAME_OPERATION_CREATE:
             const toCreate = newChart(s.newName);
 
-            return createChart(ctx.repo, toCreate, (created, error) => {
-                if (!created) return cb(false, error);
+            return createChart(ctx.repo, toCreate, (created) => {
+                if (!created) {
+                    return cb({ error: "Failed to create chart" });
+                }
 
                 ctx.ui.updateModal = null;
-                return cb(true);
+                return cb({ value: true });
             });
         case NAME_OPERATION_COPY:
             const toCopy = { ...s.chartToUpdate };
@@ -165,11 +169,13 @@ function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, 
             toCopy.name = s.newName;
             toCopy._savedStatus = CHART_STATUS_UNSAVED;
 
-            return createChart(ctx.repo, toCopy, (created, error) => {
-                if (!created) return cb(false, error);
+            return createChart(ctx.repo, toCopy, (created) => {
+                if (!created) {
+                    return cb({ error: "Failed to copy chart" });
+                }
 
                 ctx.ui.updateModal = null;
-                return cb(created, error);
+                return cb({ value: true });
             });
         default: unreachable(s.operation);
     }

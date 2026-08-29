@@ -1,6 +1,11 @@
 import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, newKeyboardConfig } from "src/state/keyboard-config.ts";
+import { DISPATCHED_LATER, Done, Then } from "src/utils/async-utils.ts";
 import { getDspLoopClassUrl } from "./dsp-loop-class-url.ts";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings } from "./dsp-loop.ts";
+
+const audioCtx = new AudioContext()
+const playSettings = newDspPlaySettings();
+applyPlaySettingsDefaults(playSettings);
 
 // NOTE: contains cyclic references, so it shouldn't be serialized.
 export type ScheduledKeyPress = {
@@ -16,13 +21,6 @@ export type ScheduledKeyPresses = {
     timeEnd:   number;
     playingId: number;
 }
-
-const audioCtx = new AudioContext()
-
-const playSettings = newDspPlaySettings();
-
-applyPlaySettingsDefaults(playSettings);
-
 
 export function newKeyboardConfigOnePreset(effectRack: EffectRackPreset): KeyboardConfig {
     const config = newKeyboardConfig();
@@ -206,69 +204,70 @@ function resumeAudio() {
     audioCtx.resume().catch(console.error);
 }
 
-export async function initDspLoopInterface({
-    onDspMessage
-}: {
-    onDspMessage(): void;
-}) {
+export function initDspLoopInterface(then: Then<boolean>, onDspMessage: () => void): Done {
     // registers the DSP loop. we must communicate with this thread through a Port thinggy
     const url = getDspLoopClassUrl();
-    await audioCtx.audioWorklet.addModule(url);
-    // URL.revokeObjectURL(url);
-    const dspLoopNode = new AudioWorkletNode(audioCtx, "dsp-loop");
-    dspLoopNode.onprocessorerror = (e) => {
-        const message = e.message;
-        console.error("dsp process error:", message, e);
-    }
-    dspLoopNode.connect(audioCtx.destination);
-    dspPort = dspLoopNode.port;
+    audioCtx.audioWorklet.addModule(url).then(() => {
+        // TODO: check if we need to not revoke this for debugging purposes.
+        // URL.revokeObjectURL(url);
 
-    // TODO: check if memory leak
-    // but yeah this will literally create a new array and serialize it over
-    // some port several times a second just so we know what the current
-    // 'pressed' state of one of the notes is.
-    const frequency = 1000 / 20;
-    // const frequency = 1000 / 60; //  too much cpu heat 
-    // TODO: just linearly animate the current 'opacity' of a key so we can reduce poll rate even further.
-    setInterval(() => {
-        audioLoopDispatch(1337);
-    }, frequency);
-
-    // sync initial settings.
-    updatePlaySettings();
-
-    dspPort.onmessage = ((e) => {
-        const data = e.data as Partial<DspInfo>;
-
-        let rerender = false;
-        if (
-            data.currentlyPlaying
-            && !areEqual(dspInfo.currentlyPlaying, data.currentlyPlaying)
-        ) {
-            dspInfo.currentlyPlaying = data.currentlyPlaying;
-            rerender = true;
+        const dspLoopNode = new AudioWorkletNode(audioCtx, "dsp-loop");
+        dspLoopNode.onprocessorerror = (e) => {
+            const message = e.message;
+            console.error("dsp process error:", message, e);
         }
+        dspLoopNode.connect(audioCtx.destination);
+        dspPort = dspLoopNode.port;
 
-        if (data.scheduledPlaybackTime !== undefined) {
-            dspInfo.scheduledPlaybackTime = data.scheduledPlaybackTime;
-            rerender = true;
-        }
+        // TODO: check if memory leak
+        // but yeah this will literally create a new array and serialize it over
+        // some port several times a second just so we know what the current
+        // 'pressed' state of one of the notes is.
+        const frequency = 1000 / 20; // 1000 / 60; //  too much cpu heat 
+        setInterval(() => {
+            audioLoopDispatch(1337);
+        }, frequency);
 
-        if (data.stoppedId !== undefined) {
-            dspInfo.stoppedId = data.stoppedId;
-        }
+        // sync initial settings.
+        updatePlaySettings();
 
-        if (data.isPaused !== undefined) {
-            dspInfo.isPaused = data.isPaused;
-        }
+        dspPort.onmessage = ((e) => {
+            const data = e.data as Partial<DspInfo>;
 
-        if (data.sampleRate !== undefined) {
-            dspInfo.sampleRate = data.sampleRate;
-        }
+            let rerender = false;
+            if (
+                data.currentlyPlaying && 
+                !areEqual(dspInfo.currentlyPlaying, data.currentlyPlaying)
+            ) {
+                dspInfo.currentlyPlaying = data.currentlyPlaying;
+                rerender = true;
+            }
 
-        if (rerender) {
-            onDspMessage();
-        }
+            if (data.scheduledPlaybackTime !== undefined) {
+                dspInfo.scheduledPlaybackTime = data.scheduledPlaybackTime;
+                rerender = true;
+            }
+
+            if (data.stoppedId !== undefined) {
+                dspInfo.stoppedId = data.stoppedId;
+            }
+
+            if (data.isPaused !== undefined) {
+                dspInfo.isPaused = data.isPaused;
+            }
+
+            if (data.sampleRate !== undefined) {
+                dspInfo.sampleRate = data.sampleRate;
+            }
+
+            if (rerender) {
+                onDspMessage();
+            }
+        });
+
+        return then(true);
     });
+
+    return DISPATCHED_LATER;
 }
 

@@ -1,110 +1,120 @@
 import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface.ts";
+import { el, im, ImCache, imdom } from "src/utils/im-js";
 import { debugFlags } from "./debug-flags.ts";
-import { cleanupChartRepo, loadAllEffectRackPresets, loadChartMetadataList, newDataRepository } from "./state/data-repository.ts";
+import { cleanupChartRepo, DataRepository, loadAllEffectRackPresets, loadChartMetadataList, newDataRepository } from "./state/data-repository.ts";
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state.ts";
 import { NAME_OPERATION_COPY } from "./state/ui-state.ts";
 import { assert } from "./utils/assert.ts";
-import { AsyncCb, Done, done, toAsyncCallback } from "./utils/async-utils.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-
-import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app.ts";
 import { BLOCK, imui } from "src/utils/im-js/im-ui/im-ui.ts";
+import { Done, DONE, PARALLELISM, Then, trackTask } from "./utils/async-utils.ts";
+import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app.ts";
 
 "use strict"
 
 let globalContext: GlobalContext | undefined;
 
-function initGlobalContext(cb: AsyncCb<void>): Done {
+function initGlobalContext(cb: Then<void>): Done {
+    cb = trackTask("Initializing state", cb);
+
     // Our code only works after we've established a connection with our
     // IndexedDB instance, and the audio context has loaded.
 
-    const dspInitialized = initDspLoopInterface({
-        onDspMessage: () => {
-            const ctx = globalContext;
-            if (!ctx) return;
+    let dspInitialized = false;
+    let repo: DataRepository | undefined;
 
-            const sequencer = ctx.sequencer;
-            const dspInfo = getDspInfo();
+    initDspLoopInterface(() => {
+        dspInitialized = true;
+        return onSubsystemsInitialized();
+    }, () => {
+        if (!globalContext) return;
 
-            syncPlayback(sequencer, dspInfo);
-        }
+        const sequencer = globalContext.sequencer;
+        const dspInfo = getDspInfo();
+        syncPlayback(sequencer, dspInfo);
     });
 
-    return toAsyncCallback(dspInitialized, () => {
-        return newDataRepository((repo, err) => {
-            if (!repo) return cb(undefined, err);
+    newDataRepository(repoLoaded => { 
+        repo = repoLoaded;
+        return onSubsystemsInitialized();
+    });
 
-            const newSequencer = newSequencerState();
-            const ctx = newGlobalContext(repo, newSequencer);
-            globalContext = ctx;
+    return PARALLELISM;
 
-            if (debugFlags.testFixDatabase) {
-                return cleanupChartRepo(ctx.repo, () => onDatabaseCleaned(ctx));
-            }
+    function onSubsystemsInitialized(): Done {
+        if (!dspInitialized || !repo) return PARALLELISM;
 
-            return onDatabaseCleaned(ctx);
-        });
+        const newSequencer = newSequencerState();
+        const ctx = newGlobalContext(repo, newSequencer);
+        globalContext = ctx;
 
-        function onDatabaseCleaned(ctx: GlobalContext): Done {
-            if (debugFlags.testSoundLab) {
-                setViewSoundLab(ctx);
+        if (debugFlags.testFixDatabase) {
+            return cleanupChartRepo(ctx.repo, () => setupDebugScenario(ctx));
+        }
 
-                if (!debugFlags.testSoundLabLoadPreset) return cb();
+        return setupDebugScenario(ctx);
+    }
 
-                return loadAllEffectRackPresets(ctx.repo, (presets) => {
-                    if (!presets) return cb();
+    function setupDebugScenario(ctx: GlobalContext): Done {
+        if (debugFlags.testSoundLab) {
+            setViewSoundLab(ctx);
 
-                    // const preset = presets.find(p => p.name === debugFlags.testSoundLabLoadPreset);
-                    // if (preset) {
-                    //     const playSetings = getCurrentPlaySettings();
-                    //     playSetings.parameters.rack = deserializeEffectRack(preset.serialized);
-                    // }
+            if (debugFlags.testSoundLabLoadPreset) {
+                return loadAllEffectRackPresets(ctx.repo, (presetMetadatas) => {
+                    const presetMeta = presetMetadatas.find(p => p.name === debugFlags.testSoundLabLoadPreset);
+                    if (presetMeta) {
+                        throw new Error("fix this debug scenario");
+                        // TODO: The debug scenario hasn't been updated
+                        // loadEffectRackPreset(ctx.repo, presetMeta, preset => {
+                        //     const playSetings = getCurrentPlaySettings();
+                        //     playSetings.parameters
+                        // });
+                    }
 
                     return cb();
                 });
             }
 
-            if (
-                debugFlags.testEditView ||
-                debugFlags.testGameplay ||
-                debugFlags.testChartSelectView ||
-                debugFlags.testCopyModal
-            ) {
-                return loadChartMetadataList(ctx.repo, (charts, err) => {
-                    if (!charts) return cb(undefined, err);
-
-                    const meta = charts.find(c => c.name === debugFlags.testChart);
-                    assert(!!meta);
-
-                    return setCurrentChartMeta(ctx, meta, () => {
-                        const chart = getCurrentChart(ctx);
-
-                        if (debugFlags.testEditView) {
-                            setViewEditChart(ctx);
-                            if (debugFlags.testLoadSave) {
-                                setLoadSaveModalOpen(ctx);
-                            }
-                        } else if (debugFlags.testGameplay) {
-                            setViewPlayCurrentChart(ctx);
-                        } else if (debugFlags.testChartSelectView) {
-                            setViewChartSelect(ctx);
-                        }
-
-                        if (debugFlags.testCopyModal) {
-                            openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
-                        }
-
-                        return cb();
-                    });
-                });
-            }
-
             return cb();
         }
-    });
+
+        if (
+            debugFlags.testEditView ||
+            debugFlags.testGameplay ||
+            debugFlags.testChartSelectView ||
+            debugFlags.testCopyModal
+        ) {
+            return loadChartMetadataList(ctx.repo, (charts) => {
+                const meta = charts.find(c => c.name === debugFlags.testChart);
+                assert(!!meta);
+
+                return setCurrentChartMeta(ctx, meta, () => {
+                    const chart = getCurrentChart(ctx);
+
+                    if (debugFlags.testEditView) {
+                        setViewEditChart(ctx);
+                        if (debugFlags.testLoadSave) {
+                            setLoadSaveModalOpen(ctx);
+                        }
+                    } else if (debugFlags.testGameplay) {
+                        setViewPlayCurrentChart(ctx);
+                    } else if (debugFlags.testChartSelectView) {
+                        setViewChartSelect(ctx);
+                    }
+
+                    if (debugFlags.testCopyModal) {
+                        openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
+                    }
+
+                    return cb();
+                });
+            });
+        }
+
+        return cb();
+    }
 }
 
-initGlobalContext(done);
+initGlobalContext(() => DONE);
 
 function imMainInner(c: ImCache) {
     if (im.If(c) && globalContext) {
@@ -157,3 +167,7 @@ export function imMain(c: ImCache) {
         } imdom.RootEnd(c, document.body);
     } im.CacheEnd(c);
 }
+
+imui.init();
+
+imMain([]);

@@ -1,24 +1,22 @@
-
-// NOTE: this is currently the 'sound lab'
-// Maybe in the future, it will go back to being just a tiny editor again. 
-
 import { imTextInputOneLine } from "src/app-components/text-input-one-line.ts";
 import { imButtonIsClicked } from "src/components/button.ts";
-import { BLOCK, COL, CssColor, imui, INLINE_BLOCK, NA, PERCENT, PX, ROW, START } from "src/utils/im-js/im-ui";
 import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
 import { pressKey } from "src/dsp/dsp-loop-interface.ts";
 import { createKeyboardConfigPreset, loadKeyboardConfig } from "src/state/data-repository.ts";
 import { effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, keyboardConfigDeleteSlot } from "src/state/keyboard-config.ts";
 import { getKeyForKeyboardKey } from "src/state/keyboard-state.ts";
 import { assert } from "src/utils/assert.ts";
-import { DONE } from "src/utils/async-utils.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-
+import { im, ImCache, imdom } from "src/utils/im-js";
+import { BLOCK, COL, CssColor, imui, INLINE_BLOCK, NA, PERCENT, PX, ROW, START } from "src/utils/im-js/im-ui";
 import { GlobalContext } from "./app.ts";
 import { imHoverable } from "./button.ts";
 import { imKeyboard } from "./keyboard.ts";
 import { imHeadingBegin, imHeadingEnd } from "./sound-lab-effect-rack-editor.ts";
 import { imEffectRackList, newPresetsListState } from "./sound-lab-effect-rack-list.ts";
+import { DONE } from "src/utils/async-utils.ts";
+
+// NOTE: this is currently the 'sound lab'
+// Maybe in the future, it will go back to being just a tiny editor again. 
 
 // No undo for now. Doesn't seem like we need it
 export type KeyboardConfigEditorState = {
@@ -133,12 +131,9 @@ export function imKeyboardConfigEditor(
                 }
 
                 if (imButtonIsClicked(c, "New preset", false)) {
-                    createKeyboardConfigPreset(ctx.repo, editor.keyboardConfig, (data, err) => {
-                        if (!data || err) return DONE;
-
+                    createKeyboardConfigPreset(ctx.repo, editor.keyboardConfig, (data) => {
                         editor.keyboardConfig       = data.data;
                         editor.presetsUi.isRenaming = true;
-
                         return DONE;
                     });
                 }
@@ -339,15 +334,18 @@ function imKeyboardConfigEditorPresetsList(c: ImCache, ctx: GlobalContext, edito
 
     imui.Begin(c, COL); imui.Size(c, 30, PERCENT, 0, NA); imui.ScrollOverflow(c); {
         const keyboardPresets = ctx.repo.tables.keyboardPresets;
-        im.For(c); for (const preset of keyboardPresets.allItemsAsync.val) {
+        im.For(c); for (const preset of keyboardPresets.allItemsAsync) {
             const selected = preset.id === editor.keyboardConfig.id;
 
             imui.Begin(c, BLOCK); imHoverable(c, selected); {
                 if (imdom.hasMousePress(c)) {
                     // selection is set asyncronously after it's actually loaded, and that is ok
 
-                    loadKeyboardConfig(ctx.repo, preset, (config, err) => {
-                        if (!config || err) return DONE;
+                    loadKeyboardConfig(ctx.repo, preset, (config) => {
+                        if (!config) {
+                            console.error(imKeyboardConfigEditorPresetsList, "couldnt load keyboard");;
+                            return DONE;
+                        }
 
                         editor.keyboardConfig = config;
                         ui.isRenaming = false;

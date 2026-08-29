@@ -21,22 +21,7 @@
 
 import { filterInPlace } from "./array-utils";
 import { assert } from "./assert";
-import {
-    AsyncCallback,
-    AsyncCallbackResult,
-    AsyncCb,
-    asyncResultsAll,
-    AsyncState,
-    DISPATCHED_LATER,
-    Done,
-    DONE,
-    newAsyncState,
-    newError,
-    onAsyncStateLoaded,
-    parallelIterator,
-    startLoadingAsyncState,
-    toAsyncCallback
-} from "./async-utils";
+import { DISPATCHED_LATER, DONE, Then, Done, Result, GetResult } from "./async-utils";
 
 export function bytesToMegabytes(bytes: number) {
     return bytes / 1024 / 1024;
@@ -46,11 +31,12 @@ export function bytesToMegabytes(bytes: number) {
 // For some use-cases on some browsers (chrome and not firefox, surprisingly), 
 // it will grow infinitely, and you won't realize till your storage takes up 15GB for the tab,
 // at which point the tab can no longer open, so you can't debug it even if you wanted to.
-function getEstimatedDataUsage(cb: AsyncCallback<number | undefined>): Done {
-    return toAsyncCallback(navigator.storage.estimate().then(val => {
-        if (!val.usage) return undefined;
-        return bytesToMegabytes(val.usage);
-    }), cb);
+function getEstimatedDataUsage(then: Then<number | undefined>): Done {
+    navigator.storage.estimate().then((val): Done => {
+        if (!val.usage) return then(undefined);
+        return then(bytesToMegabytes(val.usage));
+    });
+    return DISPATCHED_LATER;
 }
 
 export type SingleTableDefiniton<T> = {
@@ -75,12 +61,15 @@ export type AnyTableDef = SingleTableDefiniton<any> | MetadataPairTableDef<any, 
 // another one to hold smaller information being the 'metadata't able.
 // A very common pattern, but kinda annoying to set up each time. 
 export type MetadataPairTableDef<TData, TMetadata> = {
-    data: SingleTableDefiniton<TData>; 
-    metadata: SingleTableDefiniton<TMetadata>
+    data:           SingleTableDefiniton<TData>; 
+    metadata:       SingleTableDefiniton<TMetadata>
 
     toMetadata: (data: TData) => TMetadata;
 
-    allItemsAsync: AsyncState<TMetadata[]>;
+    // NOTE: This is some kind of pattern fr fr..........
+    loadedMetadata: number;
+    queue:          Then<TMetadata[]>[] | undefined;
+    allItemsAsync: TMetadata[];
 };
 
 export const KEYGEN_NONE = 0;
@@ -118,19 +107,20 @@ export function openConnection(
         // https://developer.mozilla.org/en-US/docs/Web/API/IDBDatabase/close_event
         onUnexpectedlyClosed: (ev: Event) => void,
     },
-    cb: AsyncCb<IDBDatabase>,
+    then: Then<Result<IDBDatabase>>,
 ): Done {
     const openRequest = window.indexedDB.open(name, version);
 
     getEstimatedDataUsage(mb => {
-        if (!mb) return DONE;
-
-        if (mb > 5 * 1024) {
-            logError("Your program is using over 5GB of storage. It won't be openable anymore if it starts using over 15 gb.");
-        } else if (mb > 1024) {
-            logError("Your program is using over 1GB of storage. There may be a bug somewhere");
+        if (mb !== undefined) {
+            if (mb > 5 * 1024) {
+                logError("Your program is using over 5GB of storage. It won't be openable anymore if it starts using over 15 gb.");
+            } else if (mb > 1024) {
+                logError("Your program is using over 1GB of storage. There may be a bug somewhere");
+            }
+        } else {
+            log("couldn't estimate storage usage...");
         }
-
         return DONE;
     });
 
@@ -189,11 +179,10 @@ export function openConnection(
         openRequest.result.onclose = (ev) => {
             methods.onUnexpectedlyClosed(ev);
         }
-        cb(idb);
+        then({ value: idb });
     };
     openRequest.onerror = (err) => {
-        logError(err);
-        cb(undefined, err);
+        then({ error: "" + err });
     };
     openRequest.onblocked = (event) => {
         methods.onBlocked(event);
@@ -268,30 +257,31 @@ export function getOne<T>(
     tx: ReadTransaction,
     table: SingleTableDefiniton<T>,
     key: ValidKey,
-    cb: AsyncCallback<T>
-): AsyncCallbackResult {
+    then: Then<GetResult<T>>
+): Done {
     try {
         const store = tx.raw.objectStore(table.name);
         const txGetRequest: IDBRequest<T> = store.get(key);
-        txGetRequest.onsuccess = () => cb(txGetRequest.result);
+        txGetRequest.onsuccess = () => then({ value: txGetRequest.result });
         txGetRequest.onerror = (err) => {
             logError(err);
-            cb(undefined, err);
+            then({ error: "" + err });
         }
     } catch (err) {
-        return cb(undefined, err);
+        logError(err);
+        then({ error: "" + err });
     }
 
-    return DONE;
+    return DISPATCHED_LATER;
 }
 
-export function getAll<T>(tx: ReadTransaction, table: SingleTableDefiniton<T>, cb: AsyncCallback<T[]>): AsyncCallbackResult {
+export function getAll<T>(tx: ReadTransaction, table: SingleTableDefiniton<T>, cb: Then<T[]>): Done {
     const store = tx.raw.objectStore(table.name);
     const txGetRequest: IDBRequest<T[]> = store.getAll();
     txGetRequest.onsuccess = () => cb(txGetRequest.result);
     txGetRequest.onerror   = (err) => {
         logError(err);
-        cb(undefined, err);
+        cb([]);
     }
     return DONE;
 }
@@ -306,8 +296,8 @@ export function putOne<T>(
     tx:    WriteTransaction,
     table: SingleTableDefiniton<T>,
     value: T,
-    cb: AsyncCallback<boolean>
-): AsyncCallbackResult {
+    cb: Then<boolean>
+): Done {
     const store = tx.raw.objectStore(table.name);
     const txGetRequest: IDBRequest = store.put({ ...value });
     txGetRequest.onsuccess = () => {
@@ -315,7 +305,7 @@ export function putOne<T>(
     }
     txGetRequest.onerror = (err) => {
         logError(err);
-        cb(undefined, err);
+        cb(false);
     }
 
     return DONE;
@@ -338,11 +328,20 @@ export function writeRequest<T>(
 export function putMany(
     tx: WriteTransaction,
     writes: WriteRequest<any>[],
-    cb: AsyncCallback<boolean>
-): AsyncCallbackResult {
-    return parallelIterator(writes, (write, finished) => {
-        return putOne(tx, write.table, write.value, () => finished());
-    }, (_, err) => cb(true, err));
+    cb: Then<boolean>
+): Done {
+    for (const w of writes) {
+        putOne(tx, w.table, w.value, finished);
+    }
+
+    let count = writes.length
+    function finished() {
+        count--;
+        if (count === 0) cb(true);
+        return DISPATCHED_LATER;
+    }
+
+    return  DISPATCHED_LATER;
 }
 
 /**
@@ -352,14 +351,14 @@ export function deleteOne(
     tx:    WriteTransaction,
     table: SingleTableDefiniton<any>,
     id:    ValidKey,
-    cb: AsyncCallback<void>,
-): AsyncCallbackResult {
+    then: Then<void>,
+): Done {
     const store = tx.raw.objectStore(table.name);
     const txGetRequest: IDBRequest = store.delete(IDBKeyRange.only(id));
-    txGetRequest.onsuccess = () => cb();
+    txGetRequest.onsuccess = () => then();
     txGetRequest.onerror = (err) => {
         logError(err);
-        cb(undefined, err);
+        then(undefined);
     }
     return DONE;
 }
@@ -370,11 +369,20 @@ export function deleteMany(
         table: SingleTableDefiniton<any>,
         id: ValidKey,
     }[],
-    cb: AsyncCallback<void>,
-): AsyncCallbackResult {
-    return parallelIterator(deletions, (val, finished) => {
-        return deleteOne(tx, val.table, val.id, finished);
-    }, (_, err) => cb(undefined, err));
+    cb: Then<void>,
+): Done {
+    for (const d of deletions) {
+        deleteOne(tx, d.table, d.id, finished);
+    }
+
+    let count = deletions.length
+    function finished() {
+        count--;
+        if (count === 0) cb();
+        return DISPATCHED_LATER;
+    }
+
+    return DISPATCHED_LATER;
 }
 
 /**
@@ -385,7 +393,7 @@ export function createOne<T>(
     tx: WriteTransaction,
     table: SingleTableDefiniton<T>,
     value: T,
-    cb: AsyncCallback<ValidKey>
+    cb: Then<Result<ValidKey>>
 ): Done {
     const store = tx.raw.objectStore(table.name);
 
@@ -396,11 +404,11 @@ export function createOne<T>(
     txGetRequest.onsuccess = () => {
         const generatedId = txGetRequest.result;
         value[table.keyPath] = generatedId;
-        cb(generatedId);
+        cb({ value: generatedId });
     };
     txGetRequest.onerror = (err) => {
         logError(err);
-        cb(undefined, err);
+        cb({ error: "" + err });
     }
 
     return DISPATCHED_LATER;
@@ -425,8 +433,10 @@ export function newMetadataPairTableDef<TData, TMetadata>(
     return {
         data:           dataTable,
         metadata:       metadataTable,
-        toMetadata:    getMetadata,
-        allItemsAsync: newAsyncState(Array<TMetadata>()),
+        toMetadata:     getMetadata,
+        loadedMetadata: 0,
+        queue: undefined,
+        allItemsAsync:  [],
     };
 }
 
@@ -434,15 +444,32 @@ export function newMetadataPairTableDef<TData, TMetadata>(
 export function getAllMetadata<TData, TMetadata>(
     tx: ReadTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
-    cb: AsyncCb<TMetadata[]>
+    cb: Then<TMetadata[]>
 ): Done {
-    const event = tables.allItemsAsync;
-
-    onAsyncStateLoaded(event, cb);
-
-    if (startLoadingAsyncState(event)) {
-        log("[getAllMetadata] - fetching", tables);
-        return getAll(tx, tables.metadata, event.populate);
+    if (tables.loadedMetadata === 0) {
+        tables.loadedMetadata = 1;
+        getAll(tx, tables.metadata, val => {
+            tables.loadedMetadata = 2;
+            tables.allItemsAsync = val;
+            cb(val);
+            if (tables.queue) {
+                for (const cb of tables.queue) {
+                    try {
+                        cb(val);
+                    } catch (err) {
+                        console.error(getAllMetadata, "fahhh ", err);
+                    }
+                }
+            }
+            return DONE;
+        });
+    } else if (tables.loadedMetadata === 1) {
+        if (!tables.queue) {
+            tables.queue = [];
+        }
+        tables.queue.push(cb);
+    } else {
+        cb(tables.allItemsAsync);
     }
 
     return DONE;
@@ -452,9 +479,14 @@ export function getData<TData, TMedatada>(
     tx: ReadTransaction,
     tables: MetadataPairTableDef<TData, TMedatada>,
     id: ValidKey,
-    cb: AsyncCallback<TData>,
-): AsyncCallbackResult {
-    return getOne(tx, tables.data, id, cb);
+    cb: Then<TData | undefined>,
+): Done {
+    return getOne(tx, tables.data, id, data => {
+        if ("error" in data) {
+            return cb(undefined);
+        }
+        return cb(data.value);
+    });
 }
 
 /**
@@ -464,38 +496,56 @@ export function updateData<TData, TMetadata>(
     tx:      WriteTransaction,
     tables:  MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb:      AsyncCb<boolean>,
+    cb:      Then<boolean>,
 ): Done {
     const id  = newData[tables.data.keyPath] as ValidKey;
-    const idx = tables.allItemsAsync.val.findIndex(m => m[tables.metadata.keyPath] === id);
+    const idx = tables.allItemsAsync.findIndex(m => m[tables.metadata.keyPath] === id);
     if (idx === -1) {
-        return cb(undefined, newError("Metadata was not present in loaded metadata list. Only metadata we have first loaded can be updated."));
+        logError("Metadata was not present in loaded metadata list. Only metadata we have first loaded can be updated.");
+        return cb(false);
     }
 
-    const target      = tables.allItemsAsync.val[idx];
+    const target      = tables.allItemsAsync[idx];
     const newMetadata = tables.toMetadata(newData);
 
     // Update metadata optimistically
     assignToObject(target, newMetadata);
 
-    return asyncResultsAll<[TData, TMetadata]>([
-        cb => getOne(tx, tables.data, id, cb),
-        cb => getOne(tx, tables.metadata, id, cb),
-    ], ([existingMetadata, existingData]) => {
-        if (!existingData || !existingMetadata) {
-            return cb(undefined, newError("Metadata or data with this ID doesn't already exist"));
+    let existingData: GetResult<TData>;
+    let existingMetadata: GetResult<TMetadata>;
+    getOne(tx, tables.data, id, val => {
+        existingData = val;
+        return onGet();
+    });
+    getOne(tx, tables.metadata, id, val => {
+        existingMetadata = val;
+        return onGet();
+    });
+
+    function onGet() {
+        if (existingData && existingMetadata) {
+            if (!existingData.value || !existingMetadata.value) {
+                logError("Metadata or data with this ID doesn't already exist");
+                return cb(false);
+            }
+
+            putOne(tx, tables.data, newData, onPut);
+            putOne(tx, tables.metadata, newMetadata, onPut);
+
+            let count = 0;
+            function onPut(): Done {
+                count++;
+                if (count === 2) {
+                    return cb(true);
+                }
+                return DISPATCHED_LATER;
+            }
         }
 
-        return putMany(tx, [
-            writeRequest(tables.data, newData),
-            writeRequest(tables.metadata, newMetadata),
-        ], (val, err) => {
-            if (!val) return cb(val, err);
+        return DISPATCHED_LATER;
+    }
 
-
-            return cb(true);
-        });
-    });
+    return DISPATCHED_LATER;
 }
 
 /**
@@ -513,46 +563,50 @@ export function saveData<TData, TMetadata>(
     tx:      WriteTransaction,
     tables:  MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb:      AsyncCb<boolean>,
+    cb:      Then<Result<boolean>>,
 ): Done {
     const id  = newData[tables.data.keyPath] as ValidKey;
 
     if (keyIsNil(id)) {
-        return createData(tx, tables, newData, () => cb(true));
+        return createData(tx, tables, newData, (result) => {
+            if ("error" in result) {
+                return cb({ error: result.error });
+            } 
+            return cb({ value: true });
+        });
     }
 
-    return updateData(tx, tables, newData, cb);
+    return updateData(tx, tables, newData, () => cb({ value: true }));
 }
 
 export function createData<TData, TMetadata>(
     tx: WriteTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb: AsyncCb<{ data: TData; metadata: TMetadata }>,
+    cb: Then<Result<{ data: TData; metadata: TMetadata }>>,
 ): Done {
     const metadata = tables.toMetadata(newData);
-    return createOne(tx, tables.metadata, metadata, (id, err) => {
-        if (id === undefined || err) return cb(undefined, err);
+
+    return createOne(tx, tables.metadata, metadata, (idResult) => {
+        if ("error" in idResult) return cb({ error: idResult.error });
 
         // Link the data the user passed in to the metadata by mutating it directly
         // @ts-expect-error I hardley knower
-        newData[tables.data.keyPath] = id;
+        newData[tables.data.keyPath] = idResult.value;
 
-        putOne(tx, tables.data, newData, (_, err) => {
-            assert(!err);
-
+        putOne(tx, tables.data, newData, () => {
             // Since we know what happens to the list when we create an item in the database, we can 
             // simply do the same on our side as well, rather than reloading all entries from the database.
             const idx = tables
-                .allItemsAsync.val
+                .allItemsAsync
                 .findIndex(val => val[tables.metadata.keyPath] === metadata[tables.metadata.keyPath]);
 
             if (idx !== -1) {
-                return cb(undefined, newError("Something else already created this data while we were creating it !!!"));
+                return cb({ error: "Something else already created this data while we were creating it !!!"});
             }
 
-            tables.allItemsAsync.val.push(metadata);
-            return cb({ data: newData, metadata: metadata });
+            tables.allItemsAsync.push(metadata);
+            return cb({ value: { data: newData, metadata: metadata } });
         });
 
         return DONE;
@@ -563,7 +617,7 @@ export function putData<TData, TMetadata>(
     tx: WriteTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb: AsyncCb<boolean>,
+    cb: Then<boolean>,
     id: ValidKey,
 ): Done {
     assert(typeof newData[tables.data.keyPath] === typeof id);
@@ -572,21 +626,27 @@ export function putData<TData, TMetadata>(
     newData[tables.data.keyPath] = id;
     const newMetadata = tables.toMetadata(newData);
 
-    return putMany(tx, [
-        writeRequest(tables.data, newData),
-        writeRequest(tables.metadata, newMetadata),
-    ], (_, err) => {
-        if (err) return cb(undefined, err);
-
-        const idx = tables.allItemsAsync.val.findIndex(m => m[tables.metadata.keyPath] === id);
+    putOne(tx, tables.metadata, newMetadata, () => {
+        const idx = tables.allItemsAsync.findIndex(m => m[tables.metadata.keyPath] === id);
         if (idx === -1) {
-            tables.allItemsAsync.val.push(newMetadata);
+            tables.allItemsAsync.push(newMetadata);
         } else {
-            assignToObject(tables.allItemsAsync.val[idx], newMetadata);
+            assignToObject(tables.allItemsAsync[idx], newMetadata);
         }
 
-        return cb(true);
+        return onWritten();
     });
+
+    putOne(tx, tables.data, newData, onWritten);
+
+    let count = 0;
+    function onWritten(): Done {
+        count++;
+        if (count === 2) return cb(true);
+        return DISPATCHED_LATER;
+    }
+
+    return DISPATCHED_LATER;
 }
 
 // Allows object references to be stable
@@ -600,17 +660,23 @@ export function deleteData<TData, TMetadata>(
     tx:     WriteTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
     id:     ValidKey,
-    cb:     AsyncCb<void>
+    cb:     Then<void>
 ): Done {
-    return deleteMany(tx, [
-        { table: tables.metadata, id: id },
-        { table: tables.data, id: id },
-    ], (_, err) => {
-        if (err) return cb(undefined, err);
-
-        filterInPlace(tables.allItemsAsync.val, m => m[tables.metadata.keyPath] !== id);
-        return cb();
+    deleteOne(tx, tables.metadata, id,  () => {
+        filterInPlace(tables.allItemsAsync, m => m[tables.metadata.keyPath] !== id);
+        return onDeleted();
     });
+
+    deleteOne(tx, tables.data, id,  onDeleted);
+
+    let completed = 0;
+    function onDeleted(): Done {
+        completed++;
+        if (completed === 2) return cb();
+        return DISPATCHED_LATER;
+    }
+
+    return DISPATCHED_LATER;
 }
 
 

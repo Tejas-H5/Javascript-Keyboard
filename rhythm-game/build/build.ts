@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import * as http from "http";
 import { ChildProcess, spawn } from "node:child_process"
 
-// @Tejas-H5: esbuild-build-script V0.0.4
+// @Tejas-H5: esbuild-build-script V0.0.5
 // Add these scripts to your package.json
 /** 
 	"dev": "node ./build/build.ts devserver",
@@ -21,7 +21,7 @@ if (config !== "devserver" && config !== "build") {
 }
 
 const HOST = "localhost";
-const PORT = 5174;
+const PORT = 5173;
 
 const IMPORT_META_ENV = {
 	IS_PROD: config === "build",
@@ -33,7 +33,7 @@ const BASE_DIR = path.join(__dirname, "../");
 
 const TEMPLATE_PATH = path.join(BASE_DIR, "/template.html");
 const OUTPUT_FILE = path.join(BASE_DIR, "/dist/index.html");
-const ENTRYPOINT = path.join(BASE_DIR, "/src/entrypoint.ts");
+const ENTRYPOINT = path.join(BASE_DIR, "/src/main.ts");
 
 // NOTE: faster-reload is only really noticeable if you have your code and your website open at once.
 // If you use a single-monitor alt-tab setup like me, you won't notice the difference.
@@ -179,14 +179,44 @@ function getDevHtmlWorkingSourcemaps() {
 		templateEnd;
 }
 
+function getErrorMap(result: string): string {
+	let message = result;
+
+	// A count of how many errors occured in each file. Very useful
+	const errorCounts = new Map<string, number>();
+
+	for (const line of result.split("\n")) {
+		const file = line.split(" ", 2)[0];
+		if (!file) continue;
+		if (!file.includes("/")) continue;
+
+		const lineNumberStart = file.indexOf("(");
+		if (lineNumberStart === -1) continue;
+
+		const key = file.substring(0, lineNumberStart);
+		errorCounts.set(key, (errorCounts.get(key) ?? 0) + 1)
+	}
+
+	message += "\n\n"
+	for (const [file, count] of errorCounts) {
+		message += `${count} errors -> ${file}\n`;
+	}
+
+	return message;
+}
+
 if (config === "build") {
 	log("Building...");
 
 	const { result, error } = await runTscAndGetErrors();
 	if (error.length > 0 || result.length > 0) {
 		// Pipeline should fail
-		if (result) throw new Error(result);
-		throw new Error(error);
+		if (error) throw new Error(error);
+
+		if (result) {
+			const message = getErrorMap(result);
+			throw new Error(message);
+		}
 	}
 
 	await esbuild.build({
@@ -313,7 +343,7 @@ if (config === "build") {
 							if (result.result.length === 0) {
 								log("Type errors: None!");
 							} else {
-								log("Type errors: \n\n" + result.result);
+								log("Type errors: \n\n" + getErrorMap(result.result));
 							}
 
 							log("Time taken: " + (performance.now() - lintingStartTime) + "ms");

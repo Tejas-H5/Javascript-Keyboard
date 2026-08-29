@@ -99,7 +99,6 @@ import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, pre
 import { getKeyForKeyboardKey } from "src/state/keyboard-state";
 import { arrayAt, arrayMove, copyArray, filterInPlace, removeItem } from "src/utils/array-utils";
 import { assert, unreachable } from "src/utils/assert";
-import { DONE, done } from "src/utils/async-utils";
 
 import { fft, fftToReal, resizeNumberArrayPowerOf2 } from "src/utils/fft";
 import { el, elsvg, im, ImCache, imdom } from "src/utils/im-js";
@@ -116,6 +115,7 @@ import { imEffectRackList, newPresetsListState, selectEffectRackPreset, startRen
 import { imKeyboardConfigEditorKeyboard, KeyboardConfigEditorState } from "./sound-lab-keyboard-editor";
 import { SvgContext } from "src/components/svg-context";
 import { cssVarsApp } from "./styling";
+import { CANCELLED, DONE } from "src/utils/async-utils";
 
 const MAX_NUM_FREQUENCIES = 16384;
 
@@ -2536,7 +2536,7 @@ function imEffectRackRightPanel(
 
                     if (imButtonIsClicked(c, "Overwrite", false, !!selectedPreset) && selectedPreset) {
                         selectedPreset.serialized = serializeEffectRack(effectRackEditor.effectRack);
-                        updateEffectRackPreset(ctx.repo, selectedPreset, done);
+                        updateEffectRackPreset(ctx.repo, selectedPreset, () => DONE);
                     }
 
                     if (imButtonIsClicked(c, "Rename", false, !!presetsList.selectedLoaded) && presetsList.selected && presetsList.selected) {
@@ -2544,15 +2544,15 @@ function imEffectRackRightPanel(
                     }
 
                     if (imButtonIsClicked(c, "Delete", false, !!selectedPreset) && selectedPreset) {
-                        deleteEffectRackPreset(ctx.repo, selectedPreset, done);
+                        deleteEffectRackPreset(ctx.repo, selectedPreset, () => DONE);
                         selectEffectRackPreset(ctx, presetsList, null);
                     }
 
                     if (imButtonIsClicked(c, "New")) {
                         const preset = effectRackToPreset(effectRackEditor.effectRack);
                         preset.name = "Unnamed";
-                        createEffectRackPreset(ctx.repo, preset, (val, err) => {
-                            if (!val || err) return DONE;
+                        createEffectRackPreset(ctx.repo, preset, (val) => {
+                            if (!val) return CANCELLED;
 
                             presetsList.openGroup = DEFAULT_GROUP_NAME;
                             startRenamingPreset(ctx, presetsList, val.metadata)

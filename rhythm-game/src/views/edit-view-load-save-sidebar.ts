@@ -13,10 +13,8 @@ import {
 import { getCurrentChart } from "src/state/sequencer-state.ts";
 import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME } from "src/state/ui-state.ts";
 import { im, ImCache, imdom } from "src/utils/im-js";
-
 import { arrayAt } from "src/utils/array-utils.ts";
 import { assert } from "src/utils/assert.ts";
-import { done, DONE } from "src/utils/async-utils.ts";
 import {
     GlobalContext,
     openChartUpdateModal,
@@ -25,6 +23,7 @@ import {
 } from "./app.ts";
 import { moveChartSelection } from "./chart-select.ts";
 import { cssVarsApp } from "./styling.ts";
+import { DONE } from "src/utils/async-utils.ts";
 
 
 export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
@@ -128,7 +127,7 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                     s.chartBeforeOpenMeta &&
                     s.chartBeforeOpenMeta.id !== currentChart?.id
                 ) {
-                    setCurrentChartMeta(ctx, s.chartBeforeOpenMeta, done);
+                    setCurrentChartMeta(ctx, s.chartBeforeOpenMeta, () => DONE);
                 } else {
                     setLoadSaveModalClosed(ctx);
                 }
@@ -150,7 +149,7 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                             const meta = arrayAt(charts, idxClamped) ?? null;
                             assert(!!meta);
 
-                            return setCurrentChartMeta(ctx, meta, done);
+                            return setCurrentChartMeta(ctx, meta, () => DONE);
                         });
                     }
                 }

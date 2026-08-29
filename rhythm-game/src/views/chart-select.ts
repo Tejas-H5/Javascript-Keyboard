@@ -6,7 +6,6 @@ import { CHART_STATUS_READONLY, getChartDurationInBeats, isBundledChartId, NoteI
 import { getCurrentChartOrNullIfLoading } from "src/state/sequencer-state.ts";
 import { ChartSelectState, getCurrentChartMetadata } from "src/state/ui-state.ts";
 import { assert } from "src/utils/assert.ts";
-import { AsyncCallback, AsyncCallbackResult, done } from "src/utils/async-utils.ts";
 import { el, im, ImCache, imdom } from "src/utils/im-js";
 import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, ROW, scrollIntoViewVH, STRETCH } from "src/utils/im-js/im-ui";
 import { arrayMax, clamp, lerp } from "src/utils/math-utils.ts";
@@ -21,6 +20,7 @@ import {
 } from "./app.ts";
 import { imHoverable } from "./button.ts";
 import { cssVarsApp } from "./styling.ts";
+import { Done, DONE, Then } from "src/utils/async-utils.ts";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
     if (!ctx.keyPressState) return false;
@@ -62,14 +62,14 @@ function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): bool
     }
 
     if (listNavAxis !== 0) {
-        moveChartSelection(ctx, listNavAxis, done);
+        moveChartSelection(ctx, listNavAxis, () => DONE);
         return true;
     }
 
     return false;
 }
 
-export function moveChartSelection(ctx: GlobalContext, listNavAxis: number, cb: AsyncCallback<void>): AsyncCallbackResult {
+export function moveChartSelection(ctx: GlobalContext, listNavAxis: number, cb: Then<void>): Done {
     if (listNavAxis === 0) return cb();
 
     const availableCharts = ctx.repo.charts.allChartMetadata;
@@ -116,7 +116,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                                 if (imdom.hasMouseOver(c)) {
                                     if (lastSelected.id !== metadata.id) {
                                         lastSelected.id = metadata.id;
-                                        setCurrentChartMeta(ctx, metadata, done);
+                                        setCurrentChartMeta(ctx, metadata, () => DONE);
                                     }
                                 }
 

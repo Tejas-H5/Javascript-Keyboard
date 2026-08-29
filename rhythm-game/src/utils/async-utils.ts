@@ -1,420 +1,84 @@
-// A series of utils aimed at making callback-based programming easier, such
-// that we can completely avoid using promies in our code. Because `Promise` is just slop that is peddled by the big-tech complexity merchants.
-// But in all seriousness, something feels off about that abstraction. I dont want to convert all my methods to `async`, actually.
-// But I won't focus on that in this rant, I will leave that for later.
-// 
-// The thing about promises:
+// A series of utils that allow me to avoid using Promises ever.
+// The main issues with promises:
+// - They make highly concurrent code look serial, and thus prevent TypeScript from catching certain classes of bugs
+// - They don't work exactly as you expect them to work. There are times you expect the to do work in the same
+//      event tick but they never do I don't think
 //
-// let x = () => {
-//     Promise.resolve(undefined).then(() => console.log("Hello")); 
-//     console.log("World");
-// }
-// x();
-//
-// When ran, we get
-// "World"
-// "Hello"
-//
-// This is actually a good thing - it means promise continuations will behave predictably and consistently.
-// I also find that it is also very difficult to create async pipelines without this being the case.
-// For example, if we made such a thing (I say that as if I haven't already just tried making it...),
-// natural code that we are all used to writing like this would no longer work:
-//
-// ```ts
-// idb.getOne(tx, tables.chartMetadata, id)
-//    .then(...)  // If this gets run synchronously and throws, we won't be able to catch, since the catch callback hasn't been attached yet.
-//    .catch(...);
-// ```
-//
-// However, if I want my indexeddb abstraction to actually work alongside caching i.e not drop the transaction,
-// it will need to run instantly, i.e result in "Hello", "World". 
-//
-// The solution then, is to use callbacks. Ever time I have used them in the past, the code has always been
-// unreadable and unmaintainable. However, I was simply not as good a programmer at the time. Can I execute
-// callback-based programming better now? 
-// 
-// The answer is - surprisingly - yes. One of the main sources of misery with callbacks, is callback hell.
-// Each callback gets nested deeper and deeper. While this is the focal point of many async/await motivations,
-// I think the main problem with callbacks is that the error path and the normal path are split into two paths.
-// This means that every async call will double the number of callbacks that are required, which necessarily leads to complexity.
-// However, it is also possible to reuse the same callback for both the error path and the normal path,
-// which completely fixes this. 
-//
-// Some other things like looping over things is also more cumbersome with callback-based code, so I've created some
-// helpers for that too.
-// It's also easy to forget to call a particular continuation, and just `return;` in a guard clause somewhere.
-// To make this harder to forget, I've added an `AsyncCallback` calback type that enforces a return type of
-// `AsyncCallbackResult` - this makes it much less likely to forget, but it is still possible.
-// It is a leaky abstraction in the exact same way as async/await is, and it heavily encourages
-// a style of programming that uses early returns. If you're dispatching an async action, 
-// chances are, you probably don't want any code to execute afterwards:
-//
-// ```ts
-// function asyncFunction(acb: ACB): ACR {
-//      // Placing the return here allows the reader to discard asyncFunction from their 'mental stack', 
-//      // and they can just focus on the callback logic after anotherAsyncFunction
-//      return anotherAsyncFunction((val, err) => {
-//          if (err) return acb(undefined, err);
-//
-//          ... lots of processing
-// ```
-//
-// We are left with an indentation problem. I actually think this is fine.
-// Indentation does not look very nice, and it is something that programmers want to minimize.
-// They (me included) will rewrite entire functions to use early-returns where possible 
-// simply so that the code is less indented.
-// Within this callback paradigm, deeply indented callbacks are a sign of several async steps one
-// after another, and this is also something that we should aim to minimize where possible.
-//
-// The main advantage of not using async/await is that whatever programming knowledge I gain here
-// can be transferred to other languages that don't have async-await.
+// I suspect that callback-based code can be just as clean as async/await,
+// if not cleaner, with the right thought process.
 
-import { filterInPlace } from "./array-utils";
 import { assert } from "./assert";
 
-/**
- * Also see {@link done}
- */
-export type AsyncCallback<T = void> = ((result: T | undefined, err?: unknown) => AsyncCallbackResult); 
-export type AsyncCb<T = void> = AsyncCallback<T>;
-export type Done = AsyncCallbackResult;
-
-export type AsyncCallbackZII<T = void> = ((result: T | undefined, err?: unknown) => AsyncCallbackResult); 
-
-
-/**
- * It's pretty easy to forget to call a callback inside another callback. 
- * Making the callback return something should this it a bit harder.
- *
- * ```ts
- * function a(cb) {
- *      if (blah) {
- *          return; // This is worng. If only the TS compiler could let you know ... well now, it can!
- *          return cb(undefined, err); // that is more like it
- *      }
- *
- *      return cb(value);
- * }
- * ```
- * As such, there will never be any more 'statuses'.
- *
- * It is pretty natural for this abstraction to leak into your other callback-based code. 
- * You will find that it heavily promotes a programming strategy that makes use of early-returns.
- * So far I'm finding that this is OK, and I wonder what my opion will be a couple months from now.
- */
-export type AsyncCallbackResult = number & { readonly __AsyncCallbackResult: unique symbol };
-// hopefully, `return undefined;` can be optimized by the compiler to do tail recursion, since its not really returning anything,
-// and we can still get our compiler error
-export const DONE = undefined as unknown as Done;
+// Don't forget to continue your continuations
+export type Done = number & { readonly __ThenResult: unique symbol };
+export const DONE = undefined as unknown as Done; // This is where the continuation continued.
 // Some other alternatives to 'DONE' to make intent more clear
-export const CANCELLED = DONE; // This action was cancelled. We aren't calling the user's callback on purpose.
+export const CANCELLED = DONE;        // This action was cancelled. We aren't calling the user's callback on purpose.
 export const DISPATCHED_LATER = DONE; // This action dispatched callbacks in an unusual way. You'll need to review it's correctness.
+export const PARALLELISM = DONE;      // We are calling many things at once, and continuing once it's all completed. You'll need to review it's correctness.
 
-export function newError(message: string) {
-    console.error(message);
-    return new Error(message);
+export type Then<T> = (value: T) => Done;
+
+// RUST mentioned?!?
+export type Result<T, E=string> = 
+ | { value: T; }
+ | { error: E  }
+ ;
+
+// Allows callsite to choose if they want to treat value not found because it wasn't found
+// and value wasn't found because we encountered an error while finding it the same or differently.
+export type GetResult<T, E=string> = {
+    value?: T | undefined;
+    error?: E;
 }
 
-/**
- * Baiscally the no-op of an async callback.
- *
- * NOTE: it is actually a bad idea to use done to initialize a callback as optional.
- *
- * ```ts
- * function foo(cb: ACB<void>): ACR {
- *      return someOtherMethodWithCallback((result, err) => {
- *          if (!result) return cb(undefined, err);
- *
- *          // noo you were supposed to put `cb` here but there is no compiler warning, 
- *          // because someMethodWithCallback made their callback optional.
- *          // cb is also being used, so that `cb is usned` thing doesn't kick in here either
- *          return someMethodWithCallback(result); 
- *      });
- * }
- * ```
- *
- * Instead, use it at the callsite to explicitly flag that you dont care for that result.
- * ```ts
- * foo(done);
- * ```
- */
-export function done<T>(_val: T | undefined, _err?: any) {
-    // Its a no-op
-    return DONE;
+
+// TODO: rename to callback-utils
+export type RunningTasks = {
+    tasks: Task[];
 }
 
-export function toAsyncCallback<T>(p: Promise<T>, cb: AsyncCallback<T>): Done {
-    p
-        .then(val => cb(val))
-        .catch(err => {
-            console.error(err);
-            cb(undefined, err)
-        });
-
-    return DISPATCHED_LATER;
-}
-
-// How do you use for-loops with a callback-based concurrency model? you can't. 
-// You'll need to use recursion
-export function sequentialIterator<T>(
-    values: T[],
-    iteration: (it: T, iterCb: AsyncCallback<void>) => void,
-    cb: AsyncCallback<T>
-): AsyncCallbackResult {
-    let i = 0;
-
-    const run = (_: any, err: any) => {
-        if (err != null) {
-            return cb(undefined, err);
-        }
-
-        if (i >= values.length) {
-            return cb(undefined);
-        }
-
-        const val = values[i];
-        i += 1;
-
-        return iteration(val, run);
-    };
-
-    return DONE;
-}
-
-// 'Parallel' is assuming each iteration is an async action.
-// Allows switching between {@link sequentialIterator} and parallel quickly
-// TODO: test
-export function parallelIterator<T>(
-    values: T[],
-    iteration: (it: T, finishedCb: AsyncCallback<void>) => AsyncCallbackResult,
-    cb: AsyncCallback<void>,
-): AsyncCallbackResult {
-    let numFinished = 0;
-
-    const onFinished = (_: any, err: any) => {
-        if (err != null) {
-            return cb(undefined, err);
-        }
-
-        numFinished += 1;
-        if (numFinished === values.length) {
-            return cb(undefined);
-        }
-
-        return DONE;
-    };
-
-    for (const it of values) {
-        iteration(it, onFinished);
-    }
-
-    return DONE;
-}
-
-export type AsyncResult<T> = 
-    | { loaded: false; val: undefined; err: undefined; } 
-    | { loaded: true; val: T | undefined; err: any; };
-
-type AsyncFunction<T> = (cb: AsyncCallback<T>) => AsyncCallbackResult;
-
-export function asyncResult<T>(asyncFn: AsyncFunction<T>, cb: AsyncCb<AsyncResult<T>>): AsyncResult<T> {
-    const result: AsyncResult<T> = {
-        loaded: false,
-        val: undefined,
-        err: undefined,
-    };
-
-    asyncFn((val, err) => {
-        // @ts-expect-error it cannot understand my genius.
-        result.loaded = true; result.err = err; result.val = val;
-        return cb(result);
-    });
-
-    return result;
-}
-
-export function asyncResultsAll<T extends unknown[]>(
-    asyncMethods: { [K in keyof T]: AsyncFunction<T[K]> },
-    resultsCallback: (results: { [K in keyof T]: AsyncResult<T[K]> }) => Done,
-): Done {
-    let finishedCount = 0;
-    const asyncResults = asyncMethods.map(fn => asyncResult(fn, onFinished));
-
-    return DISPATCHED_LATER;
-
-    function onFinished(): Done {
-        finishedCount += 1;
-        if (finishedCount !== asyncResults.length) {
-            return DONE;
-        }
-
-        // avoid double-calls
-        finishedCount += 1;
-
-        return resultsCallback(
-            // @ts-expect-error trust me bro
-            asyncResults
-        );
-    }
-}
-
-type TrackedAsyncAction = {
+export type Task = {
     name: string;
     t0: number;
-    t1: number | null;
-    error: string;
-    result?: any;
+};
+
+const globalTaskTracker: RunningTasks = {
+    tasks: [],
 }
 
-const trackedAsyncActions = new Map<string, TrackedAsyncAction[]>();
+export function getTasks(): RunningTasks {
+    return globalTaskTracker;
+}
 
-export function trackAsyncAction(actionName: string): TrackedAsyncAction {
-    const result: TrackedAsyncAction = {
-        name: actionName,
-        t0: performance.now(),
-        t1: null,
-        error: "",
+export function trackTask<T>(name: string, then: Then<T>, tracker = globalTaskTracker): Then<T> {
+    const task: Task = {
+        name: name,
+        t0:   performance.now(),
     };
 
-    let slot = trackedAsyncActions.get(actionName);
-    if (!slot) {
-        slot = [];
-        trackedAsyncActions.set(actionName, slot);
-    }
+    tracker.tasks.push(task);
 
-    slot.push(result);
+    let invoked = false;
 
-    return result;
-}
+    const timeout = setTimeout(() => {
+        console.warn("This task is taking a while: ", name);
+    }, 3000);
 
-export function untrackAsyncAction(
-    action: TrackedAsyncAction,
-    result: any,
-    error: any,
-    dismissErrorsManually = true,
-    dismissResultsManually = false,
-): void {
-    assert(!action.result);
-    assert(!action.error);
-    action.result = result;
-    action.error = error;
+    return (val: T) => {
+        if (!invoked) {
+            invoked = true;
+            clearTimeout(timeout);
 
-    const slot = trackedAsyncActions.get(action.name);
-    assert(!!slot);
-
-    if (!dismissResultsManually) {
-        if (!dismissErrorsManually || error == null) {
-            const idx = slot.indexOf(action);
-            assert(idx !== -1);
-
-            slot[idx] = slot[slot.length - 1];
-            slot.pop();
+            const idx = tracker.tasks.indexOf(task); assert(idx !== -1);
+            tracker.tasks[idx] = tracker.tasks[tracker.tasks.length - 1];
+            tracker.tasks.pop();
+            console.log("[" + name + "] completed in " + (performance.now() - task.t0) + "ms");
+        } else {
+            console.error("Continuations shouldn't be invoked multiple times");
         }
-    }
 
-    action.t1 = performance.now();
-}
-
-export function toTrackedCallback<T>(cbIn: AsyncCb<T>, actionName: string): AsyncCb<T> {
-    const action = trackAsyncAction(actionName);
-    const cb: AsyncCb<T> = (val, err) => {
-        untrackAsyncAction(action, val, err);
-        return cbIn(val, err);
-    }
-    return cb;
-}
-
-export function dismissCompletedTrackedAsyncActions() {
-    for (const slot of trackedAsyncActions.values()) {
-        filterInPlace(slot, action => action.t1 !== null);
+        return then(val);
     }
 }
 
-export function getTrackedAsyncActions() {
-    return trackedAsyncActions;
-}
-
-
-///////////////////////////////
-// Attempt 2
-
-export type AsyncEventStatus = number & { readonly __AsyncEventStatus: unique symbol };
-
-export const ASYNC_NOT_STARTED = 0 as AsyncEventStatus;
-export const ASYNC_LOADING     = 1 as AsyncEventStatus;
-export const ASYNC_LOADED      = 2 as AsyncEventStatus;
-export const ASYNC_CANCELLED   = 3 as AsyncEventStatus;
-
-export type AsyncState<T> = {
-    handlers: AsyncCb<T>[];
-    val: T;
-    err: unknown;
-    status:
-        | typeof ASYNC_NOT_STARTED
-        | typeof ASYNC_LOADING
-        | typeof ASYNC_LOADED;
-
-    populate: AsyncCb<T>;
-}
-
-export function newAsyncState<T>(zeroValue: T): AsyncState<T> {
-    const event: AsyncState<T> = {
-        handlers: [],
-        status: ASYNC_NOT_STARTED,
-        val: zeroValue,
-        err: undefined,
-        populate: (val, err) => populateAsyncState(event, val ?? zeroValue, err),
-    };
-    return event;
-}
-
-export function cancelAsyncState<T>(ev: AsyncState<T>) {
-    ev.status = ASYNC_CANCELLED;
-}
-
-export function onAsyncStateLoaded<T>(
-    ev: AsyncState<T>,
-    fn: AsyncCb<T>,
-): Done {
-    if (ev.status === ASYNC_CANCELLED) return CANCELLED;
-
-    if (ev.status !== ASYNC_LOADED) {
-        ev.handlers.push(fn);
-        return DISPATCHED_LATER;
-    }
-
-    return fn(ev.val, ev.err);
-}
-
-export function populateAsyncState<T>(ev: AsyncState<T>, val: T, err: unknown): Done {
-    if (ev.status === ASYNC_CANCELLED) return CANCELLED;
-    if (ev.status === ASYNC_LOADED) {
-        console.log("a double-dispatch was ignored");
-        return DONE;
-    }
-
-    ev.val = val;
-    ev.err = err;
-
-    ev.status = ASYNC_LOADED;
-    for (let i = 0; i < ev.handlers.length; i++) {
-        const handler = ev.handlers[i];
-        try {
-            handler(val);
-        } catch(e) {
-            console.error("an error occured when handling an event:", e);
-        }
-    }
-    return DONE;
-}
-
-export function startLoadingAsyncState<T>(ev: AsyncState<T>): boolean {
-    let result = false;
-
-    if (ev.status === ASYNC_NOT_STARTED) {
-        ev.status = ASYNC_LOADING;
-        result = true;
-    }
-
-    return result;
-}

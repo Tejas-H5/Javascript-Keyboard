@@ -1,15 +1,12 @@
 import { imTextInputOneLine } from "src/app-components/text-input-one-line";
 import { imButtonIsClicked } from "src/components/button";
-import { imui, BLOCK, ROW, COL, PX, NA, cssVars } from "src/utils/im-js/im-ui";
-
+import { BLOCK, COL, cssVars, imui, ROW } from "src/utils/im-js/im-ui";
 import { loadEffectRackPreset, updateEffectRackPreset } from "src/state/data-repository";
 import { EffectRackPreset, EffectRackPresetMetadata } from "src/state/keyboard-config";
 import { assert } from "src/utils/assert";
-import { CANCELLED, done, DONE } from "src/utils/async-utils";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-
+import { im, ImCache, imdom } from "src/utils/im-js";
 import { GlobalContext } from "./app";
-
+import { CANCELLED, DONE } from "src/utils/async-utils";
 
 export type PresetsListState = {
     selected: EffectRackPresetMetadata | null;
@@ -41,9 +38,11 @@ export function selectEffectRackPreset(ctx: GlobalContext, s: PresetsListState, 
 
     if (!preset) return;
 
-    return loadEffectRackPreset(ctx.repo, preset, (val, err) => {
-        if (!val || err)           return DONE;
-        if (s.selected !== preset) return CANCELLED;
+    // Maybe we should cancell this sooner somehow?
+    return loadEffectRackPreset(ctx.repo, preset, (val) => {
+        if (s.selected !== preset) {
+            return CANCELLED;
+        }
 
         s.selectedLoaded = val;
         return DONE;
@@ -175,7 +174,7 @@ function imPresetsArray(
                             stopRenaming(ctx, s);
 
                             s.selectedLoaded.name = s.newName;
-                            updateEffectRackPreset(ctx.repo, s.selectedLoaded, done);
+                            updateEffectRackPreset(ctx.repo, s.selectedLoaded, () => DONE);
 
                             ctx.handled = true;
                         }
