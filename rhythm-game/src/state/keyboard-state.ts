@@ -181,3 +181,16 @@ export function getMusicNoteText(noteId: number) {
     return getNoteText(noteId);
 }
 
+
+export function getBottomRowStartRowNoteId(keyboard: KeyboardState): number {
+    return keyboard.keys[2][0].noteId;
+}
+
+
+export function getLowestNoteId(keyboard: KeyboardState): number {
+    return keyboard.flatKeys[0].noteId;
+}
+
+export function getHighestNoteId(keyboard: KeyboardState): number {
+    return keyboard.flatKeys[keyboard.flatKeys.length - 1].noteId;
+}

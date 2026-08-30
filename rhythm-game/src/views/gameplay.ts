@@ -1031,8 +1031,7 @@ export function imGameplayKeyboard(
         imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
             if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
 
-            im.For(c);
-            for (let j = 0; j < totalNumCols; j++) {
+            im.For(c); for (let j = 0; j < totalNumCols; j++) {
                 for (let i = 0; i < 2; i++) {
                     const row = ctx.keyboard.keys[i];
                     if (j >= row.length) break;
@@ -1041,8 +1040,7 @@ export function imGameplayKeyboard(
                     const isTopRowKey = i % 2 === 0;
                     imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey);
                 }
-            }
-            im.ForEnd(c);
+            } im.ForEnd(c);
         } imui.End(c);
         imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
             if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
