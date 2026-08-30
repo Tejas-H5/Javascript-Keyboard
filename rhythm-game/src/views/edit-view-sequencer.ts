@@ -518,6 +518,22 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                         imui.Bg(c, color);
                     } imui.End(c);
                 }
+
+                // Current selection
+                if (im.If(c) && isRangeSelecting) {
+                    const lo = sequencer.rangeSelectStart / totalBeats;
+                    const hi  = sequencer.rangeSelectEnd / totalBeats;
+                    const leftAbsolutePercent  = 100 * Math.min(hi, lo);
+                    const rightAbsolutePercent = 100 * (1 - Math.max(hi, lo));
+                    imui.Begin(c, BLOCK); {
+                        imui.Absolute(
+                            c,
+                            0, PX, rightAbsolutePercent, PERCENT,
+                            0, PX, leftAbsolutePercent, PERCENT
+                        );
+                        imui.Bg(c, `rgba(255, 255, 0, 0.25)`);
+                    } imui.End(c);
+                } im.IfEnd(c);
             } imui.End(c);
         } im.IfEnd(c);
 
@@ -956,13 +972,14 @@ function imSequencerInternal(c: ImCache, ctx: GlobalContext, s: SequencerUIState
                 s.leftExtentBeatsAnimated,
             ) * 100;
 
-            imui.Begin(c, BLOCK);
-            imui.Absolute(
-                c,
-                0, PX, rightAbsolutePercent, PERCENT,
-                0, PX, leftAbsolutePercent, PERCENT);
-            imui.Bg(c, `rgba(0, 0, 255, 0.25)`);
-            imui.End(c);
+            imui.Begin(c, BLOCK); {
+                imui.Absolute(
+                    c,
+                    0, PX, rightAbsolutePercent, PERCENT,
+                    0, PX, leftAbsolutePercent, PERCENT
+                );
+                imui.Bg(c, `rgba(255, 255, 0, 0.25)`);
+            } imui.End(c);
 
             // range select lines
             imSequencerVerticalLine(c, s, sequencer.rangeSelectStart, cssVarsApp.mg, 3);
