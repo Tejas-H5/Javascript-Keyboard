@@ -244,6 +244,10 @@ function imOpacity(c: ImCache, val: number) {
 
 function imRelative(c: ImCache) {
     if (im.isFirstishRender(c)) imdom.setStyle(c, "position", "relative");
+    if (im.isFirstishRender(c)) {
+        // The vast majority of the time, we DONT want random scrollbars everywhere inside our absolute positioning containers.
+        imdom.setStyle(c, "overflow", "hidden");
+    }
 }
 
 function imBg(c: ImCache, colour: string) {

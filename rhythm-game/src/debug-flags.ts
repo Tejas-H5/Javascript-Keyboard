@@ -42,7 +42,7 @@ export type DebugFlags = {
 };
 
 export const debugFlags: DebugFlags = {
-    testEditView: OFF,
+    testEditView: ON,
     testLoadSave: OFF,
 
     testEditViewExport:  OFF,
@@ -56,7 +56,7 @@ export const debugFlags: DebugFlags = {
     testPracticeMode:  OFF,
     testResultsView:   OFF,
 
-    testChart:         "We like it here",
+    testChart:         "Testing",
 
     testFixDatabase: OFF,
 

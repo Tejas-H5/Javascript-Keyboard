@@ -326,7 +326,9 @@ export function recomputeGameplayStuff(ctx: GlobalContext, gameplayState: Gamepl
     const durationBeats = getChartDurationInBeats(chart);
 
     if (gameplayState.currentBeat >= durationBeats) {
-        if (gameplayState.practiceMode.enabled) {
+        if (ctx.ui.playView.isTesting) {
+            setViewEditChart(ctx);
+        } else if (gameplayState.practiceMode.enabled) {
             setViewChartSelect(ctx);
         } else {
             // finished. should switch views next frame.

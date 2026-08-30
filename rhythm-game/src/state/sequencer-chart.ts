@@ -669,6 +669,8 @@ export function transposeItems(
     for (const note of notesToEdit) {
         note.noteId += halfSteps;
     }
+
+    sequencerChartInsertItems(chart, notesToEdit);
 }
 
 
@@ -694,6 +696,8 @@ export function sequencerChartShiftItems(
     for (const item of toEdit) {
         item.start += amountBeats;
     }
+
+    sequencerChartInsertItems(chart, toEdit);
 }
 
 

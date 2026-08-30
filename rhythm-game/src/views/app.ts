@@ -10,10 +10,12 @@ import {
 import {
     copyTimelineItem,
     FRACTIONAL_UNITS_PER_BEAT,
+    isBeatWithinInclusve,
     newChart,
     redoEdit,
     SequencerChart,
     sequencerChartInsertItems,
+    TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
     undoEdit
 } from "src/state/sequencer-chart.ts";
@@ -163,14 +165,22 @@ export function copyNotesToTempStore(ctx: GlobalContext, startIdx: number, endId
 
     const tl = sequencer._currentChart.timeline;
 
-    ui.copied.items = tl.slice(startIdx, endIdx + 1)
-        .filter(item => item.type !== TIMELINE_ITEM_MEASURE)
+    const toCopy = tl
+        .slice(startIdx, endIdx + 1)
+        .filter(item => {
+            const isDirectlyOnCursor = sequencer.rangeSelectStart === item.start;
+            if (item.type === TIMELINE_ITEM_MEASURE) return !isDirectlyOnCursor;
+            if (item.type === TIMELINE_ITEM_BPM)     return !isDirectlyOnCursor;
+            return true;
+        })
         .map(copyTimelineItem);
 
-    ui.copied.positionStart = Math.min(
-        sequencer.cursor,
-        tl[startIdx].start
-    );
+    if (toCopy.length === 0) {
+        return false;
+    }
+
+    ui.copied.items = toCopy;
+    ui.copied.positionStart = Math.min(sequencer.cursor, toCopy[0].start);
 
     return true;
 }

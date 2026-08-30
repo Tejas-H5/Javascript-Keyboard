@@ -1,17 +1,14 @@
 import { imButtonIsClicked } from "src/components/button.ts";
-import {BLOCK, COL, END, INLINE_BLOCK, NA, PERCENT, PX, REM, ROW, imui, cssVars } from "src/utils/im-js/im-ui";
 import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area.ts";
 import { imLine, LINE_HORIZONTAL } from "src/components/im-line.ts";
 import { imSliderInput } from "src/components/slider.ts";
 import { imTextInputBegin, imTextInputEnd } from "src/components/text-input.ts";
 import { debugFlags } from "src/debug-flags.ts";
-import { getCurrentOscillatorGainForOwner, getPlaybackSpeed, pressKey, releaseAllKeys, releaseKey } from "src/dsp/dsp-loop-interface.ts";
+import { getPlaybackSpeed } from "src/dsp/dsp-loop-interface.ts";
 import {
-    getKeyForKeyboardKey,
     getKeyForNote,
     getMusicNoteText,
-    InstrumentKey,
-    KeyboardState,
+    InstrumentKey
 } from "src/state/keyboard-state.ts";
 import { previewNotes, setGlobalPlaybackSpeed } from "src/state/playing-pausing.ts";
 import {
@@ -53,15 +50,15 @@ import {
 import { filteredCopy } from "src/utils/array-utils.ts";
 import { assert, unreachable } from "src/utils/assert.ts";
 import { copyToClipboard } from "src/utils/clipboard.ts";
-import { im, ImCache, imdom, el, ev, key, KEY } from "src/utils/im-js";
+import { el, ev, im, ImCache, imdom } from "src/utils/im-js";
+import { BLOCK, COL, cssVars, END, imui, INLINE_BLOCK, NA, PERCENT, PX, REM, ROW } from "src/utils/im-js/im-ui";
 
 import { clamp, inverseLerp, lerp } from "src/utils/math-utils.ts";
 import { bytesToMegabytes, utf16ByteLength } from "src/utils/utf8.ts";
-import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest, setViewSoundLab, } from "./app.ts";
-import { isSavingAnyChart } from "./saving-chart.ts";
+import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest } from "./app.ts";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view.ts";
-import { cssVarsApp } from "./styling.ts";
-import { imGameplayKeyboard, newGameplayState, recomputeGameplayStuff } from "./gameplay.ts";
+import { isSavingAnyChart } from "./saving-chart.ts";
+import { cssVarsApp, getCurrentTheme } from "./styling.ts";
 
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
@@ -460,12 +457,34 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             imAbsoluteVerticalLine(c, absoluteLeftStart, cssVarsApp.bpmMarker, 2);
                         } break;
                         case TIMELINE_ITEM_NOTE: {
-                            const absoluteTop = 100 * (1 - item.noteId / (ctx.keyboard.maxNoteIdx + 1));
+                            const lowestNote  = ctx.keyboard.flatKeys[0].noteId;
+                            const highestNote = ctx.keyboard.flatKeys[ctx.keyboard.flatKeys.length - 1].noteId;
+
+                            let absoluteTop;
+                            let color;
+                            let size;
+                            let sizeUnit;
+                            if (item.noteId < lowestNote) {
+                                color = cssVarsApp.error;
+                                absoluteTop = 75;
+                                size = 25;
+                                sizeUnit = PERCENT
+                            } else if(item.noteId > highestNote) {
+                                color = cssVarsApp.error;
+                                absoluteTop = 0;
+                                size = 25;
+                                sizeUnit = PERCENT
+                            } else {
+                                color = cssVars.fg;
+                                absoluteTop = 100 * inverseLerp(item.noteId, highestNote - 1, lowestNote - 1);
+                                size = 2;
+                                sizeUnit = PX;
+                            }
 
                             imui.Begin(c, BLOCK);
                             imui.Absolute(c, absoluteTop, PERCENT, 0, NA, 0, NA, absoluteLeftStart, PERCENT);
-                            imui.Size(c, width, PERCENT, 2, PX); {
-                                imui.Bg(c, cssVars.fg);
+                            imui.Size(c, width, PERCENT, size, sizeUnit); {
+                                imui.Bg(c, color);
                             } imui.End(c);
                         } break;
                     } im.SwitchEnd(c);
