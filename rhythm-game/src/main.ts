@@ -102,7 +102,7 @@ function initGlobalContext(cb: Then<void>): Done {
                     }
 
                     if (debugFlags.testCopyModal) {
-                        openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY, "This is a test modal");
+                        openChartUpdateModal(ctx, chart, NAME_OPERATION_COPY);
                     }
 
                     return cb();

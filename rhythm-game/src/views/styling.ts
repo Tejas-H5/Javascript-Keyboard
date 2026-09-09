@@ -14,7 +14,7 @@ export const cssVarsApp = imui.getCssVarsDict({
     mediumHit: "var(--unhit)",
     fullyHit:  "var(--fullyHit)",
 
-    codeHighlight:  "var(--codeHighlight)",
+    highlight:  "var(--highlight)",
 });
 
 const cssb = imui.newCssBuilder();
@@ -78,7 +78,7 @@ const mainTheme = Object.freeze({
     mediumHit: imui.newColorFromHex("#FFCC00"),
     fullyHit:  imui.newColorFromHex("#00FF00"),
 
-    codeHighlight: imui.newColorFromHex("#FFAAFF"),
+    highlight: imui.newColorFromHex("#FFAAFF"),
 } as const);
 
 type AppTheme = typeof mainTheme;

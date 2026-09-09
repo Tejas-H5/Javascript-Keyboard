@@ -39,11 +39,13 @@ export type EditViewState = {
 export const NAME_OPERATION_COPY   = 1;
 export const NAME_OPERATION_RENAME = 2;
 export const NAME_OPERATION_CREATE = 3;
+export const NAME_OPERATION_DELETE = 4;
 
-export type OperationType 
-    = typeof NAME_OPERATION_COPY
+export type OperationType = 
+    | typeof NAME_OPERATION_COPY
     | typeof NAME_OPERATION_RENAME
-    | typeof NAME_OPERATION_CREATE;
+    | typeof NAME_OPERATION_CREATE
+    | typeof NAME_OPERATION_DELETE;
 
 export type UpdateModalState = {
     message:       string;

@@ -321,21 +321,6 @@ function handleGameplayKeyDown(ctx: GlobalContext, s: GameplayState): boolean {
 }
 
 export function recomputeGameplayStuff(ctx: GlobalContext, gameplayState: GameplayState, dt: number) {
-    const chart = ctx.sequencer._currentChart;
-
-    const durationBeats = getChartDurationInBeats(chart);
-
-    if (gameplayState.currentBeat >= durationBeats) {
-        if (ctx.ui.playView.isTesting) {
-            setViewEditChart(ctx);
-        } else if (gameplayState.practiceMode.enabled) {
-            setViewChartSelect(ctx);
-        } else {
-            // finished. should switch views next frame.
-            ctx.ui.playView.result = gameplayState;
-        }
-    }
-
     gameplayState.currentBeat = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
     if (gameplayState.practiceMode.rewindAnimation.started) {
         gameplayState.currentBeatAnimated = gameplayState.practiceMode.rewindAnimation.animatedCursorBeats;
@@ -390,6 +375,16 @@ export function imGameplay(c: ImCache, ctx: GlobalContext, gameplayState: Gamepl
     updatePracticeMode(ctx, gameplayState, chart);
 
     const durationBeats = getChartDurationInBeats(chart);
+    if (gameplayState.currentBeat >= durationBeats) {
+        if (ctx.ui.playView.isTesting) {
+            setViewEditChart(ctx);
+        } else if (gameplayState.practiceMode.enabled) {
+            setViewChartSelect(ctx);
+        } else {
+            // finished. should switch views next frame.
+            ctx.ui.playView.result = gameplayState;
+        }
+    }
 
     const progressPercent = max(100 * gameplayState.currentBeat / durationBeats, 0);
 

@@ -2272,7 +2272,7 @@ function imRegisterHighlightBg(
         (hv.regIdx !== undefined && hv.regIdx === regIdx) ||
         (hv.regOutputId !== undefined && hv.regOutputId === regOutId);
 
-    imui.Bg(c, isHighlighted ? cssVarsApp.codeHighlight : "");
+    imui.Bg(c, isHighlighted ? cssVarsApp.highlight : "");
 
     if (imdom.hasMouseOver(c)) {
         editor.highlightedValueRefNext.regOutputId = regOutId;

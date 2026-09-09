@@ -20,7 +20,7 @@ import {
     undoEdit
 } from "src/state/sequencer-chart.ts";
 import { getNextPlayingId, SequencerState, setSequencerChart } from "src/state/sequencer-state.ts";
-import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state.ts";
+import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_DELETE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state.ts";
 import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests.ts";
 import { filterInPlace } from "src/utils/array-utils.ts";
 import { assert, unreachable } from "src/utils/assert.ts";
@@ -225,13 +225,30 @@ export function openChartUpdateModal(
     ctx: GlobalContext,
     chart: SequencerChart,
     operation: OperationType,
-    message: string
 ) {
     let newName;
+    let message;
     switch(operation) {
-        case NAME_OPERATION_COPY:   newName = chart.name + " Copy"; break;
-        case NAME_OPERATION_RENAME: newName = chart.name;           break;
-        case NAME_OPERATION_CREATE: newName = "New chart";          break;
+        case NAME_OPERATION_COPY:   {
+            newName = chart.name + " Copy";
+            message = "Copy this chart";
+        } break;
+        case NAME_OPERATION_RENAME: {
+            newName = chart.name;
+            message = "Rename chart";
+        } break;
+        case NAME_OPERATION_CREATE: {
+            newName = "New chart";
+            message = "";
+        } break;
+        case NAME_OPERATION_DELETE: {
+            newName = "";
+            if (chart.timeline.length === 0) {
+                message = "Are you sure you want to delete " + chart.name + "?";
+            } else {
+                message = "Can't delete a non-empty chart";
+            }
+        } break;
         default: unreachable(operation);
     }
 
@@ -283,6 +300,9 @@ function setCurrentView(ctx: GlobalContext, view: AppView) {
                 stopPlayback(ctx);
                 setPlaybackVolume(1);
                 setPlaybackSpeed(1);
+            } break;
+            case APP_VIEW_CHART_SELECT: {
+                stopPlayback(ctx);
             } break;
         }
     }
@@ -378,7 +398,7 @@ function getKeyPressState(e: KeyboardEvent, dst: KeyPressState) {
     dst.isRepeat = e.repeat;
 
     dst.isPlayPausePressed = key === " ";
-    dst.isLoadSavePressed = dst.keyUpper === "S" && dst.ctrlPressed;
+    dst.isLoadSavePressed = dst.keyUpper === "O" && dst.ctrlPressed && !dst.shiftPressed;
 
     let vAxis = 0;
     if (key === "ArrowUp") {
@@ -450,6 +470,12 @@ export function imApp(
             ) {
                 ctx.handled = true;
                 ctx.dontPreventDefault = true;
+            } else if( 
+                (keyUpper === "S" && ctrlPressed) ||
+                (keyUpper === "A" && ctrlPressed)
+            ) {
+                ctx.handled = true;
+                ctx.dontPreventDefault = true;
             }
         }
     }
@@ -506,6 +532,14 @@ export function imApp(
         ) {
             ctx.keyPressState.e.preventDefault();
         }
+    }
+
+    if (
+        keyDown && 
+        !isEditingTextSomewhereInDocument()
+    ) {
+        // Stop random browser shortcuts from doing things
+        keyDown.preventDefault();
     }
 }
 

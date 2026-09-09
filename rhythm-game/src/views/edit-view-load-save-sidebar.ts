@@ -11,7 +11,7 @@ import {
     newChart
 } from "src/state/sequencer-chart.ts";
 import { getCurrentChart } from "src/state/sequencer-state.ts";
-import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_RENAME } from "src/state/ui-state.ts";
+import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_DELETE, NAME_OPERATION_RENAME } from "src/state/ui-state.ts";
 import { im, ImCache, imdom } from "src/utils/im-js";
 import { arrayAt } from "src/utils/array-utils.ts";
 import { assert } from "src/utils/assert.ts";
@@ -138,30 +138,17 @@ export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {
                 currentChart._savedStatus !== CHART_STATUS_READONLY &&
                 (key === "Delete" || keyUpper === "X")
             ) {
-                const meta = getCurrentChartMetadata(ctx);
-                if (meta) {
-                    const idx = ctx.repo.charts.allChartMetadata.findIndex(m => m.id === currentChart.id);
-                    if (idx !== -1) {
-                        deleteChart(ctx.repo, currentChart, () => {
-                            const charts = ctx.repo.charts.allChartMetadata;
-                            let idxClamped = idx;
-                            if (idxClamped >= charts.length) idxClamped = charts.length - 0;
-                            const meta = arrayAt(charts, idxClamped) ?? null;
-                            assert(!!meta);
-
-                            return setCurrentChartMeta(ctx, meta, () => DONE);
-                        });
-                    }
-                }
+                // TODO: move name into openChartUpdateModal lmao.
+                openChartUpdateModal(ctx, currentChart, NAME_OPERATION_DELETE);
                 handled = true;
             } else if (currentChart && keyUpper === "R") {
-                openChartUpdateModal(ctx, currentChart, NAME_OPERATION_RENAME, "Rename chart");
+                openChartUpdateModal(ctx, currentChart, NAME_OPERATION_RENAME);
                 handled = true;
             } else if (keyUpper === "N") {
-                openChartUpdateModal(ctx, newChart(""), NAME_OPERATION_CREATE, "Create new chart");
+                openChartUpdateModal(ctx, newChart(), NAME_OPERATION_CREATE);
                 handled = true;
             } else if (currentChart && keyUpper === "C") {
-                openChartUpdateModal(ctx, currentChart, NAME_OPERATION_COPY , "Copy this chart");
+                openChartUpdateModal(ctx, currentChart, NAME_OPERATION_COPY);
                 handled = true;
             }
         }

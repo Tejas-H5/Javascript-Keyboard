@@ -45,6 +45,7 @@ export type DataRepository = {
     db: IDBDatabase;
     tables: typeof tables;
     charts: {
+        // Live array. Reference should not change randomly.
         allChartMetadata: SequencerChartMetadata[];
         loading: boolean;
     };
@@ -141,10 +142,11 @@ export function loadChartMetadataListTx(repo: DataRepository, tx: idb.ReadTransa
 
 function updateAvailableMetadata(repo: DataRepository, metadata: SequencerChartMetadata[]) {
     const bundled = getAllBundledChartsMetadata();
-    repo.charts.allChartMetadata = [
+    repo.charts.allChartMetadata.length = 0;
+    repo.charts.allChartMetadata.push(
         ...metadata,
         ...bundled
-    ];
+    );
     repo.charts.allChartMetadata.sort((a, b) => {
         return a.name.localeCompare(b.name);
     });
@@ -257,7 +259,11 @@ export function saveChart(repo: DataRepository, chart: SequencerChart, cb: Then<
 }
 
 // Creates a chart, returns it's id
-export function createChart(repo: DataRepository, chart: SequencerChart, cb: Then<boolean>): Done {
+export function createChart(
+    repo: DataRepository,
+    chart: SequencerChart,
+    cb: Then<Result<SequencerChartMetadata>>,
+): Done {
     cb = trackTask("createChart", cb);
 
     chart.name = chart.name.trim();
@@ -268,8 +274,10 @@ export function createChart(repo: DataRepository, chart: SequencerChart, cb: The
     return idb.createData(tx, tables.chart, data, (val) => {
         if ("error" in val) {
             logError(val.error);
-            return cb(false);
+            return cb({ error: val.error });
         }
+
+        const medata = val.value.metadata;
 
         assert(data.i > 0);
         chart.id = data.i;
@@ -278,7 +286,7 @@ export function createChart(repo: DataRepository, chart: SequencerChart, cb: The
             if (chart._savedStatus === CHART_STATUS_UNSAVED) {
                 chart._savedStatus = CHART_STATUS_SAVED;
             }
-            return cb(true);
+            return cb({ value: medata });
         })
     });
 }
@@ -431,9 +439,9 @@ export function saveKeyboardConfig(
 ): Done {
     cb = trackTask("saveKeyboardConfig", cb);
     const tx = repositoryWriteTx(repo, [tables.keyboardPresets]);
-    return idb.updateData(tx, tables.keyboardPresets, config, (val) => {
+    return idb.updateData(tx, tables.keyboardPresets, config, () => {
         recomputeKeyboardConfigPresets(repo);
-        return cb(val);
+        return cb(true);
     });
 }
 

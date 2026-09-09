@@ -531,7 +531,7 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
                             0, PX, rightAbsolutePercent, PERCENT,
                             0, PX, leftAbsolutePercent, PERCENT
                         );
-                        imui.Bg(c, `rgba(255, 255, 0, 0.25)`);
+                        imui.Bg(c, cssVarsApp.highlight);
                     } imui.End(c);
                 } im.IfEnd(c);
             } imui.End(c);
@@ -978,7 +978,7 @@ function imSequencerInternal(c: ImCache, ctx: GlobalContext, s: SequencerUIState
                     0, PX, rightAbsolutePercent, PERCENT,
                     0, PX, leftAbsolutePercent, PERCENT
                 );
-                imui.Bg(c, `rgba(255, 255, 0, 0.25)`);
+                imui.Bg(c, cssVarsApp.highlight);
             } imui.End(c);
 
             // range select lines

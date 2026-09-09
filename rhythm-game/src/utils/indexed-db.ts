@@ -496,13 +496,15 @@ export function updateData<TData, TMetadata>(
     tx:      WriteTransaction,
     tables:  MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb:      Then<boolean>,
+    cb:      Then<Result<{ data: TData, metadata: TMetadata }>>,
 ): Done {
     const id  = newData[tables.data.keyPath] as ValidKey;
     const idx = tables.allItemsAsync.findIndex(m => m[tables.metadata.keyPath] === id);
+
     if (idx === -1) {
-        logError("Metadata was not present in loaded metadata list. Only metadata we have first loaded can be updated.");
-        return cb(false);
+        const message = "Metadata was not present in loaded metadata list. Only metadata we have first loaded can be updated.";
+        logError(message);
+        return cb({ error: message });
     }
 
     const target      = tables.allItemsAsync[idx];
@@ -522,11 +524,14 @@ export function updateData<TData, TMetadata>(
         return onGet();
     });
 
+    return DISPATCHED_LATER;
+
     function onGet() {
         if (existingData && existingMetadata) {
             if (!existingData.value || !existingMetadata.value) {
-                logError("Metadata or data with this ID doesn't already exist");
-                return cb(false);
+                const message = "Metadata or data with this ID doesn't already exist";
+                logError(message);
+                return cb({ error: message });
             }
 
             putOne(tx, tables.data, newData, onPut);
@@ -536,7 +541,7 @@ export function updateData<TData, TMetadata>(
             function onPut(): Done {
                 count++;
                 if (count === 2) {
-                    return cb(true);
+                    return cb({ value: { data: newData, metadata: newMetadata } });
                 }
                 return DISPATCHED_LATER;
             }
@@ -544,8 +549,6 @@ export function updateData<TData, TMetadata>(
 
         return DISPATCHED_LATER;
     }
-
-    return DISPATCHED_LATER;
 }
 
 /**
@@ -563,32 +566,29 @@ export function saveData<TData, TMetadata>(
     tx:      WriteTransaction,
     tables:  MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb:      Then<Result<boolean>>,
+    cb: Then<Result<{ data: TData, metadata: TMetadata }>>,
 ): Done {
     const id  = newData[tables.data.keyPath] as ValidKey;
 
     if (keyIsNil(id)) {
-        return createData(tx, tables, newData, (result) => {
-            if ("error" in result) {
-                return cb({ error: result.error });
-            } 
-            return cb({ value: true });
-        });
+        return createData(tx, tables, newData, cb);
     }
 
-    return updateData(tx, tables, newData, () => cb({ value: true }));
+    return updateData(tx, tables, newData, cb);
 }
 
 export function createData<TData, TMetadata>(
     tx: WriteTransaction,
     tables: MetadataPairTableDef<TData, TMetadata>,
     newData: TData,
-    cb: Then<Result<{ data: TData; metadata: TMetadata }>>,
+    cb: Then<Result<{ data: TData, metadata: TMetadata }>>,
 ): Done {
     const metadata = tables.toMetadata(newData);
 
     return createOne(tx, tables.metadata, metadata, (idResult) => {
-        if ("error" in idResult) return cb({ error: idResult.error });
+        if ("error" in idResult) {
+            return cb({ error: idResult.error });
+        }
 
         // Link the data the user passed in to the metadata by mutating it directly
         // @ts-expect-error I hardley knower
