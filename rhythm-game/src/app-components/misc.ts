@@ -1,10 +1,10 @@
-import { im, ImCache, imdom } from "src/utils/im-js";
-import { imui, ROW } from "src/utils/im-js/im-ui";
+import { im, ImCache, imdom } from "imcf";
+import { imui, ROW } from "imcf/im-ui";
 
 
 export function imVerticalText(c: ImCache) {
     imui.Begin(c, ROW); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "writingMode", "sideways-lr");
             imdom.setStyle(c, "textOrientation", "mixed");
         }

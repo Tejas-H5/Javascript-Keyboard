@@ -1,6 +1,6 @@
-import { debugFlags } from "src/debug-flags.ts";
+import { debugFlags } from "debug-flags.ts";
 import {compileEffectRack, deserializeEffectRack, EffectRack, newEffectRack, newEffectRackBiquadFilter, newEffectRackDelay, newEffectRackEnvelope, newEffectRackItem, newEffectRackMaths, newEffectRackMathsItemCoefficient, newEffectRackMathsItemTerm, newEffectRackNoise, newEffectRackOscillator, newEffectRackSwitch, serializeEffectRack} from "./effect-rack.ts";
-import { utf16ByteLength } from "src/utils/utf8.ts";
+import { utf16ByteLength } from "utils/utf8.ts";
 
 export const KEYBOARD_LAYOUT: string[] = [
     "1234567890-=",

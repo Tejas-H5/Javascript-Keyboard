@@ -1,5 +1,5 @@
-import { ImCache, imdom } from "src/utils/im-js";
-import { BLOCK, cssVars, imui, PERCENT, PX, ROW } from "src/utils/im-js/im-ui";
+import { ImCache, imdom } from "imcf";
+import { BLOCK, cssVars, imui, PERCENT, PX, ROW } from "imcf/im-ui";
 
 // We want to put the game inside a container that maintains it's aspect ratio, so that 
 // I can play this on my 4:3 screen as well.

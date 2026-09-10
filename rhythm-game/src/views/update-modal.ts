@@ -1,16 +1,16 @@
-import { imInfiniteProgress } from "src/app-components/infinite-progress";
-import { imModalBegin, imModalEnd } from "src/app-components/modal";
-import { imTextInputOneLine } from "src/app-components/text-input-one-line";
-import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, ROW } from "src/utils/im-js/im-ui";
-import { createChart, deleteChart, saveChart } from "src/state/data-repository";
-import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "src/state/sequencer-chart";
-import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_DELETE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "src/state/ui-state";
-import { assert, unreachable } from "src/utils/assert";
-import { im, ImCache, imdom } from "src/utils/im-js";
+import { imInfiniteProgress } from "app-components/infinite-progress";
+import { imModalBegin, imModalEnd } from "app-components/modal";
+import { imTextInputOneLine } from "app-components/text-input-one-line";
+import { imButtonIsClicked } from "components/button";
+import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, ROW } from "imcf/im-ui";
+import { createChart, deleteChart, saveChart } from "state/data-repository";
+import { CHART_STATUS_SAVED, CHART_STATUS_UNSAVED, newChart } from "state/sequencer-chart";
+import { NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_DELETE, NAME_OPERATION_RENAME, OperationType, UpdateModalState } from "state/ui-state";
+import { assert, unreachable } from "utils/assert";
+import { im, ImCache, imdom } from "imcf";
 import { GlobalContext, setCurrentChartMeta } from "./app";
 import { cssVarsApp } from "./styling";
-import { CANCELLED, Done, DONE, Result, Then, trackTask } from "src/utils/async-utils";
+import { CANCELLED, Done, DONE, Result, Then, trackTask } from "utils/async-utils";
 
 function getButtonText(o: OperationType): string {
     switch(o) {
@@ -28,7 +28,7 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
     let escape = false;
 
     imModalBegin(c); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "zIndex", "100");
         }
 

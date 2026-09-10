@@ -1,20 +1,20 @@
-import { imTextInputOneLine } from "src/app-components/text-input-one-line.ts";
-import {imui, BLOCK, COL, INLINE, NA, PERCENT, ROW, STRETCH,} from "src/utils/im-js/im-ui";
-import { deleteChart } from "src/state/data-repository.ts";
+import { imTextInputOneLine } from "app-components/text-input-one-line.ts";
+import {imui, BLOCK, COL, INLINE, NA, PERCENT, ROW, STRETCH,} from "imcf/im-ui";
+import { deleteChart } from "state/data-repository.ts";
 import {
     playAll,
     stopPlayback
-} from "src/state/playing-pausing.ts";
+} from "state/playing-pausing.ts";
 import {
     CHART_STATUS_READONLY,
     isBundledChartId,
     newChart
-} from "src/state/sequencer-chart.ts";
-import { getCurrentChart } from "src/state/sequencer-state.ts";
-import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_DELETE, NAME_OPERATION_RENAME } from "src/state/ui-state.ts";
-import { im, ImCache, imdom } from "src/utils/im-js";
-import { arrayAt } from "src/utils/array-utils.ts";
-import { assert } from "src/utils/assert.ts";
+} from "state/sequencer-chart.ts";
+import { getCurrentChart } from "state/sequencer-state.ts";
+import { getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_DELETE, NAME_OPERATION_RENAME } from "state/ui-state.ts";
+import { im, ImCache, imdom } from "imcf";
+import { arrayAt } from "utils/array-utils.ts";
+import { assert } from "utils/assert.ts";
 import {
     GlobalContext,
     openChartUpdateModal,
@@ -23,7 +23,7 @@ import {
 } from "./app.ts";
 import { moveChartSelection } from "./chart-select.ts";
 import { cssVarsApp } from "./styling.ts";
-import { DONE } from "src/utils/async-utils.ts";
+import { DONE } from "utils/async-utils.ts";
 
 
 export function imLoadSaveSidebar(c: ImCache, ctx: GlobalContext) {

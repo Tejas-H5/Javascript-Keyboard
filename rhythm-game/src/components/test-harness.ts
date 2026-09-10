@@ -1,16 +1,16 @@
-import { imButtonIsClicked } from "src/components/button";
-import { imui, BLOCK, ROW, COL, PX, NA, cssVars, PERCENT } from "src/utils/im-js/im-ui";
+import { imButtonIsClicked } from "components/button";
+import { imui, BLOCK, ROW, COL, PX, NA, cssVars, PERCENT } from "imcf/im-ui";
 
-import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
-import { resizeObjectPool } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
-import { el, im, ImCache, imdom, Stringifyable } from "src/utils/im-js";
+import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "components/scroll-container";
+import { resizeObjectPool } from "utils/array-utils";
+import { assert } from "utils/assert";
+import { el, im, ImCache, imdom, Stringifyable } from "imcf";
 
-import { getAllTests, runTest, Test, TestingHarness, TestResult } from "src/utils/testing";
+import { getAllTests, runTest, Test, TestingHarness, TestResult } from "utils/testing";
 import { imLine, LINE_HORIZONTAL } from "./im-line";
 
 function imCode(c: ImCache) {
-    if (im.isFirstishRender(c)) {
+    if (im.IsFirstRender(c)) {
         imdom.setStyle(c, "fontFamily", "monospace");
         imdom.setStyle(c, "backgroundColor", cssVars.bg2);
     }

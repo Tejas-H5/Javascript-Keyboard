@@ -1,5 +1,5 @@
-import { DomAppender, elsvg, im, ImCache, imdom } from "src/utils/im-js";
-import { imui, PX } from "src/utils/im-js/im-ui";
+import { DomAppender, elsvg, im, ImCache, imdom } from "imcf";
+import { imui, PX } from "imcf/im-ui";
 
 export type SvgContext = {
     root: DomAppender<SVGSVGElement>;

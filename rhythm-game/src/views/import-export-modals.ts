@@ -1,8 +1,8 @@
-import { imModalBegin, imModalEnd } from "src/app-components/modal.ts";
-import { imButtonIsClicked } from "src/components/button.ts";
-import {BLOCK, COL, PERCENT, PX, ROW, imui, cssVars, } from "src/utils/im-js/im-ui";
-import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { imModalBegin, imModalEnd } from "app-components/modal.ts";
+import { imButtonIsClicked } from "components/button.ts";
+import {BLOCK, COL, PERCENT, PX, ROW, imui, cssVars, } from "imcf/im-ui";
+import { imTextAreaBegin, imTextAreaEnd } from "components/editable-text-area.ts";
+import { im, ImCache, imdom, el, ev, } from "imcf";
 
 import { cssVarsApp } from "./styling.ts";
 
@@ -39,7 +39,7 @@ export function imImportModal(c: ImCache): ImportModalState {
                     value: s.json,
                     placeholder: "Paste in your wave program JSON!"
                 }); {
-                    if (im.isFirstishRender(c)) {
+                    if (im.IsFirstRender(c)) {
                     }
 
                     const inputEv = imdom.On(c, ev.INPUT);

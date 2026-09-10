@@ -1,14 +1,14 @@
-import { imVerticalText } from "src/app-components/misc.ts";
-import { imButtonIsClicked } from "src/components/button.ts";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
-import { InstrumentKey } from "src/state/keyboard-state.ts";
-import { CHART_STATUS_READONLY, getChartDurationInBeats, isBundledChartId, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "src/state/sequencer-chart.ts";
-import { getCurrentChartOrNullIfLoading } from "src/state/sequencer-state.ts";
-import { ChartSelectState, getCurrentChartMetadata } from "src/state/ui-state.ts";
-import { assert } from "src/utils/assert.ts";
-import { el, im, ImCache, imdom } from "src/utils/im-js";
-import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, ROW, scrollIntoViewVH, STRETCH } from "src/utils/im-js/im-ui";
-import { arrayMax, clamp, lerp } from "src/utils/math-utils.ts";
+import { imVerticalText } from "app-components/misc.ts";
+import { imButtonIsClicked } from "components/button.ts";
+import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "components/im-line.ts";
+import { InstrumentKey } from "state/keyboard-state.ts";
+import { CHART_STATUS_READONLY, getChartDurationInBeats, isBundledChartId, NoteItem, SequencerChart, TIMELINE_ITEM_NOTE, TimelineItem } from "state/sequencer-chart.ts";
+import { getCurrentChartOrNullIfLoading } from "state/sequencer-state.ts";
+import { ChartSelectState, getCurrentChartMetadata } from "state/ui-state.ts";
+import { assert } from "utils/assert.ts";
+import { el, im, ImCache, imdom } from "imcf";
+import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, ROW, scrollIntoViewVH, STRETCH } from "imcf/im-ui";
+import { arrayMax, clamp, lerp } from "utils/math-utils.ts";
 import {
     GlobalContext,
     playKeyPressForUI,
@@ -20,9 +20,9 @@ import {
 } from "./app.ts";
 import { imHoverable } from "./button.ts";
 import { cssVarsApp } from "./styling.ts";
-import { Done, DONE, Then } from "src/utils/async-utils.ts";
+import { Done, DONE, Then } from "utils/async-utils.ts";
 import { imGameplay, imGameplayKeyboard, newGameplayState, recomputeGameplayStuff } from "./gameplay.ts";
-import { playAll, startPlaying } from "src/state/playing-pausing.ts";
+import { playAll, startPlaying } from "state/playing-pausing.ts";
 import { imGameplayContainerBegin, imGameplayContainerEnd } from "./gameplay-elements.ts";
 
 function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): boolean {
@@ -217,7 +217,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
                         } imdom.ElEnd(c, el.H2);
 
                         imui.Begin(c, BLOCK); {
-                            if (im.isFirstishRender(c)) {
+                            if (im.IsFirstRender(c)) {
                                 imdom.setStyle(c, "whiteSpace", "pre-wrap");
                             }
 
@@ -335,7 +335,7 @@ function imChartStatistics(
                                 const count = s.keyFrequencies[key.index];
                                 const normalized = count / s.maxFrequency;
                                 imui.Begin(c, BLOCK); imui.Bg(c, cssVarsApp.fg); {
-                                    if (im.isFirstishRender(c)) {
+                                    if (im.IsFirstRender(c)) {
                                         imdom.setStyle(c, "color", cssVars.bg);
                                     }
 

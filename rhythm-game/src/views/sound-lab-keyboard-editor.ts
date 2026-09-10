@@ -1,19 +1,19 @@
-import { imTextInputOneLine } from "src/app-components/text-input-one-line.ts";
-import { imButtonIsClicked } from "src/components/button.ts";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
-import { pressKey } from "src/dsp/dsp-loop-interface.ts";
-import { createKeyboardConfigPreset, loadKeyboardConfig } from "src/state/data-repository.ts";
-import { effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, keyboardConfigDeleteSlot } from "src/state/keyboard-config.ts";
-import { getKeyForKeyboardKey } from "src/state/keyboard-state.ts";
-import { assert } from "src/utils/assert.ts";
-import { im, ImCache, imdom } from "src/utils/im-js";
-import { BLOCK, COL, CssColor, imui, INLINE_BLOCK, NA, PERCENT, PX, ROW, START } from "src/utils/im-js/im-ui";
+import { imTextInputOneLine } from "app-components/text-input-one-line.ts";
+import { imButtonIsClicked } from "components/button.ts";
+import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "components/im-line.ts";
+import { pressKey } from "dsp/dsp-loop-interface.ts";
+import { createKeyboardConfigPreset, loadKeyboardConfig } from "state/data-repository.ts";
+import { effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, keyboardConfigDeleteSlot } from "state/keyboard-config.ts";
+import { getKeyForKeyboardKey } from "state/keyboard-state.ts";
+import { assert } from "utils/assert.ts";
+import { im, ImCache, imdom } from "imcf";
+import { BLOCK, COL, CssColor, imui, INLINE_BLOCK, NA, PERCENT, PX, ROW, START } from "imcf/im-ui";
 import { GlobalContext } from "./app.ts";
 import { imHoverable } from "./button.ts";
 import { imKeyboard } from "./keyboard.ts";
 import { imHeadingBegin, imHeadingEnd } from "./sound-lab-effect-rack-editor.ts";
 import { imEffectRackList, newPresetsListState } from "./sound-lab-effect-rack-list.ts";
-import { DONE } from "src/utils/async-utils.ts";
+import { DONE } from "utils/async-utils.ts";
 
 // NOTE: this is currently the 'sound lab'
 // Maybe in the future, it will go back to being just a tiny editor again. 
@@ -174,7 +174,7 @@ export function imKeyboardConfigEditor(
                         imui.Begin(c, COL); {
                             imui.Begin(c, ROW); imui.Gap(c, 10, PX); imui.Align(c); imui.Bg(c, presetColor.toCssString()); { 
                                 imui.Begin(c, ROW); imui.Flex(c); imui.Align(c); imui.Gap(c, 10, PX); {
-                                    if (im.isFirstishRender(c)) imdom.setStyle(c, "padding", "0 5px");
+                                    if (im.IsFirstRender(c)) imdom.setStyle(c, "padding", "0 5px");
 
                                     imdom.Str(c, "s");
                                     imdom.Str(c, slotIdx);

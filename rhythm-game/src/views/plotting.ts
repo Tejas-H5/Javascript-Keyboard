@@ -1,6 +1,6 @@
-import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "src/components/canvas2d";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-import { inverseLerp, lerp, max, min } from "src/utils/math-utils";
+import { imBeginCanvasRenderingContext2D, imEndCanvasRenderingContext2D } from "components/canvas2d";
+import { im, ImCache, imdom, el, ev, } from "imcf";
+import { inverseLerp, lerp, max, min } from "utils/math-utils";
 
 // TODO: consider moving to components.ts
 

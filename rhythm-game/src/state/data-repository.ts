@@ -1,8 +1,8 @@
-import { getAllBundledCharts, getAllBundledChartsMetadata } from "src/assets/bundled-charts.ts";
-import { assert } from "src/utils/assert.ts";
-import { CANCELLED, DONE, Done, PARALLELISM, Result, Then, trackTask } from "src/utils/async-utils.ts";
-import * as idb from "src/utils/indexed-db.ts";
-import { utf16ByteLength } from "src/utils/utf8.ts";
+import { getAllBundledCharts, getAllBundledChartsMetadata } from "assets/bundled-charts.ts";
+import { assert } from "utils/assert.ts";
+import { CANCELLED, DONE, Done, PARALLELISM, Result, Then, trackTask } from "utils/async-utils.ts";
+import * as idb from "utils/indexed-db.ts";
+import { utf16ByteLength } from "utils/utf8.ts";
 import { EffectRackPreset, EffectRackPresetMetadata, effectRackPresetToMetadata, KeyboardConfig } from "./keyboard-config.ts";
 import {
     CHART_STATUS_READONLY,

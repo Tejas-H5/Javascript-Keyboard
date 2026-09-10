@@ -6,20 +6,20 @@ import {
     imContextMenuItemBegin,
     imContextMenuItemEnd,
     openContextMenuAtMouse
-} from "src/app-components/context-menu";
-import { imVerticalText } from "src/app-components/misc";
-import { imTextInputOneLine } from "src/app-components/text-input-one-line";
-import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "src/components/button";
-import { imCheckbox } from "src/components/checkbox";
-import { BLOCK, COL, CssColor, cssVars, DisplayType, EM, imui, INLINE_BLOCK, NA, PERCENT, PX, ROW, ROW_REVERSE, SPACE_EVENLY, STRETCH } from "src/utils/im-js/im-ui";
+} from "app-components/context-menu";
+import { imVerticalText } from "app-components/misc";
+import { imTextInputOneLine } from "app-components/text-input-one-line";
+import { imButtonBegin, imButtonEnd, imButtonIsClicked } from "components/button";
+import { imCheckbox } from "components/checkbox";
+import { BLOCK, COL, CssColor, cssVars, DisplayType, EM, imui, INLINE_BLOCK, NA, PERCENT, PX, ROW, ROW_REVERSE, SPACE_EVENLY, STRETCH } from "imcf/im-ui";
 
-import { DragAndDropState, imDragAndDrop, imDragHandle, imDragZoneBegin, imDragZoneEnd, imDropZoneForPrototyping } from "src/components/drag-and-drop";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line";
-import { imRangeSlider } from "src/components/range-slider";
-import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "src/components/scroll-container";
-import { DspLoopMessage, dspProcess, dspReceiveMessage, DspState, newDspState } from "src/dsp/dsp-loop";
-import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, newKeyboardConfigOnePreset, pressKey, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { createEffectRackPreset, DEFAULT_GROUP_NAME, deleteEffectRackPreset, updateEffectRackPreset } from "src/state/data-repository";
+import { DragAndDropState, imDragAndDrop, imDragHandle, imDragZoneBegin, imDragZoneEnd, imDropZoneForPrototyping } from "components/drag-and-drop";
+import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "components/im-line";
+import { imRangeSlider } from "components/range-slider";
+import { imScrollContainerBegin, imScrollContainerEnd, newScrollContainer } from "components/scroll-container";
+import { DspLoopMessage, dspProcess, dspReceiveMessage, DspState, newDspState } from "dsp/dsp-loop";
+import { applyPlaySettingsDefaults, getCurrentPlaySettings, getDspInfo, newKeyboardConfigOnePreset, pressKey, updatePlaySettings } from "dsp/dsp-loop-interface";
+import { createEffectRackPreset, DEFAULT_GROUP_NAME, deleteEffectRackPreset, updateEffectRackPreset } from "state/data-repository";
 import {
     asRegisterIdx,
     BIQUAD2_TYPE__ALLPASS,
@@ -94,18 +94,18 @@ import {
     SWITCH_OP_GT,
     SWITCH_OP_LT,
     ValueRef
-} from "src/state/effect-rack";
-import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, presetToEffectRack } from "src/state/keyboard-config";
-import { getKeyForKeyboardKey } from "src/state/keyboard-state";
-import { arrayAt, arrayMove, copyArray, filterInPlace, removeItem } from "src/utils/array-utils";
-import { assert, unreachable } from "src/utils/assert";
+} from "state/effect-rack";
+import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, presetToEffectRack } from "state/keyboard-config";
+import { getKeyForKeyboardKey } from "state/keyboard-state";
+import { arrayAt, arrayMove, copyArray, filterInPlace, removeItem } from "utils/array-utils";
+import { assert, unreachable } from "utils/assert";
 
-import { fft, fftToReal, resizeNumberArrayPowerOf2 } from "src/utils/fft";
-import { el, elsvg, im, ImCache, imdom } from "src/utils/im-js";
+import { fft, fftToReal, resizeNumberArrayPowerOf2 } from "utils/fft";
+import { el, elsvg, im, ImCache, imdom } from "imcf";
 
-import { arrayMax, arrayMin } from "src/utils/math-utils";
-import { getNoteFrequency, getNoteIndex } from "src/utils/music-theory-utils";
-import { canRedo, canUndo, JSONUndoBuffer, newJSONUndoBuffer, redo, stepUndoBufferTimer, undo, undoBufferIsEmpty, writeToUndoBuffer, writeToUndoBufferDebounced } from "src/utils/undo-buffer-json";
+import { arrayMax, arrayMin } from "utils/math-utils";
+import { getNoteFrequency, getNoteIndex } from "utils/music-theory-utils";
+import { canRedo, canUndo, JSONUndoBuffer, newJSONUndoBuffer, redo, stepUndoBufferTimer, undo, undoBufferIsEmpty, writeToUndoBuffer, writeToUndoBufferDebounced } from "utils/undo-buffer-json";
 import { GlobalContext } from "./app";
 import { imExportModal, imImportModal } from "./import-export-modals";
 import { drawSamples, imPlotBegin, imPlotEnd } from "./plotting";
@@ -113,9 +113,9 @@ import { SoundLabState } from "./sound-lab";
 import { DRAG_TYPE_CIRCULAR, imParameterSliderInteraction } from "./sound-lab-drag-slider";
 import { imEffectRackList, newPresetsListState, selectEffectRackPreset, startRenamingPreset } from "./sound-lab-effect-rack-list";
 import { imKeyboardConfigEditorKeyboard, KeyboardConfigEditorState } from "./sound-lab-keyboard-editor";
-import { SvgContext } from "src/components/svg-context";
+import { SvgContext } from "components/svg-context";
 import { cssVarsApp } from "./styling";
-import { CANCELLED, DONE } from "src/utils/async-utils";
+import { CANCELLED, DONE } from "utils/async-utils";
 
 const MAX_NUM_FREQUENCIES = 16384;
 
@@ -720,8 +720,8 @@ export function imEffectRackEditor(
     imui.Begin(c, ROW); imui.Flex(c); {
         imui.Begin(c, COL); imui.Flex(c, 4); {
             imui.Begin(c, COL); imui.Flex(c); {
-                if (im.isFirstishRender(c)) imdom.setStyle(c, "fontSize", "20px");
-                if (im.isFirstishRender(c)) imdom.setClass(c, cnEffectRackEditor);
+                if (im.IsFirstRender(c)) imdom.setStyle(c, "fontSize", "20px");
+                if (im.IsFirstRender(c)) imdom.setClass(c, cnEffectRackEditor);
 
                 imui.Begin(c, COL); imui.Flex(c); {
                     imui.Begin(c, ROW); imui.Align(c); {
@@ -794,8 +794,8 @@ export function imEffectRackEditor(
                             if (im.If(c) && wires.drag.registerOutputId !== undefined || wires.drag.registerInput !== undefined) {
                                 imdom.RootExistingBegin(c, svgCtx.root); {
                                     const mouse = imdom.getMouse();
-                                    let srcX = mouse.X, srcY = mouse.Y;
-                                    let dstX = mouse.X, dstY = mouse.Y;
+                                    let srcX = mouse.x, srcY = mouse.y;
+                                    let dstX = mouse.x, dstY = mouse.y;
 
                                     if (wires.drag.toRegisterInput && wires.drag.registerOutputId !== undefined) {
                                         const outputUi = wires.outputPositions.get(wires.drag.registerOutputId);
@@ -862,10 +862,10 @@ export function imEffectRackEditor(
                     } imui.End(c);
 
                     imui.Begin(c, COL); {
-                        if (im.isFirstishRender(c)) imdom.setStyle(c, "borderTop", "1px solid " + cssVars.fg);
-                        if (im.isFirstishRender(c)) imdom.setStyle(c, "borderLeft", "1px solid " + cssVars.fg);
-                        if (im.isFirstishRender(c)) imdom.setStyle(c, "borderTopLeftRadius", "5px");
-                        if (im.isFirstishRender(c)) imdom.setStyle(c, "padding", "5px");
+                        if (im.IsFirstRender(c)) imdom.setStyle(c, "borderTop", "1px solid " + cssVars.fg);
+                        if (im.IsFirstRender(c)) imdom.setStyle(c, "borderLeft", "1px solid " + cssVars.fg);
+                        if (im.IsFirstRender(c)) imdom.setStyle(c, "borderTopLeftRadius", "5px");
+                        if (im.IsFirstRender(c)) imdom.setStyle(c, "padding", "5px");
                         imValueOrBindingEditor(c, editor, rack.effects.length, rack.output);
                     } imui.End(c);
                 } imui.End(c);
@@ -1625,7 +1625,7 @@ function imMathsCoefficientsList(
     isFirst: boolean,
 ) {
     imDspVisualGroupBegin(c, ROW); imui.Align(c); imui.Gap(c, 10, PX); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "flexFlow", "wrap");
         }
 
@@ -1883,7 +1883,7 @@ function imValueOrBindingEditor(
     const isOutput = !!(flags & BINDING_IS_OUTPUT);
 
     imDspVisualGroupBegin(c, ROW, false); imui.NoWrap(c); imui.Gap(c, 4, row ? PX : NA); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "fontSize", "1.25rem");
         }
 
@@ -1935,7 +1935,7 @@ function imValueOrBindingEditor(
             } imui.End(c);
 
             imui.Begin(c, BLOCK); {
-                if (im.isFirstishRender(c)) {
+                if (im.IsFirstRender(c)) {
                     imdom.setStyle(c, "fontSize", "1rem");
                     imdom.setStyle(c, "userSelect", "none");
                     imdom.setStyle(c, "fontWeight", "bold");
@@ -1953,7 +1953,7 @@ function imValueOrBindingEditor(
 
 function imEditorContextMenuItemBegin(c: ImCache) {
     imContextMenuItemBegin(c); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             // TODO: things in apps should be non-selectable by default, and opt-in to the selection process.
             // This is a webapp, not a document.
             imdom.setStyle(c, "userSelect", "none");
@@ -2057,7 +2057,7 @@ function imWireDragEndpoint(
 
     const root = imui.Begin(c, ROW); imui.Align(c); imui.Justify(c); imui.Size(c, 30, PX, 30, PX);
     imui.Bg(c, isEligibleDropZone ? cssVars.mg : cssVars.bg2); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "borderRadius", "1000px");
             imdom.setStyle(c, "cursor", "move");
         }
@@ -2168,7 +2168,7 @@ function imWire(
             imdom.setAttr(c, "stroke", imui.rgbaToCssString(r, g, b, a));
         }
 
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setAttr(c, "fill", "none");
             imdom.setAttr(c, "stroke-width", "10");
         }

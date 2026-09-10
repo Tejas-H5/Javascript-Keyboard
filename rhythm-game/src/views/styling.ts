@@ -1,5 +1,5 @@
-import { INTER_FONT_CSS } from "src/fonts/fonts";
-import { cssVars, imui } from "src/utils/im-js/im-ui";
+import { INTER_FONT_CSS } from "fonts/fonts";
+import { cssVars, imui } from "imcf/im-ui";
 
 
 export const cssVarsApp = imui.getCssVarsDict({

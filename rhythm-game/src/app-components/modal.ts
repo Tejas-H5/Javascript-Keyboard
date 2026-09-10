@@ -1,5 +1,5 @@
-import { ImCache } from "src/utils/im-js";
-import { COL, imui, PX } from "src/utils/im-js/im-ui";
+import { ImCache } from "imcf";
+import { COL, imui, PX } from "imcf/im-ui";
 
 export function imModalBegin(c: ImCache, zIndex = 100) {
     imui.Begin(c, COL); imui.Fixed(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.ZIndex(c, zIndex); {

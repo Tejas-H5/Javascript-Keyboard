@@ -1,15 +1,15 @@
-import { cssVars, imui, PERCENT, ROW } from "src/utils/im-js/im-ui";
-import { getCurrentPlaySettings, updatePlaySettings } from "src/dsp/dsp-loop-interface";
-import { im, ImCache, imdom } from "src/utils/im-js";
+import { cssVars, imui, PERCENT, ROW } from "imcf/im-ui";
+import { getCurrentPlaySettings, updatePlaySettings } from "dsp/dsp-loop-interface";
+import { im, ImCache, imdom } from "imcf";
 import { GlobalContext, setViewChartSelect } from "./app";
-import { imSvgContext } from "src/components/svg-context";
-import { createKeyboardConfigPreset, loadAllEffectRackPresets, loadAllKeyboardConfigPresets, loadKeyboardConfig, saveKeyboardConfig } from "src/state/data-repository";
-import { KeyboardConfig, newKeyboardConfig } from "src/state/keyboard-config";
-import { arrayAt } from "src/utils/array-utils";
-import { assert } from "src/utils/assert";
+import { imSvgContext } from "components/svg-context";
+import { createKeyboardConfigPreset, loadAllEffectRackPresets, loadAllKeyboardConfigPresets, loadKeyboardConfig, saveKeyboardConfig } from "state/data-repository";
+import { KeyboardConfig, newKeyboardConfig } from "state/keyboard-config";
+import { arrayAt } from "utils/array-utils";
+import { assert } from "utils/assert";
 import { imEffectRackEditor, newEffectRackEditorState } from "./sound-lab-effect-rack-editor";
 import { imKeyboardConfigEditor, newKeyboardConfigEditorState } from "./sound-lab-keyboard-editor";
-import { DONE } from "src/utils/async-utils";
+import { DONE } from "utils/async-utils";
 
 function log(...messages: any[]) {
     console.log("[sound lab]", ...messages);
@@ -95,7 +95,7 @@ export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLab
         const svgCtx = imSvgContext(c);
         if (effectRackEditor) effectRackEditor.svgCtx = svgCtx;
         imdom.RootExistingBegin(c, svgCtx.root); {
-            if (im.isFirstishRender(c)) {
+            if (im.IsFirstRender(c)) {
                 // Dont want to be able to touch the SVG actually.
                 // It's just for the wires visual.
                 imdom.setStyle(c, "pointerEvents", "none");

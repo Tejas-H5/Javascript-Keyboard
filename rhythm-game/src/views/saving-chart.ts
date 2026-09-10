@@ -1,7 +1,7 @@
-import { saveChart } from "src/state/data-repository";
-import { isReadonlyChart, } from "src/state/sequencer-chart";
+import { saveChart } from "state/data-repository";
+import { isReadonlyChart, } from "state/sequencer-chart";
 import { GlobalContext } from "./app";
-import { DONE } from "src/utils/async-utils";
+import { DONE } from "utils/async-utils";
 
 const saveTasks = new Set<number>();
 export function isSavingAnyChart() {

@@ -1,12 +1,12 @@
-import { imButtonIsClicked } from "src/components/button.ts";
-import { debugFlags } from "src/debug-flags.ts";
-import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setPlaybackTime } from "src/dsp/dsp-loop-interface.ts";
+import { imButtonIsClicked } from "components/button.ts";
+import { debugFlags } from "debug-flags.ts";
+import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setPlaybackTime } from "dsp/dsp-loop-interface.ts";
 import {
     getKeyForKeyboardKey,
     InstrumentKey,
     KeyboardState
-} from "src/state/keyboard-state.ts";
-import { pausePlayback, resumePlayback } from "src/state/playing-pausing.ts";
+} from "state/keyboard-state.ts";
+import { pausePlayback, resumePlayback } from "state/playing-pausing.ts";
 import {
     CommandItem,
     FRACTIONAL_UNITS_PER_BEAT,
@@ -19,17 +19,17 @@ import {
     TIMELINE_ITEM_MEASURE,
     TIMELINE_ITEM_NOTE,
     TimelineItemMeasure
-} from "src/state/sequencer-chart.ts";
+} from "state/sequencer-chart.ts";
 import {
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
     NoteMapEntry
-} from "src/state/sequencer-state.ts";
-import { arrayAt } from "src/utils/array-utils.ts";
-import { assert } from "src/utils/assert.ts";
-import { el, im, ImCache, imdom, Stringifyable } from "src/utils/im-js";
-import { BLOCK, COL, CssColor, cssVars, EM, END, imui, NA, PERCENT, PX, ROW, START, STRETCH } from "src/utils/im-js/im-ui";
-import { clamp, inverseLerp, inverseLerp2, lerp, max } from "src/utils/math-utils.ts";
+} from "state/sequencer-state.ts";
+import { arrayAt } from "utils/array-utils.ts";
+import { assert } from "utils/assert.ts";
+import { el, im, ImCache, imdom, Stringifyable } from "imcf";
+import { BLOCK, COL, CssColor, cssVars, EM, END, imui, NA, PERCENT, PX, ROW, START, STRETCH } from "imcf/im-ui";
+import { clamp, inverseLerp, inverseLerp2, lerp, max } from "utils/math-utils.ts";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
 import { cssVarsApp, getCurrentTheme } from "./styling.ts";
 import { imGameplayContainerBegin, imGameplayContainerEnd } from "./gameplay-elements.ts";
@@ -389,7 +389,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext, gameplayState: Gamepl
     const progressPercent = max(100 * gameplayState.currentBeat / durationBeats, 0);
 
     imui.Begin(c, COL); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "userSelect", "none");
         }
 
@@ -418,7 +418,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext, gameplayState: Gamepl
                         imui.Absolute(c, 0, PX, 0, PX, 0, NA, 0, PX);
                         imui.Size(c, 0, NA, 2, EM);
 
-                        if (im.isFirstishRender(c)) {
+                        if (im.IsFirstRender(c)) {
                             imdom.setStyle(c, "background", "rgba(0, 0, 0, 0");
                         }
                         if (im.Memo(c, amountPenalized01)) {
@@ -527,7 +527,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext, gameplayState: Gamepl
         // Pause menu
 
         imui.Begin(c, COL); imui.Align(c); imui.Justify(c); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0,0,0, 0.4`); imui.ZIndex(c, 100); {
-            if (im.isFirstishRender(c)) {
+            if (im.IsFirstRender(c)) {
                 imdom.setStyle(c, "fontSize", "3em");
             }
 
@@ -659,7 +659,7 @@ function imLetter(
         } im.IfEnd(c);
 
         imui.Begin(c, BLOCK); {
-            if (im.isFirstishRender(c)) {
+            if (im.IsFirstRender(c)) {
                 imdom.setStyle(c, "fontSize", "2em");
                 imdom.setStyle(c, "height", "1.3em");
             }
@@ -959,7 +959,7 @@ function imGameplayKeyLane(
                 }
 
                 imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imui.Size(c, 0, NA, heightPercent, PERCENT); {
-                    if (im.isFirstishRender(c)) {
+                    if (im.IsFirstRender(c)) {
                         imdom.setStyle(c, "color", "transparent");
                     }
 
@@ -982,7 +982,7 @@ function imGameplayKeyLane(
         } imui.End(c);
 
         imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 2, PX); {
-            if (im.isFirstishRender(c)) {
+            if (im.IsFirstRender(c)) {
                 imdom.setStyle(c, "backgroundColor", cssVarsApp.fg);
             }
         } imui.End(c);
@@ -1024,7 +1024,7 @@ export function imGameplayKeyboard(
 
     imui.Begin(c, COL); imui.Flex(c); {
         imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
-            if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
+            if (im.IsFirstRender(c)) imdom.setStyle(c, "overflow", "hidden");
 
             im.For(c); for (let j = 0; j < totalNumCols; j++) {
                 for (let i = 0; i < 2; i++) {
@@ -1038,7 +1038,7 @@ export function imGameplayKeyboard(
             } im.ForEnd(c);
         } imui.End(c);
         imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
-            if (im.isFirstishRender(c)) imdom.setStyle(c, "overflow", "hidden");
+            if (im.IsFirstRender(c)) imdom.setStyle(c, "overflow", "hidden");
 
             im.For(c);
             for (let j = 0; j < totalNumCols; j++) {

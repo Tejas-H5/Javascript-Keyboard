@@ -1,15 +1,18 @@
 {
-  "name": "rhythm-game",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-	"dev":   "node ./build/build.ts devserver",
-	"build": "node ./build/build.ts build"
-  },
-  "devDependencies": {
-    "@types/node": "^25.2.3",
-    "esbuild": "^0.27.3",
-    "typescript": "^5.9.3"
-  }
+	"name": "rhythm-game",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "node ./build/build.ts devserver",
+		"build": "node ./build/build.ts build"
+	},
+	"devDependencies": {
+		"@types/node": "^25.2.3",
+		"esbuild": "^0.27.3",
+		"typescript": "^5.9.3"
+	},
+	"dependencies": {
+		"imcf": "^0.0.14"
+	}
 }

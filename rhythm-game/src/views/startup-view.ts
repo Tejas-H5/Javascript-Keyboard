@@ -1,6 +1,6 @@
-import { imButtonIsClicked } from "src/components/button";
-import { im, ImCache, imdom } from "src/utils/im-js";
-import { BLOCK, COL, imui, NA, PERCENT } from "src/utils/im-js/im-ui";
+import { imButtonIsClicked } from "components/button";
+import { im, ImCache, imdom } from "imcf";
+import { BLOCK, COL, imui, NA, PERCENT } from "imcf/im-ui";
 
 import { GlobalContext, setViewChartSelect } from "./app";
 
@@ -50,7 +50,7 @@ export function imStartupView(c: ImCache, ctx: GlobalContext) {
             imdom.Str(c, gameName);
         } imui.End(c);
         imui.Begin(c, BLOCK); imui.Absolute(c, 25, PERCENT, 0, NA, 25, PERCENT, 0, NA); {
-            if (im.isFirstishRender(c)) {
+            if (im.IsFirstRender(c)) {
                 imdom.setStyle(c,"fontSize", "24px");
             }
 

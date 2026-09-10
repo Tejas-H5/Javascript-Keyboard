@@ -1,7 +1,7 @@
-import { ev, im, ImCache, imdom } from "src/utils/im-js";
-import { imui, BLOCK, PX, cssVars } from "src/utils/im-js/im-ui";
+import { ev, im, ImCache, imdom } from "imcf";
+import { imui, BLOCK, PX, cssVars } from "imcf/im-ui";
 
-import { clamp, deltaAngle, gridsnapRound, lerp01 } from "src/utils/math-utils.ts";
+import { clamp, deltaAngle, gridsnapRound, lerp01 } from "utils/math-utils.ts";
 
 export type CompactLinearDragSlideInteractionState = {
     isDragging: boolean;
@@ -26,7 +26,7 @@ export function imCompactLinearDragSlideInteraction(
         draggedValue: 0,
     });
 
-    if (im.isFirstishRender(c)) {
+    if (im.IsFirstRender(c)) {
         imdom.setStyle(c, "cursor", "ew-resize");
     }
 
@@ -43,7 +43,7 @@ export function imCompactLinearDragSlideInteraction(
 
     if (startedDragging) {
         s.isDragging = true;
-        s.lastMouseX = mouse.X;
+        s.lastMouseX = mouse.x;
         s.draggedValue = value;
     }
 
@@ -52,8 +52,8 @@ export function imCompactLinearDragSlideInteraction(
     // the slider, for example.
     if (s.isDragging) {
         mouse.ev?.preventDefault();
-        const dragDistance = mouse.X - s.lastMouseX;
-        s.lastMouseX = mouse.X;
+        const dragDistance = mouse.x - s.lastMouseX;
+        s.lastMouseX = mouse.x;
 
         if (Math.abs(dragDistance) > 0.000001) {
             s.draggedValue += dragDistance / pixelsPerUnit;
@@ -165,8 +165,8 @@ export function imCompactCircularDragSlideInteraction(
 
     if (startedDragging) {
         s.isDragging = true;
-        s.startMouseX = mouse.X;
-        s.startMouseY = mouse.Y;
+        s.startMouseX = mouse.x;
+        s.startMouseY = mouse.y;
         s.lastAngle = 0;
         s.draggedValue = value;
     }
@@ -174,8 +174,8 @@ export function imCompactCircularDragSlideInteraction(
     if (s.isDragging) {
         mouse.ev?.preventDefault();
 
-        const startToMouseX = mouse.X - s.startMouseX;
-        const startToMouseY = mouse.Y - s.startMouseY;
+        const startToMouseX = mouse.x - s.startMouseX;
+        const startToMouseY = mouse.y - s.startMouseY;
         s.angle = Math.atan2(startToMouseY, startToMouseX);
         s.distance = Math.sqrt(startToMouseX * startToMouseX + startToMouseY * startToMouseY);
 
@@ -234,7 +234,7 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
     if (im.If(c) && s.isDragging) {
         // Cursor handles
         imui.Begin(c, BLOCK); imui.Fixed(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-            if (im.isFirstishRender(c)) imdom.setStyle(c, "zIndex", "100000");
+            if (im.IsFirstRender(c)) imdom.setStyle(c, "zIndex", "100000");
 
             const ctxEv = imdom.On(c, ev.CONTEXTMENU);
             if (ctxEv) {
@@ -260,7 +260,7 @@ export function imCompactCircularDragSlideInteractionFeedback(c: ImCache, s: Com
             imui.Size(c, 20, PX, 20, PX);
             imui.Opacity(c, lerp01(0, 0.5, s.distance / s.ringSize));
             imui.FixedXY(c, s.startMouseX, PX, s.startMouseY, PX);
-            if (im.isFirstishRender(c)) imdom.setStyle(c, "border", "2px solid " + cssVars.fg);
+            if (im.IsFirstRender(c)) imdom.setStyle(c, "border", "2px solid " + cssVars.fg);
 
             if (angleChanged) {
                 imdom.setStyle(c, "transform", `translate(-50%, -50%) rotateZ(${s.angle - Math.PI / 2}rad)`);

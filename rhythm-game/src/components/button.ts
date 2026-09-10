@@ -1,5 +1,5 @@
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-import { cssVars, DisplayType, imui, INLINE, ROW } from "src/utils/im-js/im-ui";
+import { im, ImCache, imdom, el, ev, } from "imcf";
+import { cssVars, DisplayType, imui, INLINE, ROW } from "imcf/im-ui";
 
 const cssb = imui.newCssBuilder();
 
@@ -38,7 +38,7 @@ export const BUTTON_TOGGLED = 1 << 0;
 export const BUTTON_HIDDEN = 1 << 1;
 
 export function imButton(c: ImCache, flags = 0) {
-    if (im.isFirstishRender(c)) {
+    if (im.IsFirstRender(c)) {
         imdom.setClass(c, cnButton);
     }
 
@@ -65,7 +65,7 @@ export function imButtonBegin(
         }
 
         imui.Begin(c, INLINE); {
-            if (im.isFirstishRender(c)) {
+            if (im.IsFirstRender(c)) {
                 imdom.setClass(c, "inner");
             }
 

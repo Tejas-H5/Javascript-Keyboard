@@ -1,5 +1,5 @@
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-import { BLOCK, imui } from "src/utils/im-js/im-ui";
+import { im, ImCache, imdom, el, ev, } from "imcf";
+import { BLOCK, imui } from "imcf/im-ui";
 
 export function imFpsCounterSimple(c: ImCache) {
     const fpsCounter = im.getFpsCounterState(c);

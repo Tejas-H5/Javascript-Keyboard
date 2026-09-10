@@ -5,8 +5,8 @@
     "module": "ESNext",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "types": [],
+
+    "paths": {"*": ["./src/*", "./src/vendored/*"]},
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -14,11 +14,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "esModuleInterop": true,
+
+    "types": [],
 
     /* Linting */
     "strict": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "src/custom.d.ts"]
+  "include": ["src", "globals.d.ts", "modules.d.ts"]
 }

@@ -1,4 +1,4 @@
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+import { im, ImCache, imdom, el, ev, } from "imcf";
 
 
 export function imLink(c: ImCache, url: string, text: string = url) {

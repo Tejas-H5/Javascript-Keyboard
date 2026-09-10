@@ -1,6 +1,6 @@
-import { imTextInputBegin, imTextInputEnd } from "src/components/text-input.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-import { imui } from "src/utils/im-js/im-ui";
+import { imTextInputBegin, imTextInputEnd } from "components/text-input.ts";
+import { im, ImCache, imdom, el, ev, } from "imcf";
+import { imui } from "imcf/im-ui";
 
 
 export function imTextInputOneLine(

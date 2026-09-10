@@ -1,6 +1,6 @@
-import { imLink } from "src/components/im-link.ts";
-import { im, ImCache, imdom } from "src/utils/im-js";
-import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, REM, STRETCH } from "src/utils/im-js/im-ui";
+import { imLink } from "components/im-link.ts";
+import { im, ImCache, imdom } from "imcf";
+import { BLOCK, COL, cssVars, imui, NA, PERCENT, PX, REM, STRETCH } from "imcf/im-ui";
 
 function newInfiniteLoadState() {
     return { t: 0 };

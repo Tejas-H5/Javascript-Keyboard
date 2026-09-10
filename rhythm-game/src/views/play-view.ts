@@ -1,11 +1,11 @@
-import { imui, BLOCK, ROW, COL, NA, PERCENT, REM } from "src/utils/im-js/im-ui";
-import { chooseItem } from "src/utils/array-utils";
-import { el, im, ImCache, imdom } from "src/utils/im-js";
+import { imui, BLOCK, ROW, COL, NA, PERCENT, REM } from "imcf/im-ui";
+import { chooseItem } from "utils/array-utils";
+import { el, im, ImCache, imdom } from "imcf";
 
-import { clamp } from "src/utils/math-utils";
+import { clamp } from "utils/math-utils";
 import { GlobalContext, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart } from "./app";
 import { GameplayState, imGameplay } from "./gameplay";
-import { assert } from "src/utils/assert";
+import { assert } from "utils/assert";
 
 function handlePlayViewKeyDown(ctx: GlobalContext) {
     if (!ctx.keyPressState) return false;
@@ -123,7 +123,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
     imui.Begin(c, ROW); imui.Flex(c); imui.Align(c); imui.Justify(c); {
         imui.Begin(c, COL); imui.Size(c, 80, PERCENT, 80, PERCENT); {
-            if (im.isFirstishRender(c)) {
+            if (im.IsFirstRender(c)) {
                 imdom.setStyle(c,"border", "1px solid currentColor");
             }
 
@@ -204,7 +204,7 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
                 im.For(c); for (let i = 0; i < designation.length; i++) {
                     imui.Begin(c, BLOCK); {
-                        if (im.isFirstishRender(c)) {
+                        if (im.IsFirstRender(c)) {
                             imdom.setStyle(c, "position", `absolute`);
                         }
 

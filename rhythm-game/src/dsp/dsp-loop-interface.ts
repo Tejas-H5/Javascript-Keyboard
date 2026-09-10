@@ -1,5 +1,5 @@
-import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, newKeyboardConfig } from "src/state/keyboard-config.ts";
-import { DISPATCHED_LATER, Done, Then } from "src/utils/async-utils.ts";
+import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, KeyboardConfig, newKeyboardConfig } from "state/keyboard-config.ts";
+import { DISPATCHED_LATER, Done, Then } from "utils/async-utils.ts";
 import { getDspLoopClassUrl } from "./dsp-loop-class-url.ts";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings } from "./dsp-loop.ts";
 

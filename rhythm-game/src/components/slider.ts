@@ -1,6 +1,6 @@
-import { ImCache, im, imdom } from 'src/utils/im-js';
-import { BLOCK, cssVars, imui } from 'src/utils/im-js/im-ui';
-import { clamp, inverseLerp, lerp } from 'src/utils/math-utils.ts';
+import { ImCache, im, imdom } from "imcf";
+import { BLOCK, cssVars, imui } from "imcf/im-ui";
+import { clamp, inverseLerp, lerp } from "utils/math-utils.ts";
 
 const MIN_STEP = 0.0001;
 
@@ -30,7 +30,7 @@ export function imSliderInput(
 
         const widthChanged = im.Memo(c, size.width);
 
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "display", "flex");
             imdom.setStyle(c, "flex", "1");
             imdom.setStyle(c, "position", "relative");
@@ -51,7 +51,7 @@ export function imSliderInput(
                     const sliderPos = lerp(0, size.width - sliderHandleSize, t);
 
                     imui.Begin(c, BLOCK); {
-                        if (im.isFirstishRender(c)) {
+                        if (im.IsFirstRender(c)) {
                             imdom.setStyle(c, "position", "absolute");
                             imdom.setStyle(c, "aspectRatio", "1 / 1");
                             imdom.setStyle(c, "height", "100%");
@@ -68,7 +68,7 @@ export function imSliderInput(
 
         // slider handle
         imui.Begin(c, BLOCK); {
-            if (im.isFirstishRender(c)) {
+            if (im.IsFirstRender(c)) {
                 imdom.setStyle(c, "position", "absolute");
                 imdom.setStyle(c, "backgroundColor", cssVars.fg);
                 imdom.setStyle(c, "borderRadius", "1000px");
@@ -100,7 +100,7 @@ export function imSliderInput(
 
             const x0 = rect.left + sliderHandleSize / 2;
             const x1 = rect.right - sliderHandleSize / 2;
-            let t = inverseLerp(mouse.X, x0, x1);
+            let t = inverseLerp(mouse.x, x0, x1);
             t = clamp(t, 0, 1);
 
             value = lerp(start, end, t);

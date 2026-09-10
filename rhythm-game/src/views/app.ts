@@ -1,12 +1,12 @@
-import { imExtraDiagnosticInfo, imFpsCounterSimple } from "src/components/fps-counter.ts";
-import { debugFlags } from "src/debug-flags.ts";
-import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "src/dsp/dsp-loop-interface.ts";
-import { DataRepository, loadChart, loadChartMetadataList, SequencerChartMetadata } from "src/state/data-repository.ts";
-import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "src/state/keyboard-state.ts";
+import { imExtraDiagnosticInfo, imFpsCounterSimple } from "components/fps-counter.ts";
+import { debugFlags } from "debug-flags.ts";
+import { getCurrentPlaySettings, getDspInfo, getPlaybackSpeed, getPlaybackVolume, releaseAllKeys, releaseKey, schedulePlayback, setPlaybackSpeed, setPlaybackTime, setPlaybackVolume, updatePlaySettings } from "dsp/dsp-loop-interface.ts";
+import { DataRepository, loadChart, loadChartMetadataList, SequencerChartMetadata } from "state/data-repository.ts";
+import { getKeyForKeyboardKey, KeyboardState, newKeyboardState } from "state/keyboard-state.ts";
 import {
     startPlaying,
     stopPlayback
-} from "src/state/playing-pausing.ts";
+} from "state/playing-pausing.ts";
 import {
     copyTimelineItem,
     FRACTIONAL_UNITS_PER_BEAT,
@@ -18,20 +18,20 @@ import {
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
     undoEdit
-} from "src/state/sequencer-chart.ts";
-import { getNextPlayingId, SequencerState, setSequencerChart } from "src/state/sequencer-state.ts";
-import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_DELETE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "src/state/ui-state.ts";
-import { imUnitTestsModal, newUnitTestsState } from "src/state/unit-tests.ts";
-import { filterInPlace } from "src/utils/array-utils.ts";
-import { assert, unreachable } from "src/utils/assert.ts";
-import { el, im, ImCache, imdom } from "src/utils/im-js";
-import { BLOCK, COL, imui, isEditingTextSomewhereInDocument, NA, PX } from "src/utils/im-js/im-ui";
+} from "state/sequencer-chart.ts";
+import { getNextPlayingId, SequencerState, setSequencerChart } from "state/sequencer-state.ts";
+import { APP_VIEW_CHART_SELECT, APP_VIEW_EDIT_CHART, APP_VIEW_PLAY_CHART, APP_VIEW_SOUND_LAB, APP_VIEW_STARTUP, AppView, getCurrentChartMetadata, NAME_OPERATION_COPY, NAME_OPERATION_CREATE, NAME_OPERATION_DELETE, NAME_OPERATION_RENAME, newUiState, OperationType, UIState } from "state/ui-state.ts";
+import { imUnitTestsModal, newUnitTestsState } from "state/unit-tests.ts";
+import { filterInPlace } from "utils/array-utils.ts";
+import { assert, unreachable } from "utils/assert.ts";
+import { el, im, ImCache, imdom } from "imcf";
+import { BLOCK, COL, imui, isEditingTextSomewhereInDocument, NA, PX } from "imcf/im-ui";
 
-import { CANCELLED, DONE, Done, getTasks, Then } from "src/utils/async-utils.ts";
-import { imChartSelect } from "src/views/chart-select.ts";
-import { imEditView } from "src/views/edit-view.ts";
-import { imPlayView } from "src/views/play-view.ts";
-import { imStartupView } from "src/views/startup-view.ts";
+import { CANCELLED, DONE, Done, getTasks, Then } from "utils/async-utils.ts";
+import { imChartSelect } from "views/chart-select.ts";
+import { imEditView } from "views/edit-view.ts";
+import { imPlayView } from "views/play-view.ts";
+import { imStartupView } from "views/startup-view.ts";
 import { enablePracticeMode, GameplayState, newGameplayState } from "./gameplay.ts";
 import { runSaveCurrentChartTask } from "./saving-chart.ts";
 import { imSoundLab } from "./sound-lab.ts";

@@ -1,11 +1,11 @@
-import { getDspInfo, initDspLoopInterface } from "src/dsp/dsp-loop-interface.ts";
-import { el, im, ImCache, imdom } from "src/utils/im-js";
+import { getDspInfo, initDspLoopInterface } from "dsp/dsp-loop-interface.ts";
+import { el, im, ImCache, imdom } from "imcf";
 import { debugFlags } from "./debug-flags.ts";
 import { cleanupChartRepo, DataRepository, loadAllEffectRackPresets, loadChartMetadataList, newDataRepository } from "./state/data-repository.ts";
 import { getCurrentChart, newSequencerState, syncPlayback } from "./state/sequencer-state.ts";
 import { NAME_OPERATION_COPY } from "./state/ui-state.ts";
 import { assert } from "./utils/assert.ts";
-import { BLOCK, imui } from "src/utils/im-js/im-ui/im-ui.ts";
+import { BLOCK, imui } from "imcf/im-ui";
 import { Done, DONE, PARALLELISM, Then, trackTask } from "./utils/async-utils.ts";
 import { GlobalContext, imApp, imDiagnosticInfo, newGlobalContext, openChartUpdateModal, setCurrentChartMeta, setLoadSaveModalOpen, setViewChartSelect, setViewEditChart, setViewPlayCurrentChart, setViewSoundLab } from "./views/app.ts";
 
@@ -135,7 +135,7 @@ function imMainInner(c: ImCache) {
 
                     if (im.If(c) && err instanceof Error && err.stack) {
                         imui.Begin(c, BLOCK); {
-                            if (im.isFirstishRender(c)) {
+                            if (im.IsFirstRender(c)) {
                                 imdom.setStyle(c, "fontFamily", "monospace");
                                 imdom.setStyle(c, "whiteSpace", "pre");
                             }
@@ -158,16 +158,6 @@ function imMainInner(c: ImCache) {
     } im.IfEnd(c);
 }
 
-export function imMain(c: ImCache) {
-    im.CacheBegin(c, imMain); {
-        imdom.RootBegin(c, document.body); {
-            const ev = imdom.GlobalEventSystemBegin(c); {
-                imMainInner(c);
-            } imdom.GlobalEventSystemEnd(c, ev);
-        } imdom.RootEnd(c, document.body);
-    } im.CacheEnd(c);
-}
-
 imui.init();
 
-imMain([]);
+imdom.startAnimationLoop(document.body, imMainInner);

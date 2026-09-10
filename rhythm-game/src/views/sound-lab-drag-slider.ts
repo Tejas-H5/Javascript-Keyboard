@@ -1,8 +1,8 @@
-import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideInteractionFeedback, imCompactLinearDragSlideInteraction } from "src/app-components/drag-slider-interaction";
-import { im, ImCache, imdom, el, ev, KEY, } from "src/utils/im-js";
+import { imCompactCircularDragSlideInteraction, imCompactCircularDragSlideInteractionFeedback, imCompactLinearDragSlideInteraction } from "app-components/drag-slider-interaction";
+import { im, ImCache, imdom, el, ev, key, } from "imcf";
 
 
-import { clamp, gridsnapRound } from "src/utils/math-utils";
+import { clamp, gridsnapRound } from "utils/math-utils";
 
 export const DRAG_TYPE_LINEAR = 1;
 export const DRAG_TYPE_CIRCULAR = 2;
@@ -18,11 +18,8 @@ export function imParameterSliderInteraction(
 ): { val: number } | null {
     let initialVal = val;
 
-    const mouse = imdom.getMouse();
-    const keyboard = imdom.getKeyboard();
-
-    const shiftHeld = imdom.isKeyHeld(keyboard, KEY.SHIFT);
-    const modHeld   = imdom.isKeyHeld(keyboard, KEY.MOD);
+    const shiftHeld = imdom.isKeyHeld(key.SHIFT);
+    const modHeld   = imdom.isKeyHeld(key.MOD);
 
     let pixelsPerUnit = 100;
 
@@ -59,6 +56,7 @@ export function imParameterSliderInteraction(
         val = gridsnapRound(val, step);
         val = clamp(val, min, max);
 
+        const mouse = imdom.getMouse();
         if (imdom.hasMousePress(c) && mouse.rightMouseButton) {
             // Reset to default value on rightclick
             mouse.ev?.preventDefault();

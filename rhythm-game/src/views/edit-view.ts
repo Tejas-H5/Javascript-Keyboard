@@ -1,11 +1,11 @@
-import { imui, ROW } from "src/utils/im-js/im-ui";
-import { pressKey, setPlaybackSpeed } from "src/dsp/dsp-loop-interface.ts";
-import { getKeyForKeyboardKey } from "src/state/keyboard-state.ts";
+import { imui, ROW } from "imcf/im-ui";
+import { pressKey, setPlaybackSpeed } from "dsp/dsp-loop-interface.ts";
+import { getKeyForKeyboardKey } from "state/keyboard-state.ts";
 import {
     playFromCursor,
     playFromLastMeasure,
     stopPlayback
-} from "src/state/playing-pausing.ts";
+} from "state/playing-pausing.ts";
 import {
     FRACTIONAL_UNITS_PER_BEAT,
     getBpm,
@@ -21,7 +21,7 @@ import {
     sequencerChartInsertItems,
     sequencerChartRemoveItems,
     timelineMeasureAtBeatsIdx
-} from "src/state/sequencer-chart.ts";
+} from "state/sequencer-chart.ts";
 import {
     clearRangeSelection,
     deleteRange,
@@ -36,10 +36,10 @@ import {
     shiftItemsAfterCursor,
     shiftSelectedItems,
     transposeSelectedItems
-} from "src/state/sequencer-state.ts";
-import { APP_VIEW_PLAY_CHART, EditViewState } from "src/state/ui-state.ts";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
-import { imSequencer } from "src/views/edit-view-sequencer.ts";
+} from "state/sequencer-state.ts";
+import { APP_VIEW_PLAY_CHART, EditViewState } from "state/ui-state.ts";
+import { im, ImCache, imdom, el, ev, } from "imcf";
+import { imSequencer } from "views/edit-view-sequencer.ts";
 import {
     copyNotesToTempStore,
     GlobalContext,

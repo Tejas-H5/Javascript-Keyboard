@@ -140,7 +140,22 @@ async function runTscAndGetErrors() {
 function getBundledJs(result: esbuild.BuildResult): string {
 	const singlarFile = result.outputFiles?.[0];
 	if (!singlarFile) {
-		throw new Error("Build not working as expected");
+		console.error("Build not working as expected. See:");
+
+		const locationsMap = new Map<string, number>();
+		for (const error of result.errors) {
+			if (error.location) {
+				const file = error.location.file;
+				let val = locationsMap.get(file) ?? 0;
+				locationsMap.set(file, val + 1);
+			}
+		}
+
+		[...locationsMap]
+			.sort((a, b) => b[1] - a[1])
+			.forEach(([loc, count]) => console.error(`\t${loc} -> ${count}`));
+
+		throw new Error("Multiple blockers encountered");
 	}
 
 	return singlarFile.text;

@@ -1,8 +1,8 @@
-import { im, ImCache, imdom, } from "src/utils/im-js";
-import { BLOCK, imui } from "src/utils/im-js/im-ui";
+import { im, ImCache, imdom, } from "imcf";
+import { BLOCK, imui } from "imcf/im-ui";
 
-import { clamp } from "src/utils/math-utils.ts";
-import { cssVarsApp } from "src/views/styling.ts";
+import { clamp } from "utils/math-utils.ts";
+import { cssVarsApp } from "views/styling.ts";
 
 
 type RangeSliderHandle = {
@@ -68,7 +68,7 @@ export function imRangeSlider(
         const endHandle = imui.Begin(c, BLOCK); imui.End(c);
     imui.End(c);
 
-    if (im.isFirstishRender(c)) {
+    if (im.IsFirstRender(c)) {
         const handleBodyColor = cssVarsApp.mg;
         const handeColor = cssVarsApp.fg;
         const bgColor = cssVarsApp.bg2;
@@ -149,7 +149,7 @@ export function imRangeSlider(
         const sliderScreenStart  = bodyRect.left + startRect.width / 2;
         const sliderScreenEnd    = bodyRect.right - endRect.width / 2;
         const sliderScreenLength = sliderScreenEnd - sliderScreenStart;
-        const mousePos = (mouse.X - sliderScreenStart) / sliderScreenLength;
+        const mousePos = (mouse.x - sliderScreenStart) / sliderScreenLength;
 
         // NOTE: order  matters - if middleDragStarted, then bodyDragStarted is always true
         if (middleDragStarted) {

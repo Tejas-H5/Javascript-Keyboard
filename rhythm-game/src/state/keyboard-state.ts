@@ -1,8 +1,8 @@
-import { getNoteText } from "src/utils/music-theory-utils.ts";
+import { getNoteText } from "utils/music-theory-utils.ts";
 import { KEYBOARD_LAYOUT } from "./keyboard-config";
-import { imdom, NormalizedKey } from "src/utils/im-js";
-import { imui } from "src/utils/im-js/im-ui";
-import { assert } from "src/utils/assert";
+import { imdom, NormalizedKey } from "imcf";
+import { imui } from "imcf/im-ui";
+import { assert } from "utils/assert";
 
 export type KeyboardState = {
     keys: InstrumentKey[][];

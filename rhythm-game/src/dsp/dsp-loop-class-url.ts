@@ -1,17 +1,17 @@
-import { newFunctionUrl } from "src/utils/web-workers.ts";
+import { newFunctionUrl } from "utils/web-workers.ts";
 
 // Try to avoid adding stuff here - these imports will need to start exporting everything when you do
 import * as dspLoopEffectRack from "../state/effect-rack.ts";
 import * as dspLoop from "./dsp-loop.ts";
-import * as random from "src/utils/random.ts";
-import * as assertions from "src/utils/assert.ts";
-import * as math from "src/utils/math-utils.ts";
-import * as music from "src/utils/music-theory-utils.ts";
-import * as turnBasedWaves from "src/utils/turn-based-waves.ts";
-import * as arrayUtils from "src/utils/array-utils.ts";
-import * as keyboardConfig from "src/state/keyboard-config.ts"
-import * as serializationUtils from "src/utils/serialization-utils.ts";
-import * as debug from "src/debug-flags.ts"
+import * as random from "utils/random.ts";
+import * as assertions from "utils/assert.ts";
+import * as math from "utils/math-utils.ts";
+import * as music from "utils/music-theory-utils.ts";
+import * as turnBasedWaves from "utils/turn-based-waves.ts";
+import * as arrayUtils from "utils/array-utils.ts";
+import * as keyboardConfig from "state/keyboard-config.ts"
+import * as serializationUtils from "utils/serialization-utils.ts";
+import * as debug from "debug-flags.ts"
 
 import {
     DspLoopMessage,

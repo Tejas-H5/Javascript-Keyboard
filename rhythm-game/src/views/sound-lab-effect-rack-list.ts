@@ -1,12 +1,12 @@
-import { imTextInputOneLine } from "src/app-components/text-input-one-line";
-import { imButtonIsClicked } from "src/components/button";
-import { BLOCK, COL, cssVars, imui, ROW } from "src/utils/im-js/im-ui";
-import { loadEffectRackPreset, updateEffectRackPreset } from "src/state/data-repository";
-import { EffectRackPreset, EffectRackPresetMetadata } from "src/state/keyboard-config";
-import { assert } from "src/utils/assert";
-import { im, ImCache, imdom } from "src/utils/im-js";
+import { imTextInputOneLine } from "app-components/text-input-one-line";
+import { imButtonIsClicked } from "components/button";
+import { BLOCK, COL, cssVars, imui, ROW } from "imcf/im-ui";
+import { loadEffectRackPreset, updateEffectRackPreset } from "state/data-repository";
+import { EffectRackPreset, EffectRackPresetMetadata } from "state/keyboard-config";
+import { assert } from "utils/assert";
+import { im, ImCache, imdom } from "imcf";
 import { GlobalContext } from "./app";
-import { CANCELLED, DONE } from "src/utils/async-utils";
+import { CANCELLED, DONE } from "utils/async-utils";
 
 export type PresetsListState = {
     selected: EffectRackPresetMetadata | null;
@@ -143,7 +143,7 @@ function imPresetsArray(
 
         im.KeyedBegin(c, preset); {
             imui.Begin(c, BLOCK); imui.Bg(c, selected ? cssVars.bg2 : ""); imui.NoSelect(c); {
-                if (im.isFirstishRender(c)) {
+                if (im.IsFirstRender(c)) {
                     imdom.setStyle(c, "cursor", "pointer");
                     imdom.setClass(c, "hoverable");
                 }

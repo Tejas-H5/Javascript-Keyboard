@@ -3,12 +3,12 @@
 // put it in dsp-loop-interface.ts instead.
 // It seems like it's OK to import types though.
 
-import { KeyboardConfig, newKeyboardConfig, presetToEffectRack } from "src/state/keyboard-config.ts";
-import { arrayAt, filterInPlace } from "src/utils/array-utils.ts";
-import { assert } from "src/utils/assert.ts";
-import { lerp, max } from "src/utils/math-utils.ts";
-import { getNoteFrequency } from "src/utils/music-theory-utils.ts";
-import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "src/utils/random.ts";
+import { KeyboardConfig, newKeyboardConfig, presetToEffectRack } from "state/keyboard-config.ts";
+import { arrayAt, filterInPlace } from "utils/array-utils.ts";
+import { assert } from "utils/assert.ts";
+import { lerp, max } from "utils/math-utils.ts";
+import { getNoteFrequency } from "utils/music-theory-utils.ts";
+import { getNextRng, newRandomNumberGenerator, RandomNumberGenerator, setRngSeed } from "utils/random.ts";
 import { compileEffectRack, computeEffectRackIteration, EffectRack, EffectRackRegisters, newEffectRackRegisters } from "../state/effect-rack.ts";
 import { ScheduledKeyPress, ScheduledKeyPresses } from "./dsp-loop-interface.ts";
 

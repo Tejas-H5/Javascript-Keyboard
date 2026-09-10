@@ -1,5 +1,5 @@
-import { el, im, ImCache, imdom } from "src/utils/im-js";
-import { BLOCK, cssVars, imui, INLINE, NA, PERCENT, setInputValue } from "src/utils/im-js/im-ui";
+import { el, im, ImCache, imdom } from "imcf";
+import { BLOCK, cssVars, imui, INLINE, NA, PERCENT, setInputValue } from "imcf/im-ui";
 
 export function getLineBeforePos(text: string, pos: number): string {
     const i = getLineStartPos(text, pos);
@@ -67,7 +67,7 @@ export function imTextAreaBegin(c: ImCache, {
     let textArea: HTMLTextAreaElement;
 
     const root = imui.Begin(c, BLOCK); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "display",   "flex");
             imdom.setStyle(c, "flex",      "1");
             imdom.setStyle(c, "height",    "100%");
@@ -77,7 +77,7 @@ export function imTextAreaBegin(c: ImCache, {
 
         // This is now always present.
         imui.Begin(c, BLOCK); imui.HandleLongWords(c); imui.Relative(c); imui.Size(c, 100, PERCENT, 0, NA); {
-            if (im.isFirstishRender(c)) {
+            if (im.IsFirstRender(c)) {
                 imdom.setStyle(c, "height", "fit-content");
             }
 
@@ -104,7 +104,7 @@ export function imTextAreaBegin(c: ImCache, {
 
             // This full-stop at the end of the text is what prevents the text-area from collapsing in on itself
             imui.Begin(c, INLINE); {
-                if (im.isFirstishRender(c)) {
+                if (im.IsFirstRender(c)) {
                     imdom.setStyle(c, "color", "transparent");
                     imdom.setStyle(c, "userSelect", "none");
                     imdom.setTextUnsafe(c, ".");
@@ -112,7 +112,7 @@ export function imTextAreaBegin(c: ImCache, {
             } imui.End(c);
 
             textArea = imdom.ElBegin(c, el.TEXTAREA).root; {
-                if (im.isFirstishRender(c)) {
+                if (im.IsFirstRender(c)) {
                     imdom.setStyle(c, "all", "unset");
                     imdom.setStyle(c, "position", "absolute");
                     imdom.setStyle(c, "top", "0");

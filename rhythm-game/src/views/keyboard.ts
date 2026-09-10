@@ -1,20 +1,20 @@
-import { imui, BLOCK, ROW, COL, PX, NA, CssColor, START } from "src/utils/im-js/im-ui";
+import { imui, BLOCK, ROW, COL, PX, NA, CssColor, START } from "imcf/im-ui";
 import {
     getCurrentOscillatorGain,
     pressKey,
     releaseKey
-} from "src/dsp/dsp-loop-interface";
-import { KeyboardConfig } from "src/state/keyboard-config";
-import { InstrumentKey } from "src/state/keyboard-state";
-import { timelineHasNoteAtPosition } from "src/state/sequencer-chart";
+} from "dsp/dsp-loop-interface";
+import { KeyboardConfig } from "state/keyboard-config";
+import { InstrumentKey } from "state/keyboard-state";
+import { timelineHasNoteAtPosition } from "state/sequencer-chart";
 import {
     getCurrentPlayingTimeIntoChart,
-} from "src/state/sequencer-state";
-import { APP_VIEW_EDIT_CHART } from "src/state/ui-state";
-import { arrayAt, filterInPlace } from "src/utils/array-utils";
-import { im, ImCache, imdom, el, ev, } from "src/utils/im-js";
+} from "state/sequencer-state";
+import { APP_VIEW_EDIT_CHART } from "state/ui-state";
+import { arrayAt, filterInPlace } from "utils/array-utils";
+import { im, ImCache, imdom, el, ev, } from "imcf";
 
-import { lerp } from "src/utils/math-utils";
+import { lerp } from "utils/math-utils";
 import { GlobalContext } from "./app";
 import { cssVarsApp } from "./styling";
 
@@ -117,7 +117,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                         const pressEffect = PRESS_EFFECT * Math.max(signal, hasNote ? 1 : 0);
 
                         imui.Begin(c, BLOCK); imui.Relative(c); {
-                            if (im.isFirstishRender(c)) {
+                            if (im.IsFirstRender(c)) {
                                 imdom.setStyle(c, "fontFamily", "monospace");
                                 imdom.setStyle(c, "outline", `1px solid ${cssVarsApp.fg}`);
                                 imdom.setStyle(c, "display", "inline-block");
@@ -206,7 +206,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                             } imui.End(c);
                             // note text
                             imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, 5, PX, 0, PX); {
-                                if (im.isFirstishRender(c)) {
+                                if (im.IsFirstRender(c)) {
                                     imdom.setStyle(c, "textAlign", "right");
                                 }
 
@@ -261,7 +261,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                                     const scale = 250 * Math.max(0, t)
 
                                     imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); {
-                                        if (im.isFirstishRender(c)) {
+                                        if (im.IsFirstRender(c)) {
                                             imdom.setStyle(c, "backgroundColor", cssVarsApp.playback);
                                         }
                                         if (im.Memo(c, t)) {
@@ -270,7 +270,7 @@ export function imKeyboard(c: ImCache, ctx: GlobalContext): KeyboardUiState {
                                     } imui.End(c);
                                     // This osu! style border kinda whack ngl.
                                     imui.Begin(c, BLOCK); imui.Absolute(c, -scale, PX, -scale, PX, scale, PX, scale, PX); {
-                                        if (im.isFirstishRender(c)) {
+                                        if (im.IsFirstRender(c)) {
                                             imdom.setStyle(c, "border", `5px solid ${cssVarsApp.fg}`);
                                             imdom.setStyle(c, "opacity", "1");
                                         }

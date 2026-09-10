@@ -1,13 +1,13 @@
-import { imModalBegin, imModalEnd } from "src/app-components/modal";
-import { imTestHarness } from "src/components/test-harness";
-import { COL, cssVars, imui, PERCENT, PX } from "src/utils/im-js/im-ui";
+import { imModalBegin, imModalEnd } from "app-components/modal";
+import { imTestHarness } from "components/test-harness";
+import { COL, cssVars, imui, PERCENT, PX } from "imcf/im-ui";
 
-import { ImCache } from "src/utils/im-js";
-import { GlobalContext } from "src/views/app";
+import { ImCache } from "imcf";
+import { GlobalContext } from "views/app";
 
-import "src/utils/fft.test";
-import "src/utils/serialization-utils.test";
-import "src/utils/testing.test";
+import "utils/fft.test";
+import "utils/serialization-utils.test";
+import "utils/testing.test";
 
 export type UnitTestsState = {
 };

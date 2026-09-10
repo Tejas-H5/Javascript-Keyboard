@@ -1,5 +1,5 @@
-import { im, ImCache, imdom } from "src/utils/im-js";
-import { COL, cssVars, imui } from "src/utils/im-js/im-ui";
+import { im, ImCache, imdom } from "imcf";
+import { COL, cssVars, imui } from "imcf/im-ui";
 
 export type DragAndDropState =  {
     move: { a: number; b: number; } | null;
@@ -77,7 +77,7 @@ export function imDropZoneForPrototyping(c: ImCache, dnd: DragAndDropState, idx:
 }
 
 export function imDragHandle(c: ImCache, dnd: DragAndDropState, idx: number) {
-    if (im.isFirstishRender(c)) {
+    if (im.IsFirstRender(c)) {
         imdom.setStyle(c, "userSelect", "none");
         imdom.setStyle(c, "cursor", "move");
     }
@@ -89,10 +89,10 @@ export function imDragHandle(c: ImCache, dnd: DragAndDropState, idx: number) {
             const elRect = imdom.getElement(c).getBoundingClientRect();
 
             dnd.drag = {
-                startX: mouse.X,
-                startXOffset: mouse.X - elRect.left,
-                startY: mouse.Y,
-                startYOffset: mouse.Y - elRect.top,
+                startX: mouse.x,
+                startXOffset: mouse.x - elRect.left,
+                startY: mouse.y,
+                startYOffset: mouse.y - elRect.top,
                 startIdx: idx,
                 hoveringOverIdx: idx,
             };
@@ -117,8 +117,8 @@ export function imDragZoneBegin(c: ImCache, dnd: DragAndDropState, idx: number):
     let isDragging = false;
     if (dnd.drag && dnd.drag.startIdx === idx) {
         const mouse = imdom.getMouse();
-        dX = mouse.X - dnd.drag.startX - dnd.drag.startXOffset;
-        dY = mouse.Y - dnd.drag.startY - dnd.drag.startYOffset;
+        dX = mouse.x - dnd.drag.startX - dnd.drag.startXOffset;
+        dY = mouse.y - dnd.drag.startY - dnd.drag.startYOffset;
         isDragging = true;
     }
 

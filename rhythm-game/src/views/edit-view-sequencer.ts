@@ -1,10 +1,10 @@
-import { imButtonIsClicked } from "src/components/button.ts";
-import { imTextAreaBegin, imTextAreaEnd } from "src/components/editable-text-area.ts";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "src/components/im-line.ts";
-import { imSliderInput } from "src/components/slider.ts";
-import { imTextInputBegin, imTextInputEnd } from "src/components/text-input.ts";
-import { debugFlags } from "src/debug-flags.ts";
-import { getPlaybackSpeed } from "src/dsp/dsp-loop-interface.ts";
+import { imButtonIsClicked } from "components/button.ts";
+import { imTextAreaBegin, imTextAreaEnd } from "components/editable-text-area.ts";
+import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "components/im-line.ts";
+import { imSliderInput } from "components/slider.ts";
+import { imTextInputBegin, imTextInputEnd } from "components/text-input.ts";
+import { debugFlags } from "debug-flags.ts";
+import { getPlaybackSpeed } from "dsp/dsp-loop-interface.ts";
 import {
     getBottomRowStartRowNoteId,
     getHighestNoteId,
@@ -12,8 +12,8 @@ import {
     getLowestNoteId,
     getMusicNoteText,
     InstrumentKey
-} from "src/state/keyboard-state.ts";
-import { previewNotes, setGlobalPlaybackSpeed } from "src/state/playing-pausing.ts";
+} from "state/keyboard-state.ts";
+import { previewNotes, setGlobalPlaybackSpeed } from "state/playing-pausing.ts";
 import {
     CommandItem,
     compressChart,
@@ -38,7 +38,7 @@ import {
     TimelineItemBpmChange,
     TimelineItemMeasure,
     timelineItemToString
-} from "src/state/sequencer-chart.ts";
+} from "state/sequencer-chart.ts";
 import {
     getSelectionStartEndIndexes,
     getSequencerPlaybackOrEditingCursor,
@@ -49,15 +49,15 @@ import {
     NoteMapEntry,
     SequencerState,
     setCursorSnap
-} from "src/state/sequencer-state.ts";
-import { filteredCopy } from "src/utils/array-utils.ts";
-import { assert, unreachable } from "src/utils/assert.ts";
-import { copyToClipboard } from "src/utils/clipboard.ts";
-import { el, ev, im, ImCache, imdom } from "src/utils/im-js";
-import { BLOCK, COL, COL_REVERSE, cssVars, END, imui, INLINE_BLOCK, NA, PERCENT, PX, REM, ROW } from "src/utils/im-js/im-ui";
+} from "state/sequencer-state.ts";
+import { filteredCopy } from "utils/array-utils.ts";
+import { assert, unreachable } from "utils/assert.ts";
+import { copyToClipboard } from "utils/clipboard.ts";
+import { el, ev, im, ImCache, imdom } from "imcf";
+import { BLOCK, COL, COL_REVERSE, cssVars, END, imui, INLINE_BLOCK, NA, PERCENT, PX, REM, ROW } from "imcf/im-ui";
 
-import { clamp, inverseLerp, lerp } from "src/utils/math-utils.ts";
-import { bytesToMegabytes, utf16ByteLength } from "src/utils/utf8.ts";
+import { clamp, inverseLerp, lerp } from "utils/math-utils.ts";
+import { bytesToMegabytes, utf16ByteLength } from "utils/utf8.ts";
 import { GlobalContext, setLoadSaveModalOpen, setViewPlayCurrentChartTest } from "./app.ts";
 import { CHART_SAVE_DEBOUNCE_SECONDS } from "./edit-view.ts";
 import { isSavingAnyChart } from "./saving-chart.ts";
@@ -725,7 +725,7 @@ function imSequencerTrackTimelineItem(
 
     imui.Begin(c, BLOCK); 
     imui.Absolute(c, 0, NA, 0, NA, 0, PX, leftPercent, PERCENT); imui.NoWrap(c); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c,"overflowX", "clip");
             imdom.setStyle(c,"border", `1px solid ${cssVarsApp.fg}`);
             imdom.setStyle(c,"boxSizing", "border-box");
@@ -853,7 +853,7 @@ function imExportModal(
     chart: SequencerChart
 ) {
     imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0, 0, 0, 0.3)`); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "zIndex", "10");
         }
         imui.Begin(c, COL); imui.Absolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imui.Bg(c, cssVars.bg); {
@@ -948,7 +948,7 @@ function imSequencerInternal(c: ImCache, ctx: GlobalContext, s: SequencerUIState
     const isRangeSelecting = hasRangeSelection(sequencer);
 
     imui.Begin(c, BLOCK); imui.Flex(c); imui.Relative(c); {
-        if (im.isFirstishRender(c)) {
+        if (im.IsFirstRender(c)) {
             imdom.setStyle(c, "overflowY", "auto");
             imdom.setStyle(c, "overflowX", "hidden");
         }
