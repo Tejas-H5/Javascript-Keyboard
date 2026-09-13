@@ -238,7 +238,7 @@ export function imChartSelect(c: ImCache, ctx: GlobalContext) {
 
                     imui.Begin(c, BLOCK); imui.Flex(c); imui.Relative(c); {
                         imGameplayContainerBegin(c, true); {
-                            imGameplayKeyboard(c, ctx, gameplayState);
+                            imGameplayKeyboard(c, ctx, gameplayState, null);
                         } imGameplayContainerEnd(c);
                     } imui.End(c);
                 } imui.End(c);

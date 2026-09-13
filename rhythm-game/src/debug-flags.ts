@@ -56,7 +56,7 @@ export const debugFlags: DebugFlags = {
     testPracticeMode:  OFF,
     testResultsView:   OFF,
 
-    testChart:         "Testing",
+    testChart:         "Sendan Life",
 
     testFixDatabase: OFF,
 

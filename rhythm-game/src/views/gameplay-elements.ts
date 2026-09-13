@@ -8,12 +8,16 @@ import { BLOCK, cssVars, imui, PERCENT, PX, ROW } from "imcf/im-ui";
 // while I'm playing the game, so that if there are notes on the far-side of 
 // the chart, I don't miss them.
 
+export const WANTED_ASPECT_RATIO_W = 5;
+export const WANTED_ASPECT_RATIO_H = 4;
+export const WANTED_ASPECT_RATIO = WANTED_ASPECT_RATIO_W/WANTED_ASPECT_RATIO_H;
+
 export function imGameplayContainerBegin(c: ImCache, isPreview: boolean) {
     const { size: rootContainerSize } = imdom.TrackSize(c);
 
     // Chosen such that it's easy to see all the keys at once. 
     // I may make the aspect ratio more square like if needed.
-    const wantedAspectRatio = 5/4;
+    const wantedAspectRatio = WANTED_ASPECT_RATIO;
     let currentAspectRatio = rootContainerSize.width / rootContainerSize.height;
     let widthReduction = 0, heightReduction = 0;
     if (currentAspectRatio > wantedAspectRatio) {

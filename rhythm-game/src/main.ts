@@ -16,23 +16,19 @@ let globalContext: GlobalContext | undefined;
 function initGlobalContext(cb: Then<void>): Done {
     cb = trackTask("Initializing state", cb);
 
-    // Our code only works after we've established a connection with our
-    // IndexedDB instance, and the audio context has loaded.
-
     let dspInitialized = false;
-    let repo: DataRepository | undefined;
-
     initDspLoopInterface(() => {
-        dspInitialized = true;
-        return onSubsystemsInitialized();
-    }, () => {
         if (!globalContext) return;
 
         const sequencer = globalContext.sequencer;
         const dspInfo = getDspInfo();
         syncPlayback(sequencer, dspInfo);
+    }, () => {
+        dspInitialized = true;
+        return onSubsystemsInitialized();
     });
 
+    let repo: DataRepository | undefined;
     newDataRepository(repoLoaded => { 
         repo = repoLoaded;
         return onSubsystemsInitialized();
@@ -41,6 +37,8 @@ function initGlobalContext(cb: Then<void>): Done {
     return PARALLELISM;
 
     function onSubsystemsInitialized(): Done {
+        // Our code only works after we've established a connection with our
+        // IndexedDB instance, and the audio context has loaded.
         if (!dspInitialized || !repo) return PARALLELISM;
 
         const newSequencer = newSequencerState();
@@ -114,7 +112,6 @@ function initGlobalContext(cb: Then<void>): Done {
     }
 }
 
-initGlobalContext(() => DONE);
 
 function imMainInner(c: ImCache) {
     if (im.If(c) && globalContext) {
@@ -161,3 +158,5 @@ function imMainInner(c: ImCache) {
 imui.init();
 
 imdom.startAnimationLoop(document.body, imMainInner);
+
+initGlobalContext(() => DONE);

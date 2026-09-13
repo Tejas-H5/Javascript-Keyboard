@@ -204,7 +204,7 @@ function resumeAudio() {
     audioCtx.resume().catch(console.error);
 }
 
-export function initDspLoopInterface(then: Then<boolean>, onDspMessage: () => void): Done {
+export function initDspLoopInterface(onDspMessage: () => void, then: Then<boolean>): Done {
     // registers the DSP loop. we must communicate with this thread through a Port thinggy
     const url = getDspLoopClassUrl();
     audioCtx.audioWorklet.addModule(url).then(() => {

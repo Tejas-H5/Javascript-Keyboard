@@ -23,7 +23,8 @@ import {
 import {
     getSequencerPlaybackOrEditingCursor,
     getTimelineMusicNoteThreads,
-    NoteMapEntry
+    NoteMapEntry,
+    SequencerState
 } from "state/sequencer-state.ts";
 import { arrayAt } from "utils/array-utils.ts";
 import { assert } from "utils/assert.ts";
@@ -35,7 +36,7 @@ import { cssVarsApp, getCurrentTheme } from "./styling.ts";
 import { imGameplayContainerBegin, imGameplayContainerEnd } from "./gameplay-elements.ts";
 
 const SIGNAL_LOOKAHEAD_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
-const GAMEPLAY_BEATS_VIEWPORT  = 3 * FRACTIONAL_UNITS_PER_BEAT;
+const GAMEPLAY_BEATS_VIEWPORT = 3 * FRACTIONAL_UNITS_PER_BEAT;
 const GAMEPLAY_BEATS_LOADAHEAD = 6 * FRACTIONAL_UNITS_PER_BEAT;
 
 // every 1/n beats hit = 1 score
@@ -56,9 +57,9 @@ export function getBestPossibleScore(chart: SequencerChart, startBeat: number, e
         // so we actually have to iterate _ALL_ notes regardless of start and end beats.
 
         const item = chart.timeline[i];
-        if (item.type !== TIMELINE_ITEM_NOTE)     continue;
+        if (item.type !== TIMELINE_ITEM_NOTE) continue;
         if (item.start + item.length < startBeat) continue;
-        if (endBeat < item.start)                 continue;
+        if (endBeat < item.start) continue;
 
         totalScore += getBestPossibleScoreForNote(item, startBeat, endBeat);
     }
@@ -75,7 +76,7 @@ export function getBestPossibleScoreForNote(item: NoteItem, startBeat = 0, endBe
 }
 
 
-export type KeysMapEntry = { 
+export type KeysMapEntry = {
     instrumentKey: InstrumentKey;
 
     // NOTE: this is a non-owning reference
@@ -108,18 +109,24 @@ function newBarState() {
 }
 
 function newVerticalNoteThreadState() {
-    return { 
+    return {
         backgroundColor: "",
         currentBgColor: imui.newColor(0, 0, 0, 1),
     };
 }
 
 export type GameplayState = {
+    chart: SequencerChart
+
+
     dt: number;
+
+    // Time cursor
     currentBeat: number;
     currentBeatAnimated: number;
     end: number;
     endAnimated: number;
+
     midpoint: number;
     notesMap: Map<number, NoteMapEntry>;
     commandsList: CommandItem[];
@@ -165,20 +172,22 @@ export type GameplayState = {
         isPaused: boolean;
         idx: number;
     },
+
+    lastTimelineLength: number;
 };
 
 
 type GameplayKeyState = {
-    keyHeld:              boolean;
-    keyPressedThisFrame:  boolean;
+    keyHeld: boolean;
+    keyPressedThisFrame: boolean;
     keyReleasedThisFrame: boolean;
 
     // Shouldn't be able to move between multiple keys without releasing and pressing.
     // Don't want the game to award people full score for just holding down all the keys all the time.
-    keyReleasedAtLeastOnce: boolean; 
-    lastPressedItem:        NoteItem | null;
-    lastItemScore:          number;
-    lastItemScoreMissed:    number;
+    keyReleasedAtLeastOnce: boolean;
+    lastPressedItem: NoteItem | null;
+    lastItemScore: number;
+    lastItemScoreMissed: number;
 
     lastPressedBeatQuantized: number;
 };
@@ -187,14 +196,13 @@ export function newGameplayState(
     keyboard: KeyboardState,
     chart: SequencerChart
 ): GameplayState {
-    const measures = chart.timeline.filter(item => item.type === TIMELINE_ITEM_MEASURE);
-    const bestPossibleScore = getBestPossibleScore(chart, 0, Number.MAX_SAFE_INTEGER);
-
     return {
+        chart: chart, 
+
         dt: 0,
         score: 0,
         scoreMissed: 0,
-        bestPossibleScore: bestPossibleScore,
+        bestPossibleScore: 0,
         chartName: chart.name,
 
         currentBeat: 0,
@@ -225,7 +233,7 @@ export function newGameplayState(
         avoidPenalty: false,
         penaltyEnabled: false,
 
-        measures: measures,
+        measures: [],
 
         practiceMode: {
             enabled: !!debugFlags.testPracticeMode,
@@ -251,6 +259,8 @@ export function newGameplayState(
             isPaused: false,
             idx: 0,
         },
+
+        lastTimelineLength: 0,
     };
 }
 
@@ -268,7 +278,7 @@ function handleGameplayKeyDown(ctx: GlobalContext, s: GameplayState): boolean {
 
     const rewindStarted = s.practiceMode.rewindAnimation.started;
 
-    if (ctx.keyPressState)  {
+    if (ctx.keyPressState) {
         const { key, isRepeat } = ctx.keyPressState;
         const { keyboard } = ctx;
 
@@ -321,17 +331,24 @@ function handleGameplayKeyDown(ctx: GlobalContext, s: GameplayState): boolean {
 }
 
 export function recomputeGameplayStuff(ctx: GlobalContext, gameplayState: GameplayState, dt: number) {
+    const timeline = gameplayState.chart.timeline;
+    if (timeline.length !== gameplayState.lastTimelineLength) {
+        gameplayState.lastTimelineLength = timeline.length;
+        gameplayState.measures = timeline.filter(item => item.type === TIMELINE_ITEM_MEASURE);
+        gameplayState.bestPossibleScore = getBestPossibleScore(gameplayState.chart, 0, Number.MAX_SAFE_INTEGER);
+    }
+
     gameplayState.currentBeat = getSequencerPlaybackOrEditingCursor(ctx.sequencer);
     if (gameplayState.practiceMode.rewindAnimation.started) {
         gameplayState.currentBeatAnimated = gameplayState.practiceMode.rewindAnimation.animatedCursorBeats;
     } else {
-        gameplayState.currentBeatAnimated = gameplayState.currentBeat; 
+        gameplayState.currentBeatAnimated = gameplayState.currentBeat;
     }
 
     gameplayState.end = gameplayState.currentBeat + GAMEPLAY_BEATS_LOADAHEAD;
     gameplayState.endAnimated = gameplayState.currentBeatAnimated + GAMEPLAY_BEATS_VIEWPORT;
 
-    gameplayState.dt = dt;gameplayState.pauseMenu.isPaused ? 0 : dt;
+    gameplayState.dt = dt; gameplayState.pauseMenu.isPaused ? 0 : dt;
 
     if (gameplayState.penaltyEnabled) {
         gameplayState.penaltyTimer += gameplayState.dt;
@@ -354,7 +371,7 @@ export function recomputeGameplayStuff(ctx: GlobalContext, gameplayState: Gamepl
     // Required so that we can process certain inputs
     const EXTRA_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
     getTimelineMusicNoteThreads(
-        ctx.sequencer, 
+        ctx.sequencer,
         gameplayState.currentBeatAnimated - EXTRA_BEATS, gameplayState.end + EXTRA_BEATS,
         gameplayState.notesMap, gameplayState.commandsList
     );
@@ -514,7 +531,7 @@ export function imGameplay(c: ImCache, ctx: GlobalContext, gameplayState: Gamepl
                 }
             }
 
-            imGameplayKeyboard(c, ctx, gameplayState);
+            imGameplayKeyboard(c, ctx, gameplayState, null);
 
             imui.Begin(c, BLOCK); imui.Size(c, 0, NA, 10, PX); imui.Relative(c); {
                 imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, (100 - progressPercent), PERCENT, 0, PX, 0, PX); imui.Bg(c, cssVars.fg); {
@@ -760,8 +777,8 @@ function updateCurrentItemScoreIfWithinCurrentBeat(
         }
     } else {
         while (
-            keyState.lastPressedBeatQuantized + SCOREABLE_BEAT_QUANTIZATION 
-                < currentBeat
+            keyState.lastPressedBeatQuantized + SCOREABLE_BEAT_QUANTIZATION
+            < currentBeat
         ) {
             if (!isBeatWithinExclusive(item, keyState.lastPressedBeatQuantized)) {
                 // Only quantized beats inside the note can be missed.
@@ -782,7 +799,7 @@ function gamplayPracticeModeRewind(
 ) {
     // TODO: fix bug - the offset we end up at is not quite right, but it is close enough for now.
     const chart = ctx.sequencer._currentChart;
-    const newTime  = getTimeForBeats(chart, toBeats);
+    const newTime = getTimeForBeats(chart, toBeats);
     const timeOffset = getTimeForBeats(chart, ctx.sequencer.startBeats);
     setPlaybackTime(newTime - timeOffset);
 
@@ -899,11 +916,10 @@ function imGameplayKeyLane(
     instrumentKey: InstrumentKey,
     laneWidth: number,
     isTopRowKey: boolean,
+    sequencer: SequencerState | null,
 ) {
     const thread = gameplayState.keysMap.get(instrumentKey)?._items;
     assert(!!thread);
-
-    const sGameplay = gameplayState;
 
     const keyIdx = instrumentKey.index;
     const keyState = gameplayState.keyState[keyIdx];
@@ -922,52 +938,20 @@ function imGameplayKeyLane(
         } imui.End(c);
 
         imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 0, NA); imui.Relative(c); imui.Flex(c); {
-            im.For(c); for (let i = 0; i < thread.length; i++) {
-                const item = thread[i];
-                const s = im.State(c, newBarState);
-                const currentBeatInItem = isBeatWithinInclusve(item, gameplayState.currentBeatAnimated);
+            im.For(c); {
+                for (let i = 0; i < thread.length; i++) {
+                    const item = thread[i];
+                    if (item.type !== TIMELINE_ITEM_NOTE) continue;
 
-                if (item.type !== TIMELINE_ITEM_NOTE) continue;
-
-                let heightPercent = 100 * item.length / GAMEPLAY_BEATS_VIEWPORT;
-                let bottomPercent = 100 * inverseLerp(item.start, gameplayState.currentBeatAnimated, sGameplay.endAnimated);
-                if (bottomPercent <= 0) {
-                    // the bar is below the thing. 
-                    heightPercent += bottomPercent;
-                    if (heightPercent < 0) heightPercent = 0;
-                    bottomPercent = 0;
-                }
-
-                const dt = gameplayState.dt;
-                if (currentBeatInItem && !keyState.keyHeld) {
-                    // give user an indication that they should care about the fact that this bar has reached the bottom.
-                    // hopefully they'll see the keyboard letter just below it, and try pressing it.
-                    s.animation += dt;
-                    if (s.animation > 1) {
-                        s.animation = 0;
+                    imKeyboardLaneNote(c, gameplayState, keyState, item, sequencer);
+                } 
+                if (sequencer) {
+                    for (const item of sequencer?.notesToPreview) {
+                        if (item.noteId === instrumentKey.noteId) {
+                            imKeyboardLaneNote(c, gameplayState, keyState, item, sequencer);
+                        }
                     }
-                } else {
-                    s.animation = 0;
                 }
-
-
-                let color;
-                if (s.animation > 0.5) {
-                    color = theme.unhit.toCssString();
-                } else {
-                    color = cssVarsApp.fg;
-                }
-
-                imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imui.Size(c, 0, NA, heightPercent, PERCENT); {
-                    if (im.IsFirstRender(c)) {
-                        imdom.setStyle(c, "color", "transparent");
-                    }
-
-                    imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Relative(c); imui.Bg(c, cssVarsApp.fg); {
-                        imui.Begin(c, BLOCK); imui.Absolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imui.Bg(c, color); {
-                        } imui.End(c);
-                    } imui.End(c);
-                } imui.End(c);
             } im.ForEnd(c);
 
             im.For(c); for (const measure of gameplayState.measures) {
@@ -1011,6 +995,7 @@ export function imGameplayKeyboard(
     c: ImCache,
     ctx: GlobalContext,
     gameplayState: GameplayState,
+    sequencer: SequencerState | null,
 ) {
     const { size: playfieldSize } = imdom.TrackSize(c);
 
@@ -1020,7 +1005,7 @@ export function imGameplayKeyboard(
     }
 
     const playfieldWidth = playfieldSize.width;
-    const letterWidth =  playfieldWidth / (totalNumCols * 2);
+    const letterWidth = playfieldWidth / (totalNumCols * 2);
 
     imui.Begin(c, COL); imui.Flex(c); {
         imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
@@ -1033,7 +1018,7 @@ export function imGameplayKeyboard(
 
                     const instrumentKey = row[j];
                     const isTopRowKey = i % 2 === 0;
-                    imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey);
+                    imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey, sequencer);
                 }
             } im.ForEnd(c);
         } imui.End(c);
@@ -1048,7 +1033,7 @@ export function imGameplayKeyboard(
 
                     const instrumentKey = row[j];
                     const isTopRowKey = i % 2 === 0;
-                    imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey);
+                    imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey, sequencer);
                 }
             }
             im.ForEnd(c);
@@ -1057,3 +1042,55 @@ export function imGameplayKeyboard(
 }
 
 
+function imKeyboardLaneNote(
+    c: ImCache,
+    gameplayState: GameplayState,
+    keyState: GameplayKeyState,
+    item: NoteItem,
+    sequencer: SequencerState | null,
+) {
+    const s = im.State(c, newBarState);
+    const currentBeatInItem = isBeatWithinInclusve(item, gameplayState.currentBeatAnimated);
+
+    const theme = getCurrentTheme();
+
+
+    let heightPercent = 100 * item.length / GAMEPLAY_BEATS_VIEWPORT;
+    let bottomPercent = 100 * inverseLerp(item.start, gameplayState.currentBeatAnimated, gameplayState.endAnimated);
+    if (bottomPercent <= 0) {
+        // the bar is below the thing. 
+        heightPercent += bottomPercent;
+        if (heightPercent < 0) heightPercent = 0;
+        bottomPercent = 0;
+    }
+
+    const dt = gameplayState.dt;
+    if (!sequencer && currentBeatInItem && !keyState.keyHeld) {
+        // give user an indication that they should care about the fact that this bar has reached the bottom.
+        // hopefully they'll see the keyboard letter just below it, and try pressing it.
+        s.animation += dt;
+        if (s.animation > 1) {
+            s.animation = 0;
+        }
+    } else {
+        s.animation = 0;
+    }
+
+    let color;
+    if (s.animation > 0.5) {
+        color = theme.unhit.toCssString();
+    } else {
+        color = cssVarsApp.fg;
+    }
+
+    imui.Begin(c, BLOCK); imui.Absolute(c, 0, NA, 0, PX, bottomPercent, PERCENT, 0, PX); imui.Size(c, 0, NA, heightPercent, PERCENT); {
+        if (im.IsFirstRender(c)) {
+            imdom.setStyle(c, "color", "transparent");
+        }
+
+        imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Relative(c); imui.Bg(c, cssVarsApp.fg); {
+            imui.Begin(c, BLOCK); imui.Absolute(c, 2, PX, 2, PX, 2, PX, 2, PX); imui.Bg(c, color); {
+            } imui.End(c);
+        } imui.End(c);
+    } imui.End(c);
+}
