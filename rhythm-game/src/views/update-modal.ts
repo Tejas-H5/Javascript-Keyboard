@@ -58,16 +58,29 @@ export function imUpdateModal(c: ImCache, ctx: GlobalContext, s: UpdateModalStat
                                 imdom.Str(c, s.error);
                             } imui.End(c);
                         } im.IfEnd(c);
+
+                        if (imButtonIsClicked(c, getButtonText(s.operation))) {
+                            doAction = true;
+                        }
+
+                        if (imButtonIsClicked(c, "Cancel")) {
+                            escape = true;
+                        }
+                    } else {
+                        im.Else(c);
+
+                        if (im.If(c) && s.chartToUpdate.timeline.length === 0) {
+                            if (imButtonIsClicked(c, "Delete")) {
+                                doAction = true;
+                            }
+                        } im.IfEnd(c);
+
+                        if (imButtonIsClicked(c, "Cancel")) {
+                            escape = true;
+                        }
                     } im.IfEnd(c);
 
 
-                    if (imButtonIsClicked(c, getButtonText(s.operation))) {
-                        doAction = true;
-                    }
-
-                    if (imButtonIsClicked(c, "Cancel")) {
-                        escape = true;
-                    }
                 } imui.End(c);
             } else {
                 im.IfElse(c);
@@ -198,12 +211,12 @@ function handleCreateCopyOrRenameChart(ctx: GlobalContext, s: UpdateModalState, 
             });
         case NAME_OPERATION_DELETE:
             if (s.chartToUpdate.timeline.length > 0) {
-                return CANCELLED;
+                return cb({ error: "Can't delete a nonempty chart" });
             }
 
             const availableCharts = ctx.repo.charts.allChartMetadata;
             if (availableCharts.length === 0) {
-                return CANCELLED;
+                return cb({ error: "Can't delete the only chart" });
             }
 
             const idx = availableCharts.findIndex(c => c.name === s.chartToUpdate.name);

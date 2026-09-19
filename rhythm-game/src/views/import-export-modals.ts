@@ -32,7 +32,7 @@ export function imImportModal(c: ImCache): ImportModalState {
         s = im.Set(c, newImportModalState());
     }
 
-    imModalBegin(c, 200); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
+    imModalBegin(c, 400); imui.Padding(c, 10, PX, 10, PX, 10, PX, 10, PX); {
         imui.Begin(c, COL); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Bg(c, cssVars.bg); {
             imui.Begin(c, COL); imui.Flex(c); imui.ScrollOverflow(c); {
                 const [_, textArea] = imTextAreaBegin(c, {

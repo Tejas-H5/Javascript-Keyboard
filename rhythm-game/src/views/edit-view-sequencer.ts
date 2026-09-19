@@ -64,6 +64,7 @@ import { isSavingAnyChart } from "./saving-chart.ts";
 import { cssVarsApp, getCurrentTheme } from "./styling.ts";
 import { imGameplayKeyboard, newGameplayState, recomputeGameplayStuff } from "./gameplay.ts";
 import { imGameplayContainerBegin, imGameplayContainerEnd, WANTED_ASPECT_RATIO, WANTED_ASPECT_RATIO_H, WANTED_ASPECT_RATIO_W } from "./gameplay-elements.ts";
+import { imModalBegin, imModalEnd } from "app-components/modal.ts";
 
 
 export function getItemSequencerText(item: TimelineItem, key: InstrumentKey | undefined): string {
@@ -443,11 +444,11 @@ export function imSequencer(c: ImCache, ctx: GlobalContext) {
             recomputeGameplayStuff(ctx, gameplayState, im.getDeltaTimeSeconds(c));
 
             imui.Begin(c, ROW); imui.Flex(c); {
-                imui.Begin(c, COL); imui.Relative(c); {
-                    imui.AspectRatio(c, WANTED_ASPECT_RATIO_W, WANTED_ASPECT_RATIO_H); 
-
+                imui.Begin(c, ROW); imui.Flex(c); imui.Relative(c); {
                     imUiLabel(c, "Gameplay")
-                    imGameplayKeyboard(c, ctx, gameplayState, sequencer);
+                    imGameplayContainerBegin(c, true); {
+                        imGameplayKeyboard(c, ctx, gameplayState, sequencer);
+                    } imGameplayContainerEnd(c);
                 } imui.End(c);
 
                 imLine(c, LINE_VERTICAL, 2);
@@ -879,10 +880,7 @@ function imExportModal(
     ctx: GlobalContext,
     chart: SequencerChart
 ) {
-    imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0, 0, 0, 0.3)`); {
-        if (im.IsFirstRender(c)) {
-            imdom.setStyle(c, "zIndex", "10");
-        }
+    imModalBegin(c, 100); {
         imui.Begin(c, COL); imui.Absolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imui.Bg(c, cssVars.bg); {
             let s; s = im.GetInline(c, imExportModal) ?? im.Set(c, {
                 buttonText: "Copy to clipboard",
@@ -918,14 +916,14 @@ function imExportModal(
                     .catch(e => console.error(e));
             }
         } imui.End(c);
-    } imui.End(c);
+    } imModalEnd(c);
 }
 
 function imImportModal(
     c: ImCache,
     ctx: GlobalContext,
 ) {
-    imui.Begin(c, BLOCK); imui.Absolute(c, 0, PX, 0, PX, 0, PX, 0, PX); imui.Bg(c, `rgba(0, 0, 0, 0.3)`); {
+    imModalBegin(c); {
         imui.Begin(c, COL); imui.Absolute(c, 10, PX, 20, PERCENT, 10, PX, 20, PERCENT); imui.Bg(c, cssVars.bg); {
             let s; s = im.GetInline(c, imExportModal) ?? im.Set(c, {
                 importJson: "",
@@ -967,7 +965,7 @@ function imImportModal(
             if (imButtonIsClicked(c, "Import")) {
             }
         } imui.End(c);
-    } imui.End(c);
+    } imModalEnd(c);
 }
 
 function imSequencerInternal(c: ImCache, ctx: GlobalContext, s: SequencerUIState, topRow: boolean) {

@@ -330,8 +330,8 @@ export function processSample(s: DspState, idx: number) {
                     break;
                 }
 
-                const SLOP_TOLERANCE_SECONDS = 1;
-                if (osc.state.pressedTimePlayback + SLOP_TOLERANCE_SECONDS < nextItem.time) {
+                const SLOP_TOLERANCE_MS = 300;
+                if (osc.state.pressedTimePlayback + SLOP_TOLERANCE_MS < nextItem.time) {
                     // This user press is too old to count.
                     allUserNotes = false;
                     break;

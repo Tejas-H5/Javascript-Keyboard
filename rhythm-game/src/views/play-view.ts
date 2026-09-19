@@ -95,16 +95,6 @@ function getMessagesForDesignation(d: Designation): string[] {
 }
 
 function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) {
-    if (!ctx.handled) {
-        if (ctx.keyPressState) {
-            if (ctx.keyPressState.key === "Enter") {
-                // restart this chart
-
-                setViewPlayCurrentChart(ctx);
-            }
-        }
-    }
-
     const focusChanged = im.Memo(c, true);
     let s = im.Get(c, newResultsScreenState);
     if (!s || focusChanged) {
@@ -121,16 +111,16 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
     s.fontSize = s.baseFontSize + s.wiggle * Math.sin(Math.PI * 2 * s.t);
 
+    let animCursor = 0.1;
+
     imui.Begin(c, ROW); imui.Flex(c); imui.Align(c); imui.Justify(c); {
         imui.Begin(c, COL); imui.Size(c, 80, PERCENT, 80, PERCENT); {
             if (im.IsFirstRender(c)) {
                 imdom.setStyle(c,"border", "1px solid currentColor");
             }
 
-            let currentStart = 0.1;
-
-            imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); imui.Size(c, 0, NA, s.baseFontSize + s.wiggle, REM); {
-                currentStart += 0.3;
+            imBeginAnimatedRow(c, s.t, animCursor, 0.1, 300); imui.Size(c, 0, NA, s.baseFontSize + s.wiggle, REM); {
+                animCursor += 0.3;
                 imdom.setStyle(c, "fontSize", s.fontSize + "rem");
 
                 imdom.ElBegin(c, el.B); imdom.Str(c, result.chartName); imdom.ElEnd(c, el.B);
@@ -138,8 +128,8 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
             imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
-            imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
-                currentStart += 0.3;
+            imBeginAnimatedRow(c, s.t, animCursor, 0.1, 300); {
+                animCursor += 0.3;
 
                 imui.Begin(c, BLOCK); imui.Size(c, 25, PERCENT, 0, NA); imui.End(c);
 
@@ -147,14 +137,14 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
                 imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
-                imAnimatedNumber(c, result.bestPossibleScore, s.t, currentStart, 0.3);
-                currentStart += 0.3;
+                imAnimatedNumber(c, result.bestPossibleScore, s.t, animCursor, 0.3);
+                animCursor += 0.3;
 
                 imui.Begin(c, BLOCK); imui.Size(c, 25, PERCENT, 0, NA); imui.End(c);
             } imui.End(c);
 
-            imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
-                currentStart += 0.3;
+            imBeginAnimatedRow(c, s.t, animCursor, 0.1, 300); {
+                animCursor += 0.3;
 
                 imui.Begin(c, BLOCK); imui.Size(c, 25, PERCENT, 0, NA); imui.End(c);
 
@@ -162,22 +152,22 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
 
                 imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
-                imAnimatedNumber(c, result.score, s.t, currentStart, 0.3);
-                currentStart += 0.3;
+                imAnimatedNumber(c, result.score, s.t, animCursor, 0.3);
+                animCursor += 0.3;
 
                 imui.Begin(c, BLOCK); imui.Size(c, 25, PERCENT, 0, NA); imui.End(c);
             } imui.End(c);
 
             imui.Begin(c, BLOCK); imui.Flex(c); imui.End(c);
 
-            imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); {
-                currentStart += 0.3;
+            imBeginAnimatedRow(c, s.t, animCursor, 0.1, 300); {
+                animCursor += 0.3;
                 imdom.Str(c, s.message);
             } imui.End(c);
 
-            const root = imBeginAnimatedRow(c, s.t, currentStart, 0.1, 300); 
+            const root = imBeginAnimatedRow(c, s.t, animCursor, 0.1, 300); 
             imui.Align(c); imui.Justify(c); imui.Flex(c, 4); {
-                currentStart += 0.3;
+                animCursor += 0.3;
 
                 const height = root.clientHeight;
                 const sizeChanged = im.Memo(c, height);
@@ -208,14 +198,35 @@ function imResultsScreen(ctx: GlobalContext, c: ImCache, result: GameplayState) 
                             imdom.setStyle(c, "position", `absolute`);
                         }
 
-                        imdom.setStyle(c, "transform", `scaleX(${scale}) rotateY(${angle}rad) translate3d(${i * 0.05 * height}px, ${i * 0.05 * height}px, ${i * 10}px)`);
+                        // Rotating the text vertically on the Y axis does NOT work in firefox. 
+                        // So we can't do this. :'(
+                        // imdom.setStyle(c, "transform", `rotateY(${angle}rad) translate3d(${i * 0.05 * height}px, ${i * 0.05 * height}px, ${i * 10}px)`);
 
-                        imdom.ElBegin(c, el.I); imdom.Str(c, designation[i]); imdom.ElEnd(c, el.I);
+                        imdom.setStyle(c, "transform", `translate3d(${i * 0.05 * height}px, ${i * 0.05 * height}px, ${i * 10}px)`);
+
+                        imdom.ElBegin(c, el.I); {
+                            imdom.Str(c, designation[i]); 
+                        } imdom.ElEnd(c, el.I);
                     } imui.End(c);
                 } im.ForEnd(c);
             } imui.End(c);
         } imui.End(c);
     } imui.End(c);
+
+    if (!ctx.handled) {
+        if (ctx.keyPressState) {
+            if (ctx.keyPressState.key === "Enter") {
+                if (s.t < animCursor) {
+                    s.t = animCursor + 0.1;
+                    ctx.handled = true;
+                } else {
+                    // restart this chart
+                    setViewPlayCurrentChart(ctx);
+                    ctx.handled = true;
+                }
+            }
+        }
+    }
 }
 
 

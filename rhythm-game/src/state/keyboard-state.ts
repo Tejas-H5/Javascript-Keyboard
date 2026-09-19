@@ -82,7 +82,9 @@ function newKey(k: string): InstrumentKey {
     };
 }
 
-export const BASE_NOTE = 28;
+const OCTAVE_NUM_NOTES = 12;
+export const BASE_NOTE = OCTAVE_NUM_NOTES * 3;
+export const NUM_SAMPLES = 6;
 
 export function newKeyboardState(): KeyboardState {
     const keys: InstrumentKey[][] = [];
@@ -97,7 +99,9 @@ export function newKeyboardState(): KeyboardState {
         keys.push(...pianoKeys);
 
         {
-            // This layout was the result of some experimentation.
+            // This layout was the result of a lot of experimentation and thought. 
+            // I am actually quite happy with it, and I won't be changing it or allowing for customisation.
+
             // If we sequentially allocate all our notes by iterating every column per row,
             // there are 4 points where you need to remember to 'transition' from one side
             // of the keyboard to the other despite the notes increasing. 
@@ -168,9 +172,11 @@ export function sampleToNoteIdx(sampleIdx: number) {
 // Allows our 'note index' to be a number, while also allowing us to override various samples.
 export function getSampleIdx(noteIdx: number): number {
     const sampleLow = BASE_NOTE;
-    const sampleHi = BASE_NOTE + 11;
-    if (noteIdx > sampleHi) return -1;
-    return noteIdx - sampleLow;
+    const sampleHi = BASE_NOTE + NUM_SAMPLES;
+    if (noteIdx < sampleHi) {
+        return noteIdx - sampleLow;
+    }
+    return -1;
 }
 
 export function getMusicNoteText(noteId: number) {

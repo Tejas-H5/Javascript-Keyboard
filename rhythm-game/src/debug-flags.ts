@@ -49,14 +49,14 @@ export const debugFlags: DebugFlags = {
     testEditViewImport:  OFF,
     testCopyModal:       OFF,
     debuUndoBuffer:      OFF,
-    testChartSelectView: ON,
+    testChartSelectView: OFF,
 
     testGameplay:      OFF,
     testGameplaySpeed: getSpeed(1),
     testPracticeMode:  OFF,
     testResultsView:   OFF,
 
-    testChart:         "Sendan Life",
+    testChart:         "Fantasia",
 
     testFixDatabase: OFF,
 

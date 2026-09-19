@@ -34,6 +34,7 @@ import { clamp, inverseLerp, inverseLerp2, lerp, max } from "utils/math-utils.ts
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
 import { cssVarsApp, getCurrentTheme } from "./styling.ts";
 import { imGameplayContainerBegin, imGameplayContainerEnd } from "./gameplay-elements.ts";
+import { imLine, LINE_HORIZONTAL } from "components/im-line.ts";
 
 const SIGNAL_LOOKAHEAD_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
 const GAMEPLAY_BEATS_VIEWPORT = 3 * FRACTIONAL_UNITS_PER_BEAT;
@@ -934,9 +935,6 @@ function imGameplayKeyLane(
     imui.copyColor(theme.bg, s.currentBgColor);
 
     imui.Begin(c, COL); imui.Align(c, STRETCH); imui.Justify(c, START); {
-        imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 2, PX); imui.Bg(c, cssVarsApp.fg); {
-        } imui.End(c);
-
         imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 0, NA); imui.Relative(c); imui.Flex(c); {
             im.For(c); {
                 for (let i = 0; i < thread.length; i++) {
@@ -1008,6 +1006,8 @@ export function imGameplayKeyboard(
     const letterWidth = playfieldWidth / (totalNumCols * 2);
 
     imui.Begin(c, COL); imui.Flex(c); {
+        imLine(c, LINE_HORIZONTAL, 2);
+
         imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
             if (im.IsFirstRender(c)) imdom.setStyle(c, "overflow", "hidden");
 
@@ -1022,6 +1022,9 @@ export function imGameplayKeyboard(
                 }
             } im.ForEnd(c);
         } imui.End(c);
+
+        imLine(c, LINE_HORIZONTAL, 2);
+
         imui.Begin(c, ROW); imui.Flex(c); imui.Align(c, STRETCH); imui.Justify(c); imui.Relative(c); {
             if (im.IsFirstRender(c)) imdom.setStyle(c, "overflow", "hidden");
 
@@ -1038,6 +1041,8 @@ export function imGameplayKeyboard(
             }
             im.ForEnd(c);
         } imui.End(c);
+
+        imLine(c, LINE_HORIZONTAL, 2);
     } imui.End(c);
 }
 
