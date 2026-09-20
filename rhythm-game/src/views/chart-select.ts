@@ -37,7 +37,7 @@ function handleChartSelectKeyDown(ctx: GlobalContext, s: ChartSelectState): bool
         return true;
     }
 
-    if (keyUpper === "L") {
+    if (keyUpper === "K") {
         // But, maybe this should be the selected chart?
         setViewSoundLab(ctx);
         return true;

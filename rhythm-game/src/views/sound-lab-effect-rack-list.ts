@@ -30,8 +30,6 @@ export function newPresetsListState(): PresetsListState {
 }
 
 export function selectEffectRackPreset(ctx: GlobalContext, s: PresetsListState, preset: EffectRackPresetMetadata | null) {
-    if (s.selected === preset) return;
-
     s.selected       = preset;
     s.selectedLoaded = null;
     s.renaming       = false;
@@ -93,6 +91,12 @@ export function imEffectRackList(
                 } imui.End(c);
             } im.IfEnd(c);
 
+            if (im.If(c) && ctx.repo.effectRackPresets.groups.size === 0) {
+                imui.Begin(c, BLOCK); {
+                    imdom.Str(c,"No effect rack groups yet");
+                } imui.End(c);
+            } im.IfEnd(c);
+
             imui.Begin(c, COL); imui.Flex(c); imui.ScrollOverflow(c); {
                 im.For(c); for (const [groupName, group] of ctx.repo.effectRackPresets.groups) {
                     const open = s.openGroup === groupName;
@@ -149,8 +153,11 @@ function imPresetsArray(
                 }
 
                 if (imdom.hasMousePress(c)) {
-                    if (!selected) {
-                        selectEffectRackPreset(ctx, s, preset);
+                    if (selected && s.selected && s.selectedLoaded) {
+                        result = {
+                            selection: s.selected,
+                            selectionLoaded: s.selectedLoaded,
+                        };
                     } else {
                         try {
                             selectEffectRackPreset(ctx, s, preset);

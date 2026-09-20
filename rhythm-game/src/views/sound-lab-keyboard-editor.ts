@@ -274,7 +274,7 @@ export function imKeyboardConfigEditor(
 
         if (ctx.keyPressState) {
             const { key } = ctx.keyPressState;
-            
+
             if (key === "Escape") {
                 if (editor.isRenamingSlotIdx !== -1) {
                     editor.reassigningSlotIdx = -1;

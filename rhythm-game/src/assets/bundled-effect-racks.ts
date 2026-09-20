@@ -1,12 +1,25 @@
 import { deserializeEffectRack } from "state/effect-rack";
+import { effectRackPresetToMetadata, effectRackToPreset } from "state/keyboard-config";
 
 // TODO: incorporate!
 
 const allBundledEffectRacks = [
-    ["Resonator", `{"effects":[{"id":0,"enabled":true,"value":{"type":4,"amplitudeUi":{"valueRef":{"value":1}}}},{"id":6,"enabled":true,"value":{"type":3,"conditions":[{"aUi":{"valueRef":{"effectId":2}},"operator":1,"valUi":{"valueRef":{"value":1}},"bUi":{"valueRef":{"regIdx":1}}}],"defaultUi":{"valueRef":{"effectId":2}}}},{"id":5,"enabled":true,"value":{"type":2,"terms":[{"coefficients":[{"valueUI":{"valueRef":{"regIdx":0}}},{"valueUI":{"valueRef":{"value":0.031}}},{"valueUI":{"valueRef":{"effectId":6}}}]}]}},{"id":4,"enabled":true,"value":{"type":0,"waveType":0,"amplitudeUI":{"valueRef":{"value":0.5}},"phaseUI":{"valueRef":{"value":0}},"frequencyUI":{"valueRef":{"effectId":5}},"frequencyMultUI":{"valueRef":{"value":1}},"offsetUI":{"valueRef":{"value":0.5}}}},{"id":1,"enabled":true,"value":{"type":0,"waveType":2,"amplitudeUI":{"valueRef":{"effectId":4}},"phaseUI":{"valueRef":{"value":0}},"frequencyUI":{"valueRef":{"regIdx":0}},"frequencyMultUI":{"valueRef":{"value":1}},"offsetUI":{"valueRef":{"value":0}}}},{"id":3,"enabled":true,"value":{"type":0,"waveType":0,"amplitudeUI":{"valueRef":{"value":1}},"phaseUI":{"valueRef":{"value":0}},"frequencyUI":{"valueRef":{"regIdx":0}},"frequencyMultUI":{"valueRef":{"value":1}},"offsetUI":{"valueRef":{"effectId":1}}}},{"id":2,"enabled":true,"value":{"type":1,"toModulateUI":{"valueRef":{"effectId":3}},"signalUI":{"valueRef":{"regIdx":1}},"attackUI":{"valueRef":{"value":0.0094}},"decayUI":{"valueRef":{"value":0.1}},"sustainUI":{"valueRef":{"value":0.2}},"releaseUI":{"valueRef":{"value":2.7243}}}}]}`],
-    ["Precussive", `{"effects":[{"id":4,"value":{"type":2,"terms":[{"coefficients":[{"valueUI":{"valueRef":{"effectId":2}}},{"valueUI":{"valueRef":{"value":1}}}]}]}},{"id":0,"value":{"type":0,"waveType":0,"amplitudeUI":{"valueRef":{"value":1}},"phaseUI":{"valueRef":{"value":0.5}},"frequencyUI":{"valueRef":{"regIdx":0}},"frequencyMultUI":{"valueRef":{"effectId":4}},"offsetUI":{"valueRef":{"value":0}}}},{"id":1,"value":{"type":0,"waveType":0,"amplitudeUI":{"valueRef":{"value":1}},"phaseUI":{"valueRef":{"value":0.008700000000000001}},"frequencyUI":{"valueRef":{"regIdx":0}},"frequencyMultUI":{"valueRef":{"effectId":0}},"offsetUI":{"valueRef":{"value":0}}}},{"id":2,"value":{"type":3,"conditions":[{"aUi":{"valueRef":{"regIdx":1}},"operator":1,"valUi":{"valueRef":{"value":1}},"bUi":{"valueRef":{"value":0.5703}}}],"defaultUi":{"valueRef":{"effectId":1}}}},{"id":3,"value":{"type":1,"toModulateUI":{"valueRef":{"effectId":2}},"signalUI":{"valueRef":{"regIdx":1}},"attackUI":{"valueRef":{"value":0.02}},"decayUI":{"valueRef":{"value":0.1}},"sustainUI":{"valueRef":{"value":0.2}},"releaseUI":{"valueRef":{"value":0.2}}}}]}`],
-].map(([name, json]) => [name, deserializeEffectRack(json)]);
+    ["Square wave", `{"name":"Default sine wave","id":0,"effects":[{"value":{"type":1,"amplitudeUi":{"valueRef":{"value":1}},"signalUI":{"valueRef":{"regIdx":1}},"attackUI":{"valueRef":{"value":0.02}},"decayUI":{"valueRef":{"value":0.02}},"sustainUI":{"valueRef":{"value":0.2}},"releaseUI":{"valueRef":{"value":0.2}},"valueOut":{"id":2},"stageOut":{"id":1}}},{"value":{"type":0,"waveType":1,"amplitudeUI":{"valueRef":{"regOutputId":2}},"phaseUI":{"valueRef":{"value":0}},"frequencyUI":{"valueRef":{"regIdx":0}},"frequencyMultUI":{"valueRef":{"value":1}},"offsetUI":{"valueRef":{"value":0}},"unisonCountUi":{"valueRef":{"value":1}},"unisionWidthUi":{"valueRef":{"value":1}},"unisonMixUi":{"valueRef":{"value":0.5}},"unisonPhaseOffsetUi":{"valueRef":{"value":0}},"waveOut":{"id":3},"tOut":{"id":4}}}],"effectRackOutputIds":[1,2,3,4],"output":{"valueRef":{"regOutputId":3}}}`]
+].map(([name, json], i) => {
+    const rack = deserializeEffectRack(json);
+    const preset = effectRackToPreset(rack);
+    preset.id = -i - 1;
+    preset.name = name;
+    return preset;
+});
+
+const allBundledEffectRacksMetadata = allBundledEffectRacks
+    .map(effectRackPresetToMetadata);
 
 export function getAllBundledEffectRacks() {
     return allBundledEffectRacks;
+}
+
+export function getAllBundledEffectRacksMetadata() {
+    return allBundledEffectRacksMetadata;
 }

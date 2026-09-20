@@ -1,5 +1,5 @@
 import { im, ImCache, imdom } from "imcf";
-import { BLOCK, cssVars, imui, NA, PERCENT, PX } from "imcf/im-ui";
+import { BLOCK, imui, NA, PERCENT, PX } from "imcf/im-ui";
 
 const cssb = imui.newCssBuilder();
 const cnLine = cssb.cn("line", [
@@ -30,7 +30,7 @@ export function imLine(
     imui.Begin(c, BLOCK); 
     imui.Size(c, !isH ? widthPx : 100, !isH ? heightUnit : PERCENT,
                isH ? widthPx : 100,  isH ? heightUnit : PERCENT); 
-    imui.Bg(c, isOpaque ? cssVars.fg : ""); imui.Opacity(c, opacity); {
+    imui.Bg(c, isOpaque ? "currentColor" :  ""); imui.Opacity(c, opacity); {
         if (im.IsFirstRender(c)) {
             imdom.setClass(c, cnLine);
         }

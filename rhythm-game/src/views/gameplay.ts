@@ -34,7 +34,7 @@ import { clamp, inverseLerp, inverseLerp2, lerp, max } from "utils/math-utils.ts
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
 import { cssVarsApp, getCurrentTheme } from "./styling.ts";
 import { imGameplayContainerBegin, imGameplayContainerEnd } from "./gameplay-elements.ts";
-import { imLine, LINE_HORIZONTAL } from "components/im-line.ts";
+import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "components/im-line.ts";
 
 const SIGNAL_LOOKAHEAD_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
 const GAMEPLAY_BEATS_VIEWPORT = 3 * FRACTIONAL_UNITS_PER_BEAT;

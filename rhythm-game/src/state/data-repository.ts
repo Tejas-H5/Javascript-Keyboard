@@ -14,6 +14,7 @@ import {
     SequencerChartCompressed,
     uncompressChart
 } from "./sequencer-chart.ts";
+import { getAllBundledEffectRacks, getAllBundledEffectRacksMetadata } from "assets/bundled-effect-racks.ts";
 
 function logError(...messages: any[]) {
     console.error("[data-repository]", ...messages);
@@ -330,6 +331,18 @@ export function loadAllEffectRackPresets(repo: DataRepository, cb: Then<EffectRa
 
 export function loadEffectRackPreset(repo: DataRepository, meta: EffectRackPresetMetadata, cb: Then<EffectRackPreset>): Done {
     cb = trackTask("loadEffectRackPreset", cb);
+
+    if (meta.id < 0) {
+        const bundled = getAllBundledEffectRacks();
+        const preset = bundled.find(p => p.id === meta.id);
+        if (!preset) {
+            logError("Bundled preset not found: " + meta.id);
+            return CANCELLED;
+        }
+
+        return cb(preset);
+    }
+
     const tx = repositoryReadTx(repo, [tables.effectRackPresets]);
     return idb.getData(tx, tables.effectRackPresets, meta.id, preset => {
         if (!preset) {
@@ -380,7 +393,8 @@ export function deleteEffectRackPreset(repo: DataRepository, preset: EffectRackP
 
 function recomputeEffectRackPresets(repo: DataRepository) {
     repo.effectRackPresets.allEffectRackPresets = [
-        ...repo.tables.effectRackPresets.allItemsAsync
+        ...repo.tables.effectRackPresets.allItemsAsync,
+        ...getAllBundledEffectRacksMetadata(),
     ];
 
     const presets = repo.effectRackPresets.allEffectRackPresets;
