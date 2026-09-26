@@ -431,7 +431,7 @@ function isDegenerateItem(item: TimelineItem) {
 
 /**
  * NOTE: this copies the items to the undo buffer, and removes them from the timeline.
- * in theory, you can then edit them, and then push them back to the timeline with 
+ * In theory, you can then edit them, and then push them back to the timeline with 
  * {@link sequencerChartInsertItems}, which also copies items to the undo buffer. 
  * When we remove the items from the timeline, in theory, nothing else is referencing those items.
  */
@@ -673,32 +673,6 @@ export function transposeItems(
     sequencerChartInsertItems(chart, notesToEdit);
 }
 
-
-export function sequencerChartShiftItems(
-    chart: SequencerChart,
-    startIdx: number, endIdx: number,
-    amountBeats: number,
-) {
-    if (startIdx === -1 || endIdx === -1) {
-        return;
-    }
-
-    const timeline = chart.timeline;
-
-    let toEdit: TimelineItem[] = [];
-    for (let i = startIdx; i <= endIdx; i++) {
-        const item = timeline[i];
-        toEdit.push(item);
-    }
-
-    toEdit = sequencerChartRemoveItems(chart, toEdit);
-
-    for (const item of toEdit) {
-        item.start += amountBeats;
-    }
-
-    sequencerChartInsertItems(chart, toEdit);
-}
 
 
 export function getChartDurationInBeats(chart: SequencerChart): number {

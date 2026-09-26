@@ -34,7 +34,6 @@ import {
     setCursorSnap,
     setTimelineNoteAtPosition,
     shiftItemsAfterCursor,
-    shiftSelectedItems,
     transposeSelectedItems
 } from "state/sequencer-state.ts";
 import { APP_VIEW_PLAY_CHART, EditViewState } from "state/ui-state.ts";
@@ -80,11 +79,7 @@ function handleEditChartKeyDown(ctx: GlobalContext, editView: EditViewState): bo
     if (shiftPressed && (hasShiftLeft || hasShiftRight)) {
         const amount = hasShiftRight ? sequencer.cursorSnap : -sequencer.cursorSnap;
 
-        if (hasRangeSelection(sequencer)) {
-            shiftSelectedItems(sequencer, amount)
-        } else {
-            shiftItemsAfterCursor(sequencer, amount);
-        }
+        shiftItemsAfterCursor(sequencer, amount);
 
         return true;
     }

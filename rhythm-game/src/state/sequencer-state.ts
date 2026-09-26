@@ -19,7 +19,6 @@ import {
     SequencerChart,
     sequencerChartInsertItems,
     sequencerChartRemoveItems,
-    sequencerChartShiftItems,
     sortAndIndexTimeline,
     TIMELINE_ITEM_BPM,
     TIMELINE_ITEM_MEASURE,
@@ -636,24 +635,35 @@ export function getNonOverlappingThreadsSubset(
     }
 }
 
-export function shiftSelectedItems(s: SequencerState, beats: number) {
-    const [startIdx, endIdx] = getSelectionStartEndIndexes(s);
-    if (startIdx === -1 || endIdx === -1) {
-        return;
+export function shiftItemsAfterCursor(s: SequencerState, amountBeats: number) {
+    const cursorStart = s.cursor;
+    const chart = s._currentChart;
+
+    let toEdit = chart.timeline.filter(item => {
+        if (item.start >= cursorStart) return true;
+        if (item.type === TIMELINE_ITEM_NOTE) {
+            if ((item.start + item.length) >= cursorStart) {
+                return true;
+            }
+        }
+        return false;
+    });
+
+    toEdit = sequencerChartRemoveItems(chart, toEdit);
+
+    for (const item of toEdit) {
+        if (item.start >= cursorStart) {
+            item.start += amountBeats;
+        } else if (item.type === TIMELINE_ITEM_NOTE) {
+            if (item.length - amountBeats > 0) {
+                item.length += amountBeats;
+            }
+        }
     }
 
-    sequencerChartShiftItems(s._currentChart, startIdx, endIdx, beats);
+    s.cursor += amountBeats;
 
-    s.rangeSelectStart += beats;
-    s.rangeSelectEnd   += beats;
-}
-
-// NOTE: potentially very expensive
-export function shiftItemsAfterCursor(s: SequencerState, beats: number) {
-    const cursorStart = s.cursor;
-    const rightOfCursorIdx = getBeatIdxAfter(s._currentChart, cursorStart);
-
-    sequencerChartShiftItems(s._currentChart, rightOfCursorIdx, s._currentChart.timeline.length - 1, beats);
+    sequencerChartInsertItems(chart, toEdit);
 }
 
 export function transposeSelectedItems(s: SequencerState, halfSteps: number) {
