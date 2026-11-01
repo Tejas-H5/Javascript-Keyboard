@@ -635,6 +635,7 @@ export function getNonOverlappingThreadsSubset(
     }
 }
 
+// Moves start/endpoints by some number of beats.
 export function shiftItemsAfterCursor(s: SequencerState, amountBeats: number) {
     const cursorStart = s.cursor;
     const chart = s._currentChart;
@@ -655,8 +656,9 @@ export function shiftItemsAfterCursor(s: SequencerState, amountBeats: number) {
         if (item.start >= cursorStart) {
             item.start += amountBeats;
         } else if (item.type === TIMELINE_ITEM_NOTE) {
-            if (item.length - amountBeats > 0) {
-                item.length += amountBeats;
+            const newLength = item.length + amountBeats;
+            if (newLength > 0) {
+                item.length = newLength;
             }
         }
     }

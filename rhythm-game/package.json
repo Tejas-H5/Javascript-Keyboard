@@ -13,6 +13,6 @@
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
-		"imcf": "^0.0.14"
+		"imcf": "0.0.17"
 	}
 }

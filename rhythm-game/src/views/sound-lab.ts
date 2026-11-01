@@ -94,13 +94,13 @@ export function imSoundLabInternal(c: ImCache, ctx: GlobalContext, lab: SoundLab
     imui.Begin(c, ROW); imui.Size(c, 100, PERCENT, 100, PERCENT); imui.Bg(c, cssVars.bg); imui.NoSelect(c); {
         const svgCtx = imSvgContext(c);
         if (effectRackEditor) effectRackEditor.svgCtx = svgCtx;
-        imdom.RootExistingBegin(c, svgCtx.root); {
+        imdom.AppenderBegin(c, svgCtx.root); {
             if (im.IsFirstRender(c)) {
                 // Dont want to be able to touch the SVG actually.
                 // It's just for the wires visual.
                 imdom.setStyle(c, "pointerEvents", "none");
             }
-        } imdom.RootExistingEnd(c, svgCtx.root);
+        } imdom.AppenderEnd(c, svgCtx.root);
 
         if (im.If(c) && effectRackEditor) {
             const ev = imEffectRackEditor(c, ctx, lab, effectRackEditor, keyboardConfigEditor);

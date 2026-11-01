@@ -2,6 +2,8 @@ import { EffectRackPreset, effectRackToPreset, getDefaultSineWaveEffectRack, Key
 import { DISPATCHED_LATER, Done, Then } from "utils/async-utils.ts";
 import { getDspLoopClassUrl } from "./dsp-loop-class-url.ts";
 import { DspInfo, DspLoopMessage, DSPPlaySettings, newDspPlaySettings } from "./dsp-loop.ts";
+import { getKeyForNote, KeyboardState } from "state/keyboard-state.ts";
+import { NoteItem } from "state/sequencer-chart.ts";
 
 const audioCtx = new AudioContext()
 const playSettings = newDspPlaySettings();

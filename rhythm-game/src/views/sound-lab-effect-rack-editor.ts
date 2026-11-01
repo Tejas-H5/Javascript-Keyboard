@@ -792,7 +792,7 @@ export function imEffectRackEditor(
 
                             // The wire we are currently dragging
                             if (im.If(c) && wires.drag.registerOutputId !== undefined || wires.drag.registerInput !== undefined) {
-                                imdom.RootExistingBegin(c, svgCtx.root); {
+                                imdom.AppenderBegin(c, svgCtx.root); {
                                     const mouse = imdom.getMouse();
                                     let srcX = mouse.x, srcY = mouse.y;
                                     let dstX = mouse.x, dstY = mouse.y;
@@ -813,7 +813,7 @@ export function imEffectRackEditor(
                                         srcX, srcY, dstX, dstY,
                                         dragColour.r, dragColour.g, dragColour.b, 1,
                                     );
-                                } imdom.RootExistingEnd(c, svgCtx.root);
+                                } imdom.AppenderEnd(c, svgCtx.root);
                             } im.IfEnd(c);
 
                             const effectsDnd = imDragAndDrop(c);
@@ -2088,7 +2088,7 @@ function imWireDragEndpoint(
 
             assert(editor.svgCtx != null);
 
-            imdom.RootExistingBegin(c, editor.svgCtx.root); {
+            imdom.AppenderBegin(c, editor.svgCtx.root); {
                 const color = outputUi.colour;
 
                 imWire(
@@ -2096,7 +2096,7 @@ function imWireDragEndpoint(
                     srcX, srcY, dstX, dstY,
                     color.r, color.g, color.b, 0.3 + (1 - 0.3) * 0.5,
                 );
-            } imdom.RootExistingEnd(c, editor.svgCtx.root);
+            } imdom.AppenderEnd(c, editor.svgCtx.root);
         } im.IfEnd(c);
     } imui.End(c);
 

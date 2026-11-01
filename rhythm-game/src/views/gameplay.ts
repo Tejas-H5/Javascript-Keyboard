@@ -1,6 +1,9 @@
 import { imButtonIsClicked } from "components/button.ts";
+import { imLine, LINE_HORIZONTAL } from "components/im-line.ts";
 import { debugFlags } from "debug-flags.ts";
-import { getCurrentOscillatorGainForOwner, isKeyPressed, pressKey, setPlaybackTime } from "dsp/dsp-loop-interface.ts";
+import { getCurrentOscillatorGain, isKeyPressed, pressKey, setPlaybackTime } from "dsp/dsp-loop-interface.ts";
+import { el, im, ImCache, imdom, Stringifyable } from "imcf";
+import { BLOCK, COL, CssColor, cssVars, EM, END, imui, NA, PERCENT, PX, ROW, START, STRETCH } from "imcf/im-ui";
 import {
     getKeyForKeyboardKey,
     InstrumentKey,
@@ -28,13 +31,10 @@ import {
 } from "state/sequencer-state.ts";
 import { arrayAt } from "utils/array-utils.ts";
 import { assert } from "utils/assert.ts";
-import { el, im, ImCache, imdom, Stringifyable } from "imcf";
-import { BLOCK, COL, CssColor, cssVars, EM, END, imui, NA, PERCENT, PX, ROW, START, STRETCH } from "imcf/im-ui";
 import { clamp, inverseLerp, inverseLerp2, lerp, max } from "utils/math-utils.ts";
 import { GlobalContext, setViewChartSelect, setViewEditChart } from "./app.ts";
-import { cssVarsApp, getCurrentTheme } from "./styling.ts";
 import { imGameplayContainerBegin, imGameplayContainerEnd } from "./gameplay-elements.ts";
-import { imLine, LINE_HORIZONTAL, LINE_VERTICAL } from "components/im-line.ts";
+import { cssVarsApp, getCurrentTheme } from "./styling.ts";
 
 const SIGNAL_LOOKAHEAD_BEATS = 1 * FRACTIONAL_UNITS_PER_BEAT;
 const GAMEPLAY_BEATS_VIEWPORT = 3 * FRACTIONAL_UNITS_PER_BEAT;
@@ -499,16 +499,16 @@ export function imGameplay(c: ImCache, ctx: GlobalContext, gameplayState: Gamepl
                 for (const instrumentKey of keyboard.flatKeys) {
                     const keyIdx = instrumentKey.index;
                     const keyState = gameplayState.keyState[keyIdx]; assert(!!keyState);
-                    const keySignal = isKeyPressed(instrumentKey.index);
+                    const keyPressed = isKeyPressed(instrumentKey.index);
 
                     // Handle input for this lane
 
                     keyState.keyPressedThisFrame = false;
                     keyState.keyReleasedThisFrame = false;
-                    if (keySignal && !keyState.keyHeld) {
+                    if (keyPressed && !keyState.keyHeld) {
                         keyState.keyPressedThisFrame = true;
                         keyState.keyHeld = true;
-                    } else if (!keySignal && keyState.keyHeld) {
+                    } else if (!keyPressed && keyState.keyHeld) {
                         keyState.keyHeld = false;
                         keyState.keyReleasedAtLeastOnce = true;
                         keyState.keyReleasedThisFrame = true;
@@ -668,6 +668,11 @@ function imLetter(
     imui.Begin(c, COL); imui.Size(c, width, PX, 0, NA); imui.FontSize(c, Math.floor(width * 0.55), PX); imui.Align(c); imui.Justify(c); imui.ZIndex(c, 10); {
         imui.Bg(c, s.bgColor.toString());
         imui.Fg(c, s.textColor.toString());
+
+        if (im.Memo(c, signal)) {
+            const DEPRESS_AMOUNT = 3;
+            imdom.setStyle(c, "transform", `translate(${DEPRESS_AMOUNT * signal}px, ${DEPRESS_AMOUNT * signal}px)`);
+        }
 
         const raisedHeight = 20;
         const raisedUnit = PX;
@@ -913,6 +918,7 @@ function updatePracticeMode(
 
 function imGameplayKeyLane(
     c: ImCache,
+    ctx: GlobalContext,
     gameplayState: GameplayState,
     instrumentKey: InstrumentKey,
     laneWidth: number,
@@ -926,27 +932,31 @@ function imGameplayKeyLane(
     const keyState = gameplayState.keyState[keyIdx];
     assert(!!keyState);
 
-    let keyGain = getCurrentOscillatorGainForOwner(instrumentKey.index, 0);
+    let keyGain = getCurrentOscillatorGain(instrumentKey.index);
 
     // Vertical note
     const s = im.State(c, newVerticalNoteThreadState);
 
     const theme = getCurrentTheme();
     imui.copyColor(theme.bg, s.currentBgColor);
+    imui.lerpColor(theme.bg, theme.highlight, keyGain, s.currentBgColor);
 
     imui.Begin(c, COL); imui.Align(c, STRETCH); imui.Justify(c, START); {
         imui.Begin(c, BLOCK); imui.Size(c, 100, PERCENT, 0, NA); imui.Relative(c); imui.Flex(c); {
+            imui.Bg(c, s.currentBgColor.toCssString());
+
             im.For(c); {
                 for (let i = 0; i < thread.length; i++) {
                     const item = thread[i];
                     if (item.type !== TIMELINE_ITEM_NOTE) continue;
 
-                    imKeyboardLaneNote(c, gameplayState, keyState, item, sequencer);
+
+                    imKeyboardLaneNote(c, gameplayState, keyState, item, !sequencer);
                 } 
                 if (sequencer) {
                     for (const item of sequencer?.notesToPreview) {
                         if (item.noteId === instrumentKey.noteId) {
-                            imKeyboardLaneNote(c, gameplayState, keyState, item, sequencer);
+                            imKeyboardLaneNote(c, gameplayState, keyState, item, !sequencer);
                         }
                     }
                 }
@@ -1018,7 +1028,7 @@ export function imGameplayKeyboard(
 
                     const instrumentKey = row[j];
                     const isTopRowKey = i % 2 === 0;
-                    imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey, sequencer);
+                    imGameplayKeyLane(c, ctx, gameplayState, instrumentKey, letterWidth, isTopRowKey, sequencer);
                 }
             } im.ForEnd(c);
         } imui.End(c);
@@ -1036,7 +1046,15 @@ export function imGameplayKeyboard(
 
                     const instrumentKey = row[j];
                     const isTopRowKey = i % 2 === 0;
-                    imGameplayKeyLane(c, gameplayState, instrumentKey, letterWidth, isTopRowKey, sequencer);
+                    imGameplayKeyLane(
+                        c,
+                        ctx,
+                        gameplayState,
+                        instrumentKey,
+                        letterWidth,
+                        isTopRowKey,
+                        sequencer
+                    );
                 }
             }
             im.ForEnd(c);
@@ -1052,14 +1070,11 @@ function imKeyboardLaneNote(
     gameplayState: GameplayState,
     keyState: GameplayKeyState,
     item: NoteItem,
-    sequencer: SequencerState | null,
+    indicatetUnpressedNotes: boolean,
 ) {
     const s = im.State(c, newBarState);
-    const currentBeatInItem = isBeatWithinInclusve(item, gameplayState.currentBeatAnimated);
 
     const theme = getCurrentTheme();
-
-
     let heightPercent = 100 * item.length / GAMEPLAY_BEATS_VIEWPORT;
     let bottomPercent = 100 * inverseLerp(item.start, gameplayState.currentBeatAnimated, gameplayState.endAnimated);
     if (bottomPercent <= 0) {
@@ -1070,7 +1085,8 @@ function imKeyboardLaneNote(
     }
 
     const dt = gameplayState.dt;
-    if (!sequencer && currentBeatInItem && !keyState.keyHeld) {
+    const currentBeatAtItem = gameplayState.currentBeat === item.start;
+    if (indicatetUnpressedNotes && currentBeatAtItem && !keyState.keyHeld) {
         // give user an indication that they should care about the fact that this bar has reached the bottom.
         // hopefully they'll see the keyboard letter just below it, and try pressing it.
         s.animation += dt;
